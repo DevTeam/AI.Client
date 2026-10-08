@@ -5,8 +5,13 @@ icon: code
 kind: playbook
 description: Implement a feature or code change end to end: explore, plan, edit files, run the build and tests, remove leftovers and summarize the change; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What to build or change, in the user's words"},"scope":{"type":"string","description":"Files, modules or limits the user named"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","process_run","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","ask_user","spawn_subtask","run_skill"]
 ---
+
+For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
+from `list_allowed_directories` when available. Preserve command exit codes, inspect only
+relevant excerpts of saved output, and keep final artifacts in their intended location.
+Remove task-created scratch files during cleanup.
 
 The project instructions and instruction files (AGENTS.md, CLAUDE.md, CONTRIBUTING) win over these
 steps where they differ: their build, test and style rules are the ones to follow.

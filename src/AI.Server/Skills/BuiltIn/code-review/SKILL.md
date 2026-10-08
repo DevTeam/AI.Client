@@ -5,7 +5,7 @@ icon: code-review
 kind: playbook
 description: Review selected code, working-tree changes, branches or commits for correctness, compatibility and concurrency with actionable source evidence; changes nothing.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"The review focus or acceptance criteria"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"},"scope":{"type":"string","enum":["files","working-tree","branches","commits"]},"branches":{"type":"array","items":{"type":"string"},"maxItems":200},"commits":{"type":"array","items":{"type":"string"},"maxItems":200},"base":{"type":"string","description":"The comparison base branch or commit, if specified"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user"]
 ---
 
 The user's instructions take precedence over this playbook. Follow AGENTS.md, CLAUDE.md,
@@ -33,6 +33,10 @@ interpolated shell commands. Directory grants and ordinary tool approvals still 
 Keep this skill read-only: do not edit source, install dependencies, run migrations, stage,
 commit, checkout, stash, reset or push. Use investigation commands that do not mutate application
 data or repository files. Report any unavailable evidence instead of treating it as verified.
+
+When a diff is too large for the tool response, use the `purpose: "chatTemporary"` root from
+`list_allowed_directories` for a task-only copy if available. Inspect relevant hunks, keep source
+unchanged, and remove the scratch copy after review.
 
 3. Determine the review source from `scope` and the request. For uncommitted changes inspect
    both staged and unstaged diffs plus relevant untracked source; keep existing changes visible

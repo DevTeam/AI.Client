@@ -5,7 +5,7 @@ icon: code-security-review
 kind: playbook
 description: Review selected code for authorization, trust boundaries, input validation and secret handling, reporting supported vulnerabilities and mitigations; changes nothing.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"Threats, entry points or security requirements to review"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user"]
 ---
 
 The user's instructions take precedence over this playbook. Follow AGENTS.md, CLAUDE.md,
@@ -29,6 +29,10 @@ interpolated shell commands. Directory grants and ordinary tool approvals still 
 Keep this skill read-only: do not edit source, install dependencies, run migrations, stage,
 commit, checkout, stash, reset or push. Use investigation commands that do not mutate application
 data or repository files. Report any unavailable evidence instead of treating it as verified.
+
+For oversized audit output, use the `purpose: "chatTemporary"` root from
+`list_allowed_directories` for task-only files when available. Redact sensitive data, inspect
+relevant excerpts and remove the scratch files after review.
 
 3. Identify protected assets, user roles, trust boundaries and entry points from the code.
    Trace untrusted input to sensitive operations and privileged data. Read security policy,

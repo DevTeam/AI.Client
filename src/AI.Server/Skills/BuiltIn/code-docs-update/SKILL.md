@@ -5,8 +5,13 @@ icon: code-docs-update
 kind: playbook
 description: Update documentation and examples to match inspected code and verified behavior, then check links and applicable examples; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The documentation change or behavior to document"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
 ---
+
+For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
+from `list_allowed_directories` when available. Preserve command exit codes, inspect only
+relevant excerpts of saved output, and keep final artifacts in their intended location.
+Remove task-created scratch files during cleanup.
 
 The user's instructions take precedence over this playbook. Follow AGENTS.md, CLAUDE.md,
 CONTRIBUTING and the repository's build, test and style conventions. Ask questions and report

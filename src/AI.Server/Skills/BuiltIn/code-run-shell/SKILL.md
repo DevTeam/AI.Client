@@ -6,8 +6,13 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","process_run","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","list_allowed_directories","process_run","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
+
+For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
+`list_allowed_directories` when available and verify the executor can access it. Keep final
+deliverables at the requested path; inspect only relevant excerpts of verbose output while
+preserving the exit code. Remove task-created scratch files when done.
 
 The user's instructions take precedence. Follow repository instructions and use ordinary
 permission-checked tools; this playbook grants no access. Report in the user's language.

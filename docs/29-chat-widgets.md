@@ -112,17 +112,31 @@ Every widget sits in `ChatWidget`, so the column reads as one set:
 
 ```
 ┌──────────────────────────────────────────┐
-│ ⠿  ◔ Usage   16% · $0.18           ⌄   ✕ │  header: handle, icon, title, folded summary, chevron, hide
-├──────────────────────────────────────────┤
-│  body (.chat-widget-body)                │  .1rem .85rem .85rem padding, .78rem text
+│ ⠿ [◔] Usage           16% · $0.18  ⌄   ✕ │  header: handle, icon tile, title, folded summary, chevron, hide
+├──────────────────────────────────────────┤  hairline while unfolded
+│  body (.chat-widget-body)                │  .7rem .85rem .85rem padding, .78rem text
 └──────────────────────────────────────────┘
 ```
 
-- The card has a 1px `--color-border-subtle` border, a radius of `.75rem × --corner-scale`, and
-  `--color-surface` on the column's `--color-bg-sunken`. Widgets are .6rem apart.
-- Header: 2.3rem high; the title is .8rem, weight 500; the folded summary is regular weight in
-  `--color-text-subtle` with tabular digits and ellipsis.
+- The card has a 1px `--color-border-subtle` border (`--color-border` on hover or focus inside),
+  a radius of `.85rem × --corner-scale`, and `--color-surface` on the column's
+  `--color-bg-sunken`. Widgets are .6rem apart.
+- Header: 2.5rem high; the title is .8rem, weight 500. An unfolded widget separates header and
+  body with a `--color-border-subtle` hairline.
+- The icon sits on a 1.55rem tile, like a project's monogram in the sidebar: `--color-accent`
+  on `--color-accent-bg` while the widget has something to show.
+- The folded summary sits at the right edge, beside the chevron, in `--color-text-secondary`
+  with tabular digits and ellipsis, so a column of folded widgets reads as a status bar: names
+  down the left, figures down the right.
 - The chevron points down when unfolded and right when folded.
+- **A widget with nothing to show steps back.** Unfolded, that is a body holding only its
+  `chat-usage-empty` line; folded, a header with no summary (every widget states one as soon as
+  it has a figure). Such a widget loses its card fill and its header hairline, its icon tile
+  turns neutral (`--color-fill`, `--color-text-subtle`) and its title `--color-text-muted`, so in
+  a long column the widgets with figures are what the eye finds. It is matched by CSS
+  (`:has()`), not flagged by the widget, so a new widget gets it by using `chat-usage-empty`.
+- The column heading ("Widgets") uses the sidebar's section label: `--font-size-2xs`, weight
+  600, letter-spaced capitals in `--color-text-faint`.
 
 ### Body
 

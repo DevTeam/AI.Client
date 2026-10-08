@@ -3,12 +3,13 @@ namespace AI.Application.Resources;
 using System.IO.Compression;
 using AI.Contracts.Resources;
 
-/// <summary>Lists archive metadata without extracting or decompressing any entry.</summary>
 public sealed class ArchiveFilePreviewFormat : IFilePreviewFormat
 {
     public Task<FilePreview?> DescribeAsync(FilePreviewContext context, CancellationToken cancellationToken)
     {
-        if (Directory.Exists(context.Path) || !Path.GetExtension(context.Path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        // ZipFile reads the archive itself; it is not one of the file-system calls this migration
+        // moves behind the contract, and it never writes or lists a directory.
+        if (context.IsDirectory || !Path.GetExtension(context.Path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             return Task.FromResult<FilePreview?>(null);
         using var archive = ZipFile.OpenRead(context.Path);
         var entries = new List<FilePreviewEntry>();

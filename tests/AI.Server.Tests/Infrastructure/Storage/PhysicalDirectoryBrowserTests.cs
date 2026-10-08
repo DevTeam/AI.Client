@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Tests.Storage;
 
+using AI.Contracts.FileSystem;
 using AI.Infrastructure.Storage;
 using Shouldly;
 using Xunit;
@@ -7,7 +8,8 @@ using Xunit;
 [Trait("Category", "Integration")]
 public sealed class PhysicalDirectoryBrowserTests : IDisposable
 {
-    private readonly PhysicalDirectoryBrowser _browser = new();
+    private readonly PhysicalDirectoryBrowser _browser =
+        new(new SystemFileSystem(), new SystemPath());
     private readonly string _root = Directory.CreateTempSubdirectory("dir-browser-tests").FullName;
 
     public void Dispose() => Directory.Delete(_root, recursive: true);

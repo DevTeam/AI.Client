@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Tests.Credentials;
 
 using System.Security.Cryptography;
 using System.Text;
+using AI.Contracts.FileSystem;
 using AI.Infrastructure.Credentials;
 using AI.Infrastructure.Storage;
 using AI.Server.Hosting;
@@ -18,7 +19,7 @@ public sealed class MasterKeyTests : IDisposable
     private readonly MasterKeyFormat _format = new();
 
     private FileMasterKeyStore NewFileStore() =>
-        new(new ProjectStorageLocation(new ServerOptions(_root, null, true)), _format);
+        new(new ProjectStorageLocation(new ServerOptions(_root, null, true)), _format, new SystemFileSystem());
 
     private static ILoggerProvider Logs()
     {

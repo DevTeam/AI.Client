@@ -4,6 +4,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
     <ItemGroup>
+        <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj"/>
         <PackageReference Include="ModelContextProtocol.Core"/>
         <PackageReference Include="Pure.DI" PrivateAssets="all"/>
     </ItemGroup>

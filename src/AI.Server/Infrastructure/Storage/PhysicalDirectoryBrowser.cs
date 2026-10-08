@@ -7,7 +7,7 @@ using AI.Contracts.FileSystem;
 /// Walks the real file system of the machine the host runs on. Everything here is read-only:
 /// the picker needs to know what directories exist, never to change any of them.
 /// </summary>
-public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
+public sealed class PhysicalDirectoryBrowser(IFileSystem files, IPath paths) : IDirectoryBrowser
 {
     public Task<DirectoryListing> ListRootsAsync(CancellationToken cancellationToken)
     {
@@ -15,59 +15,59 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
         return Task.FromResult(new DirectoryListing(string.Empty, null, true, Roots(), []));
     }
 
-    public Task<DirectoryListing?> ListAsync(string path, bool includeFiles, CancellationToken cancellationToken)
+    public async Task<DirectoryListing?> ListAsync(string path, bool includeFiles, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var canonical = Canonicalize(path);
         if (canonical.Length == 0)
         {
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(string.Empty, null, true, Roots(), []));
+            return new DirectoryListing(string.Empty, null, true, Roots(), []);
         }
 
-        if (!Directory.Exists(canonical))
+        if (!await files.DirectoryExistsAsync(canonical, cancellationToken))
         {
-            return Task.FromResult<DirectoryListing?>(null);
+            return null;
         }
 
         var parent = ParentOf(canonical);
         try
         {
-            var directory = new DirectoryInfo(canonical);
-            var children = directory
-                .EnumerateDirectories()
-                .Where(item => !IsHiddenSystem(item))
-                .Select(item => new DirectoryEntry(item.Name, item.FullName))
-                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var files = includeFiles
-                ? directory
-                    .EnumerateFiles()
-                    .Where(item => !IsHiddenSystem(item))
-                    .Select(item => new DirectoryEntry(item.Name, item.FullName))
-                    .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToArray()
-                : [];
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, true, children, files));
+            // Inaccessible entries are not skipped here: a directory that will not open has to be
+            // reported as such rather than shown as an empty one.
+            var entries = await files.ListEntriesAsync(canonical,
+                new FileEnumerationOptions(SkipInaccessible: false), cancellationToken);
+            var directories = new List<DirectoryEntry>();
+            var documents = new List<DirectoryEntry>();
+            foreach (var entry in entries)
+            {
+                if (await IsHiddenSystemAsync(entry.Path, cancellationToken)) continue;
+                (entry.IsDirectory ? directories : documents).Add(new DirectoryEntry(entry.Name, entry.Path));
+            }
+
+            directories.Sort(CompareByName);
+            if (includeFiles) documents.Sort(CompareByName);
+            return new DirectoryListing(canonical, parent, true, directories, includeFiles ? documents : []);
         }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {
             // The directory is there, it just will not open for this account — a removed medium,
             // a dropped network share and a denied ACL all land here. Reporting it as missing
             // would send the user hunting for a folder they are looking straight at.
-            return Task.FromResult<DirectoryListing?>(new DirectoryListing(canonical, parent, false, [], []));
+            return new DirectoryListing(canonical, parent, false, [], []);
         }
     }
 
-    public Task<DirectoryProbe> ResolveAsync(string path, CancellationToken cancellationToken)
+    public async Task<DirectoryProbe> ResolveAsync(string path, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var canonical = Canonicalize(path);
-        return Task.FromResult(new DirectoryProbe(
+        return new DirectoryProbe(
             canonical,
-            canonical.Length > 0 && Path.IsPathFullyQualified(canonical),
-            canonical.Length > 0 && Directory.Exists(canonical),
-            canonical.Length > 0 && File.Exists(canonical)));
+            canonical.Length > 0 && paths.IsFullyQualified(canonical),
+            canonical.Length > 0 && await files.DirectoryExistsAsync(canonical, cancellationToken),
+            canonical.Length > 0 && await files.FileExistsAsync(canonical, cancellationToken));
     }
+
+    private static int CompareByName(DirectoryEntry left, DirectoryEntry right) =>
+        string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Environment variables and a leading "~" are expanded because they are what people paste,
@@ -80,17 +80,17 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
     {
         ArgumentNullException.ThrowIfNull(path);
         var expanded = Expand(path.Trim());
-        if (expanded.Length == 0 || !Path.IsPathFullyQualified(expanded))
+        if (expanded.Length == 0 || !paths.IsFullyQualified(expanded))
         {
             return expanded;
         }
 
         try
         {
-            var full = Path.GetFullPath(expanded);
-            var trimmed = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var full = paths.GetFullPath(expanded);
+            var trimmed = paths.TrimEndingDirectorySeparator(full);
             // "C:" is not "C:\", and "" is not "/": a root loses its meaning without the separator.
-            return trimmed.Length == 0 || Path.GetPathRoot(full)?.Length == full.Length ? full : trimmed;
+            return trimmed.Length == 0 || paths.GetPathRoot(full)?.Length == full.Length ? full : trimmed;
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -162,9 +162,9 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
     }
 
     /// <summary>Where "up" leads. A root's parent is the roots level, which is the empty path.</summary>
-    private static string? ParentOf(string canonical)
+    private string? ParentOf(string canonical)
     {
-        var parent = Path.GetDirectoryName(canonical);
+        var parent = paths.GetDirectoryName(canonical);
         return string.IsNullOrEmpty(parent) ? string.Empty : parent;
     }
 
@@ -173,12 +173,12 @@ public sealed class PhysicalDirectoryBrowser : IDirectoryBrowser
     /// their kind. A merely hidden directory stays: AppData is hidden, and it is exactly the sort
     /// of place a grant gets pointed at.
     /// </summary>
-    private static bool IsHiddenSystem(FileSystemInfo entry)
+    private async Task<bool> IsHiddenSystemAsync(string path, CancellationToken cancellationToken)
     {
         try
         {
-            return entry.Attributes.HasFlag(FileAttributes.Hidden)
-                && entry.Attributes.HasFlag(FileAttributes.System);
+            var attributes = await files.GetAttributesAsync(path, cancellationToken);
+            return attributes.HasFlag(FileAttributes.Hidden) && attributes.HasFlag(FileAttributes.System);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

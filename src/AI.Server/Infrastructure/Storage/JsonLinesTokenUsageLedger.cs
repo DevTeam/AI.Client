@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AI.Application.Usage;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Usage;
 
 /// <summary>
@@ -12,7 +13,7 @@ using AI.Contracts.Usage;
 /// reading years of history. Months are read once and then held in memory, since every record
 /// after that passes through here anyway.
 /// </summary>
-public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, ITextFileSystem files)
+public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, IFileSystem files)
     : ITokenUsageLedger, IDisposable
 {
     private const string MonthFormat = "yyyy-MM";

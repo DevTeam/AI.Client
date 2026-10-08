@@ -2,13 +2,16 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files, IPath paths) : IToolFactory
 {
+    private readonly IPath _paths = paths;
+
     // Approximate JSON overhead per match beyond its own path string — quotes and a comma in the
     // `matches` string array, inflated to account for the result being serialized a second time
     // when it's stored as the tool's chat message (see ResultBudget).
@@ -29,7 +32,7 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
 
     [McpServerTool(Name = "search_files", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(SearchFilesResult))]
-    private Task<CallToolResult> SearchAsync(
+    private async Task<CallToolResult> SearchAsync(
         [Description("Absolute path of the directory to search.")] [MaxLength(4096)] string path,
         [Description("Glob pattern to match, for example '*.cs' or 'src/**/*.razor'.")] [MaxLength(512)] string pattern,
         [Description("Glob patterns to skip; a matching directory is not descended into.")] [MaxLength(64)] string[]? excludePatterns = null,
@@ -44,12 +47,12 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new SearchFilesResult(path, [], false, error.Message), true));
+            return reply.Reply(new SearchFilesResult(path, [], false, error.Message), true);
         }
 
-        if (!Directory.Exists(resolved))
+        if (!await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, [], false, "Directory does not exist."), true));
+            return reply.Reply(new SearchFilesResult(resolved, [], false, "Directory does not exist."), true);
         }
 
         GlobPattern include;
@@ -61,7 +64,7 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
         }
         catch (ArgumentException error)
         {
-            return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, [], false, error.Message), true));
+            return reply.Reply(new SearchFilesResult(resolved, [], false, error.Message), true);
         }
 
         var matches = new List<string>();
@@ -74,10 +77,10 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
         {
             cancellationToken.ThrowIfCancellationRequested();
             var current = queue.Dequeue();
-            IEnumerable<FileSystemInfo> children;
+            IReadOnlyList<FileSystemEntry> children;
             try
             {
-                children = new DirectoryInfo(current).EnumerateFileSystemInfos();
+                children = await files.ListEntriesAsync(current, recursive: false, cancellationToken);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -92,13 +95,13 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
                     break;
                 }
 
-                var directory = (info.Attributes & FileAttributes.Directory) != 0;
+                var directory = info.IsDirectory;
                 if (directory && excludeDefaults && FileLimits.DefaultExcludedNames.Contains(info.Name))
                 {
                     continue;
                 }
 
-                var relative = Path.GetRelativePath(resolved, info.FullName);
+                var relative = _paths.GetRelativePath(resolved, info.Path);
                 if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)))
                 {
                     continue;
@@ -106,23 +109,26 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply) :
 
                 if (include.IsMatch(info.Name, relative))
                 {
-                    if (!budget.TryReserve(info.FullName.Length + MatchOverheadCharacters))
+                    if (!budget.TryReserve(info.Path.Length + MatchOverheadCharacters))
                     {
                         truncated = true;
                         break;
                     }
 
-                    matches.Add(info.FullName);
+                    matches.Add(info.Path);
                 }
 
-                if (directory && info.LinkTarget is null)
+                // A link is never followed: descending through one leads back up the tree, and a
+                // search that walks out of the granted root is a search that reports too much. A
+                // reparse point that resolves to itself is not a link and is descended into.
+                if (directory && !await LinkTargets.IsLinkAsync(files, _paths, info.Path, info.Attributes, cancellationToken))
                 {
-                    queue.Enqueue(info.FullName);
+                    queue.Enqueue(info.Path);
                 }
             }
         }
 
         matches.Sort(StringComparer.OrdinalIgnoreCase);
-        return Task.FromResult(reply.Reply(new SearchFilesResult(resolved, matches.ToArray(), truncated, null)));
+        return reply.Reply(new SearchFilesResult(resolved, matches.ToArray(), truncated, null));
     }
 }

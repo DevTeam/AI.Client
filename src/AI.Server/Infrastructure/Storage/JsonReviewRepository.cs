@@ -2,10 +2,11 @@ namespace AI.Infrastructure.Storage;
 
 using System.Text.Json;
 using AI.Application.Resources;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 
 /// <summary>One small catalog per project; the chat ID is checked on every read and write.</summary>
-public sealed class JsonReviewRepository(IProjectStorageLocation location, ITextFileSystem files) : IReviewRepository, IDisposable
+public sealed class JsonReviewRepository(IProjectStorageLocation location, IFileSystem files) : IReviewRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -61,7 +62,7 @@ public sealed class JsonReviewRepository(IProjectStorageLocation location, IText
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);
-        await files.DeleteAsync(PathFor(projectId), cancellationToken);
+        await files.DeleteFileAsync(PathFor(projectId), cancellationToken);
     }
 
     private async Task<IReadOnlyList<ChatReview>> LoadAsync(Guid projectId, CancellationToken cancellationToken)

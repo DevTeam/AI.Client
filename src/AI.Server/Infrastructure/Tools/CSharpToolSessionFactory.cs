@@ -1,6 +1,7 @@
 namespace AI.Infrastructure.Tools;
 
 using AI.Application.Tools;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Settings;
 using AI.Contracts.Tools;
 using ModelContextProtocol.Client;
@@ -12,7 +13,7 @@ using ModelContextProtocol.Client;
 /// <see cref="OpenAsync"/> throws <see cref="FileNotFoundException"/>; the settings UI surfaces
 /// that as the server being uninstalled.
 /// </summary>
-public sealed class CSharpToolSessionFactory(IToolResultModelProjector modelProjector) : IMcpServerConnection
+public sealed class CSharpToolSessionFactory(IFileSystem files, IToolResultModelProjector modelProjector) : IMcpServerConnection
 {
     public Guid ServerId => CSharpMcpServer.Id;
 
@@ -26,14 +27,14 @@ public sealed class CSharpToolSessionFactory(IToolResultModelProjector modelProj
         ArgumentNullException.ThrowIfNull(directoryGrants);
         var directory = Path.Combine(AppContext.BaseDirectory, "mcp-csharp");
         var executable = Path.Combine(directory, "AI.Mcp.CSharp" + (OperatingSystem.IsWindows() ? ".exe" : ""));
-        if (!File.Exists(executable) && !OperatingSystem.IsWindows())
+        if (!await files.FileExistsAsync(executable, cancellationToken) && !OperatingSystem.IsWindows())
         {
             directory = OperatingSystem.IsMacOS()
                 ? "/Library/Application Support/AI Client/McpCsharp"
                 : "/opt/ai-client-csharp-mcp";
             executable = Path.Combine(directory, "AI.Mcp.CSharp");
         }
-        if (!File.Exists(executable))
+        if (!await files.FileExistsAsync(executable, cancellationToken))
             throw new FileNotFoundException(
                 "The C# scripting MCP server is not installed. Choose \"C# scripting tools\" in the Host or Desktop installer, or install the C# MCP companion package on Linux.",
                 executable);

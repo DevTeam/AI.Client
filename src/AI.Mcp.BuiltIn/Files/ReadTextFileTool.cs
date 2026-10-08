@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -42,9 +43,14 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply) 
             return reply.Reply(new TextFileResult(path, "", 0, 0, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
             return reply.Reply(new TextFileResult(resolved, "", 0, 0, false, "Path is a directory. Use list_directory."), true);
+        }
+
+        if (!await files.FileExistsAsync(resolved, cancellationToken))
+        {
+            return reply.Reply(new TextFileResult(resolved, "", 0, 0, false, "File does not exist."), true);
         }
 
         try
@@ -59,9 +65,13 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply) 
         }
     }
 
-    private static async Task<TextFileResult> WholeAsync(string path, CancellationToken cancellationToken)
+    private async Task<TextFileResult> WholeAsync(string path, CancellationToken cancellationToken)
     {
-        using var reader = new StreamReader(path);
+        // Opened through the contract so a save in flight cannot fail the read, and so the sharing
+        // matches every other read in the product. The stream is the caller's to close.
+        await using var stream = await files.OpenReadAsync(path, cancellationToken)
+                                 ?? throw new FileNotFoundException($"File does not exist: {path}", path);
+        using var reader = new StreamReader(stream);
         // One character beyond the limit tells truncation from a file that ends exactly at it.
         var buffer = new char[FileLimits.ContentCharacters + 1];
         var read = 0;
@@ -81,13 +91,13 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply) 
         return new TextFileResult(path, content, content.Length == 0 ? 0 : 1, Lines(content), truncated, null);
     }
 
-    private static async Task<TextFileResult> LinesAsync(string path, int? head, int? tail, CancellationToken cancellationToken)
+    private async Task<TextFileResult> LinesAsync(string path, int? head, int? tail, CancellationToken cancellationToken)
     {
         var selected = new List<string>();
         var firstLine = 1;
         var truncated = false;
         var characters = 0;
-        await foreach (var line in File.ReadLinesAsync(path, cancellationToken))
+        await foreach (var line in files.ReadLinesAsync(path, cancellationToken))
         {
             if (head is { } limit)
             {

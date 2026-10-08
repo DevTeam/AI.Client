@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -25,7 +26,7 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply re
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var files = new List<FileText>(paths.Length);
+        var results = new List<FileText>(paths.Length);
         var budget = FileLimits.MultipleFilesCharacters;
         foreach (var path in paths)
         {
@@ -37,19 +38,25 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply re
             }
             catch (GrantException error)
             {
-                files.Add(new FileText(path, "", false, error.Message));
+                results.Add(new FileText(path, "", false, error.Message));
                 continue;
             }
 
             if (budget <= 0)
             {
-                files.Add(new FileText(resolved, "", true, "Combined content limit reached before this file was read."));
+                results.Add(new FileText(resolved, "", true, "Combined content limit reached before this file was read."));
                 continue;
             }
 
             try
             {
-                var content = await File.ReadAllTextAsync(resolved, cancellationToken);
+                var content = await files.ReadTextAsync(resolved, cancellationToken);
+                if (content is null)
+                {
+                    results.Add(new FileText(resolved, "", false, "File does not exist."));
+                    continue;
+                }
+
                 var truncated = content.Length > budget;
                 if (truncated)
                 {
@@ -57,14 +64,14 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply re
                 }
 
                 budget -= content.Length;
-                files.Add(new FileText(resolved, content, truncated, null));
+                results.Add(new FileText(resolved, content, truncated, null));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                files.Add(new FileText(resolved, "", false, error.Message));
+                results.Add(new FileText(resolved, "", false, error.Message));
             }
         }
 
-        return reply.Reply(new MultipleFilesResult(files.ToArray(), null), files.All(file => file.Error is not null));
+        return reply.Reply(new MultipleFilesResult(results.ToArray(), null), results.All(file => file.Error is not null));
     }
 }

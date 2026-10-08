@@ -3,12 +3,13 @@ namespace AI.Mcp.BuiltIn.Archives;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.IO.Compression;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ZipReadTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class ZipReadTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         ReadAsync,
@@ -38,12 +39,12 @@ public sealed class ZipReadTool(IPathGuard guard, IBuiltInToolReply reply) : ITo
             return reply.Reply(new ZipReadResult(path, entryPath, "", 0, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
             return reply.Reply(new ZipReadResult(resolved, entryPath, "", 0, false, "Path is a directory."), true);
         }
 
-        if (!File.Exists(resolved))
+        if (!await files.FileExistsAsync(resolved, cancellationToken))
         {
             return reply.Reply(new ZipReadResult(resolved, entryPath, "", 0, false, "File does not exist."), true);
         }

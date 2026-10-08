@@ -1,11 +1,12 @@
 namespace AI.Infrastructure.Storage;
 
 using AI.Application.Projects;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Domain.Projects;
 
 public sealed class JsonProjectRepository(
-    ITextFileSystem fileSystem,
+    IFileSystem fileSystem,
     IProjectStoragePaths paths,
     IProjectDocumentSerializer serializer) : IProjectRepository, IDisposable
 {
@@ -82,22 +83,22 @@ public sealed class JsonProjectRepository(
             return ProjectDeleteResult.Conflict(currentRevision);
         }
 
-        await fileSystem.DeleteAsync(projectPath, cancellationToken);
+        await fileSystem.DeleteFileAsync(projectPath, cancellationToken);
         return ProjectDeleteResult.Deleted(currentRevision);
     }
 
     private async Task RecoverAsync(ProjectId id, CancellationToken cancellationToken)
     {
         var temporaryPath = paths.GetTemporaryProjectPath(id);
-        if (!await fileSystem.ExistsAsync(temporaryPath, cancellationToken))
+        if (!await fileSystem.FileExistsAsync(temporaryPath, cancellationToken))
         {
             return;
         }
 
         var projectPath = paths.GetProjectPath(id);
-        if (await fileSystem.ExistsAsync(projectPath, cancellationToken))
+        if (await fileSystem.FileExistsAsync(projectPath, cancellationToken))
         {
-            await fileSystem.DeleteAsync(temporaryPath, cancellationToken);
+            await fileSystem.DeleteFileAsync(temporaryPath, cancellationToken);
             return;
         }
 

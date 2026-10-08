@@ -4,6 +4,7 @@ using System.Text.Json;
 using AI.Application.Projects;
 using AI.Application.Tools;
 using AI.Application.Workspace;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Tools;
 using AI.Contracts.Workspace;
@@ -32,10 +33,13 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
             .ReturnsAsync(new ProjectDetails(_projectId, "Test", string.Empty,
                 DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1,
                 [new DirectoryGrantSettings(Guid.NewGuid(), "Workspace", _root, true, ["read", "write"])], [], []));
-        var assets = new ResourceAssetService(location.Object, projects.Object);
-        var undo = new WorkspaceUndoService(location.Object, new PhysicalTextFileSystem(), assets,
-            projects.Object, new ProjectPathAccess());
-        return (undo, new WorkspaceChangeTracker(new LineDiff(), undo));
+        var files = new SystemFileSystem();
+        var paths = new SystemPath();
+        var assets = new ResourceAssetService(location.Object, projects.Object, files, paths,
+            new AtomicFileWriter(files));
+        var undo = new WorkspaceUndoService(location.Object, files, assets, projects.Object,
+            new ProjectPathAccess(files, paths));
+        return (undo, new WorkspaceChangeTracker(new LineDiff(), undo, files, paths));
     }
 
     private static async Task EditAsync(WorkspaceChangeTracker tracker, WorkspaceRunKey run, string name,

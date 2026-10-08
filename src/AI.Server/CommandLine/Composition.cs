@@ -16,6 +16,9 @@ internal sealed class Composition
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup(kind: CompositionKind.Internal)
+            // The command line resolves ServerCommandLine, which reaches the file system; without
+            // this the command-line graph never reaches the setup that binds it.
+            .DependsOn("AI.Contracts.Composition")
             .Hint(Hint.Comments, "Off")
             .Arg<string[]>("args")
             .PerResolve(() => new RootCommand())

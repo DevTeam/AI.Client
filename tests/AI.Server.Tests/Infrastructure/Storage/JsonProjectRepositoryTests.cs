@@ -12,7 +12,7 @@ using Xunit;
 
 public class JsonProjectRepositoryTests
 {
-    private readonly InMemoryTextFileSystem _fileSystem = new();
+    private readonly MemoryFileSystem _fileSystem = new();
     private readonly ProjectDocumentSerializer _serializer = new();
     private readonly DateTimeOffset _createdAt = new(2026, 8, 12, 9, 0, 0, TimeSpan.Zero);
     private readonly ProjectId _projectId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
@@ -37,7 +37,10 @@ public class JsonProjectRepositoryTests
         restoredProject.Project.ToolPolicies.ShouldHaveSingleItem().Decision.ShouldBe(ToolPolicyDecision.Ask);
         restoredProject.Project.ConnectionId.ShouldBe(
             new ConnectionId(Guid.Parse("019f0000-0000-7000-8000-000000000004")));
-        _fileSystem.MoveOperations.ShouldHaveSingleItem().ShouldBe((GetTemporaryPath(), GetProjectPath(), true));
+        // The save completes by moving the temporary document onto the project one, so what is left
+        // behind is the project document alone: the write's own scratch file is gone.
+        _fileSystem.Files.ContainsKey(GetProjectPath()).ShouldBeTrue();
+        _fileSystem.Files.ContainsKey(GetTemporaryPath()).ShouldBeFalse();
     }
 
     [Fact]
@@ -53,7 +56,10 @@ public class JsonProjectRepositoryTests
 
         // Then
         result.ShouldBe(ProjectSaveResult.Conflict(1));
-        _fileSystem.MoveOperations.Count.ShouldBe(1);
+        // A conflicting save writes nothing at all: the stored document keeps the revision it had and
+        // no temporary sibling is left for a later read to trip over.
+        _serializer.Deserialize(_fileSystem.Files[GetProjectPath()]).Revision.ShouldBe(1);
+        _fileSystem.Files.ContainsKey(GetTemporaryPath()).ShouldBeFalse();
     }
 
     [Fact]
@@ -62,7 +68,7 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        _fileSystem.Add(GetTemporaryPath(), _serializer.Serialize(project, 1));
+        _fileSystem.Files[GetTemporaryPath()] = _serializer.Serialize(project, 1);
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
@@ -70,9 +76,11 @@ public class JsonProjectRepositoryTests
         // Then
         restoredProject.ShouldNotBeNull();
         restoredProject.Project.Id.ShouldBe(_projectId);
-        _fileSystem.Exists(GetTemporaryPath()).ShouldBeFalse();
-        _fileSystem.Exists(GetProjectPath()).ShouldBeTrue();
-        _fileSystem.MoveOperations.ShouldHaveSingleItem().ShouldBe((GetTemporaryPath(), GetProjectPath(), false));
+        _fileSystem.Files.ContainsKey(GetTemporaryPath()).ShouldBeFalse();
+        _fileSystem.Files.ContainsKey(GetProjectPath()).ShouldBeTrue();
+        // Recovered rather than thrown away: the project document now carries what the write that
+        // never finished had left in its scratch file.
+        _serializer.Deserialize(_fileSystem.Files[GetProjectPath()]).Revision.ShouldBe(1);
     }
 
     [Fact]
@@ -81,16 +89,17 @@ public class JsonProjectRepositoryTests
         // Given
         var repository = CreateInstance();
         var project = CreateProject();
-        _fileSystem.Add(GetProjectPath(), _serializer.Serialize(project, 1));
-        _fileSystem.Add(GetTemporaryPath(), _serializer.Serialize(project, 2));
+        _fileSystem.Files[GetProjectPath()] = _serializer.Serialize(project, 1);
+        _fileSystem.Files[GetTemporaryPath()] = _serializer.Serialize(project, 2);
 
         // When
         var restoredProject = await repository.GetAsync(_projectId, CancellationToken.None);
 
         // Then
         restoredProject.ShouldNotBeNull();
-        _fileSystem.Exists(GetTemporaryPath()).ShouldBeFalse();
-        _fileSystem.DeleteOperations.ShouldHaveSingleItem().ShouldBe(GetTemporaryPath());
+        _fileSystem.Files.ContainsKey(GetTemporaryPath()).ShouldBeFalse();
+        // The committed document wins, and the abandoned write is the one that goes away.
+        _serializer.Deserialize(_fileSystem.Files[GetProjectPath()]).Revision.ShouldBe(1);
     }
 
     [Theory]
@@ -149,73 +158,5 @@ public class JsonProjectRepositoryTests
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new ProjectStoragePaths(location.Object).GetTemporaryProjectPath(_projectId);
-    }
-
-    private sealed class InMemoryTextFileSystem : ITextFileSystem
-    {
-        private readonly Dictionary<string, string> _files = new(StringComparer.Ordinal);
-
-        public List<(string Source, string Destination, bool Overwrite)> MoveOperations { get; } = [];
-
-        public List<string> DeleteOperations { get; } = [];
-
-        public Task<bool> ExistsAsync(string path, CancellationToken cancellationToken) => Task.FromResult(Exists(path));
-
-        public Task<IReadOnlyList<string>> ListFilesAsync(
-            string directoryPath,
-            string searchPattern,
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<string>>(_files.Keys
-                .Where(path => path.StartsWith(directoryPath, StringComparison.Ordinal)
-                               && path.EndsWith(".json", StringComparison.Ordinal))
-                .ToArray());
-
-        public Task<IReadOnlyList<string>> ListFilesRecursivelyAsync(string directoryPath, string searchPattern, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<string>>(_files.Keys.Where(path => path.StartsWith(directoryPath, StringComparison.Ordinal)
-                && System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(path))).ToArray());
-
-        public Task<string?> ReadTextAsync(string path, CancellationToken cancellationToken) =>
-            Task.FromResult(_files.GetValueOrDefault(path));
-
-        public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken)
-        {
-            _files[path] = content;
-            return Task.CompletedTask;
-        }
-
-        public Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)
-        {
-            _files[path] = (_files.TryGetValue(path, out var existing) ? existing : string.Empty) + content;
-            return Task.CompletedTask;
-        }
-
-        public Task MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken)
-        {
-            if (!_files.TryGetValue(sourcePath, out var content))
-            {
-                throw new FileNotFoundException(sourcePath);
-            }
-
-            if (!overwrite && _files.ContainsKey(destinationPath))
-            {
-                throw new IOException(destinationPath);
-            }
-
-            _files[destinationPath] = content;
-            _files.Remove(sourcePath);
-            MoveOperations.Add((sourcePath, destinationPath, overwrite));
-            return Task.CompletedTask;
-        }
-
-        public Task DeleteAsync(string path, CancellationToken cancellationToken)
-        {
-            _files.Remove(path);
-            DeleteOperations.Add(path);
-            return Task.CompletedTask;
-        }
-
-        public void Add(string path, string content) => _files.Add(path, content);
-
-        public bool Exists(string path) => _files.ContainsKey(path);
     }
 }

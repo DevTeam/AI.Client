@@ -3,15 +3,14 @@ namespace AI.Mcp.BuiltIn.Files;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
-    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
-
     public McpServerTool Create() => McpServerTool.Create(
         EditAsync,
         new McpServerToolCreateOptions
@@ -45,7 +44,8 @@ public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply) : IT
         string original;
         try
         {
-            original = await File.ReadAllTextAsync(resolved, cancellationToken);
+            original = await files.ReadTextAsync(resolved, cancellationToken)
+                       ?? throw new FileNotFoundException($"File does not exist: {resolved}", resolved);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -83,7 +83,7 @@ public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply) : IT
         {
             try
             {
-                await File.WriteAllTextAsync(resolved, crlf ? content.Replace("\n", "\r\n", StringComparison.Ordinal) : content, Utf8, cancellationToken);
+                await files.WriteTextAsync(resolved, crlf ? content.Replace("\n", "\r\n", StringComparison.Ordinal) : content, cancellationToken);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
             {

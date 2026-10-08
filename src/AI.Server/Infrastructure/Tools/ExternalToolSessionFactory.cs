@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Tools;
 
+using AI.Contracts.FileSystem;
 using Application.Settings;
 using Application.Tools;
 using Contracts.Settings;
@@ -10,6 +11,8 @@ using System.Text.Json;
 /// <summary>Connects user-configured servers for both discovery and chat execution.</summary>
 public sealed class ExternalToolSessionFactory(
     IGlobalSecretStore secrets,
+    IFileSystem files,
+    IPath paths,
     IToolResultModelProjector modelProjector) : IExternalToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
@@ -26,14 +29,15 @@ public sealed class ExternalToolSessionFactory(
                 if (string.IsNullOrWhiteSpace(server.Command))
                     throw new ArgumentException("MCP command is required.");
                 var directory = string.IsNullOrWhiteSpace(server.WorkingDirectory) ? null : server.WorkingDirectory.Trim();
-                if (directory is not null && (!Path.IsPathFullyQualified(directory) || !Directory.Exists(directory)))
+                if (directory is not null && (!paths.IsFullyQualified(directory)
+                                              || !await files.DirectoryExistsAsync(directory, cancellationToken)))
                     throw new ArgumentException("MCP working directory must be an existing absolute directory.");
                 var command = server.Command.Trim();
                 // ProcessStartInfo does not search WorkingDirectory for an unqualified executable.
                 // Prefer a file in the configured directory, then let the OS search PATH.
-                if (!Path.IsPathRooted(command) && directory is not null
-                    && File.Exists(Path.Combine(directory, command)))
-                    command = Path.GetFullPath(Path.Combine(directory, command));
+                if (!paths.IsRooted(command) && directory is not null
+                    && await files.FileExistsAsync(Path.Combine(directory, command), cancellationToken))
+                    command = paths.GetFullPath(Path.Combine(directory, command));
                 var saved = await secrets.GetAsync("mcp-env", server.Id, cancellationToken);
                 var values = saved is null ? new Dictionary<string, string>()
                     : JsonSerializer.Deserialize<Dictionary<string, string>>(saved) ?? [];

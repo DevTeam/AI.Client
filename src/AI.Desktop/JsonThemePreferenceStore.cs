@@ -1,8 +1,9 @@
 namespace AI.Desktop;
 
 using System.Text.Json;
+using AI.Contracts.FileSystem;
 
-internal sealed class JsonThemePreferenceStore(DesktopStart start) : IThemePreferenceStore
+internal sealed class JsonThemePreferenceStore(DesktopStart start, IFileSystem files) : IThemePreferenceStore
 {
     private readonly string _path = Path.Combine(start.DataDirectory, "theme.json");
 
@@ -10,8 +11,8 @@ internal sealed class JsonThemePreferenceStore(DesktopStart start) : IThemePrefe
     {
         try
         {
-            if (!File.Exists(_path)) return "system";
-            return Normalize(JsonSerializer.Deserialize<ThemePreference>(File.ReadAllText(_path))?.Preference);
+            var json = SynchronousFiles.Complete(() => files.ReadTextAsync(_path, CancellationToken.None));
+            return json is null ? "system" : Normalize(JsonSerializer.Deserialize<ThemePreference>(json)?.Preference);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -23,9 +24,9 @@ internal sealed class JsonThemePreferenceStore(DesktopStart start) : IThemePrefe
     {
         try
         {
-            Directory.CreateDirectory(start.DataDirectory);
-            File.WriteAllText(_path + ".tmp", JsonSerializer.Serialize(new ThemePreference(Normalize(preference))));
-            File.Move(_path + ".tmp", _path, true);
+            var json = JsonSerializer.Serialize(new ThemePreference(Normalize(preference)));
+            SynchronousFiles.Complete(() => files.WriteTextAsync(_path + ".tmp", json, CancellationToken.None));
+            SynchronousFiles.Complete(() => files.MoveAsync(_path + ".tmp", _path, true, CancellationToken.None));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

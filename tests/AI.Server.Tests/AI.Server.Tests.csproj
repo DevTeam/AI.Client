@@ -11,6 +11,8 @@
     <ProjectReference Include="..\..\src\AI.Server\AI.Server.csproj" />
     <Compile Include="..\..\src\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
     <Compile Include="..\..\src\AI.Server\Composition.cs" Link="Server\Composition.cs" />
+    <!-- The command-line graph AI.Host and AI.Desktop build on, linked so a test can resolve from it. -->
+    <Compile Include="..\..\src\AI.Server\CommandLine\Composition.cs" Link="Server\CommandLine\Composition.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

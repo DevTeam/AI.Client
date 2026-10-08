@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class MoveFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class MoveFileTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         MoveAsync,
@@ -20,7 +21,7 @@ public sealed class MoveFileTool(IPathGuard guard, IBuiltInToolReply reply) : IT
 
     [McpServerTool(Name = "move_file", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(MoveFileResult))]
-    private Task<CallToolResult> MoveAsync(
+    private async Task<CallToolResult> MoveAsync(
         [Description("Absolute path to move from.")] [MaxLength(4096)] string source,
         [Description("Absolute path to move to. Must not exist.")] [MaxLength(4096)] string destination,
         CancellationToken cancellationToken = default)
@@ -35,36 +36,39 @@ public sealed class MoveFileTool(IPathGuard guard, IBuiltInToolReply reply) : IT
         }
         catch (GrantException error)
         {
-            return Task.FromResult(reply.Reply(new MoveFileResult(source, destination, error.Message), true));
+            return reply.Reply(new MoveFileResult(source, destination, error.Message), true);
         }
 
-        var directory = Directory.Exists(resolvedSource);
-        if (!directory && !File.Exists(resolvedSource))
+        // The kind of the source decides which move to ask for: the contract keeps the file and the
+        // directory operations apart so neither has to guess what it was given.
+        var directory = await files.DirectoryExistsAsync(resolvedSource, cancellationToken);
+        if (!directory && !await files.FileExistsAsync(resolvedSource, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Source does not exist."), true));
+            return reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Source does not exist."), true);
         }
 
-        if (File.Exists(resolvedDestination) || Directory.Exists(resolvedDestination))
+        if (await files.FileExistsAsync(resolvedDestination, cancellationToken)
+            || await files.DirectoryExistsAsync(resolvedDestination, cancellationToken))
         {
-            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Destination already exists."), true));
+            return reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, "Destination already exists."), true);
         }
 
         try
         {
             if (directory)
             {
-                Directory.Move(resolvedSource, resolvedDestination);
+                await files.MoveDirectoryAsync(resolvedSource, resolvedDestination, cancellationToken);
             }
             else
             {
-                File.Move(resolvedSource, resolvedDestination, overwrite: false);
+                await files.MoveAsync(resolvedSource, resolvedDestination, overwrite: false, cancellationToken);
             }
 
-            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, null)));
+            return reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return Task.FromResult(reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, error.Message), true));
+            return reply.Reply(new MoveFileResult(resolvedSource, resolvedDestination, error.Message), true);
         }
     }
 }

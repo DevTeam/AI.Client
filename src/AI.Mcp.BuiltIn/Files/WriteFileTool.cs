@@ -3,12 +3,13 @@ namespace AI.Mcp.BuiltIn.Files;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -17,7 +18,7 @@ public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply) : I
         new McpServerToolCreateOptions
         {
             Description = "Create a file or replace its entire content with UTF-8 text. This overwrites an existing file; use edit_file to "
-                          + "change part of one. The parent directory must already exist. "
+                          + "change part of one. Missing parent directories are created. "
                           + "The path must be absolute and covered by a directory grant with 'write' access."
         });
 
@@ -39,15 +40,15 @@ public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply) : I
             return reply.Reply(new WriteFileResult(path, 0, false, error.Message), true);
         }
 
-        if (Directory.Exists(resolved))
+        if (await files.DirectoryExistsAsync(resolved, cancellationToken))
         {
             return reply.Reply(new WriteFileResult(resolved, 0, false, "Path is a directory."), true);
         }
 
-        var existed = File.Exists(resolved);
+        var existed = await files.FileExistsAsync(resolved, cancellationToken);
         try
         {
-            await File.WriteAllTextAsync(resolved, content, Utf8, cancellationToken);
+            await files.WriteTextAsync(resolved, content, cancellationToken);
             return reply.Reply(new WriteFileResult(resolved, Utf8.GetByteCount(content), !existed, null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)

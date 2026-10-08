@@ -1,26 +1,27 @@
 namespace AI.Application.Resources;
 
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 
-public sealed class DirectoryFilePreviewFormat(IProjectPathAccess access) : IFilePreviewFormat
+public sealed class DirectoryFilePreviewFormat(IProjectPathAccess access, IFileSystem files) : IFilePreviewFormat
 {
-    public Task<FilePreview?> DescribeAsync(FilePreviewContext context, CancellationToken cancellationToken)
+    public async Task<FilePreview?> DescribeAsync(FilePreviewContext context, CancellationToken cancellationToken)
     {
-        if (!Directory.Exists(context.Path)) return Task.FromResult<FilePreview?>(null);
+        if (!context.IsDirectory) return null;
         var entries = new List<FilePreviewEntry>();
-        foreach (var item in Directory.EnumerateFileSystemEntries(context.Path))
+        foreach (var item in await files.ListEntriesAsync(context.Path, recursive: false, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                if (!access.CanRead(context.Project, access.ResolveLinks(item))) continue;
-                entries.Add(new FilePreviewEntry(item, Path.GetFileName(item), Directory.Exists(item)));
+                if (!access.CanRead(context.Project, access.ResolveLinks(item.Path))) continue;
+                entries.Add(new FilePreviewEntry(item.Path, Path.GetFileName(item.Path), item.IsDirectory));
             }
             catch (Exception error) when (error is IOException or ArgumentException or UnauthorizedAccessException) { }
             if (entries.Count > 1000) break;
         }
-        return Task.FromResult<FilePreview?>(context.Describe("directory",
+        return context.Describe("directory",
             entries.Take(1000).OrderByDescending(item => item.IsDirectory).ThenBy(item => item.Name).ToArray(),
-            entries.Count > 1000));
+            entries.Count > 1000);
     }
 }

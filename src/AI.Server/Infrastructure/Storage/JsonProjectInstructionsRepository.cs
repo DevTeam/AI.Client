@@ -2,13 +2,14 @@ namespace AI.Infrastructure.Storage;
 
 using System.Text.Json;
 using AI.Application.Instructions;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Instructions;
 
 /// <summary>
 /// One document per project in <c>instructions/projects/{projectId}.json</c>, kept apart from the
 /// project document so editing instructions never races a security or connection change.
 /// </summary>
-public sealed class JsonProjectInstructionsRepository(IProjectStorageLocation location, ITextFileSystem files)
+public sealed class JsonProjectInstructionsRepository(IProjectStorageLocation location, IFileSystem files)
     : IProjectInstructionsRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
@@ -40,7 +41,7 @@ public sealed class JsonProjectInstructionsRepository(IProjectStorageLocation lo
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         using var lease = await _gate.EnterAsync(cancellationToken);
-        await files.DeleteAsync(PathFor(projectId), cancellationToken);
+        await files.DeleteFileAsync(PathFor(projectId), cancellationToken);
     }
 
     private async Task<ProjectInstructions> LoadAsync(Guid projectId, CancellationToken token)

@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Tests.Workspace;
 
 using AI.Application.Projects;
 using AI.Application.Resources;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Infrastructure.Workspace;
@@ -28,7 +29,10 @@ public sealed class WorkspaceFileSearchTests : IDisposable
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
         var clock = new Mock<IClock>();
         clock.SetupGet(item => item.UtcNow).Returns(DateTimeOffset.UnixEpoch);
-        _search = new WorkspaceFileSearch(projects.Object, new ProjectPathAccess(), clock.Object);
+        var files = new SystemFileSystem();
+        var paths = new SystemPath();
+        _search = new WorkspaceFileSearch(projects.Object, new ProjectPathAccess(files, paths), clock.Object,
+            files, paths);
     }
 
     [Fact]

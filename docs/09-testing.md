@@ -188,6 +188,34 @@ Path and policy logic must be isolated from `System.IO` and verified as units:
 
 Every test explicitly sets platform/path semantics through a mock or value object, so the result does not depend on the OS where the runner is launched.
 
+## File-system contract tests
+
+Every implementation of `IFileSystem` — the platform adapter `SystemFileSystem` and the fake
+`MemoryFileSystem` — is held to one set of expectations, because a fake that answers differently from
+the platform turns every test written against it into a false assurance. The expectations live once, so
+the two implementations cannot drift apart without a failure.
+
+- `FileSystemContractAssertions` holds them: absence is answered rather than thrown (`null`/`false`),
+  UTF-8 is written without a BOM, writers create the parent, lines split on `\n` with a trailing `\r`
+  dropped, `DeleteFileAsync` refuses a directory, `DeleteDirectoryAsync` obeys its recursive flag,
+  `MoveAsync(overwrite: false)` refuses and leaves the source where it was, `MoveDirectoryAsync`
+  refuses an existing destination, a read that names its own `FileReadOptions` answers exactly what a
+  read without them answers, and listing recurses and filters only when asked.
+- `FileSystemContractTests` runs them against `MemoryFileSystem` and is a **fast unit test**: it is the
+  contract the rest of the suite is allowed to assume.
+- `SystemFileSystemContractTests` runs the same list against the adapter and is tagged
+  `[Trait("Category", "Integration")]`, because it creates real directories.
+- What only the platform can show is asserted against the adapter there and is **not** claimed by the
+  fake: a junction/link that is really followed (`ResolveLinkTargetAsync`, the containment risk of
+  [the audit](../analysis/filesystem-abstraction-audit.md) §7.1 #3), and a document replaced while a
+  reader holds it open (§7.1 #1). The fake's inability to model a link is stated in its own XML comment
+  and in [ADR-013](decisions/ADR-013-file-system-contract.md), not left for a reader to discover.
+
+`SystemPathTests` covers the path algebra the same way: it chooses `PathSemantics.Windows` or
+`PathSemantics.Unix` per test, so containment, canonicalization, roots and name splitting are verified
+on both platforms from one run. Containment is a security decision — it is what a directory grant is
+enforced with — so an over-permissive comparison is a defect, not a style question.
+
 ## Provider adapter tests
 
 Adapters receive pre-built JSON/SSE fixtures through a mocked `HttpMessageHandler` or a custom transport interface:

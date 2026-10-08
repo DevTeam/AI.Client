@@ -4,11 +4,12 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using AI.Contracts.FileSystem;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply) : IToolFactory
+public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath paths) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         RunAsync,
@@ -50,7 +51,7 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply) : IToo
         }
 
         if (!string.IsNullOrWhiteSpace(workingDirectory)
-            && !Path.IsPathFullyQualified(workingDirectory))
+            && !paths.IsFullyQualified(workingDirectory))
         {
             return reply.Reply(new ScriptResult(false, null, null, [], "", "", [], 0, false, false,
                 $"Working directory must be absolute: {workingDirectory}"), true);

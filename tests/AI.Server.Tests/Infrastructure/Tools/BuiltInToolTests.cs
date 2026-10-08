@@ -6,6 +6,7 @@ using AI.Mcp.BuiltIn.Web;
 namespace AI.Infrastructure.Tests.Tools;
 
 using AI.Application.Tools;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Tools;
 using AI.Infrastructure.Tools;
 using Shouldly;
@@ -92,7 +93,7 @@ public sealed class BuiltInToolTests
     [Fact]
     public async Task ShouldGrantAndCleanUpOnlyTheCurrentChatTemporaryDirectory()
     {
-        var temporary = new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance);
+        var temporary = NewTemporaryDirectory();
         var projectId = Guid.NewGuid();
         var chatId = Guid.NewGuid();
         var otherChatId = Guid.NewGuid();
@@ -805,7 +806,11 @@ public sealed class BuiltInToolTests
     }
 
     private static DefaultToolSessionFactory CreateFactory() =>
-        new(new ToolResultModelProjector(), new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance));
+        new(new ToolResultModelProjector(), NewTemporaryDirectory());
+
+    /// <summary>The scratch directory over the real file system, as these integration tests drive it.</summary>
+    private static ChatTemporaryDirectory NewTemporaryDirectory() =>
+        new(NullLogger<ChatTemporaryDirectory>.Instance, new SystemFileSystem(), new SystemPath());
 
     private sealed class Grants(params DirectoryGrantSpec[] grants) : IGrantSource
     {

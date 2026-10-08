@@ -1,6 +1,7 @@
 namespace AI.Mcp.BuiltIn.Archives;
 
 using System.IO.Compression;
+using AI.Contracts.FileSystem;
 
 /// <summary>
 /// Turns names that come from inside an archive into paths on disk. An archive is untrusted input:
@@ -11,10 +12,6 @@ using System.IO.Compression;
 /// </summary>
 internal static class ArchivePaths
 {
-    private static readonly StringComparison Comparison = OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase
-        : StringComparison.Ordinal;
-
     /// <summary>Entry names are reported with forward slashes, whatever the archive stored.</summary>
     public static string Normalize(string name) => name.Replace('\\', '/');
 
@@ -31,11 +28,11 @@ internal static class ArchivePaths
     /// or that resolves above the root, is refused rather than sanitized: the caller turns it into
     /// an error naming the entry.
     /// </summary>
-    public static bool TryResolve(string root, string entryName, out string full)
+    public static bool TryResolve(IPath paths, string root, string entryName, out string full)
     {
         full = string.Empty;
         if (string.IsNullOrWhiteSpace(entryName)) return false;
-        if (Path.IsPathFullyQualified(entryName) || Path.IsPathRooted(entryName)) return false;
+        if (paths.IsFullyQualified(entryName) || paths.IsRooted(entryName)) return false;
 
         var segments = Normalize(entryName).Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 0) return false;
@@ -50,10 +47,11 @@ internal static class ArchivePaths
         try
         {
             var combined = root;
-            foreach (var segment in segments) combined = Path.Combine(combined, segment);
-            var canonical = Path.GetFullPath(combined);
-            var prefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-            if (!canonical.StartsWith(prefix, Comparison)) return false;
+            foreach (var segment in segments) combined = paths.Combine(combined, segment);
+            var canonical = paths.GetFullPath(combined);
+            // The containment test is the contract's, not a hand-built prefix: it ends on a segment
+            // boundary, so a sibling directory whose name merely starts the same way is refused.
+            if (!paths.IsInside(canonical, root, recursive: true)) return false;
             full = canonical;
             return true;
         }

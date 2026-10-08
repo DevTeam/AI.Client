@@ -2,6 +2,7 @@ namespace AI.Server.Tests.Updates;
 
 #pragma warning disable CA1859 // Exercise the service through its public interface.
 
+using AI.Contracts.FileSystem;
 using AI.Contracts.Updates;
 using AI.Updates;
 using Moq;
@@ -13,6 +14,36 @@ using Xunit;
 [Trait("Category", "Integration")]
 public sealed class UpdateManagerTests
 {
+    [Fact]
+    public async Task DesktopStateLoadCompletesOnAUiSynchronizationContext()
+    {
+        var files = new Mock<IFileSystem>();
+        files.Setup(item => item.ReadTextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await Task.Yield();
+                return (string?)null;
+            });
+        using var http = new HttpClient();
+        var manager = await Task.Run(() =>
+        {
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(new NonPumpingSynchronizationContext());
+            try
+            {
+                return new UpdateManager("Desktop", "data", http, files.Object,
+                    new AtomicFileWriter(files.Object), Mock.Of<IUpdateFeed>(), Mock.Of<IUpdateInstaller>(),
+                    new InstalledUpdateProduct("1.0.0", "win-x64", false),
+                    _ => Task.FromResult(false), () => { }, () => { });
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+        }).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await manager.DisposeAsync();
+    }
+
     [Theory]
     [InlineData("Desktop", false)]
     [InlineData("Host", true)]
@@ -135,8 +166,9 @@ public sealed class UpdateManagerTests
             var feed = new Mock<IUpdateFeed>();
             feed.Setup(item => item.FindAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<UpdateChannel>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => (Release, true));
-            return new UpdateManager(product, _directory, _http, feed.Object, Installer.Object,
-                new InstalledUpdateProduct("1.0.0", "win-x64", true), _ =>
+            var files = new SystemFileSystem();
+            return new UpdateManager(product, _directory, _http, files, new AtomicFileWriter(files), feed.Object,
+                Installer.Object, new InstalledUpdateProduct("1.0.0", "win-x64", true), _ =>
                 {
                     MaintenanceAttempted.TrySetResult();
                     return Task.FromResult(Idle);
@@ -155,5 +187,10 @@ public sealed class UpdateManagerTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) });
+    }
+
+    private sealed class NonPumpingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state) { }
     }
 }

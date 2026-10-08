@@ -2,6 +2,7 @@ namespace AI.Application.Tests.Resources;
 
 using AI.Application.Projects;
 using AI.Application.Resources;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Infrastructure.Storage;
@@ -42,7 +43,10 @@ public sealed class WorkspacePathResolverTests : IDisposable
         ], [], []);
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
-        var resolver = new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(), new ProjectPathAccess());
+        var files = new SystemFileSystem();
+        var paths = new SystemPath();
+        var resolver = new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(files, paths),
+            new ProjectPathAccess(files, paths));
 
         var result = await resolver.ResolveAsync(projectId,
             ["src/Program.cs:12", "./src", program, "docs", secret, "missing.cs", "../outside/secret.txt",

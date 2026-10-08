@@ -1,6 +1,7 @@
 namespace AI.Server.Tests.Hosting;
 
 using AI.Application.Projects;
+using AI.Contracts.FileSystem;
 using AI.Infrastructure.Storage;
 using AI.Server.Hosting;
 using Shouldly;
@@ -60,8 +61,12 @@ public sealed class BrowserAccessServiceTests : IDisposable
         NewService().RedeemPairingCode(code).ShouldBeNull();
     }
 
-    private BrowserAccessService NewService() =>
-        new(new ProjectStorageLocation(new ServerOptions(_directory, null, true)), _clock);
+    private BrowserAccessService NewService()
+    {
+        var files = new SystemFileSystem();
+        return new(new ProjectStorageLocation(new ServerOptions(_directory, null, true)), _clock, files,
+            new AtomicFileWriter(files));
+    }
 
     public void Dispose()
     {

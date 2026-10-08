@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Workspace;
 
 using System.Collections.Concurrent;
 using System.Text.Json;
+using AI.Contracts.FileSystem;
 using Application.Tools;
 using Application.Workspace;
 using Contracts.Tools;
@@ -10,7 +11,8 @@ using Contracts.Workspace;
 /// <summary>
 /// Observes the built-in mutating tools and turns them into a net, per-run list of changed files.
 /// </summary>
-public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService undo) : IWorkspaceChangeTracker
+public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService undo, IFileSystem files, IPath paths)
+    : IWorkspaceChangeTracker
 {
     /// <summary>Built-in tools whose arguments name a path they are about to modify.</summary>
     private static readonly Dictionary<string, string[]> MutatingPathArguments = new(StringComparer.Ordinal)
@@ -32,6 +34,8 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
 
     private readonly ILineDiff _diff = diff;
     private readonly IWorkspaceUndoService _undo = undo;
+    private readonly IFileSystem _files = files;
+    private readonly IPath _paths = paths;
     private readonly ConcurrentDictionary<WorkspaceRunKey, RunState> _runs = new();
 
     public Task BeginRunAsync(WorkspaceRunKey run, IReadOnlyList<ToolDirectoryGrant> grants, WorkspaceRunKey? parent,
@@ -43,7 +47,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
         var linked = parent is { } above && above != run && _runs.ContainsKey(above) ? above : (WorkspaceRunKey?)null;
         // A stopped or failed attempt can resume on this branch. Keep its original file
         // baselines so the next attempt still describes the whole unfinished round.
-        _runs.GetOrAdd(run, _ => new RunState(grants.Select(grant => grant.Root).ToArray(), linked));
+        _runs.GetOrAdd(run, _ => new RunState(grants.Select(grant => grant.Root).ToArray(), linked, _files, _paths));
         return Task.CompletedTask;
     }
 
@@ -81,7 +85,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
         // A path both the run and one of its subtasks touched is one file with one net difference,
         // not two rows, so the earliest baseline wins: measuring against the later one would credit
         // the turn with only the tail of its own change.
-        return Task.FromResult(RunState.Compose(_diff, Merged(run, state)));
+        return Task.FromResult(state.Compose(_diff, Merged(run, state)));
     }
 
     public async Task<Guid?> CaptureUndoAsync(WorkspaceRunKey run, WorkspaceChangeSet changes,
@@ -89,7 +93,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
     {
         if (changes.IsEmpty || !_runs.TryGetValue(run, out var state)) return null;
         var baselines = Merged(run, state);
-        var captures = RunState.Captures(baselines, changes.Files);
+        var captures = state.Captures(baselines, changes.Files);
         try { return await _undo.CaptureAsync(run.ProjectId, run.ChatId, captures, cancellationToken); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -151,10 +155,12 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
                 yield return path;
     }
 
-    private sealed class RunState(string[] grantRoots, WorkspaceRunKey? parent)
+    private sealed class RunState(string[] grantRoots, WorkspaceRunKey? parent, IFileSystem files, IPath paths)
     {
         private readonly Lock _gate = new();
         private readonly Dictionary<string, Baseline> _baselines = new(StringComparer.OrdinalIgnoreCase);
+        private readonly IFileSystem _files = files;
+        private readonly IPath _paths = paths;
         private string[] _grantRoots = grantRoots;
 
         public void UpdateGrants(string[] roots) => Volatile.Write(ref _grantRoots, roots);
@@ -200,7 +206,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
         /// Turns baselines into the net change set, reading each path as it stands now. Static
         /// because the set a caller is shown may span several runs: its own and its subtasks'.
         /// </summary>
-        public static WorkspaceChangeSet Compose(ILineDiff diff, IReadOnlyDictionary<string, Baseline> tracked)
+        public WorkspaceChangeSet Compose(ILineDiff diff, IReadOnlyDictionary<string, Baseline> tracked)
         {
             var byPath = new Dictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase);
             foreach (var (path, baseline) in tracked)
@@ -216,7 +222,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
                 files.Sum(file => file.Deletions ?? 0));
         }
 
-        public static List<WorkspaceUndoCapture> Captures(IReadOnlyDictionary<string, Baseline> tracked,
+        public List<WorkspaceUndoCapture> Captures(IReadOnlyDictionary<string, Baseline> tracked,
             IReadOnlyList<FileChange> changes)
         {
             var captures = new List<WorkspaceUndoCapture>(changes.Count);
@@ -272,20 +278,26 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
         private static int Lines(string text) =>
             text.Length == 0 ? 0 : text.ReplaceLineEndings("\n").Split('\n').Length;
 
-        private static Baseline Read(string path)
+        private Baseline Read(string path)
         {
             try
             {
-                var info = new FileInfo(path);
-                if (!info.Exists) return Baseline.Missing;
+                // One probe answers existence, length and the write time together, so the three
+                // reads this used to take are now a single one.
+                var entry = _files.GetEntryAsync(path, CancellationToken.None).GetAwaiter().GetResult();
+                if (entry is null || entry.IsDirectory) return Baseline.Missing;
                 var order = Baseline.Next();
-                if (info.Length > MaxTrackedBytes) return new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order, null);
-                var bytes = File.ReadAllBytes(path);
-                var text = File.ReadAllText(path);
+                // The listing carries the size, not the write time: that one comes from its own member.
+                var modifiedAt = _files.GetLastWriteTimeAsync(path, CancellationToken.None)
+                    .GetAwaiter().GetResult().UtcDateTime;
+                if (entry.Length > MaxTrackedBytes)
+                    return new Baseline(true, null, entry.Length, modifiedAt, order, null);
+                var bytes = _files.ReadBytesAsync(path, CancellationToken.None).GetAwaiter().GetResult();
+                var text = _files.ReadTextAsync(path, CancellationToken.None).GetAwaiter().GetResult();
                 // A NUL byte is the usual cheap tell for binary content, where line counts are noise.
-                return text.Contains('\0', StringComparison.Ordinal)
-                    ? new Baseline(true, null, info.Length, info.LastWriteTimeUtc, order, bytes)
-                    : new Baseline(true, text, info.Length, info.LastWriteTimeUtc, order, bytes);
+                return text is null || text.Contains('\0', StringComparison.Ordinal)
+                    ? new Baseline(true, null, entry.Length, modifiedAt, order, bytes)
+                    : new Baseline(true, text, entry.Length, modifiedAt, order, bytes);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException
                                               or NotSupportedException or ArgumentException)
@@ -304,8 +316,8 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
             string full;
             try
             {
-                if (!Path.IsPathFullyQualified(path)) return null;
-                full = Path.GetFullPath(path);
+                if (!_paths.IsFullyQualified(path)) return null;
+                full = _paths.GetFullPath(path);
             }
             catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
             {
@@ -315,11 +327,10 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
             foreach (var root in Volatile.Read(ref _grantRoots))
             {
                 string canonicalRoot;
-                try { canonicalRoot = Path.GetFullPath(root); }
+                try { canonicalRoot = _paths.GetFullPath(root); }
                 catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { continue; }
-                if (full.Equals(canonicalRoot, StringComparison.OrdinalIgnoreCase)) return full;
-                var prefix = canonicalRoot.EndsWith(Path.DirectorySeparatorChar) ? canonicalRoot : canonicalRoot + Path.DirectorySeparatorChar;
-                if (full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return full;
+                if (string.Equals(full, canonicalRoot, _paths.Comparison)) return full;
+                if (_paths.IsInside(full, canonicalRoot, recursive: true)) return full;
             }
             return null;
         }

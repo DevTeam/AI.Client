@@ -2,12 +2,13 @@ namespace AI.Mcp.BuiltIn.Files;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using AI.Contracts.FileSystem;
 using Grants;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 [McpServerToolType]
-public sealed class GetFileInfoTool(IPathGuard guard, IBuiltInToolReply reply) : IToolFactory
+public sealed class GetFileInfoTool(IPathGuard guard, IBuiltInToolReply reply, IFileSystem files) : IToolFactory
 {
     public McpServerTool Create() => McpServerTool.Create(
         InfoAsync,
@@ -19,7 +20,7 @@ public sealed class GetFileInfoTool(IPathGuard guard, IBuiltInToolReply reply) :
 
     [McpServerTool(Name = "get_file_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
         UseStructuredContent = true, OutputSchemaType = typeof(FileInfoResult))]
-    private Task<CallToolResult> InfoAsync(
+    private async Task<CallToolResult> InfoAsync(
         [Description("Absolute path of the file or directory to inspect.")] [MaxLength(4096)] string path,
         CancellationToken cancellationToken = default)
     {
@@ -31,31 +32,35 @@ public sealed class GetFileInfoTool(IPathGuard guard, IBuiltInToolReply reply) :
         }
         catch (GrantException error)
         {
-            return Task.FromResult(Failure(path, error.Message));
+            return Failure(path, error.Message);
         }
 
         try
         {
-            var directory = Directory.Exists(resolved);
-            FileSystemInfo info = directory ? new DirectoryInfo(resolved) : new FileInfo(resolved);
-            if (!info.Exists)
+            var entry = await files.GetEntryAsync(resolved, cancellationToken);
+            if (entry is null)
             {
-                return Task.FromResult(Failure(resolved, "Path does not exist."));
+                return Failure(resolved, "Path does not exist.");
             }
 
-            return Task.FromResult(reply.Reply(new FileInfoResult(
+            var attributes = await files.GetAttributesAsync(resolved, cancellationToken);
+            // Creation time and the link target are the two facts the contract does not expose yet
+            // (no member answers either); they keep their direct platform call and are reported to
+            // the lead as a charter gap rather than widening the frozen interface here.
+            var info = new FileInfo(resolved);
+            return reply.Reply(new FileInfoResult(
                 resolved,
-                directory ? "directory" : "file",
-                directory ? 0 : ((FileInfo)info).Length,
+                entry.IsDirectory ? "directory" : "file",
+                entry.Length,
                 info.CreationTimeUtc,
-                info.LastWriteTimeUtc,
-                (info.Attributes & FileAttributes.ReadOnly) != 0,
+                await files.GetLastWriteTimeAsync(resolved, cancellationToken),
+                (attributes & FileAttributes.ReadOnly) != 0,
                 info.LinkTarget,
-                null)));
+                null));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Task.FromResult(Failure(resolved, error.Message));
+            return Failure(resolved, error.Message);
         }
     }
 

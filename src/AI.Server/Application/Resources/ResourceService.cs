@@ -3,6 +3,7 @@ namespace AI.Application.Resources;
 using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Skills;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 
 /// <summary>
@@ -14,7 +15,7 @@ using AI.Contracts.Resources;
 public sealed class ResourceService(IProjectService projects, IDirectoryBrowser browser,
     IResourceRepository repository, IReviewService reviews, IProjectPathAccess access, ISkillCatalog skills,
     IChatService chats, IWorkspaceDiffReader diffs, IFileExcerptReader excerpts,
-    IResourceAssetService assets) : IResourceService
+    IResourceAssetService assets, IFileSystem files) : IResourceService
 {
     /// <summary>Kinds a message names by id or path without a saved project resource behind them.</summary>
     private static readonly ChatResourceKind[] MessageOnlyKinds =
@@ -59,7 +60,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             string root;
             try { root = access.ResolveLinks(grant.CanonicalRoot); }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException) { continue; }
-            if (!Directory.Exists(root)) continue;
+            if (!await files.DirectoryExistsAsync(root, cancellationToken)) continue;
             var grantName = grant.DisplayName is { Length: > 0 } displayName ? displayName : DirectoryName(root);
             if (diffs.FindRepository(root) is not null) Add(root, grantName, grantName);
             foreach (var nested in diffs.FindNestedRepositories(root))

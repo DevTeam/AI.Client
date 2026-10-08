@@ -6,7 +6,7 @@ public sealed class MarkupFilePreviewFormat(IFilePreviewTextReader text) : IFile
 {
     public async Task<FilePreview?> DescribeAsync(FilePreviewContext context, CancellationToken cancellationToken)
     {
-        if (Directory.Exists(context.Path)) return null;
+        if (context.IsDirectory) return null;
         var kind = Path.GetExtension(context.Path).ToLowerInvariant() switch
         {
             ".md" or ".markdown" or ".mdown" or ".mkd" => "markdown",

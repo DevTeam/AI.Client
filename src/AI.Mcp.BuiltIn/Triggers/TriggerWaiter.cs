@@ -1,14 +1,33 @@
 namespace AI.Mcp.BuiltIn.Triggers;
 
 using System.Diagnostics;
+using AI.Contracts.FileSystem;
 using Grants;
 
-public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
+public sealed class TriggerWaiter : ITriggerWaiter
 {
     public const int MaxConditions = 8;
     public const int MaxTimeoutMs = 3600000;
     private const int PollIntervalMs = 250;
     private const int MaxStableForMs = 60000;
+
+    private readonly IPathGuard _guard;
+    private readonly IFileSystem _files;
+    private readonly IPath _paths;
+
+    /// <param name="guard">The grants a condition path has to pass before it is watched.</param>
+    /// <param name="files">
+    /// The file system the snapshots are taken through. Optional so that a caller which already knows
+    /// it wants the platform does not have to say so; the composition injects the bound implementations.
+    /// </param>
+    /// <param name="paths">The path semantics this waiter judges with.</param>
+    public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null)
+    {
+        ArgumentNullException.ThrowIfNull(guard);
+        _guard = guard;
+        _files = files ?? new SystemFileSystem();
+        _paths = paths ?? new SystemPath();
+    }
 
     public async Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs, CancellationToken cancellationToken)
     {
@@ -25,13 +44,13 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         try
         {
             for (var index = 0; index < conditions.Length; index++)
-                states.Add(Prepare(conditions[index], index, signal, () => Interlocked.Exchange(ref watchOverflow, 1)));
+                states.Add(await PrepareAsync(conditions[index], index, signal, () => Interlocked.Exchange(ref watchOverflow, 1), cancellationToken));
 
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 foreach (var state in states)
-                    if (Evaluate(state, clock.ElapsedMilliseconds) is { } match)
+                    if (await EvaluateAsync(state, clock.ElapsedMilliseconds, cancellationToken) is { } match)
                         return match with { ElapsedMs = clock.ElapsedMilliseconds, WatcherOverflow = Volatile.Read(ref watchOverflow) != 0 };
 
                 var elapsed = clock.ElapsedMilliseconds;
@@ -60,7 +79,8 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         }
     }
 
-    private ConditionState Prepare(TriggerCondition condition, int index, SemaphoreSlim signal, Action overflow)
+    private async Task<ConditionState> PrepareAsync(
+        TriggerCondition condition, int index, SemaphoreSlim signal, Action overflow, CancellationToken cancellationToken)
     {
         if (condition is null) throw new ArgumentException($"Condition {index} is null.");
         if (condition.StableForMs is < 0 or > MaxStableForMs)
@@ -91,30 +111,35 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         {
             if (string.IsNullOrWhiteSpace(condition.Path))
                 throw new ArgumentException($"Condition {index} requires an absolute path.");
-            state.Path = guard.Resolve(condition.Path, GrantCapability.Read);
-            if (Directory.Exists(state.Path))
+            state.Path = _guard.Resolve(condition.Path, GrantCapability.Read);
+            if (await _files.DirectoryExistsAsync(state.Path, cancellationToken))
                 throw new ArgumentException($"Condition {index} must name a file, not a directory.");
-            state.Baseline = Snapshot(state.Path);
+            state.Baseline = await SnapshotAsync(state.Path, cancellationToken);
             state.LastFile = state.Baseline;
-            var directory = Path.GetDirectoryName(state.Path);
-            while (directory is not null && !Directory.Exists(directory)) directory = Path.GetDirectoryName(directory);
+            var directory = _paths.GetDirectoryName(state.Path);
+            while (directory is not null && !await _files.DirectoryExistsAsync(directory, cancellationToken))
+                directory = _paths.GetDirectoryName(directory);
             if (directory is null)
                 throw new ArgumentException($"Condition {index} has no existing parent directory.");
-            guard.Resolve(directory, GrantCapability.Read);
+            _guard.Resolve(directory, GrantCapability.Read);
+
+            // The watcher itself stays on the platform: it is a kernel notification, not a file
+            // operation, and one of the ADR's documented exceptions says so. Everything it is told
+            // is judged through the contract above.
+            var ownDirectory = _paths.GetDirectoryName(state.Path);
             var watcher = new FileSystemWatcher(directory)
             {
-                IncludeSubdirectories = !string.Equals(directory, Path.GetDirectoryName(state.Path), PathComparison),
-                Filter = string.Equals(directory, Path.GetDirectoryName(state.Path), PathComparison)
-                    ? Path.GetFileName(state.Path) : "*",
+                IncludeSubdirectories = !string.Equals(directory, ownDirectory, _paths.Comparison),
+                Filter = string.Equals(directory, ownDirectory, _paths.Comparison)
+                    ? _paths.GetFileName(state.Path) : "*",
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size
             };
             state.Watcher = watcher;
             void FileEvent(string candidate)
             {
-                if (string.Equals(candidate, state.Path, PathComparison))
+                if (string.Equals(candidate, state.Path, _paths.Comparison))
                     Interlocked.Increment(ref state.FileEvents);
-                else if (!state.Path.StartsWith(candidate.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
-                             PathComparison))
+                else if (!_paths.IsInside(state.Path, candidate, recursive: true))
                     return;
                 Wake(signal);
             }
@@ -145,7 +170,7 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         return state;
     }
 
-    private TriggerWaitResult? Evaluate(ConditionState state, long elapsedMs)
+    private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, CancellationToken cancellationToken)
     {
         var condition = state.Condition;
         if (state.Kind == TriggerKind.Delay)
@@ -155,8 +180,8 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         if (state.Path is { } path)
         {
             // Recheck the observed path in case a link appears after registration.
-            guard.Resolve(path, GrantCapability.Read);
-            var snapshot = Snapshot(path);
+            _guard.Resolve(path, GrantCapability.Read);
+            var snapshot = await SnapshotAsync(path, cancellationToken);
             var newEvent = Interlocked.Exchange(ref state.FileEvents, 0) != 0;
             var changed = newEvent || snapshot != state.LastFile;
             if (newEvent) state.SawFileChange = true;
@@ -216,11 +241,21 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         new("triggered", state.Index, state.Condition.Type, state.Path, state.Condition.ProcessId,
             state.CpuPercent, state.MemoryBytes, elapsedMs, false);
 
-    private static FileStamp Snapshot(string path)
+    /// <summary>
+    /// What the file looks like now, through the contract rather than through a fresh
+    /// <c>FileInfo</c>: the entry answers whether it is there and how long it is, and the write time
+    /// is asked for only for an entry that exists.
+    /// </summary>
+    private async Task<FileStamp> SnapshotAsync(string path, CancellationToken cancellationToken)
     {
-        var info = new FileInfo(path);
-        info.Refresh();
-        return info.Exists ? new FileStamp(true, info.Length, info.LastWriteTimeUtc.Ticks) : default;
+        var entry = await _files.GetEntryAsync(path, cancellationToken);
+        if (entry is null || entry.IsDirectory)
+        {
+            return default;
+        }
+
+        var written = await _files.GetLastWriteTimeAsync(path, cancellationToken);
+        return new FileStamp(true, entry.Length, written.UtcTicks);
     }
 
     private static void Wake(SemaphoreSlim signal)
@@ -229,9 +264,6 @@ public sealed class TriggerWaiter(IPathGuard guard) : ITriggerWaiter
         catch (SemaphoreFullException) { }
         catch (ObjectDisposedException) { }
     }
-
-    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private readonly record struct FileStamp(bool Exists, long Length, long LastWriteTicks);
 

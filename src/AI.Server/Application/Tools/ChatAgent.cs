@@ -29,7 +29,7 @@ using ChatKind = AI.Domain.Chats.ChatKind;
 /// only when a run started rather than when the container was built.
 /// </remarks>
 public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
-    Func<IProjectService> projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
+    IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
     IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
@@ -78,7 +78,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             : global.Connections.SingleOrDefault(item => item.Model == request.Model
                 && item.BaseUrl.TrimEnd('/') == request.BaseUrl.TrimEnd('/'));
         if (configuredConnection is not null) configuredConnection = configuredConnection with { Model = request.Model };
-        var project = await projects().GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
+        var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
         // for this project. A server that fails the test is never started, so nothing it could
         // offer reaches the model or costs a process.
@@ -248,7 +248,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         {
             if (session is not null)
             {
-                var latestProject = await projects().GetAsync(projectId, token)
+                var latestProject = await projects.GetAsync(projectId, token)
                                     ?? throw new InvalidOperationException("Project not found.");
                 var latestGrants = latestProject.DirectoryGrants
                     .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();

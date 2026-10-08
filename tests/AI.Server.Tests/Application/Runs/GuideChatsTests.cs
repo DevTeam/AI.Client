@@ -18,7 +18,7 @@ public sealed class GuideChatsTests
 {
     private static readonly IChatKindPolicyRegistry Kinds = new ChatKindPolicyRegistry(
         [new ConversationChatKindPolicy(), new DemoChatKindPolicy(),
-            new GuideChatKindPolicy(Mock.Of<IProjectService>(), () => Mock.Of<IGuideChats>())]);
+            new GuideChatKindPolicy(() => Mock.Of<IProjectService>(), () => Mock.Of<IGuideChats>())]);
     private static readonly Guid Disabled = Guid.NewGuid();
     private static readonly Guid Default = Guid.NewGuid();
     private static readonly Guid Other = Guid.NewGuid();

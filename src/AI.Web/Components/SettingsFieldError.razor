@@ -1,0 +1,9 @@
+@* Why a settings field cannot be saved, under the field itself rather than in a toast. *@
+@if (Message is not null)
+{
+    <small class="settings-field-error"><AppIcon Name="error" /><span>@Message</span></small>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+}

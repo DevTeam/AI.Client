@@ -147,6 +147,10 @@ public sealed class PhysicalTextFileSystem : ITextFileSystem
         {
             File.Delete(path);
         }
+        catch (DirectoryNotFoundException)
+        {
+            // A document in a missing directory is already absent.
+        }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {
             throw Named(error, path);

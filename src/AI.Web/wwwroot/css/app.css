@@ -1404,7 +1404,51 @@ body {
 .permissions-drawer.settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(54rem, calc(100vw - 3rem)); }
 .settings-drawer-content { min-height: 0; overflow: hidden; container-type: inline-size; }
 .permissions-drawer.settings-drawer > footer { min-height: 2.1rem; }
-.settings-drawer-error { color: var(--color-danger-text-strong); }
+
+/* A refused save takes over the footer: the reason on the left, Discard and the way forward on the
+   right, on a danger tint so it is not mistaken for the usual counts. It stays until the edits are
+   saved or dropped, and a refusal over fields shrinks as they are fixed. */
+.permissions-drawer.settings-drawer > footer.has-error { padding-block: .6rem; border-top-color: var(--color-danger-border); background: var(--color-danger-bg); }
+.settings-save-error { display: flex; align-items: flex-start; gap: .5rem; min-width: 0; color: var(--color-danger-text); line-height: 1.4; }
+.settings-save-error > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; color: var(--color-danger); }
+.settings-save-error strong { color: var(--color-danger-text-strong); font-weight: 600; }
+.settings-save-actions { display: flex; flex: none; gap: .4rem; }
+.settings-save-actions > .compact-action { border-color: var(--color-danger-border); background: var(--color-surface); color: var(--color-text); }
+.settings-save-actions > .compact-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text-strong); }
+.settings-drawer .compact-action.primary { display: inline-flex; align-items: center; gap: .4rem; border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.settings-drawer .compact-action.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-on-accent)); color: var(--color-on-accent); }
+.settings-drawer .compact-action.primary .app-icon { width: .9rem; height: .9rem; }
+
+/* A field the save was refused over: its own outline, and the reason under the control, in the
+   control's column so the labels of the card stay lined up. */
+.settings-field.has-error { flex-wrap: wrap; row-gap: .3rem; }
+.settings-field-error { display: flex; align-items: flex-start; gap: .35rem; color: var(--color-danger-text); font-size: var(--font-size-sm); line-height: 1.35; }
+.settings-field-error > .app-icon { flex: none; width: .8rem; height: .8rem; margin-top: .1rem; color: var(--color-danger); }
+.settings-field > .settings-field-error { flex: 0 0 100%; box-sizing: border-box; padding-left: calc(9.5rem + .75rem); }
+.mcp-tool-limits .settings-field-error { max-width: 12rem; }
+.settings-drawer [aria-invalid="true"] { border-color: var(--color-danger); }
+.settings-drawer [aria-invalid="true"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-danger) 45%, transparent); outline-offset: 0; }
+.settings-list-problem { display: inline-flex; align-items: center; gap: .3rem; color: var(--color-danger-text); }
+.settings-list-problem > .app-icon { width: .75rem; height: .75rem; color: var(--color-danger); }
+.settings-tab-problem { width: .8rem; height: .8rem; margin-left: .3rem; color: var(--color-danger); vertical-align: -.1rem; }
+
+/* What stands in for a list that is empty or could not be loaded: what happened, and one action. */
+.settings-empty { display: grid; justify-items: center; align-content: center; gap: .4rem; min-height: 14rem; padding: 2rem 1.5rem; color: var(--color-text-subtle); font-size: var(--font-size-md); text-align: center; }
+.settings-empty > .app-icon { width: 1.6rem; height: 1.6rem; margin-bottom: .2rem; color: var(--color-text-muted); }
+.settings-empty > strong { color: var(--color-text); font-size: var(--font-size-lg); font-weight: 600; }
+.settings-empty > span { max-width: 26rem; line-height: 1.45; }
+.settings-empty > button { margin-top: .5rem; }
+.settings-empty.is-error { height: 100%; box-sizing: border-box; }
+.settings-empty.is-error > .app-icon { color: var(--color-danger); }
+
+/* A failure that belongs to one part of a page (tool discovery, the Host's model helpers). */
+.settings-inline-error { display: flex; align-items: flex-start; gap: .5rem; padding: .55rem .6rem .55rem .75rem; border: 1px solid var(--color-danger-border); border-radius: var(--radius-lg); background: var(--color-danger-bg); color: var(--color-danger-text); font-size: var(--font-size-md); line-height: 1.4; overflow-wrap: anywhere; }
+.settings-inline-error > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; color: var(--color-danger); }
+.settings-inline-error > span { flex: 1; min-width: 0; }
+.settings-inline-error strong { color: var(--color-danger-text-strong); font-weight: 600; }
+.settings-inline-error > .icon-action { width: 1.6rem; height: 1.6rem; margin: -.2rem -.2rem -.2rem 0; color: var(--color-danger-text); }
+.settings-inline-error > .compact-action { flex: none; margin-block: -.2rem; padding-block: .25rem; border-color: var(--color-danger-border); }
+.settings-card > .settings-row.settings-inline-error, .settings-disclosure > .settings-row.settings-inline-error { min-height: 0; border-width: 1px 0 0; border-radius: 0; background: var(--color-danger-bg); }
 
 /* Settings has no list beside a form, so it keeps the width of the other side drawers. */
 .permissions-drawer.settings-drawer.is-narrow { width: min(30rem, 100vw); }
@@ -1468,7 +1512,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .settings-range output { min-width: 4.5rem; color: var(--color-text-secondary); font-size: var(--font-size-md); }
 /* Image input: the mode pills keep their own width; Test sits beside them, quiet until hovered.
    The test's verdict follows as its own row so a long answer wraps instead of being cut. */
-.image-input-row > .settings-field-control { justify-content: space-between; }
+.image-input-row > .settings-field-control { flex-wrap: wrap; justify-content: space-between; row-gap: .3rem; }
 .image-input-row > .settings-field-control > .theme-options { flex: none; }
 .image-input-row .theme-option { min-width: 2.6rem; text-align: center; }
 .image-test-action { display: inline-flex; align-items: center; gap: .4rem; border-color: transparent; background: transparent; color: var(--color-text-muted); }
@@ -6404,8 +6448,20 @@ textarea {
 
 .model-picker-error-hint {
     color: var(--color-danger-text);
-    line-height: 1.3;
+    font-size: var(--font-size-sm);
+    line-height: 1.35;
     word-break: break-word;
+}
+
+/* In a settings row the picker shares a flex line with its loading spinner; the reason goes on a
+   line of its own under the input instead of squeezing the input beside it. */
+.settings-field-control:has(> .model-picker-error-hint) {
+    flex-wrap: wrap;
+    row-gap: 0.3rem;
+}
+
+.settings-field-control > .model-picker-error-hint {
+    flex: 0 0 100%;
 }
 
 .model-picker-retry-link {

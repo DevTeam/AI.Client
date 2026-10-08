@@ -1,0 +1,16 @@
+@* Takes the place of a settings list the Host could not hand over, so the drawer says why it is
+   empty and offers the one thing that helps, instead of showing an empty list that invites edits. *@
+<div class="settings-empty is-error" role="alert">
+    <AppIcon Name="error" />
+    <strong>Could not load @What</strong>
+    <span>@Message</span>
+    <button class="compact-action primary" type="button" disabled="@Retrying" @onclick="Retry"><AppIcon Name="@(Retrying ? "spinner" : "refresh")" Class="@(Retrying ? "tool-row-spinner" : null)" /><span>@(Retrying ? "Loading…" : "Try again")</span></button>
+</div>
+
+@code {
+    /// <summary>What the list holds, in lower case where it is not a name: "connections", "MCP servers".</summary>
+    [Parameter, EditorRequired] public string What { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Message { get; set; } = string.Empty;
+    [Parameter] public bool Retrying { get; set; }
+    [Parameter] public EventCallback Retry { get; set; }
+}

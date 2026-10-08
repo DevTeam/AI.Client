@@ -227,14 +227,34 @@
             @* The latest chats of every project, a click away without opening their project first.
                Rows look and behave like the project's own chat rows; their actions stay there.
                A chat opened from here folds its project, and its branches show here instead. *@
+            var visibleRecents = GetVisibleRecentChats(recentChats);
+            var resumableRecents = GetRecentResumableTasks(visibleRecents);
             <section class="sidebar-recents" aria-labelledby="sidebar-recents-toggle">
-                <button id="sidebar-recents-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_recentsFolded ? "false" : "true")"
-                        aria-controls="recent-chat-list" title="@(_recentsFolded ? "Show recent chats" : "Hide recent chats")" @onclick="ToggleRecentsFoldedAsync">
-                    <span>Recents</span><AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
-                </button>
+                <div class="sidebar-section-header">
+                    <button id="sidebar-recents-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_recentsFolded ? "false" : "true")"
+                            aria-controls="recent-chat-list" title="@(_recentsFolded ? "Show recent chats" : "Hide recent chats")" @onclick="ToggleRecentsFoldedAsync">
+                        <span>Recents</span><AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
+                    </button>
+                    @* Stopped work in the chats shown below is one click from going on again, in whichever project. *@
+                    @if (resumableRecents.Length > 0 || _recentsResumeProgress is not null)
+                    {
+                        <button class="sidebar-section-action recents-resume-all" type="button" disabled="@(_recentsResumeProgress is not null)"
+                                aria-busy="@(_recentsResumeProgress is not null ? "true" : null)" title="@GetRecentsResumeTitle(resumableRecents.Length)"
+                                @onclick="() => ResumeRecentTasksAsync(resumableRecents, visibleRecents)">
+                            @if (_recentsResumeProgress is { } progress)
+                            {
+                                <AppIcon Name="spinner" Class="chat-unfinished-spin" /><span>Resuming @(Math.Min(progress.Done + 1, progress.Total)) of @progress.Total…</span>
+                            }
+                            else
+                            {
+                                <AppIcon Name="play" /><span>Resume all</span><span class="sidebar-section-count">@resumableRecents.Length</span>
+                            }
+                        </button>
+                    }
+                </div>
                 @if (!_recentsFolded)
                 {
-                    var shownRecentCount = _recentsShowMore ? recentChats.Count : Math.Min(RecentChatsShown, recentChats.Count);
+                    var shownRecentCount = visibleRecents.Count;
                     <nav id="recent-chat-list" class="workspace-chat-list recent-chat-list" aria-label="Recent chats">
                         @for (var recentIndex = 0; recentIndex < shownRecentCount; recentIndex++)
                         {

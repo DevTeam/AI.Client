@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
+using AI.Web.Widgets;
 using Microsoft.JSInterop;
 
 /// <summary>
@@ -120,6 +121,57 @@ public partial class Home
         if (_selectedProject?.Id == project.Id && _selectedChat?.Id != chat.Id && _chats.Any(item => item.Id == chat.Id))
             await SelectChatAsync(chat.Id);
     }
+
+    // "Resume all" in the Recents heading: how far it has got, null while it is not running.
+    private (int Done, int Total)? _recentsResumeProgress;
+
+    /// <summary>
+    /// The chats Recents shows at this moment: the first few, or the longer list once opened, and
+    /// none while the section is folded.
+    /// </summary>
+    private List<ChatSummary> GetVisibleRecentChats(IReadOnlyList<ChatSummary> recentChats) => _recentsFolded
+        ? []
+        : recentChats.Take(_recentsShowMore ? recentChats.Count : RecentChatsShown).ToList();
+
+    /// <summary>
+    /// The stopped work of the chats Recents shows, by the unfinished-work widget's own rule: paused,
+    /// interrupted, failed with Resume among its recovery actions, or idle with messages queued.
+    /// Only what the person can see is offered; a chat under "Show more" or a folded section is not.
+    /// </summary>
+    private ChatUnfinishedTask[] GetRecentResumableTasks(IReadOnlyList<ChatSummary> visible)
+    {
+        var chatIds = visible.Select(chat => chat.Id).ToHashSet();
+        var runs = RunState.Runs.Values.Where(run => chatIds.Contains(run.ChatId)).ToArray();
+        return runs.Length == 0 ? [] : UnfinishedStatistics.Calculate(visible, runs).Tasks.Where(task => task.CanResume).ToArray();
+    }
+
+    // One after another, as the widget does it: a refusal on the first is not buried under the rest.
+    // Each resume goes to the chat's own project, so nothing has to be opened first.
+    private async Task ResumeRecentTasksAsync(IReadOnlyList<ChatUnfinishedTask> tasks, IReadOnlyList<ChatSummary> visible)
+    {
+        if (_recentsResumeProgress is not null || tasks.Count == 0) return;
+        var projectIds = visible.ToDictionary(chat => chat.Id, chat => chat.ProjectId);
+        _recentsResumeProgress = (0, tasks.Count);
+        try
+        {
+            for (var index = 0; index < tasks.Count; index++)
+            {
+                StateHasChanged();
+                var task = tasks[index];
+                await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(projectIds[task.ChatId], task.ChatId, task.BranchId,
+                    Guid.CreateVersion7(), CancellationToken.None));
+                _recentsResumeProgress = (index + 1, tasks.Count);
+            }
+        }
+        finally
+        {
+            _recentsResumeProgress = null;
+        }
+    }
+
+    private static string GetRecentsResumeTitle(int count) => count == 1
+        ? "Resume the stopped task in the chats shown here"
+        : $"Resume the {count} stopped tasks in the chats shown here, one after another";
 
     private void SetRecentChatCount(int count)
     {

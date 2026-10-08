@@ -1081,6 +1081,14 @@ body {
     margin-top: 0.85rem;
 }
 
+.sidebar-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
 .sidebar-section-toggle {
     display: inline-flex;
     align-items: center;
@@ -1115,6 +1123,55 @@ body {
 
 .workspace-chat-list.recent-chat-list {
     margin: var(--sidebar-group-gap) 0 0;
+}
+
+/* An action on the whole section, at the heading's right end: quiet like the heading until
+   pointed at, with the accent only on its icon, so it reads as on offer rather than as an alert. */
+.sidebar-section-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0.2rem 0.45rem;
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.sidebar-section-action:hover:not(:disabled),
+.sidebar-section-action:focus-visible {
+    background: var(--color-fill-hover);
+    color: var(--color-text-secondary);
+}
+
+.sidebar-section-action:disabled {
+    cursor: progress;
+}
+
+.sidebar-section-action .app-icon {
+    width: 0.8rem;
+    height: 0.8rem;
+    flex: none;
+    color: var(--color-accent);
+}
+
+/* Same badge shape as the chat list's counts. */
+.sidebar-section-count {
+    display: grid;
+    min-width: 0.9rem;
+    height: 0.82rem;
+    box-sizing: border-box;
+    place-items: center;
+    padding: 0 0.2rem;
+    border-radius: var(--radius-md);
+    background: var(--color-fill-active);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-2xs);
+    line-height: 1;
 }
 
 /* The chevron takes the icon slot, so the label still starts where chat titles do. */

@@ -56,7 +56,12 @@ tool for simple operations. A normal C# development request does not require exe
    reproducible script without claiming it ran. Do not leave background Tasks in the server or
    bypass timeouts. Bound loops with a local deadline (for example `Stopwatch`) and pass local
    cancellation tokens to cooperative I/O. Arbitrary C# is not guaranteed to stop on timeout;
-   use a controlled separate process if hard termination or isolation is required. Check actual
+   use a controlled separate process, one this script starts itself, if hard termination or
+   isolation is required. Never stop, kill or restart a process this run did not start — another
+   chat's tests or build, an IDE, a server; when such a process blocks a file or a build, report
+   it and name the holder, because freeing it is the user's decision. For a process this run
+   started, call `ask_user` naming it or its PID and act only on an explicit affirmative answer;
+   a declined, dismissed, expired or interrupted answer leaves it running. Check actual
    state before retrying timed-out work, especially mutations.
 5. Preserve encoding. JSON code, Args and Globals are Unicode strings; ordinary Console output
    is captured as text. Changing the server's global Console encoding is unnecessary and does not

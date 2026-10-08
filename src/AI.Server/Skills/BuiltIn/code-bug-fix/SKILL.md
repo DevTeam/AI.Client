@@ -33,7 +33,11 @@ The project instructions and instruction files win over these steps where they d
    supported quiet/minimal output or concise reporter and short traceback options while keeping
    failure details and counts available. Set an explicit finite timeout for each test run within
    the effective tool limit; split longer suites and report a timeout as incomplete. Read the
-   output and exit code; claim only what you ran.
+   output and exit code; claim only what you ran. A failure caused by another process holding the
+   binaries is an environment blocker, not a bug: report it and name the holder. Never stop, kill
+   or restart a process this run did not start. For a process this run started, call `ask_user`
+   naming it or its PID and act only on an explicit affirmative answer; a declined, dismissed,
+   expired or interrupted answer leaves it running.
 7. Clean up as in `code-feature-implement`: compare the status with the baseline, delete scratch
    files and debug output you created, remove temporary logging. Never stage, commit, stash, reset
    or push.

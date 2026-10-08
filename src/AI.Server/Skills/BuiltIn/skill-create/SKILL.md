@@ -68,6 +68,12 @@ Skill conventions:
   For a skill that waits on an already running local process or read-granted file, use a bounded
   `trigger_wait` when available instead of repeated polling; verify the underlying result after
   it fires. Keep verbose task logs in the chat temporary directory and read only relevant excerpts.
+- A playbook that can start a process never stops, kills or restarts one it did not start —
+  another chat's tests or build, an IDE, a service. A timeout, a hang or a locked file is not
+  permission: it reports the process holding the file and names it, because freeing it is the
+  user's decision. For a process the playbook itself started it names that exact process or PID in
+  `ask_user` and acts only on an explicit affirmative answer; a declined, dismissed, expired or
+  interrupted answer leaves it running. Such a skill lists `ask_user` in `tools`.
 - Write the body in English. Quoted labels in it are examples: the calling model writes questions,
   options and answers in the user's language.
 

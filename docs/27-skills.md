@@ -52,12 +52,13 @@ application permissions, and every write still goes through tool approval.
 - Playbooks confirm every change with `ask_user` unless the exact value came from the user, put
   the recommended option first with " (Recommended)", say what a dismissed, expired or
   interrupted question does, and end with a one-line report without ids or revisions.
-- A playbook that can start a process never stops, kills or restarts one without permission. A
-  timeout, a hang, a locked file, a process the run did not start and an earlier approval for other
-  work are not permission: the model names the exact process or PID in `ask_user` and acts only on
-  an explicit affirmative answer, while a declined, dismissed, expired or interrupted answer leaves
-  the process running. A playbook that waits on a process rather than ending it still follows the
-  same rule.
+- A playbook that can start a process never stops, kills or restarts one it did not start:
+  another chat's tests or build, an IDE, a service. A timeout, a hang, a locked file and an earlier
+  approval for other work are not permission — the playbook reports the process holding the file
+  and names it, because freeing it is the user's decision. For a process the playbook itself
+  started it names that exact process or PID in `ask_user` and acts only on an explicit affirmative
+  answer, while a declined, dismissed, expired or interrupted answer leaves the process running. A
+  playbook that waits on a process rather than ending it still follows the same rule.
 
 `BuiltInSkillCatalogTests` checks the naming of every bundled skill.
 

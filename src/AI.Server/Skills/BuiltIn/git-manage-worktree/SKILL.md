@@ -33,7 +33,12 @@ ask only for the action, repository, destination, branch or base that the user d
 3. When the exact create action is authorized, run `git worktree add -b <branchName>
    <worktreePath> <baseCommit>`. Inspect the result, `git worktree list --porcelain`, the new
    worktree's HEAD, branch and status. If Git fails after creating anything, leave it intact and
-   report the actual path and branch for recovery; do not retry with `--force`.
+   report the actual path and branch for recovery; do not retry with `--force`. When Git fails
+   because another process holds a lock — an IDE, another Git command, another chat's run —
+   report the holding process and name it instead of freeing it. Never stop, kill or restart a
+   process this run did not start; for a Git process this skill started, call `ask_user` naming it
+   or its PID and act only on an explicit affirmative answer, while a declined, dismissed,
+   expired or interrupted answer leaves it running.
 4. For removal, resolve and verify the exact registered worktree path. Check its branch, HEAD,
    `git status --porcelain=v1 -uall`, and whether its commits have been integrated or deliberately
    retained on a named branch. Never remove a dirty worktree or the main checkout. Resolve the

@@ -62,7 +62,11 @@ Clean up only task-created records/resources using recorded identifiers and auth
    running local check has a known PID or read-granted report file, one bounded `trigger_wait`
    when offered can replace repeated polling. Confirm completion and outcome from the runner's
    report and exit status when available; a file event or process exit by itself is not a pass.
-   Direct `process_run` already waits.
+   Direct `process_run` already waits. A check that cannot start because another process holds
+   the build output or a locked file is blocked, not failed: report the holding process and name
+   it. Never stop, kill or restart a process this run did not start; for a run this skill started,
+   call `ask_user` naming it or its PID and act only on an explicit affirmative answer, while a
+   declined, dismissed, expired or interrupted answer leaves it running.
 7. For every scenario/check distinguish passed, failed, blocked and not run; pending/running is
 not passed. Attach the expected/actual outcome and evidence to the actual revision/environment.
 For automated runs, filter to the affected project/module/tests first; use the wider or full

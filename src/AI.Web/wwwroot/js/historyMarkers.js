@@ -1,18 +1,17 @@
-// The fisheye bend, shared by scroll and hover: by pixel distance from the focus — the scroll
-// position's marker, or the cursor. Dashes are left-anchored (see app.css), so the bend grows only
-// towards the message column, whose user questions are right-aligned and leave the gutter empty.
-// The falloff is linear over about four marker slots, which gives an even ramp on either side of
-// the peak instead of a lone spike, and resting dashes stay clearly visible rather than shrinking
-// to dots.
-const BendReachPx = 64;
-const BendMinScale = 0.55;
-const BendMaxScale = 2;
+// The hover bend. It is centred on the marker nearest the cursor, not on the cursor itself, and
+// falls off by marker count, so it is always symmetric around the hovered dash: following the raw
+// cursor made it lopsided whenever the pointer sat between two dashes. The peak is four resting
+// dash lengths and the falloff eases out over about four markers on either side. At rest the strip
+// is flat; what is on screen is shown by colour (see .in-view in app.css).
+const BendReachMarkers = 5;
+const BendMaxScale = 4;
+const BendCurve = 1.5;
 
-// Writes one marker's bend: the scale, plus the same 0..1 closeness as --history-marker-focus,
+// Writes one marker's bend: the dash scale, plus a 0..1 closeness as --history-marker-focus,
 // from which app.css brightens the dashes along the bend.
-const applyBend = (marker, distance) => {
-    const focus = Math.max(0, 1 - distance / BendReachPx);
-    marker.style.transform = `scaleX(${(BendMinScale + (BendMaxScale - BendMinScale) * focus).toFixed(3)})`;
+const applyBend = (marker, steps) => {
+    const focus = steps === null ? 0 : Math.max(0, 1 - steps / BendReachMarkers) ** BendCurve;
+    marker.style.setProperty("--history-marker-scale", (1 + (BendMaxScale - 1) * focus).toFixed(3));
     marker.style.setProperty("--history-marker-focus", focus.toFixed(3));
 };
 
@@ -161,6 +160,14 @@ export function attach(strip, scroller, scrollKey) {
     const measure = () => {
         measuredHeight = scroller.scrollHeight;
         offsets = markers().map(marker => document.getElementById(marker.dataset.target)?.offsetTop ?? 0);
+    };
+
+    // A turn runs from its question to the next question (or the end of the feed), so it covers
+    // the steps and the final answer in between; it is in view when any of it is on screen.
+    const isTurnInView = index => {
+        const top = offsets[index];
+        const bottom = index + 1 < offsets.length ? offsets[index + 1] : scroller.scrollHeight;
+        return bottom > scroller.scrollTop && top < scroller.scrollTop + scroller.clientHeight;
     };
 
     const scrollActiveIndex = list => {
@@ -312,14 +319,10 @@ export function attach(strip, scroller, scrollKey) {
 
         if (hoverY === null) {
             const active = scrollActiveIndex(list);
-            // Use the same bend as the live-hover branch, just centred on the
-            // scroll-active marker instead of the cursor. That keeps the strip's visual
-            // vocabulary identical whether the cursor is on it or not — only the centre moves.
-            const centers = list.map(marker => marker.offsetTop + marker.offsetHeight / 2);
-            const focusY = centers[active];
             for (let index = 0; index < list.length; index++) {
-                applyBend(list[index], Math.abs(centers[index] - focusY));
-                list[index].classList.toggle("active", index === active);
+                applyBend(list[index], null);
+                list[index].classList.toggle("in-view", isTurnInView(index));
+                list[index].classList.remove("active");
             }
             hideTip();
 
@@ -354,7 +357,8 @@ export function attach(strip, scroller, scrollKey) {
                 lastRatchetIndex = nearestIndex;
             }
             for (let index = 0; index < list.length; index++) {
-                applyBend(list[index], Math.abs(centers[index] - hoverY));
+                applyBend(list[index], Math.abs(index - nearestIndex));
+                list[index].classList.toggle("in-view", isTurnInView(index));
                 list[index].classList.toggle("active", index === nearestIndex);
             }
             showTip(list[nearestIndex]);

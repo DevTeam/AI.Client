@@ -70,7 +70,11 @@ finite timeout within the tool limit; split long suites and mark timeouts incomp
 codes and test counts: a runner that found zero tests or could not start is not a pass.
 Do not suppress failures, disable tests, replace assertions with snapshots blindly or claim
 complete coverage from absence of findings. Compare final status with the baseline and remove
-only task-created scratch artifacts; preserve unrelated work.
+only task-created scratch artifacts; preserve unrelated work. A rerun that cannot start because
+another process holds the test binaries is blocked, not failed: report the holding process and
+name it. Never stop, kill or restart a process this run did not start; for a test host this run
+started, call `ask_user` naming it or its PID and act only on an explicit affirmative answer,
+while a declined, dismissed, expired or interrupted answer leaves it running.
 
 8. Report grouped causes or ranked hypotheses, reproduction commands/attempts, evidence,
    ownership of the suspected fix and next discriminating checks. Never skip/quarantine tests

@@ -37,6 +37,13 @@ Remove task-created scratch files when finished.
    cases. Do not read the entire log into context. A broad suite that fits the deadline can run
    directly with concise output. Split longer suites by project or module; use an existing
    managed job only when it exposes status, cancellation and a final report.
+
+   A test host that cannot start or build because another process holds the test binaries —
+   another chat's run, a build, an IDE — is a blocked check: report the holding process and name
+   it, because freeing it is the user's decision. Never stop, kill or restart a process this run
+   did not start. For a test host this run started that has stalled and holds a locked report
+   file, call `ask_user` naming that process or PID and act only on an explicit affirmative
+   answer; a declined, dismissed, expired or interrupted answer leaves it running.
 3. If an independent test job is already running and exposes a known local PID or a read-granted
    report path, use one bounded `trigger_wait` call when offered for process exit or file change
    instead of repeated status queries. Use `stableForMs` if the report is written incrementally.

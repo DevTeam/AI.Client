@@ -39,7 +39,13 @@ run database migrations, stage, commit, checkout, stash, reset or push as part o
 3. Find the documented build/analyzer command and configuration in instructions, manifests or CI.
    Reproduce the supplied `diagnostics`, keeping complete output and the exit code. If the
    supplied output is stale, report the current result. Identify toolchain or environmental
-   problems separately from source defects.
+   problems separately from source defects. A build that fails only because another process
+   holds the output binaries or a locked file — another chat's tests or build, an IDE — is such an
+   environmental blocker, not a source defect: report the holding process and name it, because
+   freeing it is the user's decision. Never stop, kill or restart a process this run did not
+   start. For a build this run started that has hung, call `ask_user` naming that process or PID
+   and act only on an explicit affirmative answer; a declined, dismissed, expired or interrupted
+   answer leaves it running.
 4. Group diagnostics by root cause, then fix upstream causes before cascading errors. Match
    existing code conventions and use the smallest relevant changes to source, project files,
    generated-source inputs or configuration. Never edit generated output as the permanent fix.

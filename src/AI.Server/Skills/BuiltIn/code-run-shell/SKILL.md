@@ -68,10 +68,16 @@ or scripts, and a dedicated tool when it better serves the task.
    ordinary reads or already authorized changes. Prepare concrete targets and ask only for missing
    authorization for irreversible actions outside the request. Declined stops that action;
    unresolved approval does not authorize it. Process termination does not undo partial changes.
+   Never stop, kill or restart a process this run did not start — another chat's tests or build,
+   an IDE, a server. A timeout, a hang, a locked output file and an earlier approval for other
+   work are not permission: report the process holding it, because freeing it is the user's
+   decision. For a process this run started, call `ask_user` naming that exact process or PID and
+   act only on an explicit affirmative answer; a declined, dismissed, expired or interrupted
+   answer leaves it running.
 6. Estimate duration: builds, data processing and automation may take hours. Check tool/client
    limits and whether a genuine managed long-running execution mechanism exists. The known
    `timeoutMs` range is 1–600000, default 600000. Omit it to use the effective tool policy;
-   set a smaller value only for an intentionally shorter deadline. Timeout/cancellation terminates the process tree.
+   set a smaller value only for an intentionally shorter deadline. Timeout/cancellation terminates the process tree of this call's own child only; a process the run did not start is never terminated.
    Do not exceed the schema. If insufficient, use safely separable batches/stages with checkpoints,
    or an available managed job/session/queue with identifier, status, logs, cancellation and final
    result. Do not split atomic operations in ways that damage integrity. Change a timeout setting

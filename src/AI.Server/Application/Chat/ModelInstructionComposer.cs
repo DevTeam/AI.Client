@@ -28,8 +28,12 @@ public sealed class ModelInstructionComposer(
 
         var leading = selected.Where(item => item.Placement != ModelInstructionPlacement.Trailing).ToArray();
         var trailing = selected.Where(item => item.Placement == ModelInstructionPlacement.Trailing).ToArray();
-        var messages = leading.Select(item => new ChatCompletionMessage("system", item.Content))
-            .Concat(context).ToArray();
+        // Some chat templates accept a system role only for the first message, even when
+        // additional system messages are contiguous. Preserve layer order in one preamble.
+        var messages = leading.Length == 0
+            ? context
+            : new[] { new ChatCompletionMessage("system", string.Join("\n\n", leading.Select(item => item.Content))) }
+                .Concat(context).ToArray();
         var note = trailing.Length == 0
             ? null
             : TrailingOpen + string.Join("\n\n", trailing.Select(item => item.Content)) + TrailingClose;

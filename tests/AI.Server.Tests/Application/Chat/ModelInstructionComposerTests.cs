@@ -22,8 +22,8 @@ public sealed class ModelInstructionComposerTests
 
         context.ShouldHaveSingleItem().Role.ShouldBe("user");
         result.Keys.ShouldBe(["high", "low"]);
-        result.Messages.Select(message => message.Role).ShouldBe(["system", "system", "user"]);
-        result.Messages[0].Content.ShouldBe("High priority");
+        result.Messages.Select(message => message.Role).ShouldBe(["system", "user"]);
+        result.Messages[0].Content.ShouldBe("High priority\n\nLow priority");
         result.EstimatedTokens.ShouldBeGreaterThan(0);
     }
 
@@ -60,6 +60,9 @@ public sealed class ModelInstructionComposerTests
         var result = composer.Compose(run, [new ChatCompletionMessage("user", "Hello")]);
 
         result.Keys.ShouldBe(["app.base", "project.instructions", "run.completion-protocol"]);
+        result.Messages.Select(message => message.Role).ShouldBe(["system", "user"]);
+        result.Messages[0].Content.ShouldStartWith("Base\n\n" + new string('p', 6_000));
+        result.Messages[0].Content.ShouldEndWith("\n\nProtocol");
         result.Messages[^1].Role.ShouldBe("user");
     }
 

@@ -59,7 +59,12 @@
     <div class="history-scroll-hint history-scroll-hint-down" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5" /></svg></div>
 }
 <div class="workspace-messages" @ref="_messagesContainer">
-    @if (!HasSelectedProject || !HasModel && SelectedChat is null)
+    @if (!IsSetupKnown && SelectedChat is null)
+    {
+        @* Still loading: an empty feed, rather than a setup card for projects and connections
+           that are about to arrive. *@
+    }
+    else if (!HasSelectedProject || !HasModel && SelectedChat is null)
     {
         @* Before the first message can go anywhere: what is still missing, as steps with their
            actions, instead of tips for a chat that cannot be answered yet. *@
@@ -584,6 +589,8 @@
     [Parameter] public EventCallback OnStartGuide { get; set; }
     /// <summary>Whether any model connection is enabled; without one the first message cannot be answered.</summary>
     [Parameter] public bool HasModel { get; set; } = true;
+    /// <summary>Whether projects and connections have loaded, so a missing one is really missing.</summary>
+    [Parameter] public bool IsSetupKnown { get; set; } = true;
     /// <summary>The enabled connection that answers new chats, as "name · model".</summary>
     [Parameter] public string? ModelName { get; set; }
     /// <summary>All connections, enabled or not.</summary>
@@ -767,6 +774,7 @@
     private int _renderedExpandedTurnsVersion;
     private bool _renderedHasSelectedProject;
     private bool _renderedHasModel;
+    private bool _renderedIsSetupKnown;
     private string? _renderedModelName;
     private int _renderedConnectionCount;
     private string? _renderedSelectedProjectName;
@@ -799,6 +807,7 @@
             || _renderedSelectedProjectName != SelectedProjectName
             // Also read by the setup row at the end of an open chat, not only by the start screen.
             || _renderedHasModel != HasModel
+            || _renderedIsSetupKnown != IsSetupKnown
             || _renderedModelName != ModelName
             || _renderedConnectionCount != ConnectionCount
             // The tips exist only while no chat is open, so a chat's feed never re-renders for them.
@@ -831,6 +840,7 @@
         _renderedHasSelectedProject = HasSelectedProject;
         _renderedSelectedProjectName = SelectedProjectName;
         _renderedHasModel = HasModel;
+        _renderedIsSetupKnown = IsSetupKnown;
         _renderedModelName = ModelName;
         _renderedConnectionCount = ConnectionCount;
         _renderedSelectedProjectId = SelectedProjectId;

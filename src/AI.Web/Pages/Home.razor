@@ -461,6 +461,7 @@
             OnCreateSkill='() => OpenGlobalSection("ProjectSkills")'
             OnStartGuide='() => StartGuideTopicAsync(new AppGuideTopicsView.GuideTopicSelection("basic", "show"))'
             HasModel="@HasEnabledModel"
+            IsSetupKnown="@(_projectsLoaded && _connectionsLoaded)"
             ModelName="@GetAnsweringModelName()"
             ConnectionCount="@_connections.Count"
             OnCreateProject="CreateProjectNamedAsync"
@@ -1629,6 +1630,9 @@ else if (_guideInvitation is { } guideInvitation)
     private readonly List<ConnectionSettings> _connections = [];
     // Until the settings arrive there is no telling whether a model is missing, so nothing says so.
     private bool _connectionsLoaded;
+    // Until the first project list has come back (and its project is open), "no project" only
+    // means "not loaded yet": the setup card and the composer's setup chip wait for it.
+    private bool _projectsLoaded;
     private bool HasEnabledModel => !_connectionsLoaded || _connections.Any(item => item.Enabled);
     private int _enabledMcpServerCount;
     private int _userMemoryCount;
@@ -3211,6 +3215,7 @@ else if (_guideInvitation is { } guideInvitation)
             {
                 _selectedProject = null;
             }
+            _projectsLoaded = true;
         }
         catch (HttpRequestException)
         {
@@ -3499,7 +3504,8 @@ else if (_guideInvitation is { } guideInvitation)
     private int _setupNudgeCount;
 
     private SendSetupGap GetSendSetupGap() =>
-        !HasEnabledModel ? (_selectedProject is null ? SendSetupGap.ModelAndProject : SendSetupGap.Model)
+        !_projectsLoaded || !_connectionsLoaded ? SendSetupGap.None
+        : !HasEnabledModel ? (_selectedProject is null ? SendSetupGap.ModelAndProject : SendSetupGap.Model)
         : _selectedProject is null ? SendSetupGap.Project
         : string.IsNullOrWhiteSpace(_chat.BaseUrl) || string.IsNullOrWhiteSpace(_chat.Model) ? SendSetupGap.Connection
         : SendSetupGap.None;

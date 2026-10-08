@@ -6,7 +6,7 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","list_allowed_directories","process_run","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","list_allowed_directories","process_run","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
 
 For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
@@ -81,6 +81,12 @@ or scripts, and a dedicated tool when it better serves the task.
    prove completion. When a supported workflow needs Start-Process on Windows, use -WindowStyle
    Hidden unless a visible interactive window is explicitly needed. After timeout inspect actual
    status, partial artifacts and logs before retrying safely resumable work.
+   When an independently managed job already has a known PID or a read-granted output file,
+   use one bounded `trigger_wait` call when offered to wait for exit or change instead of
+   repeatedly polling with `process_run`. A delay condition can replace repeated clock checks. The trigger is
+   cancelled when the chat stops and cannot resume a job; verify the managed job's own status and
+   output afterwards. A PID exit alone does not provide an exit code. A direct `process_run` call
+   already waits for its child and needs no trigger.
 7. Agree encodings for input files, stdout/stderr and artifacts. JSON argv is Unicode, but child
    byte streams and files may use UTF-8, OEM/ANSI or UTF-16. Prefer explicit UTF-8 modes when the
    program supports them; agree with the tool's decoder rather than assuming UTF-8. If the decoder

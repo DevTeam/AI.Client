@@ -5,7 +5,7 @@ icon: qa-regression-run
 kind: playbook
 description: Select regression checks from changed files, branches or commits, execute them in the authorized test environment and report coverage gaps and defects.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The authorized test environment"},"branch":{"type":"string","description":"The source branch to assess"},"commits":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The explicitly selected commits"},"base":{"type":"string","description":"The agreed comparison base"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user","tool_search","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -58,7 +58,11 @@ Clean up only task-created records/resources using recorded identifiers and auth
    exclusions. A changed-file list alone is not a regression plan.
 6. Execute the selected documented checks with the existing runner/UI tools. Use the actual
    build/revision under review; do not claim a checkout's test results validate another historical
-   revision. Report missing executable builds or environments as blocked.
+   revision. Report missing executable builds or environments as blocked. If an independently
+   running local check has a known PID or read-granted report file, one bounded `trigger_wait`
+   when offered can replace repeated polling. Confirm completion and outcome from the runner's
+   report and exit status when available; a file event or process exit by itself is not a pass.
+   Direct `process_run` already waits.
 7. For every scenario/check distinguish passed, failed, blocked and not run; pending/running is
 not passed. Attach the expected/actual outcome and evidence to the actual revision/environment.
 For automated runs, filter to the affected project/module/tests first; use the wider or full

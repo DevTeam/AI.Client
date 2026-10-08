@@ -63,6 +63,11 @@ Skill conventions:
   full; one that only changes something finishes with a one-line report without ids or revisions.
   Never write "finish with one line" after a step that renders output: models then answer with the
   line and drop the output.
+- For a skill that runs tests, specify narrow filters first, a relevant final suite when needed,
+  runner-supported concise output, an explicit timeout, and reporting of exit status and counts.
+  For a skill that waits on an already running local process or read-granted file, use a bounded
+  `trigger_wait` when available instead of repeated polling; verify the underlying result after
+  it fires. Keep verbose task logs in the chat temporary directory and read only relevant excerpts.
 - Write the body in English. Quoted labels in it are examples: the calling model writes questions,
   options and answers in the user's language.
 

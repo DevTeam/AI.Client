@@ -31,6 +31,9 @@ Choose:
   whether a team pays off and falls back to one branch, so a doubtful large request may go to it;
   a change in one area, a single file, a bug, a question or a continuation of the active skill
   never does. In a branch whose active skill is team-contribute or team-coordinate, keep it active.
+  An explicit request to create or remove a Git worktree outside an active team uses
+  git-manage-worktree. Do not route ordinary code changes to it merely because the repository
+  already contains worktrees; team-assemble owns the team workspace choice.
   For code tasks, prefer a specific available skill over code-feature-implement: planning uses
   code-plan, source explanations code-explain, behavior-preserving structural changes code-refactor,
   adding tests code-tests-add, compiler/analyzer diagnostics code-build-fix, correctness review

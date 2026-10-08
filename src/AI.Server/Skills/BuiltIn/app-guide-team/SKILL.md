@@ -158,7 +158,9 @@ Paths, each a block of 2–3 steps:
   task and roster, "this branch" on the open one, and who waits for the lead.
 - Starting a team: explain beside chat.composer that a large task spanning several independent
   areas, or /team, runs the team skill, which first decides whether a team pays off and asks
-  before creating branches; link it as [Team assemble](aiclient://navigate/settings.skills?skillId=team-assemble).
+  before creating branches. For a suitable Git project with a clean checkout, that question can
+  offer separate worktrees for teammate files; chat branches still carry the conversation. Link
+  it as [Team assemble](aiclient://navigate/settings.skills?skillId=team-assemble).
 Explain with the discovered help only; do not invent costs, limits or how well a team performs.
 
 ## Links to skills and tools

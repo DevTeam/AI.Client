@@ -166,6 +166,7 @@ application permissions, and every write still goes through tool approval.
 | `git-cherry-pick` | Applies one or several selected commits in agreed order; keeps a recovery ref and pauses at conflicts | commit picker, `process_run` |
 | `git-revert` | Undoes selected commits with new commits in agreed order; keeps a recovery ref and pauses at conflicts | commit picker, `process_run` |
 | `git-stash` | Saves local work or applies a selected stash, retaining the stash until restoration is verified | `process_run`, `ask_user` |
+| `git-manage-worktree` | Creates a local branch in an isolated worktree or removes a clean worktree while retaining its branch | `process_run`, directory checks, `ask_user` |
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
 | `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |

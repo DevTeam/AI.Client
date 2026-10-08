@@ -4,9 +4,9 @@ name: Team assemble
 icon: users
 kind: playbook
 aliases: ["team"]
-description: Large task spanning several independent areas (API, UI, tests, modules): decide if a team pays off; if so, start a branch per teammate.
+description: Assemble a team for substantial parallel work, offer separate Git worktrees when usable, and start a chat branch per teammate after the user's choice.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The task"}},"additionalProperties":false}
-tools: ["app_read","app_runs","app_navigate","ask_user","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files"]
+tools: ["app_read","app_runs","app_navigate","ask_user","list_allowed_directories","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill"]
 ---
 
 The user's instructions take precedence over this playbook. Ask questions and report results in
@@ -49,30 +49,68 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    life of the team; the teammate's focus belongs to its scope, not to its name.
    Never make up an `operationId`: omit it, and the application assigns one and returns it as the
    result's `messageId`.
-6. Show the proposed team with `ask_user`, labelled "Team": the plan in one line per phase and one
-   line per teammate, with the options "Start the team (Recommended)", "Adjust the team" and
-   "Work without a team"; `allowOther` on. Adjust and repeat on an answer; stop on "Work without a
-   team", dismissed, expired or interrupted.
-7. Write the charter into this branch: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Aside`,
+6. For a code team, check whether separate Git worktrees are usable before asking the user. Use
+   `process_run` with Git argument arrays and a verified repository root to check Git availability,
+   the current branch and HEAD, `git status --porcelain=v1 -uall`, and `git worktree list --porcelain`.
+   Prefer distinct worktree paths such as `<root>/.worktrees/<chatId>-<member>` when that parent is
+   ignored and the repository root is granted for read and write;
+   check that each path is absent, has no registered worktree, and will not be tracked by the
+   repository (for an in-repository parent, check its ignore rule). If none exists, a separate
+   existing directory can be chosen and granted after the user selects worktree mode. Do not use a
+   per-chat temporary directory: teammates must see the same persistent path. Never use
+   a process to bypass a missing directory grant. The lead's integration checkout must be clean,
+   including staged and untracked changes: worktrees start at committed HEAD and integration
+   needs a clean checkout. If it is dirty or Git/worktree tools are unavailable, offer only the
+   shared directory and explain why; do not stash, commit or discard existing work to enable this mode.
+   Research-only teams and non-Git projects use the shared directory.
+7. Show the proposed team with `ask_user`, labelled "Team": the plan in one line per phase and one
+   line per teammate. When step 6 found a clean Git checkout and usable tools, offer
+   "Start in separate Git worktrees (Recommended)", "Start in the shared directory",
+   "Adjust the team" and "Work without a team";
+   explain that worktrees start at the chosen committed HEAD, teammates make local commits for
+   integration, clean worktrees are removed afterward while their branches remain, and no branch
+   is pushed. Show the proposed base, Git branch names and worktree paths when already known. If
+   no granted destination exists, say that choosing worktrees also needs an existing
+   destination directory and a project grant. Otherwise keep "Start the team (Recommended)",
+   "Adjust the team" and "Work without a team". Set `allowOther` on. Adjust and repeat on an answer;
+   stop on "Work without a team", dismissed, expired or interrupted. This single answer authorizes
+   the selected team mode; never switch modes silently after a failure.
+8. If worktrees were chosen but no suitable granted destination exists, ask the user for one
+   existing directory with `ask_user` (`pathKind` "directories") and use
+   `project-directory-add` through `run_skill` for recursive read/write access. If the user does
+   not select or grant one, stop without creating a team. Recheck that the destination is outside
+   the repository or ignored inside it, and plan a distinct absent child path per teammate,
+   for example `<destination>/<repository-name>-<chatId>-<member>`.
+   Run `git-manage-worktree` with `run_skill` and `action=create` for each teammate, passing the
+   verified repository root, exact empty destination, a unique team branch name and the same
+   verified base commit. Do not create a chat branch until every worktree is ready. If creation
+   stops partway through, report the created paths and branches for recovery and ask how to proceed;
+   do not discard them or fall back to the shared directory. The team's Git branches are separate
+   from its chat branches.
+9. Write the charter into this branch: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Aside`,
    intent `Decision`, no `operationId`, and content headed "Team charter" with: goal and done,
    glossary, phases, a table of teammates whose first column is the identity ("Ada · Backend"),
    then scope, owned paths, deliverable and done; the lead as "Lead"; the contracts; and the
-   protocol below. A compact Mermaid diagram may follow the text when it clarifies actual phases,
+   protocol below. Record the chosen workspace mode. For worktrees, record the repository root,
+   base commit, each teammate's absolute worktree path and Git branch, and the lead's integration
+   checkout. Owned paths remain repository-relative and must be resolved inside the assigned
+   worktree. A compact Mermaid diagram may follow the text when it clarifies actual phases,
    dependencies or ownership. Keep every assignment, contract and decision explicit in text: the
    diagram is a visual summary, not a source of instructions for teammates. Keep the result's
    `messageId`: it is the charter's id. Name teammates by their identity in the phases and
    contracts too. Make that call alone in its step: the aside joins this turn after the call's
    result, and the branches must start from it.
-8. In the next step, read the main branch with `app_read` and confirm the charter message is there.
+10. In the next step, read the main branch with `app_read` and confirm the charter message is there.
    Then for each teammate: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Fork`,
    `parentMessageId` = the charter's id, no `operationId`, intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
    application names the branch "Name · Role" and signs its messages so), content = the teammate's
    brief: "You are <Name> · <Role> in this team. Run the team-contribute skill first." followed by the
-   scope, owned paths, deliverable, definition of done, skills to use and whom to ask. Every branch
+   scope, owned paths, deliverable, definition of done, skills to use and whom to ask. In worktree
+   mode include its exact absolute worktree path, Git branch and base commit. Every branch
    inherits the analysis and the charter from the message it starts from, so the brief repeats
    only what is the teammate's own. Each result's `branchId` is that teammate's branch; every
    message it sends you carries the same branchId in its header.
-9. Answer with the team as a table (identity, deliverable) and one line on how it works: the
+11. Answer with the team as a table (identity, deliverable) and one line on how it works: the
    teammates report to this branch, which coordinates them with the team-coordinate skill. When
    a visual helps the user understand the team, add one small `mermaid` fenced diagram that shows
    the actual phase or dependency relationships. Choose a suitable diagram type; prefer a
@@ -91,6 +129,9 @@ Protocol to put in the charter:
 - Everyone is named by identity — "Ada · Backend", "Lead" — in plans, decisions and reports; the
   application signs each message with its sender's identity, so nobody introduces themselves.
 - A teammate changes only its owned paths; anything else is a question to the lead.
+- The charter's workspace mode applies to every teammate. In worktree mode, file operations and
+  commands use that teammate's assigned worktree; local commits are reported to the lead, who
+  integrates them. In shared-directory mode, nobody changes the shared Git state except the lead.
 - A teammate starts changing its owned paths early and grows the result; reading without changing
   anything is not progress.
 - A conflict between a contract, a reference and another teammate's work is a question to the lead

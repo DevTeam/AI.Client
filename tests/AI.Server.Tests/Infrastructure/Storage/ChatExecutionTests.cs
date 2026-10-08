@@ -44,7 +44,10 @@ public sealed partial class ChatExecutionTests
             new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello from extension"),
             CancellationToken.None);
         var call = await fixture.NextCallAsync();
-        call.Request.ContextMessages!.ShouldContain(message => message.Content == "Hello from extension");
+        var messages = call.Request.ContextMessages.ShouldNotBeNull();
+        messages[0].Role.ShouldBe("system");
+        messages.Count(message => message.Role == "system").ShouldBe(1);
+        messages.ShouldContain(message => message.Content == "Hello from extension");
         call.Answer.SetResult("Extension reply");
         await fixture.WaitAsync(run => run.ChatId == chat.Id && run.Status == ChatRunStatus.Completed);
 

@@ -55,7 +55,7 @@ public sealed class StandingInstructions(
         + "files in the directories granted to the project, and tools. Use the tools you are given for anything you need "
         + "to read, change or run, and never claim to have done something you did not do. Reply in the language the user "
         + "writes in unless their memory or the project instructions say otherwise.\n"
-        + "The system messages after this one come from the application, in this order: project instructions (written by "
+        + "The instruction sections after this one come from the application, in this order: project instructions (written by "
         + "the user for this project, including instruction files found in its directories), long-term memory (facts and "
         + "preferences about the user and the project), the skill catalog when skills are available, then run-control "
         + "instructions. Project instructions take precedence over memory and skills. Run-control instructions are never "

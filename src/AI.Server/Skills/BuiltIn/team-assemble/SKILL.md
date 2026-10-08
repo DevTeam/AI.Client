@@ -49,23 +49,27 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    life of the team; the teammate's focus belongs to its scope, not to its name.
    Never make up an `operationId`: omit it, and the application assigns one and returns it as the
    result's `messageId`.
-6. For a code team, check whether separate Git worktrees are usable before asking the user. Use
+6. For a team editing files in a Git repository, check whether separate Git worktrees are usable
+   before asking the user. Offer
+   them only when every teammate can finish its assigned edits from the same committed base;
+   a later teammate phase that needs another teammate's new files uses the shared directory. Use
    `process_run` with Git argument arrays and a verified repository root to check Git availability,
    the current branch and HEAD, `git status --porcelain=v1 -uall`, and `git worktree list --porcelain`.
    Prefer distinct worktree paths such as `<root>/.worktrees/<chatId>-<member>` when that parent is
-   ignored and the repository root is granted for read and write;
-   check that each path is absent, has no registered worktree, and will not be tracked by the
+   ignored and the repository root is granted for read and write. Check that each path is absent,
+   has no registered worktree, and will not be tracked by the
    repository (for an in-repository parent, check its ignore rule). If none exists, a separate
    existing directory can be chosen and granted after the user selects worktree mode. Do not use a
    per-chat temporary directory: teammates must see the same persistent path. Never use
    a process to bypass a missing directory grant. The lead's integration checkout must be clean,
    including staged and untracked changes: worktrees start at committed HEAD and integration
-   needs a clean checkout. If it is dirty or Git/worktree tools are unavailable, offer only the
-   shared directory and explain why; do not stash, commit or discard existing work to enable this mode.
+   needs a clean checkout. If assignments depend on one another's new files, the checkout is
+   dirty, or Git/worktree tools are unavailable, offer only the shared directory and explain why;
+   do not stash, commit or discard existing work to enable this mode.
    Research-only teams and non-Git projects use the shared directory.
 7. Show the proposed team with `ask_user`, labelled "Team": the plan in one line per phase and one
-   line per teammate. When step 6 found a clean Git checkout and usable tools, offer
-   "Start in separate Git worktrees (Recommended)", "Start in the shared directory",
+   line per teammate. When step 6 found independent assignments, a clean Git checkout and usable
+   tools, offer "Start in separate Git worktrees (Recommended)", "Start in the shared directory",
    "Adjust the team" and "Work without a team";
    explain that worktrees start at the chosen committed HEAD, teammates make local commits for
    integration, clean worktrees are removed afterward while their branches remain, and no branch

@@ -23,7 +23,8 @@ ask only for the action, repository, destination, branch or base that the user d
    If the chosen path lacks access, ask the user to grant its existing parent through
    `project-directory-add` using `run_skill` or choose an accessible path; do not create it first.
 2. For creation, resolve `baseCommit` (or an explicitly chosen ref) to a commit with
-   `git rev-parse --verify`, then verify the new branch name with `git check-ref-format --branch`
+   `git rev-parse --verify --end-of-options <ref>^{commit}`, then verify the new branch name with
+   `git check-ref-format --branch`
    and that `refs/heads/<branchName>` does not exist. Check the destination's resolved parent:
    it must not be `.git`, a symlink/junction leading elsewhere, an existing worktree, or an
    unrelated directory. If it is inside the repository, verify the destination is ignored by

@@ -37,14 +37,17 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    - `done`: check the deliverable itself against its definition of done — the files it names
      and the checks the charter names, run once. In worktree mode inspect it in the teammate's
      assigned worktree and verify the reported commits, clean status and owned paths against the
-     charter's base; do not inspect the lead's checkout as a substitute. Short of the definition,
+     charter's base; do not inspect the lead's checkout as a substitute. Defer checks that need
+     another teammate's changes until after integration. Short of the definition,
      send the teammate what is missing (intent `Answer`). Only when the result contradicts the
      report, read that teammate's branch.
 3. A decision that changes what others build goes to every affected branch as an Aside with
    intent `Decision`: a running teammate reads it at its next step, an idle one in its next turn.
    Record decisions in your answer too, so this branch stays the team's record.
 4. When every teammate of a phase is done, start the next phase: one Send per teammate with intent
-   `Decision` and what the phase expects of it. After the last phase, integrate according to the
+   `Decision` and what the phase expects of it. In worktree mode confirm the next phase still
+   needs only the common base and fixed contracts; do not send a teammate to implement against
+   files that exist only in another worktree. After the last phase, integrate according to the
    charter's workspace mode. In shared-directory mode the teammates' changes are already together;
    check that the parts fit (build, tests, contract boundaries). In worktree mode, verify the
    lead's integration checkout is clean, each reported commit belongs to its assigned branch and
@@ -54,16 +57,17 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    preserve every worktree and branch, and report the paused state. After successful integration,
    check that the parts fit together (build, tests, contract boundaries) in the integration
    checkout. Remove only clean, integrated team worktrees with `git-manage-worktree`
-   (`action=remove`); retain their
-   branches for recovery. For tests,
-   start with filters for the affected modules; run a full suite only as a final relevant check.
+   (`action=remove`); retain their branches for recovery. For tests, start with filters for the
+   affected modules; run a full suite only as a final relevant check.
    Use the runner's supported quiet/minimal output while preserving failures and counts, and set
    an explicit finite timeout within the tool limit. Split long suites and report timeouts as
    incomplete. Teammates never commit or otherwise change the Git state of the shared working
    directory. In worktree mode they commit only on their own branches, and integration creates
    local commits in the lead's checkout. Report those hashes; never push without a separate request.
-5. Never edit a teammate's owned paths yourself, and do not send acknowledgements, thanks or
-   restatements: every message to a branch costs that teammate a turn. Do not poll the teammates'
+5. While teammates work, never edit their owned paths yourself. After they finish, integration may
+   change those paths in the lead's checkout; never edit their worktrees. Do not send
+   acknowledgements, thanks or restatements: every message to a branch costs that teammate a
+   turn. Do not poll the teammates'
    branches or runs while they work, and do not collect their results by reading their branches:
    a teammate's report comes to you as a message — before your next step while you are working,
    or as a new turn once you have ended yours. End the turn when you are waiting, and their

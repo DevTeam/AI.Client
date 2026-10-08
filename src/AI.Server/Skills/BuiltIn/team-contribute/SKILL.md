@@ -26,8 +26,9 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    steps; with none named, follow the project's conventions and its checks. Change only your owned
    paths. A change anywhere else, or to a contract, is a question to the lead. Read the charter's
    workspace mode before touching files. In worktree mode, verify the assigned absolute worktree
-   path, Git branch and base commit against `git worktree list --porcelain` and use that path for
-   every file operation and command. Resolve owned repository-relative paths inside that worktree;
+   path and Git branch against `git worktree list --porcelain`, and verify that the charter's base
+   commit is an ancestor of the branch. Use that path for every file operation and command.
+   Resolve owned repository-relative paths inside that worktree;
    never edit the lead's checkout or another teammate's worktree. If a tool cannot reach the
    assigned path under the project's grants, report a blocker to the lead rather than using a
    process to bypass the grant.

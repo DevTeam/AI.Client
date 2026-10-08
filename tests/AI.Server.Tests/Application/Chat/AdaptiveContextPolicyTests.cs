@@ -387,6 +387,28 @@ public sealed class AdaptiveContextPolicyTests
     }
 
     [Fact]
+    public void ShouldKeepASmallWorkingSetWhenASkillPinsItsTools()
+    {
+        var policy = Policy();
+        var working = new[]
+        {
+            Tool("app_read", "Read application state", app: true),
+            Tool("ask_user", "Ask for missing choices", app: true),
+            Tool("skill_search", "Find a skill", app: true),
+            Tool("tool_search", "Find a tool", app: true),
+            Tool("run_skill", "Run a skill", app: true)
+        };
+        var others = Enumerable.Range(0, 35).Select(index => Tool($"operation_{index}", "Unrelated operation")).ToArray();
+        var pins = working.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+
+        var selection = policy.Choose(Connection(250_000, 10_000), "Configure project", [], [.. working, .. others], pins);
+
+        selection.Tools.Count.ShouldBe(8);
+        foreach (var tool in working) selection.Tools.ShouldContain(tool);
+        selection.Tools.ShouldContain(tool => tool.OriginalName == "tool_search");
+    }
+
+    [Fact]
     public void ShouldReduceTheSchemaBudgetWhenConversationHistoryConsumesHeadroom()
     {
         var policy = Policy();

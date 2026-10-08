@@ -122,6 +122,28 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldReadCompactToolInventoryAndFetchOneExactSchema()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var inventory = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = DefaultMcpServer.Id, includeSchemas = false });
+        var listed = inventory.GetProperty("items").EnumerateArray().ToArray();
+        listed.Length.ShouldBeGreaterThan(1);
+        var chosen = listed.Single(item => item.GetProperty("name").GetString() == "write_file");
+        chosen.TryGetProperty("inputSchema", out _).ShouldBeFalse();
+        chosen.GetProperty("defaultDecision").GetString().ShouldBe("Ask");
+
+        var detail = await AppFixture.CallAsync(session, "app_read",
+            new { resource = "McpTools", resourceId = DefaultMcpServer.Id, query = "write_file" });
+        detail.GetProperty("total").GetInt32().ShouldBe(1);
+        var selected = detail.GetProperty("items")[0];
+        selected.GetProperty("schemaHash").GetString().ShouldBe(chosen.GetProperty("schemaHash").GetString());
+        selected.GetProperty("inputSchema").ValueKind.ShouldBe(JsonValueKind.Object);
+    }
+
+    [Fact]
     public async Task ShouldExposeDefaultDecisionsForAnUnconfiguredProject()
     {
         await using var fixture = await AppFixture.CreateAsync();

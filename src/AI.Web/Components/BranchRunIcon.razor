@@ -1,0 +1,20 @@
+@* A scheduled run's branch icon, the same in the sidebar and in the branch picker: a play icon that
+   shows the run status the way any branch icon does, with the run's outcome as a dot in its corner.
+   A run still going has no dot: the icon already says so. *@
+@using AI.Contracts.Schedules
+
+<span class="branch-run-icon">
+    <AppIcon Name="branch-run" Class="@StatusClass" />
+    @if (Outcome is not ScheduleRunStatus.Running)
+    {
+        <i class="branch-run-dot is-@Outcome.ToString().ToLowerInvariant()" aria-hidden="true"></i>
+    }
+</span>
+
+@code {
+    /// <summary>The run's outcome, from the schedule.</summary>
+    [Parameter] public ScheduleRunStatus Outcome { get; set; }
+
+    /// <summary>The branch's run status class (generating, unread, attention, failed), or none.</summary>
+    [Parameter] public string? StatusClass { get; set; }
+}

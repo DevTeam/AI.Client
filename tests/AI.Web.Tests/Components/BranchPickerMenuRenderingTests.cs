@@ -66,8 +66,8 @@ public sealed class BranchPickerMenuRenderingTests
 
         text.ShouldContain("#1 · ");
         text.ShouldNotContain("#2 · ");
-        text.ShouldContain("branch-run-dot is-succeeded run-status-unread");
-        text.ShouldContain("is-unseen");
+        text.ShouldContain("run-status-unread");
+        text.ShouldContain("branch-run-dot is-succeeded");
     }
 
     private static async Task<string> RenderAsync(IReadOnlyList<BranchPickerItem> items)

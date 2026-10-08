@@ -220,7 +220,7 @@
                                     runsHeaderShown = true;
                                     @RunsGroupHeader(runRows)
                                 }
-                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(branch.Run is not null && IsUnseenRun(chat.Id, branch) ? "is-unseen" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
                                     <span class="branch-tree-line" aria-hidden="true"></span>
                                     @if (_editingBranchId == branch.RootId)
                                     {
@@ -228,7 +228,7 @@
                                     }
                                     else
                                     {
-                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <i class="branch-run-dot is-@branchRun.Status.ToString().ToLowerInvariant() @GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" aria-hidden="true"></i> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
+                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
                                     }
                                     <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>

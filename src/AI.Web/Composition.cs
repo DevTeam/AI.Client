@@ -80,6 +80,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IToolPresentations>()
             .Root<IToolResultCodec>()
             .Root<IConnectionContextLimitsResolver>()
+            .Root<IToolDefaultDecision>()
             .Root<IUnifiedDiffParser>()
             .Root<IDropAccessPlanner>()
             .Root<IChatFeedProjection>()

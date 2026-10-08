@@ -2,7 +2,7 @@
 
 ## Composition
 
-The built-in server ships 22 tools. All of them receive the `Ask` policy on first discovery, like any new tool.
+The built-in server ships 22 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, and network `fetch` default to `Ask`. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
@@ -42,7 +42,7 @@ The Host automatically registers `Default tools` with a stable ID. The built-in 
 3. Review the program, arguments, directory, and timeout in the confirmation card. Click `Allow once` or `Deny`.
 4. The call, its result, and the model's final response appear in history. The chat's stop button cancels a pending confirmation or an in-flight execution.
 
-In project settings, the `Discover tools` button retrieves the tool descriptor through a real MCP `tools/list`. After discovery, `Ask`, `Allow`, `Deny`, the call count, and the timeout are available. Saving uses the existing project settings revision. A schema hash change returns a new tool to `Ask`.
+In project settings, the `Discover tools` button retrieves the tool descriptor through a real MCP `tools/list`. After discovery, `Ask`, `Allow`, `Deny`, the call count, and the timeout are available. Saving uses the existing project settings revision. A schema hash change uses the current default for a known built-in tool. Existing saved decisions remain in place; the global tool list offers `Use defaults` to apply the current defaults to the filtered built-in tools.
 
 The global server policy and the project policy apply together: any `Deny` forbids execution; auto-execution requires `Allow` at both levels. Disabling the server also forbids calls. The policy is re-checked after confirmation, immediately before execution.
 

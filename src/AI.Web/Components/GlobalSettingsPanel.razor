@@ -389,6 +389,10 @@
                                         <select class="settings-bulk" title="Change the global default for every tool currently shown by the filter" aria-label="Set every shown tool" value="" disabled="@(shown.Count == 0)" @key="_bulkKey" @onchange="args => SetToolDecisions(shown, args.Value?.ToString())">
                                             <option value="">Set all…</option><option>Ask</option><option>Allow</option><option>Deny</option>
                                         </select>
+                                        @if (IsHostProvided(server.Id))
+                                        {
+                                            <button class="compact-action" type="button" disabled="@(shown.Count == 0)" title="Apply the built-in defaults to every tool currently shown by the filter" @onclick="() => SetToolDefaults(shown)">Use defaults</button>
+                                        }
                                         <button class="compact-action" type="button" disabled="@(_discoveringTools || _saving || !server.Enabled || server.Policy == "Deny")" title="Fetch the server's current tool list and schemas" @onclick="DiscoverToolsAsync">@(_discoveringTools ? "Discovering…" : "Discover")</button>
                                     </div>
                                     <p class="settings-note">Defaults for every project unless it overrides them. @ToolDecisionSummary(tools)</p>
@@ -469,6 +473,7 @@
                            Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
 }
 @code {
+    [Inject] private IToolDefaultDecision ToolDefaults { get; set; } = default!;
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public string? SkillToEdit { get; set; }
     [Parameter] public string? SkillSource { get; set; }
@@ -1251,6 +1256,11 @@
         _bulkKey++;
     }
 
+    private void SetToolDefaults(IEnumerable<McpToolPolicyEditor> tools)
+    {
+        foreach (var tool in tools) tool.Decision = ToolDefaults.GetDecision(tool.ServerId, tool.Name);
+    }
+
     private static string ToolDecisionSummary(IReadOnlyCollection<McpToolPolicyEditor> tools) =>
         string.Join(" · ", tools.GroupBy(tool => tool.Decision)
             .OrderBy(group => Array.IndexOf(Decisions, group.Key))
@@ -1374,7 +1384,7 @@
                 var previous = _toolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
                     && item.Name == tool.Name && item.SchemaHash == tool.SchemaHash);
                 _toolPolicies.RemoveAll(item => item.ServerId == tool.ServerId && item.Name == tool.Name);
-                _toolPolicies.Add(previous ?? McpToolPolicyEditor.From(tool));
+                _toolPolicies.Add(previous ?? McpToolPolicyEditor.From(tool, ToolDefaults.GetDecision(tool.ServerId, tool.Name)));
             }
             if (tools.Count == 0) Notifications.ShowInfo("No tools were found.");
             else Notifications.ShowSuccess($"Discovered {tools.Count} tool(s).");
@@ -1728,9 +1738,9 @@
         public int MaxCallsPerRun { get; set; } = 65535;
         public long TimeoutSeconds { get; set; } = McpToolPolicySettings.DefaultTimeoutSeconds;
 
-        public static McpToolPolicyEditor From(McpToolInfo item) => new()
+        public static McpToolPolicyEditor From(McpToolInfo item, string decision) => new()
         {
-            ServerId = item.ServerId, Name = item.Name, SchemaHash = item.SchemaHash
+            ServerId = item.ServerId, Name = item.Name, SchemaHash = item.SchemaHash, Decision = decision
         };
 
         public static McpToolPolicyEditor From(McpToolPolicySettings item) => new()

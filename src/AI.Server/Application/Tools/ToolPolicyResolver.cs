@@ -22,7 +22,8 @@ public sealed record EffectiveToolPolicy(
 /// disagree: before a call is made, and again while a confirmation prompt is waiting, in case the
 /// user grants the tool from settings instead of from the prompt.
 /// </remarks>
-public sealed class ToolPolicyResolver(IProjectService projects, IChatService chats, IGlobalSettingsRepository settings)
+public sealed class ToolPolicyResolver(IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
+    IToolDefaultDecision defaults)
     : IToolPolicyResolver
 {
     public async Task<EffectiveToolPolicy> ResolveAsync(
@@ -41,7 +42,8 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
             && item.Name == name && item.SchemaHash == schemaHash);
         var globalPolicy = global.ToolPolicies.SingleOrDefault(item => item.ServerId == serverId
             && item.Name == name && item.SchemaHash == schemaHash);
-        var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision ?? "Ask";
+        var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision
+            ?? defaults.GetDecision(serverId, name);
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
         var maxCalls = chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun

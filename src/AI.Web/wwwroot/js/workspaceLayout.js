@@ -176,6 +176,36 @@ export function attach(workspace, callbacks, saved) {
     });
     observer.observe(workspace, { attributes: true, attributeFilter: ["data-widgets"] });
 
+    // A row's menu drops below the row, inside the sidebar's scrolling list; near the bottom of
+    // that list it was cut off by the list's edge and hidden under the settings row. The menu opens
+    // upwards when it does not fit below and there is more room above, and scrolls within itself
+    // when it fits neither way. Measured against the row, so its own placement never feeds back.
+    const placeSidebarMenus = () => {
+        for (const menu of workspace.querySelectorAll(".workspace-sidebar .chat-menu")) {
+            const row = menu.parentElement;
+            const list = menu.closest(".sidebar-projects");
+            if (!row || !list) continue;
+            const bounds = list.getBoundingClientRect();
+            const anchor = row.getBoundingClientRect();
+            const below = bounds.bottom - anchor.bottom;
+            const above = anchor.top - bounds.top;
+            const height = menu.scrollHeight;
+            const up = height > below && above > below;
+            menu.classList.toggle("opens-up", up);
+            const room = Math.max(up ? above : below, 0) - 8;
+            menu.style.maxHeight = height > room ? `${Math.max(room, 120)}px` : "";
+            // Anchored to the row's right edge, a narrow sidebar would clip its left part too.
+            const width = anchor.right - bounds.left - 4;
+            menu.style.maxWidth = "";
+            // max-width counts the content box; the menu's padding and border come on top of it.
+            const chrome = menu.offsetWidth - parseFloat(getComputedStyle(menu).width);
+            if (width < menu.offsetWidth) menu.style.maxWidth = `${width - chrome}px`;
+        }
+    };
+    const sidebar = workspace.querySelector(".workspace-sidebar");
+    const menuObserver = new MutationObserver(placeSidebarMenus);
+    if (sidebar) menuObserver.observe(sidebar, { childList: true, subtree: true });
+
     const listeners = [];
     const listen = (element, type, listener, options) => {
         element.addEventListener(type, listener, options);
@@ -414,6 +444,7 @@ export function attach(workspace, callbacks, saved) {
         dispose: () => {
             clearTimeout(animation);
             observer.disconnect();
+            menuObserver.disconnect();
             listeners.forEach(([element, type, listener, options]) => element.removeEventListener(type, listener, options));
         }
     };

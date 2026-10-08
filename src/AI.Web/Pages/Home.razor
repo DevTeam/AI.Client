@@ -74,7 +74,12 @@
             <AppIcon Name="search" /><span class="nav-item-label">Search</span><kbd class="nav-item-shortcut" aria-hidden="true">Ctrl+K</kbd>
         </button>
         <div id="projects-nav">
-        <button @attributes="@(ControlHints.Attributes("projects.create", "New project (Alt+Shift+N)"))" class="workspace-nav-item new-project-action" type="button" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" @onclick="BeginProjectCreation"><AppIcon Name="plus" /><span class="nav-item-label">New project</span><kbd class="nav-item-shortcut" aria-hidden="true">Alt+Shift+N</kbd></button>
+        @* Projects get a heading like the sections below them, so the sidebar reads as labelled
+           groups; creating one is the heading's own action rather than a row competing with them. *@
+        <div class="sidebar-section-header sidebar-projects-header">
+            <span class="sidebar-section-title">Projects</span>
+            <button @attributes="@(ControlHints.Attributes("projects.create", "New project (Alt+Shift+N)"))" class="icon-action sidebar-section-icon-action new-project-action" type="button" data-hotkey="Alt+Shift+KeyN" aria-keyshortcuts="Alt+Shift+N" aria-label="New project" @onclick="BeginProjectCreation"><AppIcon Name="plus" /></button>
+        </div>
         @if (ProjectsBusy.IsVisible)
         {
             <div class="sidebar-skeleton" role="status" aria-label="Loading projects">
@@ -105,7 +110,7 @@
                        Without the same-project shortcut the user would have to reach for the
                        "+" button every time they wanted to start a new conversation in the
                        project they were already in. *@
-                    <button @attributes="@(ControlHints.Attributes("project"))" class="workspace-nav-item project-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="status-dot @GetProjectStatusClass(project.Id)"></span><span class="nav-item-label">@project.Name</span></button>
+                    <button @attributes="@(ControlHints.Attributes("project"))" class="workspace-nav-item project-link" type="button" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" @onkeydown="e => HandleProjectItemKeyDownAsync(e, project)" @onclick="() => HandleProjectItemClickAsync(project)"><span class="project-monogram" aria-hidden="true">@GetProjectMonogram(project.Name)<span class="status-dot @GetProjectStatusClass(project.Id)"></span></span><span class="nav-item-label">@project.Name</span></button>
                 }
                 <button @attributes="@(ControlHints.Attributes((project.Id == _selectedProject?.Id ? "chat.new" : null), (project.Id == _selectedProject?.Id ? "New chat (Alt+N)" : "New chat")))" class="icon-action project-action-button project-new-chat-button" type="button" aria-label="New chat"
                         data-hotkey="@(project.Id == _selectedProject?.Id ? "Alt+KeyN" : null)" aria-keyshortcuts="@(project.Id == _selectedProject?.Id ? "Alt+N" : null)" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
@@ -114,6 +119,9 @@
             </div>
             @if (project.Id == _selectedProject?.Id && !IsProjectTreeFolded)
             {
+                @* One block under the open project, so its chats, archive and directories hang off a
+                   single guide line and the next project starts clearly after them. *@
+                <div class="project-tree">
                 @* Chat and branch rows carry the shared help as data attributes for the guide but no
                    tooltip: explaining what a chat is would cover the list on every hover, while the
                    row's own title already says something about this chat rather than the control. *@
@@ -169,7 +177,7 @@
                     {
                         <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
                     }
-                    <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive · @_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
+                    <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive</span><span class="directory-count" title="Archived chats">@_chats.Count(chat => chat.ArchivedAt is not null)</span></button>
                 </nav>
                 <div class="directory-nav-group">
                     @if (_security.DirectoryGrants.Count == 0)
@@ -218,6 +226,7 @@
                             }
                         }
                     }
+                </div>
                 </div>
             }
         }
@@ -1310,6 +1319,8 @@ else if (_guideInvitation is { } guideInvitation)
         var branchCount = GetBranchCount(chat);
         var actionsHere = _chatActionsSurface == surface;
         var inList = surface != ChatListSurface.Project;
+        // A live run swaps the chat's icon for a spinner; every other status colours the icon.
+        var chatStatus = GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id));
         <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-notified-chat-id="@(surface == ChatListSurface.Notifications ? chat.Id.ToString() : null)" data-soon-chat-id="@(surface == ChatListSurface.Soon ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
             @if (_editingChatId == chat.Id && actionsHere)
             {
@@ -1317,7 +1328,7 @@ else if (_guideInvitation is { } guideInvitation)
             }
             else
             {
-                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? null : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => inList ? Task.CompletedTask : HandleChatItemKeyDownAsync(e, chat)" @onclick="() => OpenChatRowAsync(chat, surface)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="chat-title-line">@if (lead is not null) { <span class="chat-soon-lead" title="@($"Run starts in {lead}")">@lead</span> }<span class="nav-item-label">@chat.Title</span></span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
+                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? null : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => inList ? Task.CompletedTask : HandleChatItemKeyDownAsync(e, chat)" @onclick="() => OpenChatRowAsync(chat, surface)"><span class="chat-icon-with-branch-count">@if (chatStatus == "run-status-generating") { <AppIcon Name="spinner" Class="run-status-generating chat-unfinished-spin" /> } else { <AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@chatStatus" /> }</span><span class="chat-title-line">@if (lead is not null) { <span class="chat-soon-lead" title="@($"Run starts in {lead}")">@lead</span> }<span class="nav-item-label">@chat.Title</span></span>@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)" aria-hidden="true"><AppIcon Name="git-branch" />@FormatBranchCount(branchCount)</span> }@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
             }
             <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat, surface)"><AppIcon Name="edit" /></button>
             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, surface)"><AppIcon Name="more" /></button>
@@ -1408,7 +1419,7 @@ else if (_guideInvitation is { } guideInvitation)
                 }
                 else
                 {
-                    <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
+                    <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else if (GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)) is var branchStatus && branchStatus == "run-status-generating") { <AppIcon Name="spinner" Class="run-status-generating chat-unfinished-spin" /> } else { <AppIcon Name="git-branch" Class="@branchStatus" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
                 }
                 <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                 <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>
@@ -5545,6 +5556,10 @@ else if (_guideInvitation is { } guideInvitation)
         branchCount == 1 ? "1 branch" : $"{branchCount} branches";
 
     private static string FormatBranchCount(int branchCount) => branchCount > 9 ? "9+" : branchCount.ToString();
+
+    /// <summary>The letter on a project's tile: the first letter or digit of its name, so ".NET" reads as N.</summary>
+    private static string GetProjectMonogram(string name) =>
+        name.FirstOrDefault(char.IsLetterOrDigit) is var letter and not '\0' ? char.ToUpperInvariant(letter).ToString() : "#";
 
     private async Task HandleChatItemKeyDownAsync(KeyboardEventArgs args, ChatSummary chat)
     {

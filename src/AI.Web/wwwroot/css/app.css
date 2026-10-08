@@ -606,7 +606,7 @@ body {
     --sidebar-group-gap: 0.1rem;
     min-height: 0;
     overflow-y: auto;
-    padding: 0.45rem 1rem 1rem;
+    padding: 0.6rem 0.7rem 1rem;
 }
 
 .visually-hidden {
@@ -627,29 +627,97 @@ body {
     font-size: var(--font-size-md);
 }
 
-/* The dot keeps its size and is centred in the shared mark slot, rather than being stretched to
-   fill it — a status dot that big would read as a badge. */
-.project-nav-row > .workspace-nav-item > .status-dot {
-    margin-inline: calc((var(--nav-mark) - 0.35rem - 2px) / 2);
-}
-
-/* Reads as an action, not as a project: muted until pointed at, so the list below it stays the
-   thing the eye lands on first. */
-.new-project-action {
-    border-radius: var(--radius-md);
-    color: var(--color-text-faint);
-}
-
-.new-project-action:hover,
-.new-project-action:focus-visible {
-    background: var(--color-fill-hover);
-}
-
-.new-project-action .app-icon {
-    width: var(--nav-mark);
-    height: var(--nav-mark);
+/* A project is a lettered tile, a chat an icon: the two levels of the tree differ at a glance
+   instead of only by indent. The tile carries the project's run status as a dot in its corner,
+   ringed in the sidebar's background so it reads as a badge on the tile rather than a stain. */
+.project-monogram {
+    position: relative;
+    display: inline-grid;
     flex: none;
+    width: 1.3rem;
+    height: 1.3rem;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--color-fill-strong);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 1;
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
 }
+
+.project-nav-row.selected .project-monogram {
+    background: var(--color-accent-fill);
+    color: var(--color-on-accent);
+}
+
+.project-monogram > .status-dot {
+    position: absolute;
+    top: -0.18rem;
+    right: -0.18rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-width: 0;
+    box-shadow: 0 0 0 2px var(--color-bg-sunken);
+}
+
+/* The hollow "nothing to report" dot is for rows that have no other mark; the tile is that mark. */
+.project-monogram > .status-dot:not([class*="run-status-"]) { display: none; }
+
+.project-nav-row .nav-item-label { color: var(--color-text-secondary); }
+.project-nav-row.selected .nav-item-label { color: var(--color-text-strong); font-weight: 600; }
+
+/* Section headings (Projects, Recents, Notifications, Scheduled) share one quiet, letter-spaced
+   label, so the sidebar reads as a few labelled groups rather than one long list. */
+.sidebar-section-title {
+    padding: 0.25rem 0.55rem;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.sidebar-projects-header { margin-top: 0.7rem; margin-bottom: 0.1rem; }
+
+/* The heading's own action: present but quiet, so the list below it stays what the eye lands on. */
+.sidebar-section-icon-action {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-color: transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-faint);
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.sidebar-section-icon-action:hover,
+.sidebar-section-icon-action:focus-visible {
+    background: var(--color-fill-hover);
+    color: var(--color-text-strong);
+}
+
+.sidebar-section-icon-action .app-icon { width: 0.9rem; height: 0.9rem; }
+
+/* Search looks like the field it opens: the first thing in the sidebar, with its shortcut inside. */
+.search-nav-action {
+    min-height: 2rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-input-bg);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-base);
+    transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.search-nav-action:hover,
+.search-nav-action:focus-visible,
+.search-nav-action.selected {
+    border-color: var(--color-border-strong);
+    color: var(--color-text-secondary);
+}
+
+.search-nav-action > .app-icon { width: 0.9rem; height: 0.9rem; }
 
 .workspace-nav-item {
     display: flex;
@@ -671,8 +739,10 @@ body {
     white-space: nowrap;
 }
 
+/* The open project is marked by its tile and its bold name, and its chats hang right below it;
+   a filled row as well would compete with the open chat's highlight. */
 .project-nav-row.selected {
-    background: var(--color-fill-hover);
+    background: transparent;
 }
 
 .project-nav-row.dragging,
@@ -906,6 +976,18 @@ body {
     margin: var(--sidebar-group-gap) 0 0.35rem var(--sidebar-row-indent);
 }
 
+/* Everything under the open project hangs off one guide line from the middle of its tile, and the
+   next project starts after a gap, so where one project ends is never in doubt. */
+.project-tree {
+    display: grid;
+    margin: 0.1rem 0 0.6rem calc(0.55rem + 0.65rem - 0.5px);
+    padding-left: 0.3rem;
+    border-left: 1px solid var(--color-border);
+}
+
+.project-tree > .workspace-chat-list,
+.project-tree > .directory-nav-group { margin-left: 0; }
+
 /* Reordering pinned chats (chatListDrag.js). The whole row is the handle; a long press starts the
    drag on touch, so the platform's own long-press callout has to stay out of the way. */
 .workspace-chat-list .chat-nav-row[data-chat-id] { -webkit-touch-callout: none; }
@@ -1078,7 +1160,7 @@ body {
    minus the indent that nests them under a project. */
 .sidebar-recents {
     display: grid;
-    margin-top: 0.85rem;
+    margin-top: 1rem;
 }
 
 .sidebar-section-header {
@@ -1096,19 +1178,27 @@ body {
     width: fit-content;
     padding: 0.25rem 0.55rem;
     border-color: transparent;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-faint);
-    font-size: var(--font-size-md);
-    font-weight: 500;
+    font-size: var(--font-size-2xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
 }
 
 .sidebar-section-toggle:hover,
 .sidebar-section-toggle:focus-visible {
-    background: var(--color-fill-hover);
+    background: transparent;
     color: var(--color-text-secondary);
 }
+
+/* The fold chevron is the heading's affordance, not part of its name: it shows when pointed at,
+   and always on a folded section, which would otherwise look like a section with nothing in it. */
+.sidebar-section-toggle .sidebar-section-chevron { opacity: 0; transition: opacity var(--duration-fast) ease, transform var(--duration-fast) ease; }
+.sidebar-section-toggle:is(:hover, :focus-visible, [aria-expanded="false"]) .sidebar-section-chevron { opacity: 1; }
+.sidebar-section-toggle > .sidebar-section-count { letter-spacing: 0; }
 
 .sidebar-section-toggle > .sidebar-section-count {
     margin-left: 0.1rem;
@@ -1239,12 +1329,44 @@ body {
     margin-top: 0.5rem;
 }
 
+/* The application sections are a row of icons at the foot of the sidebar: they are opened now
+   and then, so they give the height to the chats. The name and shortcut are in each tooltip and
+   the accessible name; the counts are in the sections themselves. */
 .sidebar-global-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0.15rem;
     margin: 0;
-    padding: 0.65rem 1rem 0.75rem;
+    padding: 0.4rem 0.7rem 0.5rem;
     border-top: 1px solid var(--color-border-subtle);
     background: var(--color-bg-sunken);
 }
+
+.sidebar-global-nav .workspace-nav-item {
+    position: relative;
+    justify-content: center;
+    height: 2rem;
+    padding: 0;
+    border-radius: var(--radius-md);
+}
+
+.sidebar-global-nav .workspace-nav-item:hover,
+.sidebar-global-nav .workspace-nav-item:focus-visible { background: var(--color-fill-hover); }
+.sidebar-global-nav .workspace-nav-item:hover .app-icon { color: var(--color-text-strong); }
+.sidebar-global-nav .workspace-nav-item.selected { background: var(--color-accent-bg-hover); }
+
+.sidebar-global-nav .workspace-nav-item > span:not(.host-status-dot),
+.sidebar-global-nav .workspace-nav-item > .nav-item-shortcut {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+/* The published app's link to the Host stays visible, as a dot on the Settings icon. */
+.sidebar-global-nav .host-status-dot { position: absolute; top: 0.35rem; right: calc(50% - 0.7rem); margin: 0; }
 
 .root-nav .workspace-nav-item {
     gap: 0.55rem;
@@ -1613,6 +1735,28 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-nav-row.selected:is(:hover, :focus-within, :has(.menu-open)) { --row-bg: var(--color-accent-bg-active); }
 .chat-nav-row.selected .nav-item-label { color: var(--color-text-strong); }
 
+/* A short accent bar at the open row's start edge says "you are here" even where the tint is
+   faint, as on the light themes. */
+.chat-nav-row.selected::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    left: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+    pointer-events: none;
+}
+
+/* Something new in the chat itself — an answer, a question, a failure — makes its title bold, the
+   way unread mail does: a cue that does not depend on telling the icon's colours apart. */
+.chat-link:has(> .chat-icon-with-branch-count > .app-icon:is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
+    color: var(--color-text-strong);
+    font-weight: 600;
+}
+
 .chat-nav-row .workspace-nav-item {
     grid-column: 1 / -1;
     grid-row: 1;
@@ -1806,6 +1950,10 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 /* Mirrors the add(+)/edit/menu column layout shared by project and chat rows, so the
    action buttons line up in the same vertical columns across all three row types. */
 .directory-nav-row > .directory-add-button { grid-column: 2; }
+/* The heading row has no other actions, so its add button takes the last track and the label
+   keeps the rest: in the first track it covered the directory count in a narrow sidebar. */
+.directory-nav-row-header > .directory-add-button { grid-column: 4; }
+.directory-nav-row-header > .directory-row-main { padding-right: 1.9rem; }
 .directory-nav-row > .directory-edit-button { grid-column: 3; }
 .directory-nav-row > .directory-menu-button { grid-column: 4; }
 
@@ -1858,6 +2006,13 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     right: 0;
     display: grid;
     width: 14rem;
+    overflow-y: auto;
+}
+
+/* Set by workspaceLayout.js when the row sits too low in the sidebar for the menu to fit below. */
+.chat-menu.opens-up {
+    top: auto;
+    bottom: calc(100% + 0.25rem);
 }
 
 .chat-menu > button {
@@ -1874,6 +2029,15 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .archive-nav-item {
     color: var(--color-text-muted);
 }
+
+/* Archive and Directories belong to the project but are not chats: smaller and fainter, so the
+   chat titles above them stay the list. */
+.archive-nav-item { color: var(--color-text-faint); font-size: var(--font-size-md); }
+.archive-nav-item > .directory-count { margin-left: auto; }
+.project-tree .directory-nav-row-header,
+.project-tree .directory-empty-action { color: var(--color-text-faint); font-size: var(--font-size-md); }
+.project-tree .directory-nav-row-header .app-icon,
+.archive-nav-item > .app-icon { width: 0.9rem; height: 0.9rem; }
 
 .archive-nav-item > .app-icon,
 .chat-link > .app-icon,
@@ -1902,34 +2066,33 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-icon-with-branch-count > .app-icon.run-status-interrupted,
 .branch-option-icon.run-status-interrupted { color: var(--color-text-faint); }
 
-/* The count overlays the lower-right corner of the chat icon, so it remains visible without
-   taking horizontal space from the title. Its colour represents the highest-priority visible
-   state among alternative branches; the chat icon keeps representing the main branch. */
+/* The chat's icon wrapper; the branch count used to overlay its corner and now follows the title. */
 .chat-icon-with-branch-count {
     position: relative;
     display: inline-flex;
     flex: 0 0 auto;
 }
 
+/* How many branches the chat has, after its title: a quiet chip with the branch icon, coloured by
+   the most urgent status among the branches, while the chat's own icon keeps the main line's. */
 .chat-branch-count {
-    position: absolute;
-    right: -0.38rem;
-    bottom: -0.28rem;
-    display: grid;
-    min-width: 0.78rem;
-    height: 0.72rem;
-    box-sizing: border-box;
-    place-items: center;
-    padding: 0 0.12rem;
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--color-fill-active);
-    color: var(--color-text-muted);
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.15rem;
+    margin-left: auto;
+    padding: 0.05rem 0.3rem 0.05rem 0.25rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-fill);
+    color: var(--color-text-faint);
     font-size: var(--font-size-2xs);
     font-weight: 600;
-    line-height: 1;
+    line-height: 1.3;
     font-variant-numeric: tabular-nums;
 }
+
+.chat-link > .chat-branch-count > .app-icon { width: 0.65rem; height: 0.65rem; color: inherit; }
+.chat-branch-count:is(.run-status-unread, .run-status-attention, .run-status-failed) { background: color-mix(in srgb, currentColor 14%, transparent); }
 
 .chat-branch-count.run-status-generating { color: var(--color-text-strong); }
 .chat-branch-count.run-status-unread { color: var(--color-unread); }

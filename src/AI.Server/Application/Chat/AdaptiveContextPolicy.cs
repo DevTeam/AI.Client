@@ -153,6 +153,11 @@ public sealed partial class AdaptiveContextPolicy(
         var floor = Math.Min(profile.ToolTokens, profile.UsableTokens / 10);
         var budget = Math.Min(profile.ToolTokens, Math.Max(floor, profile.UsableTokens
             - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
+        // Prioritized tools, especially those pinned by a routed skill, need only a few unrelated
+        // schemas beside them. An omitted capability can be added through tool_search when needed.
+        var ordinaryToolLimit = pinnedTools is { Count: > 0 }
+            ? Math.Min(profile.MaximumTools, Math.Max(8, pinnedTools.Count + 2))
+            : profile.MaximumTools;
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
             .Select(tool => new Candidate(tool, estimator.EstimateTools([tool.ModelDefinition]),
@@ -186,7 +191,7 @@ public sealed partial class AdaptiveContextPolicy(
         foreach (var item in candidates)
         {
             var ceiling = item.Required || item.Discovered || item.Core ? budget : budget * 4 / 5;
-            if (!item.Required && ((!item.Discovered && !item.Core && selected.Count >= profile.MaximumTools)
+            if (!item.Required && ((!item.Discovered && !item.Core && selected.Count >= ordinaryToolLimit)
                 || item.Tokens > ceiling - tokens)) continue;
             selected.Add(item.Tool);
             tokens += item.Tokens;

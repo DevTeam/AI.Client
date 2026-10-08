@@ -69,7 +69,7 @@ public enum AppResource
     /// </summary>
     Skills,
 
-    /// <summary>Declared MCP tools, schemas, hints and default decisions of one enabled server selected by resourceId; calls no tools.</summary>
+    /// <summary>Declared MCP tools and default decisions of one enabled server selected by resourceId; calls no tools.</summary>
     McpTools,
 }
 
@@ -106,8 +106,9 @@ public sealed class AppReadTool(
                               + "'Messages' omits the body of tool results (contentOmitted); pass a message id as resourceId to read that one message whole. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
-                              + "'McpTools' needs resourceId of an enabled MCP server from Settings and lists its declared tools "
-                              + "with original names, schema hashes, input schemas, annotations and default decisions for configuring tool policies. "
+                              + "'McpTools' needs resourceId of an enabled MCP server from Settings. Pass includeSchemas=false "
+                              + "for a compact policy inventory; query selects one exact original tool name when its full schema is needed. "
+                              + "The result includes names, schema hashes, annotations and default decisions. "
                               + "Project, Chat and Settings list saved overrides only; an absent rule uses the tool's default decision. "
                               + "A server policy of Ask does not make all its tools Ask. "
                               + "Discovery connects to that server but calls no tools and grants no directory access. "
@@ -142,9 +143,10 @@ public sealed class AppReadTool(
             ChatArchiveScope archiveScope = ChatArchiveScope.Active,
             DateTimeOffset? activityBefore = null,
             DateTimeOffset? activityAfter = null,
+            bool includeSchemas = true,
             CancellationToken cancellationToken = default) =>
             tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, cursor, limit, query, isRegex,
-                ignoreCase, roles, archiveScope, activityBefore, activityAfter, cancellationToken);
+                ignoreCase, roles, archiveScope, activityBefore, activityAfter, includeSchemas, cancellationToken);
     }
 
     private async Task<CallToolResult> ReadAsync(
@@ -163,6 +165,7 @@ public sealed class AppReadTool(
         ChatArchiveScope archiveScope = ChatArchiveScope.Active,
         DateTimeOffset? activityBefore = null,
         DateTimeOffset? activityAfter = null,
+        bool includeSchemas = true,
         CancellationToken cancellationToken = default)
     {
         try
@@ -179,7 +182,7 @@ public sealed class AppReadTool(
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, archiveScope, cancellationToken));
             return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, query,
-                archiveScope, activityBefore, activityAfter, cancellationToken));
+                archiveScope, activityBefore, activityAfter, includeSchemas, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -210,7 +213,8 @@ public sealed class AppReadTool(
 
     private async Task<AppReadResult> PageAsync(
         AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId, string? cursor, int limit,
-        string? query, ChatArchiveScope archiveScope, DateTimeOffset? activityBefore, DateTimeOffset? activityAfter, CancellationToken cancellationToken)
+        string? query, ChatArchiveScope archiveScope, DateTimeOffset? activityBefore, DateTimeOffset? activityAfter,
+        bool includeSchemas, CancellationToken cancellationToken)
     {
         switch (resource)
         {
@@ -230,11 +234,22 @@ public sealed class AppReadTool(
                         ToolRunContext.None, deadline.Token);
                     if (session.Tools.Count == 0)
                         throw new InvalidOperationException("The MCP server connected successfully but declared no tools.");
-                    return Paging.Page("McpTools", session.Tools.Select(tool => new
+                    var declared = session.Tools.Where(tool => string.IsNullOrWhiteSpace(query)
+                        || tool.OriginalName.Equals(query, StringComparison.Ordinal)).ToArray();
+                    if (includeSchemas)
+                        return Paging.Page("McpTools", declared.Select(tool => new
+                        {
+                            tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
+                            DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
+                            tool.Descriptor.Description, tool.Descriptor.InputSchema, tool.Descriptor.Annotations
+                        }).ToArray(), cursor, limit, reply.Json);
+                    return Paging.Page("McpTools", declared.Select(tool => new
                     {
                         tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
                         DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
-                        tool.Descriptor.Description, tool.Descriptor.InputSchema, tool.Descriptor.Annotations
+                        Description = tool.Descriptor.Description is { Length: > 240 } description
+                            ? description[..240] + "…" : tool.Descriptor.Description,
+                        tool.Descriptor.Annotations
                     }).ToArray(), cursor, limit, reply.Json);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

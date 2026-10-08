@@ -18,8 +18,11 @@ user's language. Use another scope only when the user explicitly requested it.
    Match supplied server names exactly; ambiguous or missing names are unresolved, never guessed.
    Skip disabled or denied servers without enabling them. Keep unrelated policies, directory
    grants, credentials and server settings unchanged.
-2. For each selected server, read `app_read` resource=McpTools with resourceId=the server id,
-   following nextCursor until complete. This connects for discovery but calls no tools. On a
+2. For each selected server, read `app_read` resource=McpTools with resourceId=the server id.
+   When exact original tool names were supplied, fetch each one directly with `query` set to that
+   name and includeSchemas=true. Otherwise first read a compact inventory with
+   includeSchemas=false, following nextCursor until complete, then fetch each selected tool's
+   full schema by exact query before classifying it. Discovery connects but calls no tools. On a
    discovery error, report that server and continue other servers; never guess its tool identities.
    Select supplied tool names exactly, or all discovered tools when none were specified. Policies
    use the returned (serverId, name, schemaHash), never the model's prefixed function name.

@@ -1110,6 +1110,10 @@ body {
     color: var(--color-text-secondary);
 }
 
+.sidebar-section-toggle > .sidebar-section-count {
+    margin-left: 0.1rem;
+}
+
 .sidebar-section-chevron {
     width: 0.75rem;
     height: 0.75rem;
@@ -1173,6 +1177,20 @@ body {
     font-size: var(--font-size-2xs);
     line-height: 1;
 }
+
+/* An unread notification on a row in the sidebar's Notifications, at the end of its label: what
+   to do first, then a failure, then news. */
+.nav-notice-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    flex: none;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--color-accent);
+}
+
+.nav-notice-dot.is-error { background: var(--color-danger); }
+.nav-notice-dot.is-action { background: var(--color-warning); }
 
 /* The chevron takes the icon slot, so the label still starts where chat titles do. */
 .chat-list-more.recent-chat-pager {

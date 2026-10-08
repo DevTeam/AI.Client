@@ -24,6 +24,10 @@ Choose:
   talk, questions answered from knowledge, and tasks no skill covers.
   A request to implement a read-only plan or fix review findings changes the task: choose the
   appropriate implementation/fix skill instead of keeping the read-only skill active.
+  Use project-configure for initial configuration of an existing project across its purpose, memory,
+  directories, tool permissions, MCP servers, skills and recurring chats. If the user asks to
+  create a new project and set it up, run project-create first so setup continues in that
+  project's first chat.
   Team work: choose team-assemble first when the message asks for a large piece of work spanning
   several independent areas that could proceed at the same time — for example an API, its UI and
   its tests; several modules or services; a comparison of several options researched separately —

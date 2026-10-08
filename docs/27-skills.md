@@ -80,6 +80,7 @@ application permissions, and every write still goes through tool approval.
 | `chat-schedule-delete` | Removes the schedule (keeping the chat), pauses it, or deletes the chat, after one confirmation | `app_schedule`, `app_read`, `app_chats`, `ask_user` |
 | `chat-schedule-run` | In a scheduled run branch carries out the task, checks the success criteria and reports the outcome; elsewhere starts a run now. The dispatcher attaches it to every run | `app_schedule`, `app_read`, `ask_user`, `tool_search` |
 | `project-create` | Creates a project from picked directories with a suggested name and access, creates its first chat, submits the requested work there and opens it | `app_projects`, `app_security`, `app_chats`, `app_runs`, `app_navigate` |
+| `project-configure` (`/project-setup`) | Interviews for the current project's domain and goals, remembers durable facts, and coordinates selected access, MCP, skill and recurring-chat setup | `app_read`, `ask_user`, `skill_search`, `tool_search`, `run_skill` |
 | `project-rename` | Offers three names that keep the current meaning and applies the chosen one | `app_projects` Update |
 | `project-describe` | Drafts a description from the project's README and manifests | `app_projects` Update |
 | `project-directory-add` | Grants more directories, read-only or read-write | `app_security` AddDirectoryGrant |

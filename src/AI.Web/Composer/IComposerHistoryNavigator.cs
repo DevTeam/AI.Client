@@ -13,9 +13,9 @@ namespace AI.Web.Composer;
 /// <remarks>
 /// Pure state machine on purpose: the page owns the textarea, the storage and the JS interop,
 /// and none of that is needed to decide which entry Up/Down should land on — which is the part
-/// that is easy to get wrong (losing the draft, walking past either end, resuming a stale index
-/// after the chat changed underneath). The contract is the part the page actually consumes; the
-/// implementation lives in <see cref="ComposerHistoryNavigator"/>.
+/// that is easy to get wrong (entering history with text in the field, walking past either end,
+/// resuming a stale index after the chat changed underneath). The contract is the part the page
+/// actually consumes; the implementation lives in <see cref="ComposerHistoryNavigator"/>.
 /// </remarks>
 public interface IComposerHistoryNavigator
 {
@@ -26,19 +26,19 @@ public interface IComposerHistoryNavigator
     bool IsActive { get; }
 
     /// <summary>
-    /// Moves one entry towards older messages. Returns the text to show, or null when there is
-    /// nothing to move to (empty history, or already at the oldest entry) and the composer
-    /// should be left alone.
+    /// Moves one entry towards older messages. Returns the text to show, or null when the press
+    /// changes nothing (the field already holds the user's own text, the history is empty, or the
+    /// oldest entry is already showing) and the composer should be left alone.
     /// </summary>
     string? MoveOlder(IReadOnlyList<string> history, string currentText);
 
     /// <summary>
-    /// Moves one entry towards newer messages, returning the draft the user started from once it
-    /// steps past the newest entry. Null when not browsing at all.
+    /// Moves one entry towards newer messages, clearing the field once it steps past the newest
+    /// entry. Null when not browsing at all.
     /// </summary>
     string? MoveNewer(IReadOnlyList<string> history);
 
-    /// <summary>Leaves history and returns the draft to restore, or null when not browsing.</summary>
+    /// <summary>Leaves history and returns the empty text to put back, or null when not browsing.</summary>
     string? Exit();
 
     /// <summary>

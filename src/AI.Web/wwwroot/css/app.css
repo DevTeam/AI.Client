@@ -1075,7 +1075,7 @@ body {
 
 /* Recents (Home.Recents.cs): the latest chats of every project, under the project list. The
    heading is a quiet fold toggle rather than a title; the rows are the chat rows themselves,
-   minus the indent that nests them under a project and minus their actions. */
+   minus the indent that nests them under a project. */
 .sidebar-recents {
     display: grid;
     margin-top: 0.85rem;
@@ -1115,28 +1115,6 @@ body {
 
 .workspace-chat-list.recent-chat-list {
     margin: var(--sidebar-group-gap) 0 0;
-}
-
-/* No row actions here, so nothing for the fade to clear room for. */
-.recent-chat-list .chat-nav-row::after {
-    content: none;
-}
-
-/* Which project the chat lives in: secondary to the title, so it gives way first. */
-.recent-chat-project {
-    flex: none;
-    max-width: 40%;
-    margin-left: auto;
-    padding-left: 0.4rem;
-    overflow: hidden;
-    color: var(--color-text-faint);
-    font-size: var(--font-size-sm);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.chat-nav-row.selected .recent-chat-project {
-    color: var(--color-text-subtle);
 }
 
 /* The chevron takes the icon slot, so the label still starts where chat titles do. */

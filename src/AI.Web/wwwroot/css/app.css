@@ -2309,15 +2309,18 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     .messages-jump-dot { animation: none; }
 }
 
-/* Sits in the left gutter of the centred message column, so it never shifts the text. */
+/* Sits in the left gutter of the centred message column, so it never shifts the text.
+   Wide enough for a fully bent dash (--history-marker-dash x the peak scale in historyMarkers.js),
+   since the strip clips its own overflow for the internal scroll. */
 .history-markers {
+    --history-marker-dash: 0.45rem;
     position: absolute;
     z-index: 4;
     top: var(--history-rail-top);
     bottom: 1.1rem;
     left: 0.5rem;
     display: flex;
-    width: 1.1rem;
+    width: 1.85rem;
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
@@ -2336,54 +2339,52 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     display: none;
 }
 
-/* The button is a comfortable hit target; the visible dash is drawn by ::before,
-   so a 2px line never means a 2px thing to aim at. */
+/* The button spans the whole strip width, a comfortable hit target; the visible dash is drawn
+   by ::before, so a short 2px line never means a short 2px thing to aim at. */
 .history-marker {
     position: relative;
     display: flex;
-    width: 1.1rem;
-    height: 0.7rem;
+    width: 100%;
+    height: 0.5rem;
     flex: none;
     align-items: center;
     padding: 0;
     border: 0;
     background: transparent;
-    /* A dim faint tone at rest that brightens towards the full faint tone along the bulge.
-       historyMarkers.js writes --history-marker-focus (0 far away, 1 at the peak) next to the
-       inline transform; the colour itself stays here, built from the palette. */
+    /* A dim faint tone at rest that brightens towards the full faint tone along the hover bend.
+       historyMarkers.js writes --history-marker-focus (0 far away, 1 at the peak) next to
+       --history-marker-scale; the colour itself stays here, built from the palette. */
     color: color-mix(in srgb, var(--color-text-faint) calc(45% + var(--history-marker-focus, 0) * 55%), transparent);
-    /* Scaled rather than resized: transform stays off the layout path, so scrolling never reflows.
-       The actual factor is written by historyMarkers.js as an inline transform.
-       Left-anchored, so every dash starts on one line and the bulge bends only towards the
-       message column, where user questions are right-aligned and leave the gutter empty. */
-    transform: scaleX(1);
-    transform-origin: left center;
-    transition: transform var(--duration-fast) ease, color var(--duration-fast) ease;
+    transition: color var(--duration-fast) ease;
 }
 
+/* Scaled rather than resized: transform stays off the layout path, so hovering never reflows.
+   Left-anchored, so every dash starts on one line and the bend grows only towards the message
+   column, where user questions are right-aligned and leave the gutter empty. */
 .history-marker::before {
-    width: 100%;
+    width: var(--history-marker-dash);
     height: 2px;
     border-radius: var(--radius-pill);
     background: currentColor;
     content: "";
-    transition: height var(--duration-fast) ease;
+    transform: scaleX(var(--history-marker-scale, 1));
+    transform-origin: left center;
+    transition: transform var(--duration-fast) ease, height var(--duration-fast) ease;
 }
+
+/* Turns whose question or final answer is on screen right now. */
+.history-marker.in-view { color: var(--color-text); }
 
 .history-marker.active { color: var(--color-text-strong); }
 
-/* Hover cannot use transform — the fisheye factor already owns it — so it reacts with colour
-   and a thicker dash instead. */
 .history-marker:hover { color: var(--color-text-strong); }
-.history-marker:hover::before { height: 4px; }
+.history-marker:hover::before { height: 3px; }
 
-/* A fork point is one stripe (::before, unchanged) plus a short upright tick to its left —
+/* A fork point is one stripe (::before, shifted right) plus a short upright tick to its left —
    the branch mark — rather than a second stacked dash. Vertical, not diagonal: a diagonal
-   tick would visibly skew as the horizontal fisheye scale changes; a vertical one only shifts
-   sideways, which reads as intentional rather than broken. */
+   tick would visibly skew as the horizontal bend scale changes. */
 .history-marker-fork::before {
-    margin-left: 0.3rem;
-    width: calc(100% - 0.3rem);
+    margin-left: 0.25rem;
 }
 
 .history-marker-fork::after {
@@ -2436,7 +2437,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     opacity: 1;
 }
 
-/* Sit right over the strip's own top/bottom edge (same left/width as .history-markers), toggled
+/* Sit right over the strip's own top/bottom edge, centred over the resting dashes (strip inset
+   0.5rem + half a 0.45rem dash - half its own width), toggled
    by historyMarkers.js alongside the fade mask — same canScrollUp/canScrollDown signal, just a
    second, more explicit form of it. Hoverable (unlike the rest of the strip's decorations) so
    resting the pointer on one scrolls the feed in that direction; pointer-events stays off while
@@ -2444,7 +2446,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .history-scroll-hint {
     position: absolute;
     z-index: 6;
-    left: 0.5rem;
+    left: 0.175rem;
     width: 1.1rem;
     height: 1.2rem;
     display: flex;

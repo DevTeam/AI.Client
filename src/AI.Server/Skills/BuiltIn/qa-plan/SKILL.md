@@ -52,4 +52,7 @@ queries and existing result inspection are allowed; describe unavailable verific
    several independent test areas worth running at the same time, mention that team-assemble
    could carry them out as a team.
 7. Report the complete plan, prioritized risks, source links, acceptance/exit criteria and
-   open decisions. Planning does not execute checks; a request to execute is a different task.
+   open decisions. If several test layers or prerequisites have meaningful dependencies, add one
+   compact `mermaid` fenced diagram that reflects the plan. Keep scenarios, ownership, criteria
+   and blockers explicit in text; omit the diagram when it repeats the plan or delays the work.
+   Planning does not execute checks; a request to execute is a different task.

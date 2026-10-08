@@ -37,8 +37,12 @@ data or repository files. Report any unavailable evidence instead of treating it
 4. Explain from the user's observable behavior down to the implementation. Use a concrete
    example when useful; cover error handling, async/concurrent behavior and important edge
    cases. Distinguish what the code does from an inferred reason why it was designed that way.
-5. For a diagram, derive nodes and edges from the inspected code. Cite real files and symbols,
-   and line numbers when verified. Link source locations with absolute file URIs ending in
-   `#L42` or `#L42-L48`. Do not fabricate APIs, execution results or author intent.
+5. When a visual clarifies a nontrivial call path, data flow or state change, add one compact
+   `mermaid` fenced diagram of a suitable type. Derive every node and edge from the inspected
+   code; do not imply sequence for parallel behavior. Keep the explanation, source references
+   and important edge cases in text so the diagram is optional for readers. Omit it when a short
+   explanation suffices. Cite real files and symbols, and line numbers when verified. Link source
+   locations with absolute file URIs ending in `#L42` or `#L42-L48`. Do not fabricate APIs,
+   execution results or author intent.
 6. The final answer contains the explanation in full, source links, relevant limitations and
    any remaining uncertainty. Recommendations may be included when requested, but are not edits.

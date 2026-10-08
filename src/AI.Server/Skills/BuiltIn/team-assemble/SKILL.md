@@ -57,8 +57,12 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    intent `Decision`, no `operationId`, and content headed "Team charter" with: goal and done,
    glossary, phases, a table of teammates whose first column is the identity ("Ada · Backend"),
    then scope, owned paths, deliverable and done; the lead as "Lead"; the contracts; and the
-   protocol below. Keep the result's `messageId`: it is the charter's id. Name teammates by their identity in the phases and contracts too. Make that call alone in
-   its step: the aside joins this turn after the call's result, and the branches must start from it.
+   protocol below. A compact Mermaid diagram may follow the text when it clarifies actual phases,
+   dependencies or ownership. Keep every assignment, contract and decision explicit in text: the
+   diagram is a visual summary, not a source of instructions for teammates. Keep the result's
+   `messageId`: it is the charter's id. Name teammates by their identity in the phases and
+   contracts too. Make that call alone in its step: the aside joins this turn after the call's
+   result, and the branches must start from it.
 8. In the next step, read the main branch with `app_read` and confirm the charter message is there.
    Then for each teammate: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Fork`,
    `parentMessageId` = the charter's id, no `operationId`, intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
@@ -69,8 +73,14 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    only what is the teammate's own. Each result's `branchId` is that teammate's branch; every
    message it sends you carries the same branchId in its header.
 9. Answer with the team as a table (identity, deliverable) and one line on how it works: the
-   teammates report to this branch, which coordinates them with the team-coordinate skill. Do not
-   wait for the teammates in this turn, and do not read their branches over and over: what they
+   teammates report to this branch, which coordinates them with the team-coordinate skill. When
+   a visual helps the user understand the team, add one small `mermaid` fenced diagram that shows
+   the actual phase or dependency relationships. Choose a suitable diagram type; prefer a
+   top-to-bottom flowchart for dependencies, and do not invent sequencing between parallel parts.
+   Use the same teammate identities and terms as the charter. Keep the table and essential facts
+   in text so the diagram remains optional for readers and model teammates. Omit the diagram if
+   it repeats the table without adding clarity or delays starting the work. Do not wait for the
+   teammates in this turn, and do not read their branches over and over: what they
    send arrives here as messages.
 
 Protocol to put in the charter:

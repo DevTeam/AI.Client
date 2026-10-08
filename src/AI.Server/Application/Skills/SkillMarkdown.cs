@@ -7,6 +7,8 @@ using Json.Schema;
 public static class SkillMarkdown
 {
     public const int MaxLength = 48_000;
+    public const int MaxNameLength = 120;
+    public const int MaxDescriptionLength = 1_000;
 
     public static SkillDefinition Parse(string content, string source, Guid? projectId = null)
     {
@@ -32,8 +34,10 @@ public static class SkillMarkdown
                 + $"or SVG path data on a 24x24 grid, starting with M, up to {SkillIcons.MaxPathLength} characters.");
         var name = Field("name") ?? throw new ArgumentException("SKILL.md needs name.");
         var description = Field("description") ?? throw new ArgumentException("SKILL.md needs description.");
-        if (name.Length > 120 || description.Length > 400)
-            throw new ArgumentException("Skill name or description is too long.");
+        // The description is what routing matches a request against, so it has room for the
+        // phrasings people use, not just a one-line summary.
+        if (name.Length > MaxNameLength || description.Length > MaxDescriptionLength)
+            throw new ArgumentException($"A skill name is up to {MaxNameLength} characters and a description up to {MaxDescriptionLength}.");
         var parameters = Schema(Field("parameters") ?? throw new ArgumentException("SKILL.md needs parameters."), "parameters");
         var kind = Field("kind") ?? SkillKinds.Generic;
         if (kind is not (SkillKinds.Generic or SkillKinds.Playbook or SkillKinds.Executor))

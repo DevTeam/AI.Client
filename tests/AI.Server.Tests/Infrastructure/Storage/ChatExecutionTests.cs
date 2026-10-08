@@ -443,6 +443,129 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task APersonsMessageDuringARunShouldJoinTheTurnAndQueuedOnesShouldWaitWithoutStoppingIt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run the tests"));
+        var first = await fixture.NextCallAsync();
+
+        var later = Guid.NewGuid();
+        var queued = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), later, "Then update the changelog",
+            ChatSubmitMode.Queue));
+        queued.Status.ShouldBe(ChatRunStatus.Generating);
+        var hint = Guid.NewGuid();
+        var sent = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), hint, "Use the Release build"));
+        sent.Queue.Select(item => item.Id).Skip(1).ShouldBe([hint, later]);
+        sent.Queue[1].JoinsTurn.ShouldBeTrue();
+
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        var second = await fixture.NextCallAsync();
+        second.Request.ContextMessages!.ShouldContain(item => item.MessageId == hint);
+        second.Answer.SetResult("All green");
+
+        // The queued message was not part of the turn: it runs after it, as a turn of its own.
+        var third = await fixture.NextCallAsync();
+        third.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary).MessageId.ShouldBe(later);
+        third.Answer.SetResult("Changelog updated");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.Id == hint).Delivery.ShouldBe(MessageDelivery.InTurn);
+    }
+
+    [Fact]
+    public async Task APersonsMessageArrivingDuringTheFinalAnswerShouldBeTheNextTurnAheadOfTheQueue()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Summarize"));
+        var first = await fixture.NextCallAsync();
+        var later = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), later, "Translate it", ChatSubmitMode.Queue));
+        var hint = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), hint, "Keep it short"));
+        first.Answer.SetResult("A summary");
+
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary).MessageId.ShouldBe(hint);
+        next.Answer.SetResult("A short summary");
+        var last = await fixture.NextCallAsync();
+        last.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary).MessageId.ShouldBe(later);
+        last.Answer.SetResult("Translated");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+    }
+
+    [Fact]
+    public async Task AMessageSentAfterStopShouldStartAfreshInsteadOfRunningTheStoppedTurnAgain()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        var stoppedId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), stoppedId, "Rewrite the whole module"));
+        await fixture.NextCallAsync();
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+
+        var next = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), next, "Only fix the null check"));
+        var call = await fixture.NextCallAsync();
+        var users = call.Request.ContextMessages!.Where(item => item.Role == "user" && !item.IsContextSummary).ToList();
+        users[^1].MessageId.ShouldBe(next);
+        users.ShouldContain(item => item.MessageId == stoppedId);
+        call.Answer.SetResult("Fixed");
+        var completed = await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+        completed.HeadMessageId.ShouldNotBeNull();
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task APersonsMessageShouldEndATriggerWaitSoTheTurnReadsItNow()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        await fixture.SetPolicyAsync("Allow", timeoutSeconds: 600, toolName: "trigger_wait");
+        fixture.Tools.OfferTrigger = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Wait for the build"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__trigger_wait", "{}")];
+        fixture.Tools.HangNextCall = true;
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.ActiveTools is { Count: > 0 });
+
+        var hint = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), hint, "The build is broken, stop waiting"));
+        var second = await fixture.NextCallAsync();
+        second.Request.ContextMessages!.ShouldContain(item => item.MessageId == hint);
+        second.Answer.SetResult("Stopped waiting");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("ended early");
+    }
+
+    [Fact]
+    public async Task QueueOnAnIdleBranchShouldHoldItUntilAMessageIsSent()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        var first = Guid.NewGuid();
+        var held = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), first, "First", ChatSubmitMode.Queue));
+        held.Status.ShouldBe(ChatRunStatus.Paused);
+        var second = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), second, "Second", ChatSubmitMode.Queue));
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Third"));
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages!.Last(item => item.Role == "user" && !item.IsContextSummary).MessageId.ShouldBe(first);
+        call.Answer.SetResult("One");
+        (await fixture.NextCallAsync()).Answer.SetResult("Two");
+        (await fixture.NextCallAsync()).Answer.SetResult("Three");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
+    }
+
+    [Fact]
     public async Task AStepWhoseStreamBrokeOffShouldBeAskedForAgainWithoutFailingTheRun()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2088,8 +2211,10 @@ public sealed partial class ChatExecutionTests
         var runningId = Guid.NewGuid();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), runningId, "Running"));
         var call = await fixture.NextCallAsync();
-        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Waiting one", ChatSubmitMode.Queue));
-        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
+        var waiting = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Waiting one", ChatSubmitMode.Queue));
+        // Queued behind a running turn, a message waits without stopping it.
+        waiting.Status.ShouldBe(ChatRunStatus.Generating);
+        waiting.Queue.Count.ShouldBe(2);
 
         var cleared = await fixture.Dispatcher.ClearAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
 

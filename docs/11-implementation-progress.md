@@ -532,3 +532,21 @@ tests that fail identically on a clean `dbb731a`. Checked in the browser against
 three pickers answer with exact values, the widget schedules a chat, Run now starts a fork that blocks on
 an approval, is shown as waiting, reports success and has its branch deleted by rule; an interrupted run
 after a Host restart is shown as waiting; dark blue and light green themes.
+
+## 2026-10-08 — a simpler composer
+
+The composer keeps four ways of sending and the keys other agents use ([Composer rules](15-composer-rules.md)).
+Enter during a generating turn joins it (`JoinsTurn`, ahead of messages queued for later, and a
+`trigger_wait` in flight ends early on it); Esc stops the turn; Ctrl+Enter queues without stopping
+the turn and holds an idle branch; a message sent after Stop no longer runs the stopped turn again
+first. "Interrupt and send now" and the composer's aside are gone from the tooltip, the empty-chat
+tips and the hints; Alt+Enter and Ctrl+Shift+Enter send as Enter does. The server keeps `SendNow`
+and `Aside` for the API, `app_runs` and the queue's "send now".
+
+Checks: new `ChatExecutionTests` (joining a turn and overtaking the queue, a message during the
+final answer, Send after Stop, Queue on an idle branch, a message ending `trigger_wait`) pass; the
+14 `ChatExecutionTests` that fail also fail on a clean `6d422068`. That commit's
+`chat-schedule-create` description outgrew the 400-character limit, which kept the Host and every
+test of the class from starting; skill descriptions may now be up to 1000 characters. Web:
+595 of 597 pass; the two `SettingsControlsShouldRenderTheSameHelpTheGuideReceives` cases fail on a
+missing `IPublishedDownloadLinks` registration, unrelated to the composer.

@@ -45,5 +45,8 @@ public interface IChatAgent
         Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
         // Told when the turn ends because its steps stopped producing anything new, with the
         // account the model gave of it; that account is also the turn's answer.
-        Func<string, CancellationToken, Task>? stalledReport = null);
+        Func<string, CancellationToken, Task>? stalledReport = null,
+        // A token cancelled once a message is waiting to join the turn. A trigger_wait in flight
+        // ends on it, so the person's message is read now rather than when the wait runs out.
+        Func<CancellationToken>? joinSignal = null);
 }

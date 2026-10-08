@@ -4118,18 +4118,6 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 
 /* One row per action: icon, words, keys. Rows share the panel's columns, so labels and key caps
    line up whatever the number of keys; the action the held keys would take is the lit row. */
-.composer-send-tooltip-heading {
-    grid-column: 1 / -1;
-    padding: 0.45rem 0.5rem 0.25rem;
-    color: var(--color-text-faint);
-    font-size: var(--font-size-2xs);
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-.composer-send-tooltip-heading:first-child { padding-top: 0.25rem; }
-
 .composer-send-tooltip-row {
     display: grid;
     grid-column: 1 / -1;

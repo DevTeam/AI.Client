@@ -64,16 +64,18 @@ and could not start the team it had just described.
 
 | Keys | Idle branch | Running branch |
 |---|---|---|
-| Enter | Send | Queue at the tail |
-| Ctrl+Enter | Queue | Queue |
-| **Alt+Enter** | **Add as an aside** | **Add to the current turn** |
+| Enter | Send | **Add to the current turn** (`JoinsTurn`) |
+| Ctrl+Enter | Queue, branch held | Queue after the turn |
 | Ctrl+Alt+Enter | Branch | Branch |
-| Ctrl+Shift+Enter | Send | Interrupt and send now |
+| Esc | — | Stop |
 
-Alt+Enter is one action with one meaning: *give the model this, do not start a turn for it*. The
-send button tooltip lists it like the other modes and names it by the branch state. The queue panel
-shows a waiting aside with an "Aside" label: it is delivered at the next step, not when its turn
-comes.
+A person's Enter during a turn is what a teammate's question is: it joins the turn in flight at its
+next step, and only a turn that ends first leaves it a turn of its own — the very next one, ahead
+of what was queued for later. Unlike an aside it is never left without an answer. A retry that
+prunes the attempt which took it puts it back as a joining message, not as an aside. Pure asides
+remain for models (`mode: Aside` in `app_runs`) and the HTTP API; the composer no longer offers
+one. The queue panel shows a waiting aside with an "Aside" label: it is delivered at the next step,
+not when its turn comes.
 
 In the transcript an `InTurn` message is shown among the turn's steps with an "Added during the
 turn" label, and an `Aside` message with an "Aside" label and no answer under it.

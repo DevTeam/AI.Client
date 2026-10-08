@@ -538,7 +538,7 @@
                             aria-controls="queued-message-details" title="@(_isQueueExpanded ? "Collapse queued messages" : "Expand queued messages")"
                             @onclick="ToggleQueueDetailsAsync">
                         <span class="chat-summary-icon chat-card-mark" aria-hidden="true"><AppIcon Name="queue" /></span>
-                        <span class="chat-summary-title chat-card-title">Queued · @pendingQueue.Count</span>
+                        <span class="chat-summary-title chat-card-title">@(pendingQueue.All(item => JoinsCurrentTurn(selectedRun, item)) ? "Adding to this turn" : "Queued") · @pendingQueue.Count</span>
                         <span class="chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
                     </button>
                     <div class="queue-actions chat-card-header-actions">
@@ -575,9 +575,10 @@
                                     }
                                     else
                                     {
-                                        @* An aside has no place in the order: the turn in flight takes it at its next
-                                           step, or it follows the reply. Only its text and its presence can change. *@
-                                        @if (!item.IsAside)
+                                        @* An aside, or a message joining the turn, has no place in the order: the turn
+                                           in flight takes it at its next step. Only its text and its presence can change. *@
+                                        var joining = JoinsCurrentTurn(selectedRun, item);
+                                        @if (!item.IsAside && !joining)
                                         {
                                             <button class="queue-drag-handle" type="button" title="Drag to reorder" aria-label="Drag queued message"><AppIcon Name="drag" /></button>
                                         }
@@ -585,6 +586,10 @@
                                             @if (item.IsAside)
                                             {
                                                 <span class="queue-aside-label" title="Read by the turn in flight at its next step, or added after its reply">Aside</span>
+                                            }
+                                            @if (joining)
+                                            {
+                                                <span class="queue-aside-label" title="Read by the turn in flight at its next step; if the turn ends first, it runs next">This turn</span>
                                             }
                                             @if (item.Sender is { } queuedSender)
                                             {
@@ -596,7 +601,7 @@
                                                 <span class="queue-resource-count"> refs: @item.Resources.Count</span>
                                             }
                                         </span>
-                                        @if (!item.IsAside)
+                                        @if (!item.IsAside && !joining)
                                         {
                                             <button class="icon-action queue-send-now" type="button" title="Interrupt and send this message now" aria-label="Interrupt and send this message now" @onclick="() => SendQueuedMessageNowAsync(item.Id)"><AppIcon Name="zap" /></button>
                                             <button class="icon-action" type="button" title="Move up" aria-label="Move up" @onclick="() => MoveQueuedMessageAsync(item.Id, -1)"><AppIcon Name="chevron-up" /></button>
@@ -4497,12 +4502,28 @@ else if (_guideInvitation is { } guideInvitation)
     private Task DiscardCommandAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask
         : RunQueueCommandAsync(() => ChatRunsApi.DiscardAsync(_selectedProject.Id, _selectedChat.Id, GetSelectedRunBranchId(), Guid.CreateVersion7(), CancellationToken.None));
 
-    /// <summary>The rows the queue panel shows: everything that has not been sent yet.</summary>
-    private IReadOnlyList<QueuedChatMessage> GetPendingQueue(ChatRunSnapshot run) =>
-        _hidePendingQueue
-            ? []
-            : run.Queue.Where(item => item.Stage == QueuedMessageStage.Prepared
-                && !_optimisticallyHiddenQueueIds.Contains(item.Id)).ToArray();
+    /// <summary>
+    /// The rows the queue panel shows: everything that has not been sent yet and is not about to be.
+    /// A message sent to a free branch passes through the queue only until the worker takes it, a
+    /// moment later; listing it would announce a wait that is not there.
+    /// </summary>
+    private IReadOnlyList<QueuedChatMessage> GetPendingQueue(ChatRunSnapshot run)
+    {
+        if (_hidePendingQueue) return [];
+        var starting = run.Status is ChatRunStatus.Idle or ChatRunStatus.Completed && !HasCommittedCommand(run)
+            ? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.Prepared && !item.IsAside)?.Id
+            : null;
+        // The worker marks a command active before its message reaches the transcript.
+        return run.Queue.Where(item => item.Stage == QueuedMessageStage.Prepared && item.Id != starting
+            && item.Id != run.ActiveMessageId && !_optimisticallyHiddenQueueIds.Contains(item.Id)).ToArray();
+    }
+
+    /// <summary>
+    /// A person's message waiting to join the turn in flight: it is read at the turn's next step,
+    /// so it is part of that turn rather than one more message in line.
+    /// </summary>
+    private static bool JoinsCurrentTurn(ChatRunSnapshot run, QueuedChatMessage item) =>
+        item is { JoinsTurn: true, Sender: null } && run.Status == ChatRunStatus.Generating;
 
     /// <summary>Whether a command of this run is already a message in the transcript.</summary>
     private static bool HasCommittedCommand(ChatRunSnapshot run) =>

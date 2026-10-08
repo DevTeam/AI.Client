@@ -50,6 +50,11 @@ The goal of the interface is a compact desktop workspace, visually and behaviora
 
 - The queue panel shows only what has not been sent yet. A sent command lives in the transcript,
   not in the list, every line of which would promise edit and delete.
+- Nor does it show a message that is about to run: one sent to a free branch passes through the
+  queue only until the worker takes it, and a "Queued · 1" flashing there announced a wait that
+  never came. A message sent with Enter during a turn is listed with a "This turn" label and
+  without reorder buttons, and while every row is such a message the panel says "Adding to this
+  turn": it is read at the turn's next step, not when its turn comes.
 - A stopped or failed run is shown as a chip at the end of the transcript, after the file-changes
   summary, together with Retry, Continue, From branch head, and Discard actions. The chip uses
   the same card as the changes summary. There is no chip for an ongoing generation: its timing

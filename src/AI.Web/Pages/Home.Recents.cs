@@ -27,6 +27,19 @@ public partial class Home
     private bool _recentsShowMore;
     private bool _recentsStateLoaded;
 
+    // The open chat was reached through Recents: its project folds its chat list like any other
+    // project, and the chat's branches show under its Recents row instead, so they are listed once.
+    // Opening something from anywhere else unfolds it; with no chat open there is nothing to fold.
+    private bool _projectFoldedByRecents;
+
+    private bool IsProjectTreeFolded => _projectFoldedByRecents && GetActiveChatId() is not null;
+
+    private void UnfoldProjectTree() => _projectFoldedByRecents = false;
+
+    // Whether the open chat menu or rename editor belongs to a Recents row rather than the project's
+    // list; a chat of the open project can be listed in both, and only one of them shows it.
+    private bool _chatActionsInRecents;
+
     /// <summary>The most recent chats first, at most <paramref name="count"/>.</summary>
     private List<ChatSummary> GetRecentChats(int count)
     {
@@ -43,8 +56,14 @@ public partial class Home
             .ToList();
     }
 
-    private string GetProjectName(Guid projectId) =>
-        _projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? string.Empty;
+    // A Recents row is the project's chat row without the project, so the project is named here.
+    private string? GetChatRowTitle(ChatSummary chat, bool inRecents)
+    {
+        var runTitle = GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id));
+        if (!inRecents) return runTitle;
+        var projectName = _projects.FirstOrDefault(project => project.Id == chat.ProjectId)?.Name;
+        return runTitle is null ? projectName : $"{projectName} · {runTitle}";
+    }
 
     private async Task RefreshRecentChatsAsync()
     {
@@ -82,6 +101,7 @@ public partial class Home
 
     private async Task OpenRecentChatAsync(ChatSummary chat)
     {
+        _projectFoldedByRecents = true;
         if (_selectedProject?.Id == chat.ProjectId)
         {
             await SelectChatAsync(chat.Id);

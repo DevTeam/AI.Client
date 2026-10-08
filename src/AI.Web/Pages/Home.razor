@@ -112,7 +112,7 @@
                 <button class="icon-action project-action-button project-rename-button" type="button" title="Rename" aria-label="Rename project" @onclick="() => BeginProjectRenameAsync(project)"><AppIcon Name="edit" /></button>
                 <button @attributes="@(ControlHints.Attributes((project.Id == _selectedProject?.Id ? "project.menu" : null), "Project settings"))" class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && project.Id == _selectedProject?.Id ? "menu-open" : string.Empty)" type="button" aria-label="Project settings" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
             </div>
-            @if (project.Id == _selectedProject?.Id)
+            @if (project.Id == _selectedProject?.Id && !IsProjectTreeFolded)
             {
                 @* Chat and branch rows carry the shared help as data attributes for the guide but no
                    tooltip: explaining what a chat is would cover the list on every hover, while the
@@ -132,173 +132,10 @@
                     @for (var chatIndex = 0; chatIndex < visibleChatCount; chatIndex++)
                     {
                         var chat = orderedChats[chatIndex];
-                        var branchCount = GetBranchCount(chat);
-                        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@chat.Id" data-pinned="@(chat.IsPinned ? "true" : "false")" title="@GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" @oncontextmenu="() => OnChatContextMenu(chat.Id)" @oncontextmenu:preventDefault="true">
-                            @if (_editingChatId == chat.Id)
-                            {
-                                <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
-                            }
-                            else
-                            {
-                                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => HandleChatItemKeyDownAsync(e, chat)" @onclick="() => SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
-                            }
-                            <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat)"><AppIcon Name="edit" /></button>
-                            <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat.Id)"><AppIcon Name="more" /></button>
-                            @if (_chatMenuId == chat.Id)
-                            {
-                                <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                    <button type="button" role="menuitem" @onclick="() => ToggleChatPinAsync(chat)">
-                                        <AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" />
-                                        <span>@(chat.IsPinned ? "Unpin chat" : "Pin chat")</span>
-                                    </button>
-                                    <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">
-                                        <AppIcon Name="tool" />
-                                        <span>Tool permissions</span>
-                                        @if (GetChatPermissionCount(chat.Id) > 0)
-                                        {
-                                            <span class="menu-count">@GetChatPermissionCount(chat.Id)</span>
-                                        }
-                                    </button>
-                                    @if (_menuReviews.TryGetValue(chat.Id, out var chatReviews) && chatReviews.Any(item => item.Kind == ChatReviewKind.Diff))
-                                    {
-                                        <button id="chat-reviews-trigger-@chat.Id" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuChatId == chat.Id)" @onclick="() => ToggleReviewSubmenu(chat.Id, false)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
-                                        @if (_reviewSubmenuChatId == chat.Id)
-                                        {
-                                        <div id="chat-reviews-popup-@chat.Id" popover="manual" class="review-submenu" role="menu" aria-label="Chat reviews">
-                                            <div class="review-menu-list">
-                                            @foreach (var review in chatReviews.Where(item => item.Kind == ChatReviewKind.Diff).OrderByDescending(item => item.UpdatedAt))
-                                            {
-                                                <div class="review-menu-row" @key="review.Id">
-                                                    @if (_confirmingReviewDeleteId == review.Id)
-                                                    {
-                                                        <span class="review-menu-confirm-label">Delete review?</span>
-                                                        <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
-                                                        <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
-                                                    }
-                                                    else
-                                                    {
-                                                        <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForChatAsync(chat.Id, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
-                                                        <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
-                                                    }
-                                                </div>
-                                            }
-                                            </div>
-                                        </div>
-                                        }
-                                    }
-                                    @if (chat.BranchCount > 0)
-                                    {
-                                        @if (_confirmingSubBranchDeleteId == chat.Id)
-                                        {
-                                            <div class="project-menu-confirm"><span>Delete all @chat.BranchCount @(chat.BranchCount == 1 ? "branch" : "branches")? The main conversation stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, null)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
-                                        }
-                                        else
-                                        {
-                                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = chat.Id"><AppIcon Name="git-branch" /><span>Delete all branches (@chat.BranchCount)</span></button>
-                                        }
-                                    }
-                                    <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
-                                    @if (_isConfirmingChatDelete)
-                                    {
-                                        <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" disabled="@(_deletingChatId is not null)" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelChatDelete"><AppIcon Name="x" /></button></div>
-                                    }
-                                    else
-                                    {
-                                        <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmChatDelete"><AppIcon Name="trash" />Delete chat</button>
-                                    }
-                                </div>
-                            }
-                        </div>
+                        RenderChatNavRow(__builder, chat, inRecents: false);
                         @if (_selectedChat?.Id == chat.Id)
                         {
-                            var runRows = GetBranchTreeItems().Where(item => item.Run is not null).ToArray();
-                            var runsHeaderShown = false;
-                            @foreach (var branch in GetVisibleBranchTreeItems())
-                            {
-                                @if (branch.Run is not null && !runsHeaderShown)
-                                {
-                                    runsHeaderShown = true;
-                                    @RunsGroupHeader(runRows)
-                                }
-                                <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
-                                    <span class="branch-tree-line" aria-hidden="true"></span>
-                                    @if (_editingBranchId == branch.RootId)
-                                    {
-                                        <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveBranchTitleAsync(branch))" @onblur="() => SaveBranchTitleAsync(branch)" aria-label="Branch name" />
-                                    }
-                                    else
-                                    {
-                                        <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
-                                    }
-                                    <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
-                                    <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>
-                                    @if (_branchMenuId == branch.RootId)
-                                    {
-                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            @if (ReviewsForBranch(branch).Count > 0)
-                                            {
-                                                <button id="branch-reviews-trigger-@branch.RootId" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuBranchId == branch.RootId)" @onclick="() => ToggleReviewSubmenu(branch.RootId, true)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
-                                                @if (_reviewSubmenuBranchId == branch.RootId)
-                                                {
-                                                <div id="branch-reviews-popup-@branch.RootId" popover="manual" class="review-submenu" role="menu" aria-label="Branch reviews">
-                                                    <div class="review-menu-list">
-                                                    @foreach (var review in ReviewsForBranch(branch))
-                                                    {
-                                                        <div class="review-menu-row" @key="review.Id">
-                                                            @if (_confirmingReviewDeleteId == review.Id)
-                                                            {
-                                                                <span class="review-menu-confirm-label">Delete review?</span>
-                                                                <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
-                                                                <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
-                                                            }
-                                                            else
-                                                            {
-                                                                <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
-                                                                <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
-                                                            }
-                                                        </div>
-                                                    }
-                                                    </div>
-                                                </div>
-                                                }
-                                            }
-                                            @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
-                                            {
-                                                @if (_confirmingSubBranchDeleteId == branch.RootId)
-                                                {
-                                                    <div class="project-menu-confirm"><span>Delete its @subBranches @(subBranches == 1 ? "sub-branch" : "sub-branches")? This branch stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, branch.RootId)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
-                                                }
-                                                else
-                                                {
-                                                    <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = branch.RootId"><AppIcon Name="git-branch" /><span>Delete all sub-branches (@subBranches)</span></button>
-                                                }
-                                            }
-                                            @if (_confirmingBranchDeleteId == branch.RootId)
-                                            {
-                                                <div class="project-menu-confirm"><span>Delete this branch?</span><button class="danger compact-action" type="button" @onclick="() => DeleteBranchAsync(branch)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelBranchDelete"><AppIcon Name="x" /></button></div>
-                                            }
-                                            else
-                                            {
-                                                <button class="menu-danger" type="button" role="menuitem" @onclick="() => ConfirmBranchDelete(branch.RootId)"><AppIcon Name="trash" />Delete branch</button>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
-                            @* Folded with the main line open, no run row is visible: the group row still is. *@
-                            @if (!runsHeaderShown && runRows.Length > 0)
-                            {
-                                @RunsGroupHeader(runRows)
-                            }
-                            @if (RunsGroupExpanded && runRows.Length > SidebarRuns)
-                            {
-                                <div class="chat-nav-row branch-nav-row branch-runs-more" style="--branch-depth: 2">
-                                    <span class="branch-tree-line" aria-hidden="true"></span>
-                                    <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer @onclick="() => _runsGroupShowAll = !_runsGroupShowAll">
-                                        <span class="nav-item-label">@(_runsGroupShowAll ? "Show fewer" : $"Show all {runRows.Length} runs")</span>
-                                    </button>
-                                </div>
-                            }
+                            RenderChatBranchRows(__builder, chat);
                         }
                         @if (chatIndex == pinnedChatCount - 1)
                         {
@@ -388,7 +225,8 @@
         @if (GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
         {
             @* The latest chats of every project, a click away without opening their project first.
-               Rows look and behave like the project's own chat rows; their actions stay there. *@
+               Rows look and behave like the project's own chat rows; their actions stay there.
+               A chat opened from here folds its project, and its branches show here instead. *@
             <section class="sidebar-recents" aria-labelledby="sidebar-recents-toggle">
                 <button id="sidebar-recents-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_recentsFolded ? "false" : "true")"
                         aria-controls="recent-chat-list" title="@(_recentsFolded ? "Show recent chats" : "Hide recent chats")" @onclick="ToggleRecentsFoldedAsync">
@@ -401,31 +239,10 @@
                         @for (var recentIndex = 0; recentIndex < shownRecentCount; recentIndex++)
                         {
                             var chat = recentChats[recentIndex];
-                            var branchCount = GetBranchCount(chat);
-                            var projectName = GetProjectName(chat.ProjectId);
-                            <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-recent-chat-id="@chat.Id" title="@($"{chat.Title} · {projectName}")">
-                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => OpenRecentChatAsync(chat)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span><span class="recent-chat-project">@projectName</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
-                            </div>
-                            @if (_selectedChat?.Id == chat.Id)
+                            RenderChatNavRow(__builder, chat, inRecents: true);
+                            @if (_selectedChat?.Id == chat.Id && IsProjectTreeFolded)
                             {
-                                var recentRunRows = GetBranchTreeItems().Where(item => item.Run is not null).ToArray();
-                                var recentRunsHeaderShown = false;
-                                @foreach (var branch in GetVisibleBranchTreeItems())
-                                {
-                                    @if (branch.Run is not null && !recentRunsHeaderShown)
-                                    {
-                                        recentRunsHeaderShown = true;
-                                        @RunsGroupHeader(recentRunRows)
-                                    }
-                                    <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
-                                        <span class="branch-tree-line" aria-hidden="true"></span>
-                                        <button class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
-                                    </div>
-                                }
-                                @if (!recentRunsHeaderShown && recentRunRows.Length > 0)
-                                {
-                                    @RunsGroupHeader(recentRunRows)
-                                }
+                                RenderChatBranchRows(__builder, chat);
                             }
                         }
                         @if (recentChats.Count > RecentChatsShown)
@@ -1370,6 +1187,186 @@ else if (_guideInvitation is { } guideInvitation)
             </button>
         </div>;
 
+    /// <summary>
+    /// One chat row, the same in a project's chat list and in Recents: icon, branch count, rename
+    /// and menu. A Recents row opens its chat across projects, has no drag or pin-order handles,
+    /// and keeps its own menu and rename editor, so a chat listed in both places opens one of each.
+    /// </summary>
+    private void RenderChatNavRow(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat, bool inRecents)
+    {
+        var branchCount = GetBranchCount(chat);
+        var actionsHere = _chatActionsInRecents == inRecents;
+        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null ? "selected" : string.Empty)" data-chat-id="@(inRecents ? null : chat.Id.ToString())" data-recent-chat-id="@(inRecents ? chat.Id.ToString() : null)" data-pinned="@(inRecents ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, inRecents)" @oncontextmenu="() => OnChatContextMenu(chat.Id, inRecents)" @oncontextmenu:preventDefault="true">
+            @if (_editingChatId == chat.Id && actionsHere)
+            {
+                <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
+            }
+            else
+            {
+                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inRecents ? null : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P" : "Alt+P")" @onkeydown="e => inRecents ? Task.CompletedTask : HandleChatItemKeyDownAsync(e, chat)" @onclick="() => inRecents ? OpenRecentChatAsync(chat) : SelectChatAsync(chat.Id)"><span class="chat-icon-with-branch-count"><AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" Class="@GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id))" />@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)">@FormatBranchCount(branchCount)</span> }</span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }</button>
+            }
+            <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename chat" @onclick="() => BeginChatRename(chat, inRecents)"><AppIcon Name="edit" /></button>
+            <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, inRecents)"><AppIcon Name="more" /></button>
+            @if (_chatMenuId == chat.Id && actionsHere)
+            {
+                <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                    <button type="button" role="menuitem" @onclick="() => ToggleChatPinAsync(chat)">
+                        <AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" />
+                        <span>@(chat.IsPinned ? "Unpin chat" : "Pin chat")</span>
+                    </button>
+                    <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">
+                        <AppIcon Name="tool" />
+                        <span>Tool permissions</span>
+                        @if (GetChatPermissionCount(chat.Id) > 0)
+                        {
+                            <span class="menu-count">@GetChatPermissionCount(chat.Id)</span>
+                        }
+                    </button>
+                    @if (_menuReviews.TryGetValue(chat.Id, out var chatReviews) && chatReviews.Any(item => item.Kind == ChatReviewKind.Diff))
+                    {
+                        <button id="chat-reviews-trigger-@chat.Id" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuChatId == chat.Id)" @onclick="() => ToggleReviewSubmenu(chat.Id, false)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
+                        @if (_reviewSubmenuChatId == chat.Id)
+                        {
+                        <div id="chat-reviews-popup-@chat.Id" popover="manual" class="review-submenu" role="menu" aria-label="Chat reviews">
+                            <div class="review-menu-list">
+                            @foreach (var review in chatReviews.Where(item => item.Kind == ChatReviewKind.Diff).OrderByDescending(item => item.UpdatedAt))
+                            {
+                                <div class="review-menu-row" @key="review.Id">
+                                    @if (_confirmingReviewDeleteId == review.Id)
+                                    {
+                                        <span class="review-menu-confirm-label">Delete review?</span>
+                                        <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id, projectId: chat.ProjectId)">Delete</button>
+                                        <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForChatAsync(chat, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                        <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
+                                    }
+                                </div>
+                            }
+                            </div>
+                        </div>
+                        }
+                    }
+                    @if (chat.BranchCount > 0)
+                    {
+                        @if (_confirmingSubBranchDeleteId == chat.Id)
+                        {
+                            <div class="project-menu-confirm"><span>Delete all @chat.BranchCount @(chat.BranchCount == 1 ? "branch" : "branches")? The main conversation stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, null, chat.ProjectId)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
+                        }
+                        else
+                        {
+                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = chat.Id"><AppIcon Name="git-branch" /><span>Delete all branches (@chat.BranchCount)</span></button>
+                        }
+                    }
+                    <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
+                    @if (_isConfirmingChatDelete)
+                    {
+                        <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" disabled="@(_deletingChatId is not null)" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelChatDelete"><AppIcon Name="x" /></button></div>
+                    }
+                    else
+                    {
+                        <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmChatDelete"><AppIcon Name="trash" />Delete chat</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    /// <summary>The open chat's branch rows under its chat row: forks first, then the scheduled runs.</summary>
+    private void RenderChatBranchRows(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat)
+    {
+        var runRows = GetBranchTreeItems().Where(item => item.Run is not null).ToArray();
+        var runsHeaderShown = false;
+        foreach (var branch in GetVisibleBranchTreeItems())
+        {
+            if (branch.Run is not null && !runsHeaderShown)
+            {
+                runsHeaderShown = true;
+                __builder.AddContent(0, RunsGroupHeader(runRows));
+            }
+            <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+                <span class="branch-tree-line" aria-hidden="true"></span>
+                @if (_editingBranchId == branch.RootId)
+                {
+                    <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveBranchTitleAsync(branch))" @onblur="() => SaveBranchTitleAsync(branch)" aria-label="Branch name" />
+                }
+                else
+                {
+                    <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" StatusClass="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> } else { <AppIcon Name="git-branch" Class="@GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" /> }<MemberDot Member="@_selectedChat?.MemberOf(branch.RootId)" /><span class="nav-item-label">@branch.Title</span></button>
+                }
+                <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
+                <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>
+                @if (_branchMenuId == branch.RootId)
+                {
+                    <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                        @if (ReviewsForBranch(branch).Count > 0)
+                        {
+                            <button id="branch-reviews-trigger-@branch.RootId" class="review-submenu-trigger" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="@(_reviewSubmenuBranchId == branch.RootId)" @onclick="() => ToggleReviewSubmenu(branch.RootId, true)"><AppIcon Name="diff" /><span>Reviews</span><AppIcon Name="chevron-right" /></button>
+                            @if (_reviewSubmenuBranchId == branch.RootId)
+                            {
+                            <div id="branch-reviews-popup-@branch.RootId" popover="manual" class="review-submenu" role="menu" aria-label="Branch reviews">
+                                <div class="review-menu-list">
+                                @foreach (var review in ReviewsForBranch(branch))
+                                {
+                                    <div class="review-menu-row" @key="review.Id">
+                                        @if (_confirmingReviewDeleteId == review.Id)
+                                        {
+                                            <span class="review-menu-confirm-label">Delete review?</span>
+                                            <button type="button" class="review-menu-confirm-delete" aria-label="Delete @review.Name" @onclick="() => DeleteReviewAsync(chat.Id, review.Id)">Delete</button>
+                                            <button type="button" class="review-menu-cancel" title="Cancel deletion" aria-label="Cancel deletion" @onclick="() => _confirmingReviewDeleteId = null"><AppIcon Name="x" /></button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="review-menu-open" role="menuitem" title="@review.Name" @onclick="() => OpenReviewForBranchAsync(branch, review.Id)"><AppIcon Name="diff" /><span>@review.Name</span></button>
+                                            <button type="button" class="review-menu-delete" title="Delete review" aria-label="Delete @review.Name" @onclick="() => _confirmingReviewDeleteId = review.Id"><AppIcon Name="trash" /></button>
+                                        }
+                                    </div>
+                                }
+                                </div>
+                            </div>
+                            }
+                        }
+                        @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
+                        {
+                            @if (_confirmingSubBranchDeleteId == branch.RootId)
+                            {
+                                <div class="project-menu-confirm"><span>Delete its @subBranches @(subBranches == 1 ? "sub-branch" : "sub-branches")? This branch stays.</span><button class="danger compact-action" type="button" disabled="@_deletingSubBranches" @onclick="() => DeleteSubBranchesAsync(chat.Id, branch.RootId)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="() => _confirmingSubBranchDeleteId = null"><AppIcon Name="x" /></button></div>
+                            }
+                            else
+                            {
+                                <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = branch.RootId"><AppIcon Name="git-branch" /><span>Delete all sub-branches (@subBranches)</span></button>
+                            }
+                        }
+                        @if (_confirmingBranchDeleteId == branch.RootId)
+                        {
+                            <div class="project-menu-confirm"><span>Delete this branch?</span><button class="danger compact-action" type="button" @onclick="() => DeleteBranchAsync(branch)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelBranchDelete"><AppIcon Name="x" /></button></div>
+                        }
+                        else
+                        {
+                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => ConfirmBranchDelete(branch.RootId)"><AppIcon Name="trash" />Delete branch</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        // Folded with the main line open, no run row is visible: the group row still is.
+        if (!runsHeaderShown && runRows.Length > 0)
+        {
+            __builder.AddContent(0, RunsGroupHeader(runRows));
+        }
+        if (RunsGroupExpanded && runRows.Length > SidebarRuns)
+        {
+            <div class="chat-nav-row branch-nav-row branch-runs-more" style="--branch-depth: 2">
+                <span class="branch-tree-line" aria-hidden="true"></span>
+                <button class="workspace-nav-item chat-link branch-link" type="button" data-stays-in-drawer @onclick="() => _runsGroupShowAll = !_runsGroupShowAll">
+                    <span class="nav-item-label">@(_runsGroupShowAll ? "Show fewer" : $"Show all {runRows.Length} runs")</span>
+                </button>
+            </div>
+        }
+    }
+
     // Null until the person folds or unfolds the runs: a few runs show unfolded, many fold.
     private bool? _runsGroupToggled;
     private bool RunsGroupExpanded => _runsGroupToggled ?? GetBranchTreeItems().Count(item => item.Run is not null) <= SidebarRuns;
@@ -1804,6 +1801,7 @@ else if (_guideInvitation is { } guideInvitation)
             return;
         }
         if (item.ProjectId is null || item.ChatId is null) return;
+        UnfoldProjectTree();
         _hideNotificationPreview = true;
         var wasCenterOpen = _notificationsOpen;
         Notifications.MarkSeen(item.Id);
@@ -2309,6 +2307,8 @@ else if (_guideInvitation is { } guideInvitation)
         var target = JsonSerializer.Deserialize<AI.Contracts.Navigation.AppNavigation>(json,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (target is null) return;
+        // The guide and the navigation cue point at rows of the project's own chat list.
+        UnfoldProjectTree();
         if (target.RequestId != Guid.Empty || target.Target is not null)
         {
             await HandleGuideNavigationAsync(target);
@@ -2787,6 +2787,14 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task HandleProjectItemClickAsync(ProjectSummary project)
     {
+        // The open project folded by Recents unfolds on the chat that is open, like any other
+        // project opens on the chat it was left on.
+        if (IsProjectTreeFolded && _selectedProject?.Id == project.Id)
+        {
+            UnfoldProjectTree();
+            return;
+        }
+        UnfoldProjectTree();
         // Re-clicking the open project is a shortcut for its "new chat" composer: reload
         // chats so anything created elsewhere shows up, but keep the chat/branch picker on
         // the empty entry and preserve any draft the user was typing for a new chat in this
@@ -3757,6 +3765,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task CreateChatForProjectAsync(ProjectSummary project)
     {
+        UnfoldProjectTree();
         if (_selectedProject?.Id != project.Id)
         {
             await SelectProjectAsync(project, restoreLastChat: false);
@@ -3951,6 +3960,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task OpenSearchMatchAsync(ChatSearchMatch match)
     {
+        UnfoldProjectTree();
         // Whatever was opened, by pointer or keyboard, is where the next Up/Down continues from.
         _searchActiveMessageId = match.MessageId;
         if (_projects.SingleOrDefault(item => item.Id == match.ProjectId) is { } project)
@@ -4216,7 +4226,7 @@ else if (_guideInvitation is { } guideInvitation)
         _ => 4
     };
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
-        .Where(IsVisibleRun)
+        .Where(run => IsVisibleRun(run) && !ShouldHideCurrentRunStatus(run.ChatId, run.BranchId, run))
         .OrderBy(GetProjectRunPriority)
         .FirstOrDefault();
     private ChatRunSnapshot? GetChatBranchRun(Guid chatId) => RunState.Runs.Values
@@ -4248,10 +4258,12 @@ else if (_guideInvitation is { } guideInvitation)
     // The open project's own status is already visible per-chat below it, so the project row
     // itself shows nothing — repeating it there would be the same redundant echo we just
     // removed from the currently open chat/branch row.
+    // A project whose chat list is folded (the open chat came from Recents) speaks for its chats
+    // the way every other project does.
     private string? GetProjectRunTitle(Guid projectId) =>
-        _selectedProject?.Id == projectId || GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
+        _selectedProject?.Id == projectId && !IsProjectTreeFolded || GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
     private string GetProjectStatusClass(Guid projectId) =>
-        _selectedProject?.Id == projectId ? string.Empty : GetRunStatusClass(GetProjectRun(projectId));
+        _selectedProject?.Id == projectId && !IsProjectTreeFolded ? string.Empty : GetRunStatusClass(GetProjectRun(projectId));
     // A completed/unread/attention status for what's currently open in the transcript needs no
     // separate sidebar signal — the message feed already shows it. Generating is the exception:
     // it stays visible even for the open chat/branch, since it is live progress rather than a
@@ -4811,10 +4823,12 @@ else if (_guideInvitation is { } guideInvitation)
         _confirmingReviewDeleteId = null;
     }
 
-    private async Task ToggleChatMenuAsync(Guid chatId)
+    private async Task ToggleChatMenuAsync(ChatSummary chat, bool inRecents = false)
     {
+        var chatId = chat.Id;
         CloseReviewSubmenu();
-        _chatMenuId = _chatMenuId == chatId ? null : chatId;
+        _chatMenuId = _chatMenuId == chatId && _chatActionsInRecents == inRecents ? null : chatId;
+        _chatActionsInRecents = inRecents;
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
@@ -4822,13 +4836,13 @@ else if (_guideInvitation is { } guideInvitation)
         _confirmingBranchDeleteId = null;
         _directoryMenuId = null;
         _isConfirmingDirectoryDelete = false;
-        if (_chatMenuId != chatId || _selectedProject is null) return;
-        var projectId = _selectedProject.Id;
+        if (_chatMenuId != chatId) return;
+        var projectId = chat.ProjectId;
         try
         {
             var reviews = await PruneEmptyReviewsAsync(projectId, chatId,
                 await ReviewApi.ListAsync(projectId, chatId, CancellationToken.None));
-            if (_selectedProject?.Id == projectId && _chatMenuId == chatId)
+            if (_chatMenuId == chatId)
                 _menuReviews[chatId] = reviews.Where(item => !IsEmptyReview(item)).ToArray();
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
@@ -4910,10 +4924,11 @@ else if (_guideInvitation is { } guideInvitation)
         ? FormattableString.Invariant($"top: clamp(0.5rem, {anchor.Y + 8}px, calc(100vh - 16rem)); left: clamp(0.5rem, {anchor.X - 16}px, calc(100vw - 16rem));")
         : null;
 
-    private void BeginChatRename(ChatSummary chat)
+    private void BeginChatRename(ChatSummary chat, bool inRecents = false)
     {
         CancelInlineEdit();
         _editingChatId = chat.Id;
+        _chatActionsInRecents = inRecents;
         _editingTitle = chat.Title;
         _focusEditingInputPending = true;
         CloseContextMenus();
@@ -4967,18 +4982,19 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task SaveChatTitleAsync(ChatSummary chat)
     {
-        if (_editingChatId != chat.Id || _selectedProject is null || _isCompletingInlineEdit) return;
+        if (_editingChatId != chat.Id || _isCompletingInlineEdit) return;
         if (string.IsNullOrWhiteSpace(_editingTitle)) { CancelInlineEdit(); return; }
         _isCompletingInlineEdit = true;
         try
         {
-            var renamed = await ChatHistoryApi.RenameAsync(_selectedProject.Id, chat.Id, new RenameChatRequest(_editingTitle.Trim(), chat.Revision), CancellationToken.None);
+            var renamed = await ChatHistoryApi.RenameAsync(chat.ProjectId, chat.Id, new RenameChatRequest(_editingTitle.Trim(), chat.Revision), CancellationToken.None);
             if (renamed is null) Notifications.ShowError("The chat was not renamed. Reload the chat list and try again.");
             else
             {
                 // Renaming a chat from the sidebar does not open it.
                 if (_selectedChat?.Id == renamed.Id) _selectedChat = renamed;
-                await LoadChatsAsync(_selectedProject.Id);
+                if (_selectedProject?.Id == chat.ProjectId) await LoadChatsAsync(chat.ProjectId);
+                await RefreshRecentChatsAsync();
             }
         }
         finally { _isCompletingInlineEdit = false; CancelInlineEdit(); }
@@ -5022,22 +5038,22 @@ else if (_guideInvitation is { } guideInvitation)
     /// <paramref name="rootBranchId"/> is null. Deepest first: deleting a branch hands its children to
     /// its parent, which here would only move them. Each delete names the chat revision it read.
     /// </summary>
-    private async Task DeleteSubBranchesAsync(Guid chatId, Guid? rootBranchId)
+    private async Task DeleteSubBranchesAsync(Guid chatId, Guid? rootBranchId, Guid? projectId = null)
     {
-        if (_selectedProject is not { } project || _deletingSubBranches) return;
+        if ((projectId ?? _selectedProject?.Id) is not { } chatProjectId || _deletingSubBranches) return;
         _deletingSubBranches = true;
         var deleted = 0;
         try
         {
             for (var attempt = 0; attempt < 500; attempt++)
             {
-                var chat = await ChatHistoryApi.GetTranscriptAsync(project.Id, chatId, CancellationToken.None);
+                var chat = await ChatHistoryApi.GetTranscriptAsync(chatProjectId, chatId, CancellationToken.None);
                 if (chat?.Branches is not { } branches) break;
                 var targets = SubBranchIds(branches, chat.Id, rootBranchId ?? chat.Id);
                 if (targets.Count == 0) break;
                 // A target nothing else hangs from: the deepest of what is left.
                 var leaf = targets.First(id => branches.All(branch => branch.Id == chat.Id || (branch.ParentBranchId ?? chat.Id) != id));
-                var result = await ChatHistoryApi.DeleteBranchAsync(project.Id, chatId, leaf, chat.Revision, CancellationToken.None);
+                var result = await ChatHistoryApi.DeleteBranchAsync(chatProjectId, chatId, leaf, chat.Revision, CancellationToken.None);
                 if (result.IsDeleted) deleted++;
             }
         }
@@ -5054,7 +5070,7 @@ else if (_guideInvitation is { } guideInvitation)
         }
         if (_selectedChat?.Id == chatId)
         {
-            _selectedChat = await ChatHistoryApi.GetTranscriptAsync(project.Id, chatId, CancellationToken.None);
+            _selectedChat = await ChatHistoryApi.GetTranscriptAsync(chatProjectId, chatId, CancellationToken.None);
             // The branch on screen may have been one of them: show the branch they hung from.
             if (_selectedChat?.Branches?.All(branch => branch.Id != _selectedBranchId) == true)
             {
@@ -5062,7 +5078,8 @@ else if (_guideInvitation is { } guideInvitation)
                 _branchLeafId = _selectedChat.Branches.SingleOrDefault(branch => branch.Id == _selectedBranchId)?.HeadMessageId;
             }
         }
-        await LoadChatsAsync(project.Id);
+        if (_selectedProject?.Id == chatProjectId) await LoadChatsAsync(chatProjectId);
+        await RefreshRecentChatsAsync();
     }
 
     private async Task DeleteBranchAsync(BranchTreeItem branch)
@@ -5193,9 +5210,10 @@ else if (_guideInvitation is { } guideInvitation)
         _isConfirmingDirectoryDelete = false;
     }
 
-    private void OnChatContextMenu(Guid chatId)
+    private void OnChatContextMenu(Guid chatId, bool inRecents = false)
     {
         _chatMenuId = chatId;
+        _chatActionsInRecents = inRecents;
         _isConfirmingChatDelete = false;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
@@ -5347,6 +5365,7 @@ else if (_guideInvitation is { } guideInvitation)
                 Notifications.ShowError(string.Join(" ", result.Skipped.Select(item => item.Reason).Distinct()));
             _archiveSuggestionCheckedAt = default;
             if (_selectedProject?.Id == projectId) await LoadChatsAsync(projectId);
+            await RefreshRecentChatsAsync();
         }
         catch (HttpRequestException) { Notifications.ShowError("Could not update the chat archive. Try again."); }
         finally { _archiveSaving = false; }
@@ -5453,20 +5472,22 @@ else if (_guideInvitation is { } guideInvitation)
     /// <summary>Pins, moves or unpins a chat and re-reads the list, animating the rows that moved.</summary>
     private async Task<bool> PinChatAsync(ChatSummary chat, bool isPinned, Guid? beforeChatId)
     {
-        if (_selectedProject is not { } project) return false;
-        var updated = await ChatHistoryApi.PinAsync(project.Id, chat.Id, new PinChatRequest(isPinned, chat.Revision, beforeChatId), CancellationToken.None);
+        var projectId = chat.ProjectId;
+        var updated = await ChatHistoryApi.PinAsync(projectId, chat.Id, new PinChatRequest(isPinned, chat.Revision, beforeChatId), CancellationToken.None);
         if (updated is null)
         {
             Notifications.ShowError("Chat pin state was not saved. Reload and try again.");
             return false;
         }
 
+        await RefreshRecentChatsAsync();
+        if (_selectedProject?.Id != projectId) return true;
         // Placing a chat can give keys to chats pinned before manual ordering existed, which moves
         // their revisions too, so the whole list is re-read rather than patching this one row.
         IReadOnlyList<ChatSummary> chats;
-        try { chats = await ChatHistoryApi.ListAsync(project.Id, CancellationToken.None); }
+        try { chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None); }
         catch (HttpRequestException) { return true; }
-        if (_selectedProject?.Id == project.Id) await ApplyChatOrderAsync(chats);
+        if (_selectedProject?.Id == projectId) await ApplyChatOrderAsync(chats);
         return true;
     }
 
@@ -5662,7 +5683,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task DeleteChatAsync(ChatSummary chat)
     {
-        if (_selectedProject is null || _deletingChatId is not null) return;
+        if (_deletingChatId is not null) return;
 
         // The confirm button stays on screen through three round trips. A second click used to
         // start a second delete that found the chat already gone and reported the 404 as a
@@ -5680,7 +5701,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     private async Task DeleteChatCoreAsync(ChatSummary chat)
     {
-        if (_selectedProject is null) return;
+        var projectId = chat.ProjectId;
 
         // Stopping the runs comes first, and the revision is read only afterwards: interrupting a
         // generating branch commits whatever the model had written as a truncated message, which
@@ -5690,18 +5711,19 @@ else if (_guideInvitation is { } guideInvitation)
         // stale for a chat that kept generating after the user switched away.
         foreach (var run in RunState.Runs.Values.Where(item => item.ChatId == chat.Id).ToArray())
         {
-            await ChatRunsApi.ClearAllAsync(_selectedProject.Id, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
+            await ChatRunsApi.ClearAllAsync(projectId, chat.Id, run.BranchId, Guid.CreateVersion7(), CancellationToken.None);
         }
 
-        var current = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chat.Id, CancellationToken.None);
+        var current = await ChatHistoryApi.GetTranscriptAsync(projectId, chat.Id, CancellationToken.None);
         if (current is null)
         {
             CloseContextMenus();
-            await LoadChatsAsync(_selectedProject.Id);
+            if (_selectedProject?.Id == projectId) await LoadChatsAsync(projectId);
+            await RefreshRecentChatsAsync();
             return;
         }
 
-        var result = await ChatHistoryApi.DeleteAsync(_selectedProject.Id, chat.Id, current.Revision, CancellationToken.None);
+        var result = await ChatHistoryApi.DeleteAsync(projectId, chat.Id, current.Revision, CancellationToken.None);
         // Revision 0 is the Host's NotFound: someone else already deleted it, which is the outcome
         // asked for, not a conflict to report.
         if (!result.IsDeleted && result.Revision != 0)
@@ -5727,7 +5749,8 @@ else if (_guideInvitation is { } guideInvitation)
         }
 
         CloseContextMenus();
-        await LoadChatsAsync(_selectedProject.Id);
+        if (_selectedProject?.Id == projectId) await LoadChatsAsync(projectId);
+        await RefreshRecentChatsAsync();
         if (result.IsDeleted) Notifications.ShowSuccess("Chat deleted.");
     }
 
@@ -5780,6 +5803,8 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task OpenChatPermissions(ChatSummary chat)
     {
         CloseContextMenus();
+        if (_selectedProject?.Id != chat.ProjectId) await OpenRecentChatAsync(chat);
+        if (_selectedProject?.Id != chat.ProjectId) return;
         if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Chat";
         _permissionsChatId = chat.Id;
@@ -6520,11 +6545,13 @@ else if (_guideInvitation is { } guideInvitation)
         await AttachReviewAsync(review);
     }
 
-    private async Task OpenReviewForChatAsync(Guid chatId, Guid reviewId)
+    private async Task OpenReviewForChatAsync(ChatSummary chat, Guid reviewId)
     {
+        var chatId = chat.Id;
         if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
         CloseContextMenus();
-        if (_selectedChat?.Id != chatId) await SelectChatAsync(chatId);
+        if (_selectedProject?.Id != chat.ProjectId) await OpenRecentChatAsync(chat);
+        else if (_selectedChat?.Id != chatId) await SelectChatAsync(chatId);
         if (_selectedChat?.Id == chatId) await OpenReviewAsync(reviewId);
     }
 
@@ -6536,13 +6563,12 @@ else if (_guideInvitation is { } guideInvitation)
         await OpenReviewAsync(reviewId);
     }
 
-    private async Task DeleteReviewAsync(Guid chatId, Guid reviewId, bool notify = true)
+    private async Task DeleteReviewAsync(Guid chatId, Guid reviewId, bool notify = true, Guid? projectId = null)
     {
-        if (_selectedProject is null) return;
-        var projectId = _selectedProject.Id;
+        if ((projectId ?? _selectedProject?.Id) is not { } ownerProjectId) return;
         try
         {
-            if (!await ReviewApi.DeleteAsync(projectId, chatId, reviewId, CancellationToken.None))
+            if (!await ReviewApi.DeleteAsync(ownerProjectId, chatId, reviewId, CancellationToken.None))
             {
                 _chatError = "Review no longer exists.";
                 if (notify) Notifications.ShowError(_chatError);
@@ -6559,7 +6585,7 @@ else if (_guideInvitation is { } guideInvitation)
             if (_selectedChat?.Id == chatId)
             {
                 RemoveReviewFromDraft(reviewId);
-                var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+                var refreshed = await ChatHistoryApi.GetAsync(ownerProjectId, chatId, CancellationToken.None);
                 if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
                 if (_reviewStartId == reviewId) CloseReview();
             }

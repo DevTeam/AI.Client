@@ -7,6 +7,7 @@ using System.Text;
 public sealed class TextCorrectionPreparationTests
 {
     [Fact]
+    [Trait("Category", "Slow")]
     public async Task PreparesOnlySelectedLanguagesAndSharesTheAnalyzerCache()
     {
         var composition = new TextCorrectionComposition();

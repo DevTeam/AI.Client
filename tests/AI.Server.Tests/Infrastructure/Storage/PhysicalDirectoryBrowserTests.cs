@@ -4,6 +4,7 @@ using AI.Infrastructure.Storage;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class PhysicalDirectoryBrowserTests : IDisposable
 {
     private readonly PhysicalDirectoryBrowser _browser = new();

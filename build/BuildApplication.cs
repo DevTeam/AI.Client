@@ -23,6 +23,7 @@ internal sealed class BuildApplication(
         var root = new RootCommand("AI build automation");
         RegisterBuild(root);
         RegisterTest(root);
+        RegisterTestAll(root);
         RegisterVerify(root);
         RegisterPublish(root);
         RegisterPublishDesktop(root);
@@ -59,6 +60,13 @@ internal sealed class BuildApplication(
     {
         var command = new Command("test", "Run the fast unit test suite.");
         command.SetAction(_ => testSolutionTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterTestAll(RootCommand root)
+    {
+        var command = new Command("test-all", "Run unit and integration tests.");
+        command.SetAction(_ => testSolutionTarget.RunAllAsync(cancellationToken));
         root.Subcommands.Add(command);
     }
 

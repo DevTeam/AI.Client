@@ -1,4 +1,4 @@
-# Unit testing strategy
+# Testing strategy
 
 Status: Accepted
 
@@ -16,7 +16,7 @@ No other assertion framework or mocking framework is added without a separate ar
 
 ## Core rules
 
-Automated tests must be:
+Unit tests must be:
 
 - unit;
 - fast;
@@ -26,9 +26,8 @@ Automated tests must be:
 - independent of the network, disk, browser, processes, credentials, locale, timezone, and current time;
 - reproducible locally and in CI without additional configuration.
 
-Not allowed:
+Not allowed in unit tests:
 
-- integration and end-to-end tests;
 - live OpenAI/MCP calls;
 - launching Kestrel, a browser, or an MCP executable;
 - reading and writing the real file system;
@@ -36,7 +35,29 @@ Not allowed:
 - dependency on environment variables or the user profile;
 - shared mutable state between tests.
 
-Target guideline: the bulk of tests run in milliseconds, and the full suite runs in seconds.
+Target guideline: the bulk of unit tests run in milliseconds, and the fast suite runs in seconds.
+
+## Categories and commands
+
+Tests that start a server or process, use the real file system, wait on wall-clock time,
+or exercise the complete server graph are marked `[Trait("Category", "Integration")]`.
+Expensive tests that prepare the bundled dictionaries or verify real timeout behavior are
+marked `[Trait("Category", "Slow")]`.
+Unmarked tests are fast unit tests and must follow the isolation rules above. Prefer an existing
+interface and an in-memory or scripted implementation before marking a new test as integration.
+Keep a focused integration test when the operating-system adapter or protocol boundary is
+the behavior under test. Both categories run without external credentials or paid services.
+
+| Command | Scope |
+| --- | --- |
+| `dotnet run --project build -- test` | Fast unit tests; excludes `Category=Integration` and `Category=Slow` |
+| `dotnet run --project build -- verify` | Solution build, then fast unit tests |
+| `dotnet run --project build -- test-all` | Unit and integration tests |
+| `dotnet test AI.slnx --filter-not-trait Category=Integration --filter-not-trait Category=Slow` | Direct fast run |
+| `dotnet test AI.slnx` | Direct full run |
+
+The Microsoft Testing Platform runner accepts `--filter-not-trait`; do not add MSBuild
+parallelism switches such as `-m:1` to these commands, as that combination can report zero tests.
 
 Model quality comparisons are separate experiments under `evals/AI.Context.Evals`, outside
 `AI.slnx` and normal unit-test runs. [ADR-011](decisions/ADR-011-budgeted-summary-requests.md)
@@ -116,7 +137,7 @@ Storage logic is tested on top of `IFileSystem`/`IAtomicFileWriter` with an in-m
 - corrupted JSON and hash mismatch;
 - migration/rollback decision.
 
-Real temporary directories and OS-specific atomic rename are not used in automated tests. Thin platform adapters stay minimal and are verified through code review, static analysis, and manual acceptance.
+Real temporary directories and OS-specific atomic rename belong in integration tests.
 
 ## Application tests
 
@@ -146,7 +167,7 @@ MCP orchestration is tested through a mock/fake transport, not a real server:
 - structured and unstructured results;
 - OAuth challenge decision as a pure transformation of response metadata.
 
-Launching a `stdio` process and a Streamable HTTP server in the test suite is forbidden.
+Launching a `stdio` process and a Streamable HTTP server is forbidden in unit tests.
 
 ## FileSystem security tests
 
@@ -213,8 +234,8 @@ Verify the meaningful interaction at the module boundary: whether an MCP tool wa
 - All tests use xUnit.
 - All assertions use Shouldly.
 - Interface mocks are created through Moq.
-- Test projects contain no network/process/browser test fixtures.
+- Unit tests contain no network/process/browser test fixtures.
 - Tests do not require credentials or environment configuration.
 - A repeated run produces the same result.
-- The full suite stays fast; noticeable slowdown is treated as a regression.
+- The unit suite stays fast; noticeable slowdown is treated as a regression.
 - Build and test pass identically locally and in CI.

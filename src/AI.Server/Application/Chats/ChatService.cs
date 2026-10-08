@@ -11,12 +11,14 @@ using AI.Domain.Projects;
 using AI.Application.Resources;
 
 public sealed class ChatService(IChatRepository repository, IIdGenerator idGenerator, IClock clock, IChatSynchronization synchronization,
-    IPinOrderKeys pinOrderKeys, IChatKindPolicyRegistry kindPolicies) : IChatService, IChatMutations
+    IPinOrderKeys pinOrderKeys, Func<IChatKindPolicyRegistry> kindPolicies) : IChatService, IChatMutations
 {
+    private IChatKindPolicyRegistry KindPolicies => kindPolicies();
+
     public async Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken)
     {
         var summaries = (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
-            .Where(item => kindPolicies.TryResolve(item.Kind)?.Behavior.ShowInChatList == true).ToArray();
+            .Where(item => KindPolicies.TryResolve(item.Kind)?.Behavior.ShowInChatList == true).ToArray();
         return OrderPinned(summaries.Where(item => item.IsPinned))
             .Concat(summaries.Where(item => !item.IsPinned).OrderByDescending(item => item.LastActivityAt))
             .Select(ToSummary)
@@ -146,7 +148,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         ArgumentNullException.ThrowIfNull(request);
         var now = clock.UtcNow;
         var kind = new ChatKind(request.Kind);
-        var policy = kindPolicies.Resolve(kind);
+        var policy = KindPolicies.Resolve(kind);
         policy.ValidateState(request.KindState, request.KindStateVersion);
         var chat = new ChatThread(
             new ChatId(idGenerator.Create()),
@@ -460,9 +462,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var kind = new ChatKind(next.Kind);
         // The storage route is chosen by the kind's persistence; moving a chat between routes would
         // leave it behind in the old one.
-        if (kindPolicies.Resolve(kind).Behavior.Persistence != kindPolicies.Resolve(stored.Chat.Kind).Behavior.Persistence)
+        if (KindPolicies.Resolve(kind).Behavior.Persistence != KindPolicies.Resolve(stored.Chat.Kind).Behavior.Persistence)
             throw new InvalidOperationException($"A '{stored.Chat.Kind}' chat cannot become '{kind}'.");
-        kindPolicies.Resolve(kind).ValidateState(next.State, next.Version);
+        KindPolicies.Resolve(kind).ValidateState(next.State, next.Version);
         stored.Chat.SetKind(kind, next.State, next.Version, clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         if (!result.IsSaved) throw new InvalidOperationException("Could not change the chat kind.");
@@ -508,9 +510,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
         chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
-        chat.Kind.Value, chat.KindState, kindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
-        kindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
-        kindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
+        chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
+        KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
+        KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
 
     // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
     // policies): the page may keep it as the open chat, and the full chat carries every tool
@@ -554,9 +556,9 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
             chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
-            chat.Kind.Value, chat.KindState, kindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
-            kindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
-            kindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
+            chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
+            KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
+            KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
     }
 
     // The model's notes in a branch's last turn while it has no answer yet. A running turn shows

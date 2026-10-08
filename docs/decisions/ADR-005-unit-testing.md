@@ -1,6 +1,6 @@
 # ADR-005: Fast unit tests on xUnit
 
-Status: Accepted
+Status: Superseded by [Testing strategy](../09-testing.md) on 2026-10-08
 
 Date: 2026-08-11
 

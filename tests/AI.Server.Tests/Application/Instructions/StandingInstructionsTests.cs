@@ -12,6 +12,7 @@ using AI.Contracts.Memory;
 using AI.Contracts.Projects;
 using AI.Infrastructure.Projects;
 using AI.Infrastructure.Storage;
+using AI.Infrastructure.Tests.Storage;
 using AI.Infrastructure.Workspace;
 using Moq;
 using Shouldly;
@@ -19,8 +20,8 @@ using Xunit;
 
 public sealed class StandingInstructionsTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "ai-client-standing-" + Guid.NewGuid().ToString("N"));
-    private readonly string _workspace;
+    private readonly string _workspace = Path.Combine("workspace", "shop");
+    private readonly Dictionary<string, string> _instructionFiles = new(StringComparer.Ordinal);
     private readonly Guid _projectId = Guid.CreateVersion7();
     private readonly JsonMemoryRepository _memoryRepository;
     private readonly JsonProjectInstructionsRepository _instructionsRepository;
@@ -30,16 +31,14 @@ public sealed class StandingInstructionsTests : IDisposable
 
     public StandingInstructionsTests()
     {
-        _workspace = Path.Combine(_root, "workspace");
-        Directory.CreateDirectory(_workspace);
         var project = new ProjectDetails(_projectId, "Shop", "An online shop.", DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch, 1, [new DirectoryGrantSettings(Guid.CreateVersion7(), "Workspace", _workspace, true, ["read"])],
             [], []);
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
         var location = new Mock<IProjectStorageLocation>();
-        location.SetupGet(item => item.RootDirectory).Returns(Path.Combine(_root, "data"));
-        var files = new PhysicalTextFileSystem();
+        location.SetupGet(item => item.RootDirectory).Returns(Path.Combine("data", "shop"));
+        var files = new MemoryFileSystem();
         _memoryRepository = new JsonMemoryRepository(location.Object, files);
         _instructionsRepository = new JsonProjectInstructionsRepository(location.Object, files);
         _memory = new MemoryService(_memoryRepository, projects.Object, new Uuid7IdGenerator(), new SystemClock());
@@ -48,7 +47,13 @@ public sealed class StandingInstructionsTests : IDisposable
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new GlobalSettings(
             [new ConnectionSettings(Guid.NewGuid(), "Large", "https://example.test/v1", "model", true, true, false,
                 ContextWindowTokens: 131_072)], [], []));
-        _standing = new StandingInstructions(projects.Object, _instructionsRepository, new WorkspaceInstructionFileReader(),
+        var instructionReader = new Mock<IInstructionFileReader>();
+        instructionReader.Setup(item => item.ReadAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<string> roots, CancellationToken _) =>
+                (IReadOnlyList<InstructionFile>)_instructionFiles
+                    .Where(file => roots.Contains(Path.GetDirectoryName(file.Key)!))
+                    .Select(file => new InstructionFile(file.Key, file.Value, false)).ToArray());
+        _standing = new StandingInstructions(projects.Object, _instructionsRepository, instructionReader.Object,
             _memory, new SkillGuide(new BuiltInSkillCatalog()), new ContextTokenEstimator(),
             new AdaptiveContextPolicy(new ContextTokenEstimator(), new ConnectionContextLimitsResolver()), settings.Object, new ConnectionChoice());
     }
@@ -57,15 +62,13 @@ public sealed class StandingInstructionsTests : IDisposable
     {
         _memoryRepository.Dispose();
         _instructionsRepository.Dispose();
-        // The target is generated below the explicitly chosen temporary test root.
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 
     [Fact]
     public async Task ShouldLayerBaseProjectAndMemoryInPromptOrder()
     {
         var token = TestContext.Current.CancellationToken;
-        await File.WriteAllTextAsync(Path.Combine(_workspace, "AGENTS.md"), "Use tabs.", token);
+        _instructionFiles[Path.Combine(_workspace, "AGENTS.md")] = "Use tabs.";
         (await _instructions.UpdateAsync(_projectId, new UpdateProjectInstructionsRequest("Never touch the payments module.", true, 0),
             token)).Status.ShouldBe(ProjectInstructionsUpdateStatus.Updated);
         await _memory.CreateAsync(new CreateMemoryEntryRequest(MemoryScope.User, null, MemoryKind.Profile, "Name",
@@ -99,7 +102,7 @@ public sealed class StandingInstructionsTests : IDisposable
     public async Task ShouldLeaveInstructionFilesOutWhenSwitchedOffAndPreserveUserRules()
     {
         var token = TestContext.Current.CancellationToken;
-        await File.WriteAllTextAsync(Path.Combine(_workspace, "CLAUDE.md"), "From the file.", token);
+        _instructionFiles[Path.Combine(_workspace, "CLAUDE.md")] = "From the file.";
         await _instructions.UpdateAsync(_projectId, new UpdateProjectInstructionsRequest(new string('x', 20_000), false, 0), token);
 
         var preview = await _standing.BuildAsync(_projectId, false, token);

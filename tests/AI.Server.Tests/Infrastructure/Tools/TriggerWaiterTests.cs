@@ -5,6 +5,7 @@ using AI.Mcp.BuiltIn.Triggers;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class TriggerWaiterTests
 {
     [Fact]

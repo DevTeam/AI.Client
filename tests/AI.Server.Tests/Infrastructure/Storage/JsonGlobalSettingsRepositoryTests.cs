@@ -21,15 +21,20 @@ public sealed class JsonGlobalSettingsRepositoryTests
         var server = new McpServerSettings(Guid.NewGuid(), "Server", "StreamableHttp", true, "Ask",
             "https://example.test/mcp", null, [], null, [], false);
 
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var first = repository.UpdateAsync(async (settings, token) =>
         {
-            await Task.Delay(20, token);
+            entered.SetResult();
+            await release.Task.WaitAsync(token);
             return settings with { Connections = [.. settings.Connections, connection] };
         }, CancellationToken.None);
+        await entered.Task;
         var second = repository.UpdateAsync((settings, _) => Task.FromResult(settings with
         {
             McpServers = [.. settings.McpServers, server]
         }), CancellationToken.None);
+        release.SetResult();
         await Task.WhenAll(first, second);
 
         var saved = await repository.LoadAsync(CancellationToken.None);

@@ -29,6 +29,7 @@ using Xunit;
 /// Drives the subtask tool over a real MCP session, because the split it exists for — answer to the
 /// model, transcript to the user — only holds if the protocol layer carries it that way.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AppSubtaskToolTests
 {
     [Fact]

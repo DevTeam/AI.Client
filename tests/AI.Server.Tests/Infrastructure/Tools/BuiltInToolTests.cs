@@ -13,6 +13,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class BuiltInToolTests
 {
     [Fact]

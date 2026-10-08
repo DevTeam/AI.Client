@@ -9,6 +9,7 @@ namespace AI.Mcp.CSharp.Tests;
 /// Drives the real server over stdio, exactly as the Host does: child process, protocol handshake,
 /// tool list and calls. This is what proves the tool works, not just that it compiles.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class ScriptRunToolTests : IAsyncLifetime
 {
     private static readonly string[] TwoArguments = ["hello", "world"];

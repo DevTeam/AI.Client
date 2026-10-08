@@ -4,6 +4,7 @@ using AI.Infrastructure.Storage;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class PhysicalTextFileSystemTests : IDisposable
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("ai-client-fs").FullName;

@@ -128,6 +128,7 @@ public sealed class AppControlHintsRenderingTests
             .AddSingleton<ISettingsListFilter, SettingsListFilter>()
             .AddSingleton(Mock.Of<IJSRuntime>())
             .AddSingleton(Mock.Of<IUpdateClient>())
+            .AddSingleton(Mock.Of<IPublishedDownloadLinks>())
             .AddSingleton(Mock.Of<IComposerContextPresentation>())
             .BuildServiceProvider();
     }

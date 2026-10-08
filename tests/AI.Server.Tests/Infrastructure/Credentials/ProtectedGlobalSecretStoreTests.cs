@@ -8,6 +8,7 @@ using AI.Domain.Projects;
 using AI.Infrastructure.Credentials;
 using AI.Infrastructure.Storage;
 using AI.Infrastructure.Settings;
+using AI.Infrastructure.Tests.Storage;
 using Shouldly;
 using Xunit;
 
@@ -16,12 +17,13 @@ public class ProtectedGlobalSecretStoreTests
     [Fact]
     public async Task ShouldClearAbsentSecretInAFreshDataDirectory()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "ai-client-absent-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine("data", "absent");
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns(directory);
-        var store = new ProtectedGlobalSecretStore(new PhysicalTextFileSystem(), new GlobalSettingsPaths(location.Object), new PrefixDataProtector());
+        var files = new MemoryFileSystem();
+        var store = new ProtectedGlobalSecretStore(files, new GlobalSettingsPaths(location.Object), new PrefixDataProtector());
         await store.SetAsync("mcp-env", Guid.NewGuid(), null, CancellationToken.None);
-        Directory.Exists(directory).ShouldBeFalse();
+        files.Files.ShouldBeEmpty();
     }
     private readonly InMemoryTextFileSystem _fileSystem = new();
     private readonly ConnectionId _profileId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));

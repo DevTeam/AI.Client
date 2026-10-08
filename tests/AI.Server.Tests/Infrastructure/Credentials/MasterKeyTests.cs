@@ -11,6 +11,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class MasterKeyTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ai-client-keys-" + Guid.NewGuid().ToString("N"));

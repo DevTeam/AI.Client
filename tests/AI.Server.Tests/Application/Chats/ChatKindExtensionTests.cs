@@ -24,14 +24,14 @@ public sealed class ChatKindExtensionTests
         persistentChats.Setup(repository => repository.ListSummariesAsync(It.IsAny<AI.Domain.Projects.ProjectId>(),
             It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var hostChats = new HostLifetimeChatRepository(new ChatDocumentSerializer());
-        var chats = new ChatRepositoryRouter(persistentChats.Object, hostChats, kinds);
+        var chats = new ChatRepositoryRouter(persistentChats.Object, hostChats, () => kinds);
         var ids = new Mock<IIdGenerator>();
         var chatId = Guid.CreateVersion7();
         var projectId = Guid.CreateVersion7();
         ids.Setup(generator => generator.Create()).Returns(chatId);
         var clock = new Mock<IClock>();
         clock.SetupGet(source => source.UtcNow).Returns(DateTimeOffset.UnixEpoch);
-        var service = new ChatService(chats, ids.Object, clock.Object, new ChatSynchronization(), new PinOrderKeys(), kinds);
+        var service = new ChatService(chats, ids.Object, clock.Object, new ChatSynchronization(), new PinOrderKeys(), () => kinds);
 
         var created = await service.CreateAsync(projectId,
             new CreateChatRequest("Fixture", Kind: kind.Value,
@@ -48,7 +48,7 @@ public sealed class ChatKindExtensionTests
 
         var persistentRuns = new Mock<IPersistentChatRunRepository>(MockBehavior.Strict);
         var hostRuns = new HostLifetimeChatRunRepository();
-        var runs = new ChatRunRepositoryRouter(persistentRuns.Object, hostRuns, chats, kinds);
+        var runs = new ChatRunRepositoryRouter(persistentRuns.Object, hostRuns, chats, () => kinds);
         await runs.SaveAsync(new ChatRunState(projectId, chatId, chatId), CancellationToken.None);
         (await runs.GetAsync(projectId, chatId, chatId, CancellationToken.None)).ShouldNotBeNull();
         persistentRuns.Verify(repository => repository.SaveAsync(It.IsAny<ChatRunState>(),

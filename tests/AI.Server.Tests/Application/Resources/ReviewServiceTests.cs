@@ -10,6 +10,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class ReviewServiceTests
 {
     [Fact]

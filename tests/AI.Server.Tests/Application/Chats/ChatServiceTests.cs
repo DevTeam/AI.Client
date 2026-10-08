@@ -327,5 +327,5 @@ public class ChatServiceTests
     }
 
     private ChatService CreateInstance() => new(_repository.Object, _idGenerator.Object, _clock.Object,
-        new ChatSynchronization(), new PinOrderKeys(), new ChatKindPolicyRegistry([new ConversationChatKindPolicy()]));
+        new ChatSynchronization(), new PinOrderKeys(), () => new ChatKindPolicyRegistry([new ConversationChatKindPolicy()]));
 }

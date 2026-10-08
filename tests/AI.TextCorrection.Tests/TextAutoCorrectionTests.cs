@@ -3,6 +3,7 @@ namespace AI.TextCorrection.Tests;
 using Shouldly;
 using Xunit;
 
+[Trait("Category", "Slow")]
 public sealed class TextAutoCorrectionTests
 {
     [Fact]

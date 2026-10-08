@@ -1,47 +1,41 @@
 namespace AI.Web.Tests.State;
 
-using System.Diagnostics;
 using AI.Web.State;
 using Shouldly;
 using Xunit;
 
-// Timing-based by nature, so the windows are short but the assertions are one-sided: each one
-// waits for a transition that must happen, or watches a window in which one must not. Real
-// clocks, because the indicator's whole job is to be slower than the render loop.
-public class DelayedBusyIndicatorTests
+public sealed class DelayedBusyIndicatorTests
 {
     private static readonly TimeSpan ShowDelay = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan MinimumVisible = TimeSpan.FromMilliseconds(160);
 
+    private readonly ManualBusyIndicatorTime _time = new();
     private int _notifications;
 
-    private DelayedBusyIndicator CreateIndicator() => new(
-        () => { _notifications++; return Task.CompletedTask; },
-        ShowDelay,
-        MinimumVisible);
+    private DelayedBusyIndicator CreateIndicator() => new(_time,
+        () => { _notifications++; return Task.CompletedTask; }, ShowDelay, MinimumVisible);
 
     [Fact]
     public async Task DoesNotShowWhileTheLoadIsStillInsideTheDelayWindow()
     {
         using var indicator = CreateIndicator();
-
         indicator.Begin();
 
+        await _time.AdvanceAsync(ShowDelay / 2);
+
         indicator.IsVisible.ShouldBeFalse();
-        await Task.Delay(ShowDelay / 2, TestContext.Current.CancellationToken);
-        indicator.IsVisible.ShouldBeFalse();
+        _notifications.ShouldBe(0);
     }
 
     [Fact]
     public async Task NeverShowsForALoadThatFinishesInsideTheDelayWindow()
     {
         using var indicator = CreateIndicator();
-
         indicator.Begin();
         indicator.End();
 
-        // Past the point where an undamped flag would have flashed the placeholder.
-        await Task.Delay(ShowDelay + MinimumVisible, TestContext.Current.CancellationToken);
+        await _time.AdvanceAsync(ShowDelay + MinimumVisible);
+
         indicator.IsVisible.ShouldBeFalse();
         _notifications.ShouldBe(0);
     }
@@ -50,10 +44,12 @@ public class DelayedBusyIndicatorTests
     public async Task ShowsOnceTheLoadOutlivesTheDelay()
     {
         using var indicator = CreateIndicator();
-
         indicator.Begin();
 
+        await _time.AdvanceAsync(ShowDelay);
+
         await WaitForAsync(() => indicator.IsVisible);
+        indicator.IsVisible.ShouldBeTrue();
         _notifications.ShouldBe(1);
     }
 
@@ -62,14 +58,16 @@ public class DelayedBusyIndicatorTests
     {
         using var indicator = CreateIndicator();
         indicator.Begin();
+        await _time.AdvanceAsync(ShowDelay);
         await WaitForAsync(() => indicator.IsVisible);
-
-        var shownAt = Stopwatch.GetTimestamp();
         indicator.End();
 
+        await _time.AdvanceAsync(MinimumVisible - TimeSpan.FromTicks(1));
         indicator.IsVisible.ShouldBeTrue();
+        await _time.AdvanceAsync(TimeSpan.FromTicks(1));
         await WaitForAsync(() => !indicator.IsVisible);
-        Stopwatch.GetElapsedTime(shownAt).ShouldBeGreaterThanOrEqualTo(MinimumVisible - TimeSpan.FromMilliseconds(30));
+        indicator.IsVisible.ShouldBeFalse();
+        _notifications.ShouldBe(2);
     }
 
     [Fact]
@@ -77,27 +75,26 @@ public class DelayedBusyIndicatorTests
     {
         using var indicator = CreateIndicator();
         indicator.Begin();
+        await _time.AdvanceAsync(ShowDelay);
         await WaitForAsync(() => indicator.IsVisible);
-
         indicator.End();
         indicator.Begin();
 
-        // The hide scheduled by End must notice that a new load owns the placeholder now.
-        await Task.Delay(MinimumVisible * 2, TestContext.Current.CancellationToken);
+        await _time.AdvanceAsync(MinimumVisible * 2);
         indicator.IsVisible.ShouldBeTrue();
-
         indicator.End();
-        await WaitForAsync(() => !indicator.IsVisible);
+        indicator.IsVisible.ShouldBeFalse();
+        _notifications.ShouldBe(2);
     }
 
     [Fact]
     public async Task EndWithoutBeginDoesNothing()
     {
         using var indicator = CreateIndicator();
-
         indicator.End();
 
-        await Task.Delay(ShowDelay, TestContext.Current.CancellationToken);
+        await _time.AdvanceAsync(ShowDelay);
+
         indicator.IsVisible.ShouldBeFalse();
         _notifications.ShouldBe(0);
     }
@@ -109,20 +106,48 @@ public class DelayedBusyIndicatorTests
         indicator.Begin();
         indicator.Dispose();
 
-        await Task.Delay(ShowDelay * 3, TestContext.Current.CancellationToken);
+        await _time.AdvanceAsync(ShowDelay * 3);
+
         indicator.IsVisible.ShouldBeFalse();
         _notifications.ShouldBe(0);
     }
 
     private static async Task WaitForAsync(Func<bool> condition)
     {
-        var deadline = Stopwatch.GetTimestamp();
-        while (Stopwatch.GetElapsedTime(deadline) < TimeSpan.FromSeconds(5))
+        for (var attempt = 0; attempt < 1000 && !condition(); attempt++) await Task.Yield();
+        condition().ShouldBeTrue("the scheduled transition should complete without waiting on wall-clock time");
+    }
+
+    private sealed class ManualBusyIndicatorTime : IBusyIndicatorTime
+    {
+        private long _ticks;
+        private readonly List<(long Due, TaskCompletionSource Completion)> _scheduled = [];
+
+        public long GetTimestamp() => _ticks;
+        public TimeSpan GetElapsedTime(long timestamp) => TimeSpan.FromTicks(_ticks - timestamp);
+
+        public Task DelayAsync(TimeSpan delay)
         {
-            if (condition()) return;
-            await Task.Delay(10, TestContext.Current.CancellationToken);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _scheduled.Add((_ticks + delay.Ticks, completion));
+            return completion.Task;
         }
 
-        condition().ShouldBeTrue("the indicator never reached the expected state");
+        public async Task AdvanceAsync(TimeSpan elapsed)
+        {
+            _ticks += elapsed.Ticks;
+            while (true)
+            {
+                var due = _scheduled.Where(item => item.Due <= _ticks).ToArray();
+                if (due.Length == 0) break;
+                foreach (var item in due)
+                {
+                    _scheduled.Remove(item);
+                    item.Completion.SetResult();
+                }
+                await Task.Yield();
+            }
+            await Task.Yield();
+        }
     }
 }

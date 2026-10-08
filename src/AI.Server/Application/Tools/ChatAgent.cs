@@ -29,7 +29,7 @@ using ChatKind = AI.Domain.Chats.ChatKind;
 /// only when a run started rather than when the container was built.
 /// </remarks>
 public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessionFactory> sessions,
-    IProjectService projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
+    Func<IProjectService> projects, IGlobalSettingsRepository settings, IToolPolicyResolver policies,
     IWorkspaceChangeTracker workspace, IToolResultModelProjector modelProjector,
     IToolResultCodec toolResultCodec, IChatContextPlanner contextPlanner,
     IContextPlanDiagnostics contextDiagnostics, IChatTransportActivity transport,
@@ -38,7 +38,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids, IChatKindPolicyRegistry kindPolicies) : IChatAgent
+    IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -78,14 +78,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             : global.Connections.SingleOrDefault(item => item.Model == request.Model
                 && item.BaseUrl.TrimEnd('/') == request.BaseUrl.TrimEnd('/'));
         if (configuredConnection is not null) configuredConnection = configuredConnection with { Model = request.Model };
-        var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
+        var project = await projects().GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
         // for this project. A server that fails the test is never started, so nothing it could
         // offer reaches the model or costs a process.
         bool Enabled(Guid serverId) =>
             global.McpServers.SingleOrDefault(server => server.Id == serverId) is { Enabled: true, Policy: not "Deny" }
             && project.McpServers.SingleOrDefault(server => server.Id == serverId) is not { Enabled: false };
-        var kindPolicy = kindPolicies.Resolve(request.Kind == default ? ChatKind.Conversation : request.Kind);
+        var kindPolicy = kindPolicies().Resolve(request.Kind == default ? ChatKind.Conversation : request.Kind);
         kindPolicy.ValidateState(request.KindState, request.KindStateVersion);
         var behavior = kindPolicy.Behavior;
         var servers = global.McpServers.Select(server => server.Id).Where(Enabled)
@@ -248,7 +248,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         {
             if (session is not null)
             {
-                var latestProject = await projects.GetAsync(projectId, token)
+                var latestProject = await projects().GetAsync(projectId, token)
                                     ?? throw new InvalidOperationException("Project not found.");
                 var latestGrants = latestProject.DirectoryGrants
                     .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();

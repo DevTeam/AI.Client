@@ -5,9 +5,13 @@ using AI.Application.Chats;
 using AI.Domain.Chats;
 using AI.Domain.Projects;
 
-/// <summary>Routes a chat by its policy while keeping lookup independent of any known kind.</summary>
+/// <summary>
+/// Routes a chat by its policy while keeping lookup independent of any known kind. The registry
+/// is resolved on use because building it during repository construction can complete a cycle
+/// through chat services before the composition has initialized the registry.
+/// </summary>
 public sealed class ChatRepositoryRouter(IPersistentChatRepository durable, IHostLifetimeChatRepository hostLifetime,
-    IChatKindPolicyRegistry kinds) : IChatRepository
+    Func<IChatKindPolicyRegistry> kinds) : IChatRepository
 {
     public async Task<IReadOnlyList<StoredChatSummary>> ListSummariesAsync(ProjectId projectId, CancellationToken cancellationToken) =>
         [.. await durable.ListSummariesAsync(projectId, cancellationToken), .. await hostLifetime.ListSummariesAsync(projectId, cancellationToken)];
@@ -26,7 +30,7 @@ public sealed class ChatRepositoryRouter(IPersistentChatRepository durable, IHos
     }
 
     private IChatRepository Backend(ChatKind kind) =>
-        kinds.Resolve(kind).Behavior.Persistence == ChatPersistence.HostLifetime ? hostLifetime : durable;
+        kinds().Resolve(kind).Behavior.Persistence == ChatPersistence.HostLifetime ? hostLifetime : durable;
 }
 
 /// <summary>Versioned chat documents kept only for the lifetime of the host.</summary>

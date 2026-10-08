@@ -28,6 +28,7 @@ using AI.Infrastructure.Workspace;
 using AI.Server.Hosting;
 using System.Text.Json;
 
+[Trait("Category", "Integration")]
 public sealed partial class ChatExecutionTests
 {
     [Fact]
@@ -2385,6 +2386,7 @@ public sealed partial class ChatExecutionTests
 
         /// <summary>What the skill router answers; nowhere by default.</summary>
         public string RouteAnswer { get; set; } = "{}";
+        public string RiskAnswer { get; set; } = "{\"decision\":\"ask\",\"risk\":\"medium\",\"reason\":\"Review this call.\"}";
         /// <summary>What a summary request is answered with; summaries fail when it is null.</summary>
         public string? SummaryAnswer { get; set; }
         public int SummaryRequests;
@@ -2401,6 +2403,11 @@ public sealed partial class ChatExecutionTests
             if (request.Message == "Route the request")
             {
                 yield return new ChatCompletionChunk(RouteAnswer);
+                yield break;
+            }
+            if (request.Message == "Assess a tool call")
+            {
+                yield return new ChatCompletionChunk(RiskAnswer);
                 yield break;
             }
             var call = new Call(request, new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -2609,8 +2616,21 @@ public sealed partial class ChatExecutionTests
         public async Task<ChatRunSnapshot> WaitAsync(Func<ChatRunSnapshot, bool> predicate)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await foreach (var snapshots in Dispatcher.SubscribeAsync(timeout.Token))
-                if (snapshots.FirstOrDefault(predicate) is { } snapshot) return snapshot;
+            try
+            {
+                await foreach (var snapshots in Dispatcher.SubscribeAsync(timeout.Token))
+                    if (snapshots.FirstOrDefault(predicate) is { } snapshot) return snapshot;
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                var current = await Dispatcher.GetSnapshotAsync(CancellationToken.None);
+                var chat = await Chats.GetAsync(ProjectId, ChatId, CancellationToken.None);
+                throw new TimeoutException("No matching run snapshot. Current state: " +
+                    string.Join("; ", current.Select(run =>
+                        $"{run.Status}, approval={run.PendingApproval is not null}, queue={run.Queue.Count}")) +
+                    "; messages=" + string.Join(",", chat?.Messages.Select(message =>
+                        $"{message.Role}:{message.ToolCalls?.Count ?? 0}:{message.ToolCallId}") ?? []));
+            }
             throw new InvalidOperationException("No matching snapshot.");
         }
         public async Task RestartAsync()

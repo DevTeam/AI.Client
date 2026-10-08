@@ -1,7 +1,5 @@
 namespace AI.Web.State;
 
-using System.Diagnostics;
-
 /// <summary>
 /// A busy flag that lags on purpose. It stays down for the first <c>showDelay</c> of a load and,
 /// once raised, stays up for at least <c>minimumVisible</c>.
@@ -15,6 +13,7 @@ using System.Diagnostics;
 /// </remarks>
 public sealed class DelayedBusyIndicator : IDelayedBusyIndicator
 {
+    private readonly IBusyIndicatorTime _time;
     private readonly Func<Task> _notifyChanged;
     private readonly TimeSpan _showDelay;
     private readonly TimeSpan _minimumVisible;
@@ -27,8 +26,10 @@ public sealed class DelayedBusyIndicator : IDelayedBusyIndicator
     /// <param name="notifyChanged">Re-renders the owner: <see cref="IsVisible"/> changes on a timer, off the call that started the load.</param>
     /// <param name="showDelay">How long a load may run before it gets a placeholder at all.</param>
     /// <param name="minimumVisible">How long the placeholder stays once it has been shown.</param>
-    public DelayedBusyIndicator(Func<Task> notifyChanged, TimeSpan? showDelay = null, TimeSpan? minimumVisible = null)
+    public DelayedBusyIndicator(IBusyIndicatorTime time, Func<Task> notifyChanged,
+        TimeSpan? showDelay = null, TimeSpan? minimumVisible = null)
     {
+        _time = time;
         _notifyChanged = notifyChanged;
         _showDelay = showDelay ?? TimeSpan.FromMilliseconds(150);
         _minimumVisible = minimumVisible ?? TimeSpan.FromMilliseconds(300);
@@ -70,20 +71,20 @@ public sealed class DelayedBusyIndicator : IDelayedBusyIndicator
 
     private async Task ShowAfterDelayAsync()
     {
-        await Task.Delay(_showDelay);
+        await _time.DelayAsync(_showDelay);
         _showScheduled = false;
         // Finished inside the delay window: the placeholder never existed and never will.
         if (_disposed || !_isLoading || IsVisible) return;
 
-        _shownAt = Stopwatch.GetTimestamp();
+        _shownAt = _time.GetTimestamp();
         IsVisible = true;
         await _notifyChanged();
     }
 
     private async Task HideAfterMinimumAsync()
     {
-        var visibleFor = Stopwatch.GetElapsedTime(_shownAt);
-        if (visibleFor < _minimumVisible) await Task.Delay(_minimumVisible - visibleFor);
+        var visibleFor = _time.GetElapsedTime(_shownAt);
+        if (visibleFor < _minimumVisible) await _time.DelayAsync(_minimumVisible - visibleFor);
         _hideScheduled = false;
         // A new load claimed the placeholder while we were holding the floor; it keeps it, and
         // its own End schedules the next hide from the time this one was first shown.

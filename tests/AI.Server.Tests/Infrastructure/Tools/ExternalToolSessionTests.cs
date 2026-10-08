@@ -18,6 +18,7 @@ using System.Text.Json;
 using System.Net.Http.Json;
 using Xunit;
 
+[Trait("Category", "Integration")]
 public sealed class ExternalToolSessionTests
 {
     private static CancellationToken Token => TestContext.Current.CancellationToken;

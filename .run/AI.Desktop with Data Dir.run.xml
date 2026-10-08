@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="AI.Desktop with Data Dir" type="DotNetProject" factoryName=".NET Project">
     <option name="EXE_PATH" value="$PROJECT_DIR$/src/AI.Desktop/bin/Debug/net10.0/AI.Desktop.exe" />
-    <option name="PROGRAM_PARAMETERS" value="--data-dir D:\Projects\AI_temp2" />
+    <option name="PROGRAM_PARAMETERS" value="--data-dir D:\Projects\AI_data_dir" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/AI.Desktop" />
     <option name="PASS_PARENT_ENVS" value="1" />
     <option name="ENV_FILE_PATHS" value="" />

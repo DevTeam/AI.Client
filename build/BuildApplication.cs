@@ -14,6 +14,7 @@ internal sealed class BuildApplication(
     IPackageReleaseTarget packageReleaseTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
+    IProfileDesktopTarget profileDesktopTarget,
     IReadmeTarget readmeTarget,
     IPrepareTextCorrectionTarget prepareTextCorrectionTarget,
     CancellationToken cancellationToken)
@@ -30,6 +31,7 @@ internal sealed class BuildApplication(
         RegisterPublishWeb(root);
         RegisterPackageRelease(root);
         RegisterHost(root);
+        RegisterProfileDesktop(root);
         RegisterReadme(root);
         RegisterTextCorrection(root);
         return root.Parse(args).InvokeAsync();
@@ -192,5 +194,25 @@ internal sealed class BuildApplication(
                 parseResult.GetValue(publicWeb)),
             cancellationToken));
         root.Subcommands.Add(runBothCommand);
+    }
+
+    private void RegisterProfileDesktop(RootCommand root)
+    {
+        var profiler = new Option<string>("--profiler")
+        {
+            Description = "Profiler: eventpipe (LLM-readable JSON), dottrace (Rider Sampling), or dottrace-timeline (Rider Timeline).",
+            DefaultValueFactory = _ => "eventpipe"
+        };
+        profiler.AcceptOnlyFromAmong("eventpipe", "dottrace", "dottrace-timeline");
+        var dataDirectory = new Option<string?>("--data-dir")
+        {
+            Description = "Optional Desktop data directory, forwarded to the application."
+        };
+        var command = new Command("profile-desktop", "Publish and profile AI.Desktop from startup into .trace/.");
+        command.Options.Add(profiler);
+        command.Options.Add(dataDirectory);
+        command.SetAction(parse => profileDesktopTarget.RunAsync(
+            parse.GetValue(profiler)!, parse.GetValue(dataDirectory), cancellationToken));
+        root.Subcommands.Add(command);
     }
 }

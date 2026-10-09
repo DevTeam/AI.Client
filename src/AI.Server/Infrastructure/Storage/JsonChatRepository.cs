@@ -67,6 +67,22 @@ public sealed class JsonChatRepository(
         return json is null ? null : serializer.Deserialize(json);
     }
 
+    public async Task<ChatMessageLookup?> GetMessageAsync(ProjectId projectId, ChatId id,
+        ChatMessageId messageId, CancellationToken cancellationToken)
+    {
+        var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
+        return json is null ? null : new ChatMessageLookup(serializer.DeserializeMessage(json, messageId.Value));
+    }
+
+    public async Task<bool?> MayContainReviewReferenceAsync(ProjectId projectId, ChatId id,
+        Guid reviewId, CancellationToken cancellationToken)
+    {
+        var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
+        // A negative check is definitive for GUIDs written by System.Text.Json. A positive check
+        // falls back to the domain model because the ID may occur in unrelated message content.
+        return json?.Contains(reviewId.ToString("D"), StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken)
     {
         using var lease = await _writes.EnterAsync(cancellationToken);

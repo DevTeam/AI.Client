@@ -79,17 +79,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             kindStateVersion: document.KindStateVersion);
         foreach (var message in document.Messages.OrderBy(item => item.CreatedAt))
         {
-            chat.AddMessage(new ChatMessage(
-                new ChatMessageId(message.Id),
-                message.ParentId is { } parentId ? new ChatMessageId(parentId) : null,
-                message.Role,
-                message.Content,
-                message.CreatedAt,
-                message.IsIncomplete, message.ToolCalls, message.ToolCallId,
-                ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources),
-                allowEmptyAfterResourceRemoval: true, message.Delivery,
-                message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null),
-                message.CreatedAt);
+            chat.AddMessage(ToDomain(message), message.CreatedAt);
         }
         chat.RestoreBranches(document.Branches.Select(branch => new ChatBranch(branch.Id,
             branch.HeadMessageId is { } head ? new ChatMessageId(head) : null, branch.Title,
@@ -107,6 +97,35 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 
         return new StoredChat(chat, document.Revision);
     }
+
+    public ChatMessage? DeserializeMessage(string json, Guid messageId)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var schemaVersion = root.GetProperty("SchemaVersion").GetInt32();
+        var revision = root.GetProperty("Revision").GetInt64();
+        if (schemaVersion is not (5 or PreviousSchemaVersion or 7 or 8 or SchemaVersion) || revision < 0)
+            throw new JsonException("Chat document schema or revision is invalid.");
+        foreach (var item in root.GetProperty("Messages").EnumerateArray())
+        {
+            if (item.GetProperty("Id").GetGuid() != messageId) continue;
+            var message = item.Deserialize<ChatMessageDocument>(Options)
+                ?? throw new JsonException("Chat message is empty.");
+            return ToDomain(message);
+        }
+        return null;
+    }
+
+    private static ChatMessage ToDomain(ChatMessageDocument message) => new(
+        new ChatMessageId(message.Id),
+        message.ParentId is { } parentId ? new ChatMessageId(parentId) : null,
+        message.Role,
+        message.Content,
+        message.CreatedAt,
+        message.IsIncomplete, message.ToolCalls, message.ToolCallId,
+        ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources),
+        allowEmptyAfterResourceRemoval: true, message.Delivery,
+        message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
 
     public StoredChatSummary DeserializeSummary(string json)
     {

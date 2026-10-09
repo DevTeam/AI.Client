@@ -16,5 +16,7 @@ public interface IChatDocumentSerializer
 
     StoredChat Deserialize(string json);
 
+    ChatMessage? DeserializeMessage(string json, Guid messageId);
+
     StoredChatSummary DeserializeSummary(string json);
 }

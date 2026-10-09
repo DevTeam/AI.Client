@@ -8,9 +8,13 @@ public interface IChatService
     Task<bool> ExistsAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    /// <summary>Loads one message for review validation without projecting the entire transcript.</summary>
+    Task<ChatMessageView?> GetReviewSourceAsync(Guid projectId, Guid chatId, Guid messageId,
+        CancellationToken cancellationToken);
     Task<ChatTurnActivity?> GetTurnActivityAsync(Guid projectId, Guid chatId, Guid turnId, Guid branchLeafId, CancellationToken cancellationToken);
     Task<ChatMessageContent?> GetMessageContentAsync(Guid projectId, Guid chatId, Guid messageId, CancellationToken cancellationToken);
-    Task<ChatDetails?> RemoveReviewReferencesAsync(Guid projectId, Guid chatId, Guid reviewId,
+    /// <summary>Removes attached review references. False means the chat does not exist.</summary>
+    Task<bool> RemoveReviewReferencesAsync(Guid projectId, Guid chatId, Guid reviewId,
         CancellationToken cancellationToken);
     Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> AppendMessageAsync(Guid projectId, Guid chatId, AppendChatMessageRequest request, CancellationToken cancellationToken);

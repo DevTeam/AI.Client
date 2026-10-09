@@ -263,6 +263,19 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
 
+    public async Task<ChatDetails?> LoadForRunRecoveryAsync(Guid projectId, Guid chatId,
+        IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null || KindPolicies.TryResolve(stored.Chat.Kind) is null) return null;
+        if (!stored.Chat.PruneUnreachableMessages(retainedMessageIds.Select(id => new ChatMessageId(id))))
+            return ToDetails(stored.Chat, stored.Revision);
+
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToDetails(stored.Chat, result.Revision)
+            : await GetAsync(projectId, chatId, cancellationToken);
+    }
+
     public async Task<ChatDetails?> UpdateEndpointAsync(
         Guid projectId,
         Guid chatId,

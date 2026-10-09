@@ -39,6 +39,13 @@ public interface IChatMutations
         Guid projectId, Guid chatId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Loads and prunes a chat in one read while the caller holds its lease during run recovery.
+    /// Unsupported chat kinds are left untouched.
+    /// </summary>
+    Task<ChatDetails?> LoadForRunRecoveryAsync(
+        Guid projectId, Guid chatId, IReadOnlySet<Guid> retainedMessageIds, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Lifts the chat in the sidebar for something that happened without a message, such as a
     /// failed run. The caller must already hold the chat's lease.
     /// </summary>

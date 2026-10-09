@@ -25,6 +25,10 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             .ToArray();
     }
 
+    public async Task<bool> ExistsAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        (await repository.ListSummariesAsync(new ProjectId(projectId), cancellationToken))
+        .Any(item => item.Id.Value == chatId);
+
     /// <summary>
     /// Pinned chats keep the order the user gave them; activity never reorders them. Chats pinned
     /// before manual ordering existed have no key yet and come first, in the order they were

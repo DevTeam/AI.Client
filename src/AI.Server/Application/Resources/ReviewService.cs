@@ -10,7 +10,8 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
 {
     public async Task<IReadOnlyList<ChatReview>> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
-        await RequireChatAsync(projectId, chatId, cancellationToken);
+        if (!await chats.ExistsAsync(projectId, chatId, cancellationToken))
+            throw new InvalidOperationException("Chat not found.");
         return (await repository.ListAsync(projectId, chatId, cancellationToken))
             .OrderByDescending(item => item.SourceCreatedAt).ThenByDescending(item => item.CreatedAt)
             .Select(item => item with { SourceChanges = null }).ToArray();

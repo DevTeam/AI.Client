@@ -14,6 +14,22 @@ using Xunit;
 public sealed class ReviewServiceTests
 {
     [Fact]
+    public async Task ListingReviewsDoesNotLoadTheChatTranscript()
+    {
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var chats = new Mock<IChatService>();
+        chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var repository = new Mock<IReviewRepository>();
+        repository.Setup(item => item.ListAsync(projectId, chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var service = new ReviewService(chats.Object, repository.Object, new UnifiedDiff());
+
+        (await service.ListAsync(projectId, chatId, TestContext.Current.CancellationToken)).ShouldBeEmpty();
+        chats.Verify(item => item.GetAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ShouldPersistMessageReviewCommentsAndAllowRemovingTheLastOne()
     {
         var token = TestContext.Current.CancellationToken;
@@ -27,6 +43,7 @@ public sealed class ReviewServiceTests
             [new ChatMessageView(sourceId, null, "User", "Check this text", DateTimeOffset.UnixEpoch)]);
         var chats = new Mock<IChatService>();
         chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(chat);
+        chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
         using var repository = new JsonReviewRepository(location.Object, files);
@@ -66,9 +83,11 @@ public sealed class ReviewServiceTests
         var chats = new Mock<IChatService>();
         chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => currentChat);
+        chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var otherChatId = Guid.NewGuid();
         chats.Setup(item => item.GetAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(chat with { Id = otherChatId });
+        chats.Setup(item => item.ExistsAsync(projectId, otherChatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
         using var repository = new JsonReviewRepository(location.Object, files);

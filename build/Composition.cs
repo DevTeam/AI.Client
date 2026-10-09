@@ -21,5 +21,5 @@ internal sealed partial class Composition
             .Arg<CancellationToken>("cancellationToken")
             .Transient<PrepareTextCorrectionTarget, BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget,
                 VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget,
-                RunBothTarget, RazorTemplateEngine, ReadmeTarget>();
+                RunBothTarget, ProfileDesktopTarget, RazorTemplateEngine, ReadmeTarget>();
 }

@@ -19,16 +19,14 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
 
     public async Task<ChatReview?> GetAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
     {
-        await RequireChatAsync(projectId, chatId, cancellationToken);
+        await RequireChatExistsAsync(projectId, chatId, cancellationToken);
         return (await repository.ListAsync(projectId, chatId, cancellationToken))
             .FirstOrDefault(item => item.Id == reviewId);
     }
 
     public async Task<ChatReview> CreateAsync(Guid projectId, Guid chatId, CreateReviewRequest request, CancellationToken cancellationToken)
     {
-        var chat = await RequireChatAsync(projectId, chatId, cancellationToken);
-        var source = chat.Messages.FirstOrDefault(item => item.Id == request.SourceMessageId)
-            ?? throw new ArgumentException("Review source message does not exist in this chat.");
+        var source = await RequireSourceAsync(projectId, chatId, request.SourceMessageId, cancellationToken);
         if (request.Kind == ChatReviewKind.Message)
         {
             if (request.Files is { Count: > 0 }) throw new ArgumentException("Message reviews cannot select files.");
@@ -59,22 +57,23 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
     public async Task<ChatReview?> UpdateAsync(Guid projectId, Guid chatId, Guid reviewId,
         UpdateReviewRequest request, CancellationToken cancellationToken)
     {
-        var chat = await RequireChatAsync(projectId, chatId, cancellationToken);
+        await RequireChatExistsAsync(projectId, chatId, cancellationToken);
         var review = (await repository.ListAsync(projectId, chatId, cancellationToken)).FirstOrDefault(item => item.Id == reviewId);
         if (review is null) return null;
-        var source = chat.Messages.FirstOrDefault(item => item.Id == review.SourceMessageId);
         if (review.Kind == ChatReviewKind.Message)
         {
             if (request.Files is { Count: > 0 } || request.Comments is { Count: > 0 })
                 throw new ArgumentException("Message reviews cannot contain file selections or diff comments.");
-            if (source is null) throw new InvalidOperationException("Review source is unavailable.");
+            if (await chats.GetReviewSourceAsync(projectId, chatId, review.SourceMessageId, cancellationToken) is null)
+                throw new InvalidOperationException("Review source is unavailable.");
             var messageName = CleanName(request.Name);
             var messageComments = ValidateMessageComments(request.MessageComments, allowEmpty: true);
             return await repository.UpdateAsync(projectId, chatId, reviewId, request.ExpectedRevision,
                 current => current with { Name = messageName, MessageComments = messageComments, UpdatedAt = DateTimeOffset.UtcNow },
                 cancellationToken);
         }
-        var changes = review.SourceChanges ?? source?.WorkspaceChanges
+        var changes = review.SourceChanges ??
+            (await chats.GetReviewSourceAsync(projectId, chatId, review.SourceMessageId, cancellationToken))?.WorkspaceChanges
             ?? throw new InvalidOperationException("Review source is unavailable.");
         if (request.MessageComments is { Count: > 0 })
             throw new ArgumentException("Diff reviews cannot contain message comments.");
@@ -91,15 +90,27 @@ public sealed class ReviewService(IChatService chats, IReviewRepository reposito
     public async Task<bool> DeleteAsync(Guid projectId, Guid chatId, Guid reviewId, CancellationToken cancellationToken)
     {
         if (await GetAsync(projectId, chatId, reviewId, cancellationToken) is null) return false;
-        if (await chats.RemoveReviewReferencesAsync(projectId, chatId, reviewId, cancellationToken) is null)
+        if (!await chats.RemoveReviewReferencesAsync(projectId, chatId, reviewId, cancellationToken))
             throw new InvalidOperationException("Chat not found.");
         return await repository.DeleteAsync(projectId, chatId, reviewId, cancellationToken);
     }
 
     public Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken) => repository.DeleteProjectAsync(projectId, cancellationToken);
 
-    private async Task<AI.Contracts.Chats.ChatDetails> RequireChatAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
-        await chats.GetAsync(projectId, chatId, cancellationToken) ?? throw new InvalidOperationException("Chat not found.");
+    private async Task RequireChatExistsAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        if (!await chats.ExistsAsync(projectId, chatId, cancellationToken))
+            throw new InvalidOperationException("Chat not found.");
+    }
+
+    private async Task<AI.Contracts.Chats.ChatMessageView> RequireSourceAsync(Guid projectId, Guid chatId,
+        Guid sourceId, CancellationToken cancellationToken)
+    {
+        var source = await chats.GetReviewSourceAsync(projectId, chatId, sourceId, cancellationToken);
+        if (source is not null) return source;
+        await RequireChatExistsAsync(projectId, chatId, cancellationToken);
+        throw new ArgumentException("Review source message does not exist in this chat.");
+    }
 
     private static string CleanName(string name)
     {

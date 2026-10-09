@@ -42,7 +42,8 @@ public sealed class ReviewServiceTests
             DateTimeOffset.UnixEpoch, 1, null,
             [new ChatMessageView(sourceId, null, "User", "Check this text", DateTimeOffset.UnixEpoch)]);
         var chats = new Mock<IChatService>();
-        chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(chat);
+        chats.Setup(item => item.GetReviewSourceAsync(projectId, chatId, sourceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(chat.Messages[0]);
         chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
@@ -53,6 +54,7 @@ public sealed class ReviewServiceTests
         var created = await service.CreateAsync(projectId, chatId,
             new CreateReviewRequest(sourceId, "Message review", [], ChatReviewKind.Message, [comment]), token);
         created.Kind.ShouldBe(ChatReviewKind.Message);
+        chats.Verify(item => item.GetAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         created.MessageComments!.ShouldHaveSingleItem().ShouldBe(comment);
         var empty = await service.UpdateAsync(projectId, chatId, created.Id,
             new UpdateReviewRequest(created.Name, [], [], created.Revision, []), token);
@@ -81,12 +83,12 @@ public sealed class ReviewServiceTests
                 WorkspaceChanges: new WorkspaceChangeSet([file], 1, 1))]);
         var currentChat = chat;
         var chats = new Mock<IChatService>();
-        chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => currentChat);
+        chats.Setup(item => item.GetReviewSourceAsync(projectId, chatId, sourceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => currentChat.Messages.Count > 0 ? currentChat.Messages[0] : null);
         chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var otherChatId = Guid.NewGuid();
-        chats.Setup(item => item.GetAsync(projectId, otherChatId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chat with { Id = otherChatId });
+        chats.Setup(item => item.GetReviewSourceAsync(projectId, otherChatId, sourceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(chat.Messages[0]);
         chats.Setup(item => item.ExistsAsync(projectId, otherChatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var location = new Mock<IProjectStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
@@ -109,7 +111,7 @@ public sealed class ReviewServiceTests
             new CreateReviewRequest(sourceId, "Invalid comment", [file.Path],
                 Comments: [comment with { NewStart = 500, NewEnd = 500 }]), token));
         chats.Setup(item => item.RemoveReviewReferencesAsync(projectId, chatId, createdWithComment.Id,
-            It.IsAny<CancellationToken>())).ReturnsAsync(currentChat);
+            It.IsAny<CancellationToken>())).ReturnsAsync(true);
         (await service.DeleteAsync(projectId, chatId, createdWithComment.Id, token)).ShouldBeTrue();
         var restored = (await service.ListAsync(projectId, chatId, token)).ShouldHaveSingleItem();
         restored.Id.ShouldBe(updated.Id);
@@ -132,7 +134,7 @@ public sealed class ReviewServiceTests
         await Should.ThrowAsync<InvalidOperationException>(() => service.UpdateAsync(projectId, chatId, created.Id,
             new UpdateReviewRequest("Stale", [file.Path], [comment], created.Revision), token));
         chats.Setup(item => item.RemoveReviewReferencesAsync(projectId, chatId, created.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(currentChat);
+            .ReturnsAsync(true);
         (await service.DeleteAsync(projectId, chatId, created.Id, token)).ShouldBeTrue();
         chats.Verify(item => item.RemoveReviewReferencesAsync(projectId, chatId, created.Id,
             It.IsAny<CancellationToken>()), Times.Once);

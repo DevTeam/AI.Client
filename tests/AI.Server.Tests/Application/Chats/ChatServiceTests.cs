@@ -57,6 +57,46 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldSkipLoadingTheChatWhenDeletedReviewHasNoReferences()
+    {
+        var reviewId = Guid.NewGuid();
+        _repository.Setup(item => item.MayContainReviewReferenceAsync(_projectId, _chatId, reviewId,
+            CancellationToken.None)).ReturnsAsync(false);
+
+        (await CreateInstance().RemoveReviewReferencesAsync(_projectId.Value, _chatId.Value,
+            reviewId, CancellationToken.None)).ShouldBeTrue();
+
+        _repository.Verify(item => item.GetAsync(It.IsAny<ProjectId>(), It.IsAny<ChatId>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _repository.Verify(item => item.SaveAsync(It.IsAny<ChatThread>(), It.IsAny<long>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ShouldRemoveAnAttachedReviewReference()
+    {
+        var reviewId = Guid.NewGuid();
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User,
+            "Review this", _now, resources:
+            [new AI.Domain.Resources.ChatResource(reviewId, AI.Domain.Resources.ChatResourceKind.Review, string.Empty)]),
+            _now);
+        _repository.Setup(item => item.MayContainReviewReferenceAsync(_projectId, _chatId, reviewId,
+            CancellationToken.None)).ReturnsAsync(true);
+        _repository.Setup(item => item.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 1));
+        _repository.Setup(item => item.SaveAsync(chat, 1, CancellationToken.None))
+            .ReturnsAsync(ChatSaveResult.Saved(2));
+        _clock.SetupGet(item => item.UtcNow).Returns(_now.AddMinutes(1));
+
+        (await CreateInstance().RemoveReviewReferencesAsync(_projectId.Value, _chatId.Value,
+            reviewId, CancellationToken.None)).ShouldBeTrue();
+
+        chat.Messages.ShouldHaveSingleItem().Resources.ShouldBeEmpty();
+        _repository.Verify(item => item.SaveAsync(chat, 1, CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
     public async Task ShouldUseProvidedMessageIdForBranchRoot()
     {
         var messageId = Guid.Parse("019f0000-0000-7000-8000-000000000003");

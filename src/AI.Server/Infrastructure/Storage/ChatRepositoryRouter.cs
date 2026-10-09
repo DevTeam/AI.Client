@@ -19,6 +19,16 @@ public sealed class ChatRepositoryRouter(IPersistentChatRepository durable, IHos
     public async Task<StoredChat?> GetAsync(ProjectId projectId, ChatId id, CancellationToken cancellationToken) =>
         await hostLifetime.GetAsync(projectId, id, cancellationToken) ?? await durable.GetAsync(projectId, id, cancellationToken);
 
+    public async Task<ChatMessageLookup?> GetMessageAsync(ProjectId projectId, ChatId id,
+        ChatMessageId messageId, CancellationToken cancellationToken) =>
+        await hostLifetime.GetMessageAsync(projectId, id, messageId, cancellationToken)
+        ?? await durable.GetMessageAsync(projectId, id, messageId, cancellationToken);
+
+    public async Task<bool?> MayContainReviewReferenceAsync(ProjectId projectId, ChatId id,
+        Guid reviewId, CancellationToken cancellationToken) =>
+        await hostLifetime.MayContainReviewReferenceAsync(projectId, id, reviewId, cancellationToken)
+        ?? await durable.MayContainReviewReferenceAsync(projectId, id, reviewId, cancellationToken);
+
     public Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken) =>
         Backend(chat.Kind).SaveAsync(chat, expectedRevision, cancellationToken);
 
@@ -52,6 +62,22 @@ public sealed class HostLifetimeChatRepository(IChatDocumentSerializer serialize
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(_documents.TryGetValue((projectId, id), out var entry)
             ? serializer.Deserialize(entry.Document) : null);
+    }
+
+    public Task<ChatMessageLookup?> GetMessageAsync(ProjectId projectId, ChatId id,
+        ChatMessageId messageId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_documents.TryGetValue((projectId, id), out var entry)
+            ? new ChatMessageLookup(serializer.DeserializeMessage(entry.Document, messageId.Value)) : null);
+    }
+
+    public Task<bool?> MayContainReviewReferenceAsync(ProjectId projectId, ChatId id,
+        Guid reviewId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_documents.TryGetValue((projectId, id), out var entry)
+            ? (bool?)entry.Document.Contains(reviewId.ToString("D"), StringComparison.OrdinalIgnoreCase) : null);
     }
 
     public Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken)

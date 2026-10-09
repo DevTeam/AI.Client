@@ -48,6 +48,38 @@ public sealed class JsonChatRepositoryTests
     }
 
     [Fact]
+    public async Task ShouldReadOnlyTheRequestedReviewSourceMessage()
+    {
+        var projectId = new ProjectId(Guid.NewGuid());
+        var chatId = new ChatId(Guid.NewGuid());
+        var firstId = new ChatMessageId(Guid.NewGuid());
+        var sourceId = new ChatMessageId(Guid.NewGuid());
+        var reviewId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var files = new MemoryFileSystem();
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(item => item.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
+        var chat = new ChatThread(chatId, projectId, "Chat", now);
+        chat.AddMessage(new ChatMessage(firstId, null, ChatMessageRole.User, "Question", now, resources:
+            [new AI.Domain.Resources.ChatResource(reviewId, AI.Domain.Resources.ChatResourceKind.Review, string.Empty)]), now);
+        chat.AddMessage(new ChatMessage(sourceId, firstId, ChatMessageRole.Assistant, "Answer", now.AddSeconds(1)),
+            now.AddSeconds(1));
+        using var repository = new JsonChatRepository(files, paths, new ChatDocumentSerializer());
+        await repository.SaveAsync(chat, 0, CancellationToken.None);
+
+        var found = await repository.GetMessageAsync(projectId, chatId, sourceId, CancellationToken.None);
+
+        found.ShouldNotBeNull().Message.ShouldNotBeNull().Content.ShouldBe("Answer");
+        (await repository.GetMessageAsync(projectId, chatId, new ChatMessageId(Guid.NewGuid()),
+            CancellationToken.None)).ShouldNotBeNull().Message.ShouldBeNull();
+        (await repository.MayContainReviewReferenceAsync(projectId, chatId, Guid.NewGuid(),
+            CancellationToken.None)).ShouldBe(false);
+        (await repository.MayContainReviewReferenceAsync(projectId, chatId, reviewId,
+            CancellationToken.None)).ShouldBe(true);
+    }
+
+    [Fact]
     public async Task ShouldMigrateBranchCountForAnOlderSummary()
     {
         var projectId = new ProjectId(Guid.NewGuid());

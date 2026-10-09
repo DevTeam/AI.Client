@@ -66,6 +66,14 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return stored is null ? null : ToTranscript(stored.Chat, stored.Revision);
     }
 
+    public async Task<ChatMessageView?> GetReviewSourceAsync(Guid projectId, Guid chatId, Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var found = await repository.GetMessageAsync(new ProjectId(projectId), new ChatId(chatId),
+            new ChatMessageId(messageId), cancellationToken);
+        return found?.Message is { } message ? ToView(message) : null;
+    }
+
     public async Task<ChatTurnActivity?> GetTurnActivityAsync(
         Guid projectId,
         Guid chatId,
@@ -135,16 +143,21 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             : new ChatMessageContent(stored!.Revision, messageId, message.Content);
     }
 
-    public async Task<ChatDetails?> RemoveReviewReferencesAsync(Guid projectId, Guid chatId,
+    public async Task<bool> RemoveReviewReferencesAsync(Guid projectId, Guid chatId,
         Guid reviewId, CancellationToken cancellationToken)
     {
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
-        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
-        if (stored is null) return null;
-        if (!stored.Chat.RemoveReviewReferences(reviewId, clock.UtcNow)) return ToDetails(stored.Chat, stored.Revision);
+        var project = new ProjectId(projectId);
+        var id = new ChatId(chatId);
+        var mayContainReference = await repository.MayContainReviewReferenceAsync(project, id, reviewId, cancellationToken);
+        if (mayContainReference is null) return false;
+        if (mayContainReference == false) return true;
+        var stored = await repository.GetAsync(project, id, cancellationToken);
+        if (stored is null) return false;
+        if (!stored.Chat.RemoveReviewReferences(reviewId, clock.UtcNow)) return true;
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         if (!result.IsSaved) throw new InvalidOperationException("Could not remove review links from the chat.");
-        return ToDetails(stored.Chat, result.Revision);
+        return true;
     }
 
     public async Task<ChatDetails> CreateAsync(Guid projectId, CreateChatRequest request, CancellationToken cancellationToken)

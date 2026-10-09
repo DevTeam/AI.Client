@@ -4,6 +4,7 @@ using AI.Contracts.Chats;
 using AI.Web.Components;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
@@ -86,6 +87,84 @@ public sealed class BranchPickerRenderingTests
         var html = await RenderAsync(chat, mainFollowUp.Id, answer.Id);
 
         Labels(html).ShouldBe(["Branches", "Listed first", "Listed second"]);
+    }
+
+    [Fact]
+    public async Task ShouldUpdateTheVisibleChainWhenSwitchingBranchesOnTheSameFeed()
+    {
+        var question = Message("User", null, 0);
+        var answer = Message("Assistant", question.Id, 1);
+        var mainFollowUp = Message("User", answer.Id, 2);
+        var otherFollowUp = Message("User", answer.Id, 3);
+        var chatId = Guid.NewGuid();
+        var chat = Chat(chatId, [question, answer, mainFollowUp, otherFollowUp],
+        [
+            new ChatBranchView(chatId, mainFollowUp.Id, "Main"),
+            new ChatBranchView(Guid.NewGuid(), otherFollowUp.Id, "Other", chatId, otherFollowUp.Id)
+        ]);
+        var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
+        var registrations = new ServiceCollection();
+        registrations.AddTransient<AI.Contracts.Navigation.IAppNavigationTargets, AI.Contracts.Navigation.AppNavigationTargets>();
+        registrations.AddTransient<AI.Web.Navigation.IAppControlHints, AI.Web.Navigation.AppControlHints>();
+        registrations.AddSingleton(Mock.Of<IJSRuntime>());
+        await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        BranchSwitchHost? host = null;
+
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var component = await renderer.RenderComponentAsync<BranchSwitchHost>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(BranchSwitchHost.Chat)] = chat,
+                    [nameof(BranchSwitchHost.Leaf)] = mainFollowUp.Id,
+                    [nameof(BranchSwitchHost.ForkId)] = answer.Id,
+                    [nameof(BranchSwitchHost.Capture)] = (Action<BranchSwitchHost>)(value => host = value)
+                }));
+            component.ToHtmlString().ShouldContain("User 2");
+            component.ToHtmlString().ShouldNotContain("User 3");
+
+            host!.Switch(otherFollowUp.Id);
+            component.ToHtmlString().ShouldContain("User 3");
+            component.ToHtmlString().ShouldNotContain("User 2");
+            component.ToHtmlString().ShouldContain("Branch 2 of 2");
+
+            host.Switch(mainFollowUp.Id);
+            component.ToHtmlString().ShouldContain("User 2");
+            component.ToHtmlString().ShouldNotContain("User 3");
+            component.ToHtmlString().ShouldContain("Branch 1 of 2");
+        });
+    }
+
+    private sealed class BranchSwitchHost : ComponentBase
+    {
+        [Parameter] public ChatDetails Chat { get; set; } = null!;
+        [Parameter] public Guid Leaf { get; set; }
+        [Parameter] public Guid ForkId { get; set; }
+        [Parameter] public Action<BranchSwitchHost> Capture { get; set; } = null!;
+        private Guid _leaf;
+
+        protected override void OnInitialized()
+        {
+            _leaf = Leaf;
+            Capture(this);
+        }
+
+        public void Switch(Guid leaf)
+        {
+            _leaf = leaf;
+            StateHasChanged();
+        }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<MessageFeed>(0);
+            builder.AddAttribute(1, nameof(MessageFeed.HasSelectedProject), true);
+            builder.AddAttribute(2, nameof(MessageFeed.SelectedChat), Chat);
+            builder.AddAttribute(3, nameof(MessageFeed.BranchLeafId), _leaf);
+            builder.AddAttribute(4, nameof(MessageFeed.MessageBranchMenuId), ForkId);
+            builder.CloseComponent();
+        }
     }
 
     [Fact]

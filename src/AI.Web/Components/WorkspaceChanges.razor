@@ -24,11 +24,11 @@
             <span class="workspace-changes-chevron chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
         </button>
         <span class="chat-card-header-actions">
-            @if (_undoStatus is { } undoStatus && undoStatus.Files.Any(file => file.State == WorkspaceUndoFileState.Ready))
+            @if (changes.UndoId is not null && (_undoStatus is null || ReadyCount > 0))
             {
                 <button class="workspace-review-action chat-card-action chat-card-action-danger workspace-undo-action" type="button"
                         title="Undo changes in all files from this turn" aria-label="Undo changes in all files from this turn"
-                        @onclick="BeginUndoAsync"><AppIcon Name="undo" /><span class="workspace-undo-label">Undo</span></button>
+                        disabled="@_loadingUndo" @onclick="BeginUndoAsync"><AppIcon Name="undo" /><span class="workspace-undo-label">Undo</span></button>
             }
             @if (_undoStatus is not null && UndoneCount > 0)
             {
@@ -117,7 +117,8 @@
     private IJSObjectReference? _summaryModule;
     private double? _headerTop;
     private WorkspaceUndoStatus? _undoStatus;
-    private Guid? _loadedUndoId;
+    private (Guid Project, Guid Chat, Guid? Message, Guid? Undo) _undoContext;
+    private bool _loadingUndo;
     private bool _confirmUndo, _undoBusy;
 
     private int ReadyCount => _undoStatus?.Files.Count(file => file.State == WorkspaceUndoFileState.Ready) ?? 0;
@@ -130,13 +131,14 @@
         UndoState.Changed += UndoChanged;
     }
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
-        if (Changes?.UndoId is not { } undoId || SourceMessageId is not { } sourceId || _loadedUndoId == undoId) return;
-        _loadedUndoId = undoId;
-        try { _undoStatus = await UndoState.LoadAsync(ProjectId, ChatId, sourceId); }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        { Notifications.ShowError($"Could not load Undo status: {error.Message}"); }
+        var context = (ProjectId, ChatId, SourceMessageId, Changes?.UndoId);
+        if (_undoContext == context) return;
+        _undoContext = context;
+        _undoStatus = null;
+        _confirmUndo = false;
+        _loadingUndo = false;
     }
 
     private void UndoChanged(Guid messageId, WorkspaceUndoStatus status)
@@ -146,10 +148,19 @@
 
     private async Task BeginUndoAsync()
     {
-        if (SourceMessageId is not { } sourceId) return;
-        try { _undoStatus = await UndoState.LoadAsync(ProjectId, ChatId, sourceId, refresh: true); _confirmUndo = true; }
+        if (SourceMessageId is not { } sourceId || Changes?.UndoId is not { } undoId || _loadingUndo) return;
+        var context = _undoContext;
+        _loadingUndo = true;
+        try
+        {
+            var status = await UndoState.LoadAsync(ProjectId, ChatId, sourceId, undoId, refresh: true);
+            if (_undoContext != context) return;
+            _undoStatus = status;
+            _confirmUndo = status is not null;
+        }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         { Notifications.ShowError($"Could not check files for Undo: {error.Message}"); }
+        finally { if (_undoContext == context) _loadingUndo = false; }
     }
 
     private async Task ApplyUndoAsync()
@@ -181,6 +192,20 @@
         }
         _showDetails = !_showDetails;
         if (!_showDetails) _expanded.Clear();
+        if (_showDetails && _undoStatus is null && SourceMessageId is { } sourceId
+            && Changes?.UndoId is { } undoId && !_loadingUndo)
+        {
+            var context = _undoContext;
+            _loadingUndo = true;
+            try
+            {
+                var status = await UndoState.LoadAsync(ProjectId, ChatId, sourceId, undoId);
+                if (_undoContext == context) _undoStatus = status;
+            }
+            catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+            { Notifications.ShowError($"Could not load Undo status: {error.Message}"); }
+            finally { if (_undoContext == context) _loadingUndo = false; }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

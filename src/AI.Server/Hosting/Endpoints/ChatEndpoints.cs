@@ -104,15 +104,10 @@ public sealed class ChatEndpoints : IEndpointModule
             async (Guid projectId, Guid chatId, Guid reviewId, IReviewService service, CancellationToken token) =>
                 await service.DeleteAsync(projectId, chatId, reviewId, token)
                     ? Results.NoContent() : Results.NotFound());
-        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/{messageId:guid}",
-            async (Guid projectId, Guid chatId, Guid messageId, IChatService chats,
-                IWorkspaceUndoService undo, CancellationToken token) =>
-            {
-                var chat = await chats.GetAsync(projectId, chatId, token);
-                var id = chat?.Messages.FirstOrDefault(message => message.Id == messageId)?.WorkspaceChanges?.UndoId;
-                return id is { } undoId && await undo.StatusAsync(projectId, chatId, undoId, token) is { } status
-                    ? Results.Ok(status) : Results.NotFound();
-            });
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/status/{undoId:guid}",
+            async (Guid projectId, Guid chatId, Guid undoId, IWorkspaceUndoService undo, CancellationToken token) =>
+                await undo.StatusAsync(projectId, chatId, undoId, token) is { } status
+                    ? Results.Ok(status) : Results.NotFound());
         routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/workspace-undo/{messageId:guid}",
             async (Guid projectId, Guid chatId, Guid messageId, WorkspaceUndoRequest request,
                 IChatService chats, IWorkspaceUndoGuard guard, IWorkspaceUndoService undo, CancellationToken token) =>

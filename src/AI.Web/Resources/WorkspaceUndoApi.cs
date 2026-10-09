@@ -6,10 +6,10 @@ using AI.Contracts.Workspace;
 
 public sealed class WorkspaceUndoApi(HttpClient http) : IWorkspaceUndoApi
 {
-    public async Task<WorkspaceUndoStatus?> GetAsync(Guid projectId, Guid chatId, Guid messageId,
+    public async Task<WorkspaceUndoStatus?> GetAsync(Guid projectId, Guid chatId, Guid undoId,
         CancellationToken token)
     {
-        using var response = await http.GetAsync(PathFor(projectId, chatId, messageId), token);
+        using var response = await http.GetAsync($"api/projects/{projectId}/chats/{chatId}/workspace-undo/status/{undoId}", token);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureSuccessAsync(response, token);
         return await response.Content.ReadFromJsonAsync<WorkspaceUndoStatus>(token);

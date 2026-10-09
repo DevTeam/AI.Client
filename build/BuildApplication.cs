@@ -149,9 +149,8 @@ internal sealed class BuildApplication(
         runCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
         root.Subcommands.Add(runCommand);
 
-        // `run-both` publishes the host and then starts both the host process and the web dev
-        // server in parallel. The frontend now runs in its own process on a different origin, so
-        // this is the one-stop command for local development after the host/frontend split.
+        // `run-both` publishes and starts the host, waits for its API, then starts the web dev
+        // server. The frontend runs in its own process on a different origin.
         var hostUrls = new Option<string?>("--host-urls")
         {
             Description = "Kestrel URLs forwarded to the host as the --urls argument.",
@@ -178,7 +177,7 @@ internal sealed class BuildApplication(
         };
         var runBothCommand = new Command(
             "run-both",
-            "Publish AI.Host, then run the host and the web dev server in parallel. CORS is configured automatically.");
+            "Publish AI.Host, wait for its API, then run the web dev server. CORS is configured automatically.");
         runBothCommand.Options.Add(hostUrls);
         runBothCommand.Options.Add(webUrls);
         runBothCommand.Options.Add(corsOrigins);

@@ -78,40 +78,24 @@ public sealed class ChatRunDispatcher(
 
     public async Task WarmUpAsync(CancellationToken cancellationToken)
     {
-        var loadedChats = new Dictionary<(Guid ProjectId, Guid ChatId), ChatDetails?>();
-        foreach (var state in await repository.ListAsync(cancellationToken))
+        var states = await repository.ListAsync(cancellationToken);
+        foreach (var group in states.GroupBy(state => (state.ProjectId, state.ChatId)))
         {
-            using var lease = await synchronization.EnterAsync(state.ChatId, cancellationToken);
-            var key = (state.ProjectId, state.ChatId);
-            if (!loadedChats.TryGetValue(key, out var chat))
-            {
-                chat = await chats.GetAsync(state.ProjectId, state.ChatId, cancellationToken);
-                loadedChats[key] = chat;
-            }
-            if (chat is null) continue;
-            if (kindPolicies().TryResolve(new ChatKind(chat.Kind)) is null) continue;
-            state.RecoverAfterRestart();
-            await repository.SaveAsync(state, cancellationToken);
-            var runtime = new Runtime(state)
-            {
-                Snapshot = Snapshot(state, chat)
-            };
-            _runtimes.TryAdd(new RunKey(state.ProjectId, state.ChatId, state.BranchId), runtime);
-        }
-
-        // Older builds left replacement siblings behind after moving the branch head. Once every
-        // persisted run has been restored, its queue gives us the complete set of anchors that must
-        // survive; anything else no branch reaches is abandoned history and can be collected.
-        foreach (var ((projectId, chatId), loadedChat) in loadedChats)
-        {
-            if (loadedChat is null) continue;
-            if (kindPolicies().TryResolve(new ChatKind(loadedChat.Kind)) is null) continue;
+            var (projectId, chatId) = group.Key;
             using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
-            var pruned = await chatMutations.PruneMessagesCoreAsync(projectId, chatId,
-                RetainedMessageIds(chatId), cancellationToken);
-            if (pruned is null || pruned.Revision == loadedChat.Revision) continue;
-            foreach (var runtime in _runtimes.Values.Where(item => item.State.ChatId == chatId))
-                runtime.Snapshot = Snapshot(runtime.State, pruned);
+            // All queues for this chat must contribute anchors before abandoned messages are
+            // pruned. This also avoids loading and projecting the same large chat a second time.
+            var chat = await chatMutations.LoadForRunRecoveryAsync(projectId, chatId,
+                RetainedMessageIdsForRecovery(group), cancellationToken);
+            if (chat is null) continue;
+            foreach (var state in group)
+            {
+                var revision = state.Revision;
+                state.RecoverAfterRestart();
+                if (state.Revision != revision) await repository.SaveAsync(state, cancellationToken);
+                var runtime = new Runtime(state) { Snapshot = Snapshot(state, chat) };
+                _runtimes.TryAdd(new RunKey(projectId, chatId, state.BranchId), runtime);
+            }
         }
     }
 
@@ -1711,6 +1695,14 @@ public sealed class ChatRunDispatcher(
         Domain.Runs.MessageParentMode.BranchHead => Contracts.Runs.MessageParentMode.BranchHead,
         _ => Contracts.Runs.MessageParentMode.BranchHead
     };
+
+    private static HashSet<Guid> RetainedMessageIdsForRecovery(IEnumerable<ChatRunState> states) =>
+        states.SelectMany(state => state.Queue.SelectMany(message => new Guid?[]
+            {
+                message.ParentMessageId,
+                message.Stage == QueuedRunStage.UserCommitted ? message.Id : message.ReplaceSourceId
+            }))
+            .OfType<Guid>().ToHashSet();
 
     private HashSet<Guid> RetainedMessageIds(Guid chatId, Guid? committingMessageId = null, Guid? excludedBranchId = null) =>
         _runtimes.Values

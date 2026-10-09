@@ -3001,7 +3001,7 @@ else if (_guideInvitation is { } guideInvitation)
         var projectDetailsTask = ProjectApi.GetAsync(project.Id, cancellation);
         var chatsTask = ChatHistoryApi.ListAsync(project.Id, cancellation);
         var rememberedChatTask = context.ChatId is { } rememberedChatId
-            ? ChatHistoryApi.GetTranscriptAsync(project.Id, rememberedChatId, cancellation)
+            ? LoadRememberedChatAsync(project.Id, rememberedChatId, chatsTask, cancellation)
             : null;
 
         try
@@ -4350,9 +4350,27 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    private async Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    private async Task<ChatDetails?> LoadRememberedChatAsync(Guid projectId, Guid chatId,
+        Task<IReadOnlyList<ChatSummary>> chatsTask, CancellationToken cancellationToken)
     {
-        var knownRevision = _chats.FirstOrDefault(chat => chat.Id == chatId)?.Revision;
+        var chats = await chatsTask;
+        return await GetChatForSelectionAsync(projectId, chatId,
+            chats.FirstOrDefault(chat => chat.Id == chatId)?.Revision, cancellationToken);
+    }
+
+    private Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        GetChatForSelectionAsync(projectId, chatId,
+            _chats.FirstOrDefault(chat => chat.Id == chatId)?.Revision, cancellationToken);
+
+    private async Task<ChatDetails?> GetChatForSelectionAsync(Guid projectId, Guid chatId,
+        long? knownRevision, CancellationToken cancellationToken)
+    {
+        if (_selectedChat is { } selected && selected.Id == chatId && selected.ProjectId == projectId
+            && (knownRevision is null || selected.Revision >= knownRevision))
+        {
+            CacheChatDetails(selected);
+            return selected;
+        }
         if (_chatDetailsCache.TryGetValue(chatId, out var cached)
             && cached.ProjectId == projectId
             && (knownRevision is null || cached.Revision >= knownRevision))
@@ -4368,6 +4386,13 @@ else if (_guideInvitation is { } guideInvitation)
 
     private void CacheChatDetails(ChatDetails chat)
     {
+        if (_chatDetailsCache.TryGetValue(chat.Id, out var existingChat) && ReferenceEquals(existingChat, chat))
+        {
+            var existingNode = _chatDetailsLru.Find(chat.Id);
+            if (existingNode is not null) _chatDetailsLru.Remove(existingNode);
+            _chatDetailsLru.AddFirst(chat.Id);
+            return;
+        }
         if (_chatDetailsCacheSizes.TryGetValue(chat.Id, out var previousSize))
             _chatDetailsCacheBytes -= previousSize;
         var size = EstimateChatDetailsSize(chat);
@@ -5429,7 +5454,7 @@ else if (_guideInvitation is { } guideInvitation)
         ChatDetails? refreshedChat;
         try
         {
-            refreshedChat = await ChatHistoryApi.GetTranscriptAsync(_selectedProject.Id, chatId, cancellation);
+            refreshedChat = await GetChatForSelectionAsync(_selectedProject.Id, chatId, cancellation);
         }
         catch (OperationCanceledException)
         {

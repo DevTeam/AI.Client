@@ -73,6 +73,10 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
             var (reopened, _) = Create();
             using (reopened)
             {
+                (await reopened.StatusAsync(_projectId, Guid.NewGuid(), id,
+                    TestContext.Current.CancellationToken)).ShouldBeNull();
+                (await reopened.StatusAsync(Guid.NewGuid(), _chatId, id,
+                    TestContext.Current.CancellationToken)).ShouldBeNull();
                 (await reopened.StatusAsync(_projectId, _chatId, id, TestContext.Current.CancellationToken))!
                     .Files.Single().State.ShouldBe(WorkspaceUndoFileState.Ready);
                 var result = await reopened.UndoAsync(_projectId, _chatId, id, null,

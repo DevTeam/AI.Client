@@ -4341,7 +4341,8 @@ else if (_guideInvitation is { } guideInvitation)
             if (_selectedChat is not null)
                 await WorkspaceStateService.SetProjectContextAsync(projectId, _selectedChat.Id,
                     _branchLeafId, _selectedBranchId);
-            await LoadReviewsAsync();
+            // Reviews can arrive after the transcript. Their request must not hold up a chat switch.
+            _ = LoadReviewsAsync();
         }
         else
         {
@@ -6882,8 +6883,11 @@ else if (_guideInvitation is { } guideInvitation)
         await OpenReviewAsync(reference.Id);
     }
 
+    private long _reviewLoadVersion;
+
     private async Task LoadReviewsAsync()
     {
+        var loadVersion = ++_reviewLoadVersion;
         var projectId = _selectedProject?.Id;
         var chatId = _selectedChat?.Id;
         _reviews.Clear();
@@ -6893,15 +6897,20 @@ else if (_guideInvitation is { } guideInvitation)
         {
             var reviews = await PruneEmptyReviewsAsync(projectId.Value, chatId.Value,
                 await ReviewApi.ListAsync(projectId.Value, chatId.Value, CancellationToken.None));
-            if (_selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
+            if (_reviewLoadVersion == loadVersion && _selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
             {
                 _reviews.AddRange(reviews);
                 _reviewVersion++;
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
-            _chatError = $"Could not load reviews: {error.Message}";
+            if (_reviewLoadVersion == loadVersion && _selectedProject?.Id == projectId && _selectedChat?.Id == chatId)
+            {
+                _chatError = $"Could not load reviews: {error.Message}";
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 

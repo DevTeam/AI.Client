@@ -8,12 +8,12 @@ public sealed class WorkspaceUndoState(IWorkspaceUndoApi api) : IWorkspaceUndoSt
     private readonly Dictionary<(Guid Project, Guid Chat, Guid Message), WorkspaceUndoStatus> _statuses = [];
     public event Action<Guid, WorkspaceUndoStatus>? Changed;
 
-    public async Task<WorkspaceUndoStatus?> LoadAsync(Guid projectId, Guid chatId, Guid messageId,
+    public async Task<WorkspaceUndoStatus?> LoadAsync(Guid projectId, Guid chatId, Guid messageId, Guid undoId,
         bool refresh = false)
     {
         var key = (projectId, chatId, messageId);
-        if (!refresh && _statuses.TryGetValue(key, out var cached)) return cached;
-        var status = await api.GetAsync(projectId, chatId, messageId, CancellationToken.None);
+        if (!refresh && _statuses.TryGetValue(key, out var cached) && cached.UndoId == undoId) return cached;
+        var status = await api.GetAsync(projectId, chatId, undoId, CancellationToken.None);
         if (status is not null) _statuses[key] = status;
         return status;
     }

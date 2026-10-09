@@ -165,8 +165,8 @@
     protected override async Task OnInitializedAsync()
     {
         UndoState.Changed += UndoChanged;
-        if (_current is null || (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges)?.UndoId is null) return;
-        try { _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId); }
+        if (_current is null || (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges)?.UndoId is not { } undoId) return;
+        try { _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId, undoId); }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         { Notifications.ShowError($"Could not load Undo status: {error.Message}"); }
     }
@@ -182,7 +182,9 @@
         if (_current is null) return;
         try
         {
-            _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId, refresh: true);
+            var undoId = (_current.SourceChanges ?? SourceOf(_current)?.WorkspaceChanges)?.UndoId;
+            if (undoId is null) return;
+            _undoStatus = await UndoState.LoadAsync(ProjectId, Chat.Id, _current.SourceMessageId, undoId.Value, refresh: true);
             _undoPath = path;
             _confirmingUndo = true;
         }

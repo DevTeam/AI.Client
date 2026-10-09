@@ -97,6 +97,14 @@ public sealed class ChatRunDispatcher(
                 _runtimes.TryAdd(new RunKey(projectId, chatId, state.BranchId), runtime);
             }
         }
+
+        // The recovered runs become visible the moment recovery is done: the Host may already be
+        // serving the UI, whose first snapshot is taken as it connects. Without this the runs this
+        // method just restored stayed invisible to a client that subscribed while it was running,
+        // until some other change happened to publish them. Recovery is not atomic — a client that
+        // connects mid-way still sees a prefix of the list — and a failure publishes nothing, so a
+        // half-recovered set is never advertised as the whole truth.
+        Publish();
     }
 
     public async ValueTask DisposeAsync()

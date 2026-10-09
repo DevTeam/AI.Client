@@ -9,10 +9,28 @@ internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatK
     private readonly CancellationTokenSource _startupCancellation = new();
     private Task _startupTask = Task.CompletedTask;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Returned as soon as the background work is under way, never after it: the Host is listening
+    /// the moment this task completes, and until it does the desktop window cannot be shown at all.
+    /// Run recovery only reads what was left in the data directory, so its cost grows with the
+    /// stored runs and used to hold the whole start-up for as long as that read took.
+    /// </summary>
+    /// <remarks>
+    /// The order between recovery and the chat kinds is unchanged — recovery still finishes first,
+    /// so a kind never starts against a half-recovered run set — and <see cref="StopAsync"/> still
+    /// drains both.
+    /// </remarks>
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        await dispatcher.WarmUpAsync(cancellationToken);
-        _startupTask = Task.Run(() => StartChatKindsAsync(_startupCancellation.Token), CancellationToken.None);
+        cancellationToken.ThrowIfCancellationRequested();
+        _startupTask = Task.Run(
+            async () =>
+            {
+                await dispatcher.WarmUpAsync(_startupCancellation.Token);
+                await StartChatKindsAsync(_startupCancellation.Token);
+            },
+            CancellationToken.None);
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

@@ -220,6 +220,8 @@ internal sealed partial class MainWindow : Window
     private void OnNavigationCompleted(WebViewNavigationCompletedEventArgs args)
     {
         _engineWatchdog.Stop();
+        // The first navigation has finished: the UI is on screen, which is this run's endpoint.
+        StartupTimeline.UiLoaded();
         if (!args.IsSuccess && args.Request is { } target && IsApp(target))
         {
             ShowProblem("The AI Client window could not load.", $"Nothing answered at {target}.", canRetry: true);
@@ -392,6 +394,9 @@ internal sealed partial class MainWindow : Window
 
     private void ShowProblem(string title, string? detail, bool canRetry)
     {
+        // A problem window is a finished start too: the marker is written even when no phase
+        // after the failure will ever be reached.
+        StartupTimeline.Report();
         WebView.IsVisible = false;
         StatusTitle.Text = title;
         StatusDetail.Text = detail;

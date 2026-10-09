@@ -1393,14 +1393,15 @@
         }
     }
 
-    // _selectedChat is always replaced wholesale rather than mutated, so a reference check on it
-    // (plus the branch leaf) is a cheap, correct invalidation key for the message chain, the
-    // fork-point set, and the per-message sibling lookup used by the branch picker.
+    // The visible message chain changes with the branch leaf. Fork points and sibling options
+    // depend only on the chat and loaded activity, so switching branches can reuse that graph.
     private object? _branchCacheChat;
     private Guid? _branchCacheBranchLeafId;
     private int _branchCacheActivityVersion = -1;
     private IReadOnlyList<ChatMessageView> _branchCacheMessages = [];
     private HashSet<Guid> _branchCacheMessageIds = [];
+    private Guid? _branchCacheLastTurnId;
+    private Dictionary<Guid, ChatMessageView> _branchCacheMessagesById = [];
     private Dictionary<Guid, List<ChatMessageView>> _branchCacheChildrenByParent = [];
     private Dictionary<Guid, List<BranchOption>> _branchCacheOptions = [];
     private HashSet<Guid> _branchCacheForkPoints = [];
@@ -1767,8 +1768,7 @@
         // that frame makes the UI claim that an already answered turn is still working.
         if (Feed.LastTurnHasCompleteAnswer(GetVisibleBranchMessages())) return false;
 
-        return GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id
-            == activeMessageId;
+        return GetLastTurnId() == activeMessageId;
     }
 
     private bool IsTurnExpanded(FeedTurn turn) =>
@@ -1931,7 +1931,7 @@
     private bool IsCurrentTurn(FeedTurn turn)
     {
         if (turn.Id is not { } id) return false;
-        return GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id == id;
+        return GetLastTurnId() == id;
     }
 
     private bool IsRunningTurn(FeedTurn turn) =>
@@ -1945,7 +1945,7 @@
     {
         if (SelectedRun is { } run
             && !string.IsNullOrWhiteSpace(run.StreamingContent)) return "message-streaming";
-        var turnId = GetVisibleBranchMessages().LastOrDefault(message => message.StartsTurn)?.Id;
+        var turnId = GetLastTurnId();
         return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
     }
 
@@ -2002,9 +2002,9 @@
 
     private void EnsureBranchCache()
     {
-        if (ReferenceEquals(_branchCacheChat, SelectedChat)
-            && _branchCacheBranchLeafId == BranchLeafId
-            && _branchCacheActivityVersion == _activityVersion)
+        var chatChanged = !ReferenceEquals(_branchCacheChat, SelectedChat);
+        var structureChanged = chatChanged || _branchCacheActivityVersion != _activityVersion;
+        if (!structureChanged && _branchCacheBranchLeafId == BranchLeafId)
         {
             return;
         }
@@ -2013,7 +2013,7 @@
         // switching commonly alternates between two transcripts, and reparsing/sanitizing every
         // large message made that path needlessly expensive. The two-chat LRU keeps that common
         // path fast without retaining every transcript opened during the app's lifetime.
-        if (!ReferenceEquals(_branchCacheChat, SelectedChat))
+        if (chatChanged)
         {
             ActivateMarkdownCache();
         }
@@ -2021,75 +2021,80 @@
         _branchCacheChat = SelectedChat;
         _branchCacheBranchLeafId = BranchLeafId;
         _branchCacheActivityVersion = _activityVersion;
+        if (structureChanged)
+        {
+            var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
+            var messagesById = new Dictionary<Guid, ChatMessageView>();
+            if (SelectedChat is not null)
+            {
+                foreach (var stored in SelectedChat.Messages)
+                {
+                    var item = _activityMessages.GetValueOrDefault(stored.Id, stored);
+                    messagesById[item.Id] = item;
+                    if (item.ParentId is not { } parentId) continue;
+                    if (!childrenByParent.TryGetValue(parentId, out var siblings))
+                    {
+                        siblings = [];
+                        childrenByParent[parentId] = siblings;
+                    }
+                    siblings.Add(item);
+                }
+                foreach (var siblings in childrenByParent.Values)
+                {
+                    siblings.Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
+                }
+            }
+            _branchCacheMessagesById = messagesById;
+            _branchCacheChildrenByParent = childrenByParent;
+
+            // A branch can stop exactly where another goes on: Ctrl+Alt+Enter, or a fork from the
+            // last message, starts a branch at the head of the one on screen. That message then has a
+            // single child, yet two lines meet there, so the line that stops is an option of its own.
+            var endingBranches = new Dictionary<Guid, ChatBranchView>();
+            foreach (var branch in SelectedChat?.Branches ?? [])
+            {
+                if (branch.HeadMessageId is { } headId) endingBranches.TryAdd(headId, branch);
+            }
+            // Each branch's messages, by their distance from its head, so a continuation can be named
+            // after the branch it leads into.
+            var branchPaths = (SelectedChat?.Branches ?? [])
+                .Select(branch => (Branch: branch, Path: GetBranchPath(branch.HeadMessageId, messagesById)))
+                .ToArray();
+            // The sidebar's order: the chat's main line first, then its branches as the chat stores them.
+            var sidebarOrder = new Dictionary<Guid, int>();
+            foreach (var branch in SelectedChat?.Branches ?? [])
+            {
+                sidebarOrder.TryAdd(branch.Id, branch.Id == SelectedChat?.Id ? -1 : sidebarOrder.Count);
+            }
+            var optionsByMessage = new Dictionary<Guid, List<BranchOption>>(childrenByParent.Count);
+            foreach (var (parentId, children) in childrenByParent)
+            {
+                var options = new List<BranchOption>(children.Count + 1);
+                if (endingBranches.TryGetValue(parentId, out var ending) && messagesById.TryGetValue(parentId, out var head))
+                {
+                    options.Add(new BranchOption(head, ending, EndsHere: true));
+                }
+                var isForkPoint = options.Count + children.Count > 1;
+                options.AddRange(children.Select(child =>
+                    new BranchOption(child, isForkPoint ? FindOwningBranch(child.Id, branchPaths) : null)));
+                // Stable, so lines the chat stores no branch for keep their order by time, after the rest.
+                optionsByMessage[parentId] = options
+                    .OrderBy(option => option.Branch is { } branch && sidebarOrder.TryGetValue(branch.Id, out var rank) ? rank : int.MaxValue)
+                    .ToList();
+            }
+            _branchCacheOptions = optionsByMessage;
+            _branchCacheForkPoints = optionsByMessage
+                .Where(pair => pair.Value.Count > 1)
+                .Select(pair => pair.Key)
+                // ReSharper disable once UseCollectionExpression
+                .ToHashSet();
+        }
+
         _branchCacheMessages = ComputeVisibleBranchMessages();
         _branchCacheMessageIds = BranchLeafId is null
             ? []
             : _branchCacheMessages.Select(message => message.Id).ToHashSet();
-
-        var childrenByParent = new Dictionary<Guid, List<ChatMessageView>>();
-        var messagesById = new Dictionary<Guid, ChatMessageView>();
-        if (SelectedChat is not null)
-        {
-            foreach (var stored in SelectedChat.Messages)
-            {
-                var item = _activityMessages.GetValueOrDefault(stored.Id, stored);
-                messagesById[item.Id] = item;
-                if (item.ParentId is not { } parentId) continue;
-                if (!childrenByParent.TryGetValue(parentId, out var siblings))
-                {
-                    siblings = [];
-                    childrenByParent[parentId] = siblings;
-                }
-                siblings.Add(item);
-            }
-            foreach (var siblings in childrenByParent.Values)
-            {
-                siblings.Sort((a, b) => a.CreatedAt.CompareTo(b.CreatedAt));
-            }
-        }
-        _branchCacheChildrenByParent = childrenByParent;
-
-        // A branch can stop exactly where another goes on: Ctrl+Alt+Enter, or a fork from the
-        // last message, starts a branch at the head of the one on screen. That message then has a
-        // single child, yet two lines meet there, so the line that stops is an option of its own.
-        var endingBranches = new Dictionary<Guid, ChatBranchView>();
-        foreach (var branch in SelectedChat?.Branches ?? [])
-        {
-            if (branch.HeadMessageId is { } headId) endingBranches.TryAdd(headId, branch);
-        }
-        // Each branch's messages, by their distance from its head, so a continuation can be named
-        // after the branch it leads into.
-        var branchPaths = (SelectedChat?.Branches ?? [])
-            .Select(branch => (Branch: branch, Path: GetBranchPath(branch.HeadMessageId, messagesById)))
-            .ToArray();
-        // The sidebar's order: the chat's main line first, then its branches as the chat stores them.
-        var sidebarOrder = new Dictionary<Guid, int>();
-        foreach (var branch in SelectedChat?.Branches ?? [])
-        {
-            sidebarOrder.TryAdd(branch.Id, branch.Id == SelectedChat?.Id ? -1 : sidebarOrder.Count);
-        }
-        var optionsByMessage = new Dictionary<Guid, List<BranchOption>>(childrenByParent.Count);
-        foreach (var (parentId, children) in childrenByParent)
-        {
-            var options = new List<BranchOption>(children.Count + 1);
-            if (endingBranches.TryGetValue(parentId, out var ending) && messagesById.TryGetValue(parentId, out var head))
-            {
-                options.Add(new BranchOption(head, ending, EndsHere: true));
-            }
-            var isForkPoint = options.Count + children.Count > 1;
-            options.AddRange(children.Select(child =>
-                new BranchOption(child, isForkPoint ? FindOwningBranch(child.Id, branchPaths) : null)));
-            // Stable, so lines the chat stores no branch for keep their order by time, after the rest.
-            optionsByMessage[parentId] = options
-                .OrderBy(option => option.Branch is { } branch && sidebarOrder.TryGetValue(branch.Id, out var rank) ? rank : int.MaxValue)
-                .ToList();
-        }
-        _branchCacheOptions = optionsByMessage;
-        _branchCacheForkPoints = optionsByMessage
-            .Where(pair => pair.Value.Count > 1)
-            .Select(pair => pair.Key)
-            // ReSharper disable once UseCollectionExpression
-            .ToHashSet();
+        _branchCacheLastTurnId = _branchCacheMessages.LastOrDefault(message => message.StartsTurn)?.Id;
     }
 
     private static Dictionary<Guid, int> GetBranchPath(Guid? headId, Dictionary<Guid, ChatMessageView> messagesById)
@@ -2131,13 +2136,26 @@
         return _branchCacheMessages;
     }
 
+    private Guid? GetLastTurnId()
+    {
+        EnsureBranchCache();
+        return _branchCacheLastTurnId;
+    }
+
     private IReadOnlyList<ChatMessageView> ComputeVisibleBranchMessages()
     {
         if (SelectedChat is null) return [];
-        var messages = SelectedChat.Messages
-            .Select(message => _activityMessages.GetValueOrDefault(message.Id, message))
-            .ToArray();
-        return Feed.BuildBranch(messages, BranchLeafId);
+        if (BranchLeafId is null)
+            return _branchCacheMessagesById.Values.OrderBy(message => message.CreatedAt).ToArray();
+
+        var branch = new List<ChatMessageView>();
+        for (var id = BranchLeafId; id is { } current && _branchCacheMessagesById.TryGetValue(current, out var message);)
+        {
+            branch.Add(message);
+            id = message.ParentId;
+        }
+        branch.Reverse();
+        return branch;
     }
 
     private HashSet<Guid> GetForkPointIds()

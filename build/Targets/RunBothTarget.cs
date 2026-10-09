@@ -46,7 +46,8 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         Console.WriteLine($"CORS: {corsOrigins}");
         Console.WriteLine();
 
-        // 3. Start both processes. We deliberately do NOT redirect stdout/stderr: Rider's run
+        // 3. Start the Host and wait until it can serve API requests before exposing the Web UI.
+        // We deliberately do NOT redirect stdout/stderr: Rider's run
         //    window — and any other terminal — already multiplexes a child's output into the
         //    parent's console, which is exactly what we want for local development. Redirecting
         //    here would force us to also implement an `OutputDataReceived` relay, and the relay's
@@ -84,41 +85,88 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
 
         using var hostProcess = Process.Start(hostStart)
             ?? throw new InvalidOperationException($"Failed to start {hostExe}.");
-        using var webProcess = Process.Start(webStart)
-            ?? throw new InvalidOperationException("Failed to start the web dev server.");
-
-        // 4. Ctrl+C kills both trees. The handler is installed only after the processes exist,
-        //    but C# captures variables by reference, so it sees the assignments made above.
-        //    `TryTerminate` swallows exceptions because by the time we get here the processes
-        //    may already be gone.
-        ConsoleCancelEventHandler cancel = (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            TryTerminate(hostProcess);
-            TryTerminate(webProcess);
-        };
-        Console.CancelKeyPress += cancel;
         try
         {
-            // 5. Wait for whichever exits first. We surface the host's exit code as the primary
-            //    one — that matches `RunTarget`'s behaviour so users see a non-zero exit when the
-            //    host crashes, even if the web dev server is the one still running.
-            var winner = await Task.WhenAny(
-                hostProcess.WaitForExitAsync(cancellationToken),
-                webProcess.WaitForExitAsync(cancellationToken));
-            await winner;
+            if (!await WaitForHostAsync(hostProcess, hostUrls, cancellationToken))
+                return hostProcess.HasExited && hostProcess.ExitCode != 0 ? hostProcess.ExitCode : 1;
 
-            TryTerminate(hostProcess);
-            TryTerminate(webProcess);
+            using var webProcess = Process.Start(webStart)
+                ?? throw new InvalidOperationException("Failed to start the web dev server.");
 
-            return hostProcess.ExitCode;
+            // 4. Ctrl+C kills both trees. The processes also stop when the build command ends.
+            ConsoleCancelEventHandler cancel = (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                TryTerminate(hostProcess);
+                TryTerminate(webProcess);
+            };
+            Console.CancelKeyPress += cancel;
+            try
+            {
+                // 5. Wait for whichever exits first. Surface the host's exit code as the primary
+                //    one, as `RunTarget` does when the host crashes.
+                var winner = await Task.WhenAny(
+                    hostProcess.WaitForExitAsync(cancellationToken),
+                    webProcess.WaitForExitAsync(cancellationToken));
+                await winner;
+
+                TryTerminate(hostProcess);
+                TryTerminate(webProcess);
+
+                return hostProcess.ExitCode;
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancel;
+                TryTerminate(webProcess);
+            }
         }
         finally
         {
-            Console.CancelKeyPress -= cancel;
             TryTerminate(hostProcess);
-            TryTerminate(webProcess);
         }
+    }
+
+    private static async Task<bool> WaitForHostAsync(
+        Process hostProcess, string hostUrls, CancellationToken cancellationToken)
+    {
+        var address = new Uri(hostUrls.Split(';', StringSplitOptions.RemoveEmptyEntries)[0]);
+        var healthUrl = new UriBuilder(address)
+        {
+            Host = address.Host is "*" or "+" or "0.0.0.0" or "::" ? "localhost" : address.Host,
+            Path = "api/health"
+        }.Uri;
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var waiting = Stopwatch.StartNew();
+        Console.WriteLine($"Waiting for Host at {healthUrl}...");
+        while (waiting.Elapsed < TimeSpan.FromMinutes(2))
+        {
+            if (hostProcess.HasExited)
+            {
+                await Console.Error.WriteLineAsync($"Host exited before becoming ready (exit code {hostProcess.ExitCode}).");
+                return false;
+            }
+
+            try
+            {
+                using var response = await client.GetAsync(healthUrl, cancellationToken);
+                if (response.IsSuccessStatusCode && !hostProcess.HasExited)
+                {
+                    Console.WriteLine("Host is ready.");
+                    return true;
+                }
+            }
+            catch (Exception error) when (error is HttpRequestException or TaskCanceledException
+                                          && !cancellationToken.IsCancellationRequested)
+            {
+                // The Host has not bound its port yet, or this individual probe timed out.
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+
+        await Console.Error.WriteLineAsync($"Host did not become ready at {healthUrl} within two minutes.");
+        return false;
     }
 
     private static void TryTerminate(Process process)

@@ -13,7 +13,7 @@ internal sealed class SharedHostLocator : ISharedHostLocator
         if (!string.Equals(Path.GetFullPath(dataDirectory), Path.GetFullPath(sharedDataDirectory), comparison))
             return new SharedHostState(null);
 
-        var address = new Uri("http://127.0.0.1:52173/");
+        var address = HostAddress();
         try
         {
             using var client = new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(1) };
@@ -43,8 +43,31 @@ internal sealed class SharedHostLocator : ISharedHostLocator
         }
     }
 
+    /// <summary>
+    /// Where the installed Host is looked for. The environment variable exists for profiling and
+    /// for a machine whose usual port is taken: it names an absolute HTTP(S) address, and an
+    /// absent or unusable value keeps the published one, so a mistyped variable can never stop
+    /// the app from finding its Host.
+    /// </summary>
+    private static Uri HostAddress()
+    {
+        var configured = Environment.GetEnvironmentVariable("AI_CLIENT_HOST_ADDRESS");
+        if (string.IsNullOrWhiteSpace(configured)
+            || !Uri.TryCreate(configured.Trim(), UriKind.Absolute, out var address)
+            || address.Scheme is not ("http" or "https"))
+        {
+            return new Uri(HostProtocol.PublicHostAddress);
+        }
+
+        // A base address without its trailing slash would let a relative path replace the last
+        // segment instead of extending it.
+        return address.AbsolutePath.EndsWith('/')
+            ? address
+            : new UriBuilder(address) { Path = address.AbsolutePath + "/" }.Uri;
+    }
+
     private static SharedHostState Incompatible() => new(null,
-        "The installed Host uses a different API version. Update Host and Desktop to compatible releases.", new Uri("http://127.0.0.1:52173/"));
+        "The installed Host uses a different API version. Update Host and Desktop to compatible releases.", HostAddress());
 
     private sealed record SharedHost(string ProductName, int ApiVersion);
 }

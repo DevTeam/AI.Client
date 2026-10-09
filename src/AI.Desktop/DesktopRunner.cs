@@ -12,6 +12,9 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
         var sharedHost = sharedHostLocator.Find(options.DataDirectory);
         if (sharedHost.Address is { } sharedAddress)
         {
+            // The server was not started here: the shared Host answered, and that is this run's
+            // server-ready moment.
+            StartupTimeline.HostReused();
             var sharedUi = new UiComposition(new DesktopStart(sharedAddress, null, options.DataDirectory, devTools));
             return AppBuilder.Configure(() => sharedUi.App)
                 .UsePlatformDetect()
@@ -22,6 +25,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
 
         if (sharedHost.Error is not null)
         {
+            StartupTimeline.ServerUnavailable();
             var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools, sharedHost.UpdateAddress));
             return AppBuilder.Configure(() => failedUi.App)
                 .UsePlatformDetect()
@@ -40,12 +44,17 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
             // Before the UI exists, and on a thread-pool thread: nothing the server awaits may be
             // posted back to a UI dispatcher.
             running = Task.Run(() => server.Server.StartAsync(server, CancellationToken.None)).GetAwaiter().GetResult();
+            if (running is not null)
+            {
+                StartupTimeline.ServerStarted();
+            }
         }
 #pragma warning disable CA1031 // Whatever stops the server from starting is shown in the window instead of crashing it.
         catch (Exception startError)
 #pragma warning restore CA1031
         {
             error = startError.Message;
+            StartupTimeline.ServerUnavailable();
         }
 
         try

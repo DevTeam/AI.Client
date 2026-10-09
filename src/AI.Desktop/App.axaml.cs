@@ -30,6 +30,8 @@ internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals p
                 themes.Save(preference);
             };
             desktop.MainWindow = window;
+            // The window is about to be shown: this is the UI-ready moment of the startup marker.
+            StartupTimeline.UiReady();
             // A signal is a request to quit like any other: the window closes normally, so the
             // server behind it stops and the data directory is released.
             var signals = processSignals.OnTermination(() => Dispatcher.UIThread.Post(() => desktop.Shutdown()));

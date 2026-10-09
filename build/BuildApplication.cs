@@ -15,6 +15,7 @@ internal sealed class BuildApplication(
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
     IProfileDesktopTarget profileDesktopTarget,
+    IDesktopStartupMeasurementTarget desktopStartupMeasurementTarget,
     IReadmeTarget readmeTarget,
     IPrepareTextCorrectionTarget prepareTextCorrectionTarget,
     CancellationToken cancellationToken)
@@ -32,6 +33,7 @@ internal sealed class BuildApplication(
         RegisterPackageRelease(root);
         RegisterHost(root);
         RegisterProfileDesktop(root);
+        RegisterMeasureDesktop(root);
         RegisterReadme(root);
         RegisterTextCorrection(root);
         return root.Parse(args).InvokeAsync();
@@ -194,6 +196,38 @@ internal sealed class BuildApplication(
                 parseResult.GetValue(publicWeb)),
             cancellationToken));
         root.Subcommands.Add(runBothCommand);
+    }
+
+    private void RegisterMeasureDesktop(RootCommand root)
+    {
+        var scenario = new Option<string>("--scenario")
+        {
+            Description = "embedded (no shared Host on 127.0.0.1:52173) or shared (a temporary Host on 127.0.0.1:52174 serves the UI).",
+            DefaultValueFactory = _ => "embedded"
+        };
+        scenario.AcceptOnlyFromAmong("embedded", "shared");
+        var dataDirectory = new Option<string?>("--data-dir")
+        {
+            Description = "Data directory to copy for every run. Defaults to AI_CLIENT_DATA_DIRECTORY, then to the local application data folder."
+        };
+        var runs = new Option<int>("--runs")
+        {
+            Description = "Measured runs per scenario; one warm-up run is always added and never counted.",
+            DefaultValueFactory = _ => 3
+        };
+        var keepCopies = new Option<bool>("--keep-copies")
+        {
+            Description = "Keep the per-run data directory copies instead of deleting them after the report."
+        };
+        var command = new Command("measure-desktop",
+            "Measure Desktop startup per scenario: one warm-up plus measured runs, median and min..max from the readiness marker.");
+        command.Options.Add(scenario);
+        command.Options.Add(dataDirectory);
+        command.Options.Add(runs);
+        command.Options.Add(keepCopies);
+        command.SetAction(parse => desktopStartupMeasurementTarget.RunAsync(
+            parse.GetValue(scenario)!, parse.GetValue(runs), parse.GetValue(dataDirectory)!, parse.GetValue(keepCopies), cancellationToken));
+        root.Subcommands.Add(command);
     }
 
     private void RegisterProfileDesktop(RootCommand root)

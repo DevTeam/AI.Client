@@ -232,6 +232,16 @@ public sealed class ChatEndpoints : IEndpointModule
                 return chat is null ? Results.NotFound() : Results.Ok(chat);
             });
 
+        routes.MapPut(
+            "/api/projects/{projectId:guid}/chats/{chatId:guid}/reasoning-effort",
+            async (Guid projectId, Guid chatId, UpdateChatReasoningEffortRequest request, IChatService service, CancellationToken cancellationToken) =>
+            {
+                if (request.ReasoningEffort is { } effort && !AI.Contracts.Settings.ReasoningEffortValues.IsSupported(effort))
+                    return Results.BadRequest();
+                var chat = await service.UpdateReasoningEffortAsync(projectId, chatId, request, cancellationToken);
+                return chat is null ? Results.NotFound() : Results.Ok(chat);
+            });
+
         routes.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/tool-policies",
             async (Guid projectId, Guid chatId, ToolPolicySettings policy, IChatService service, CancellationToken token) =>
                 await service.SetToolPolicyAsync(projectId, chatId, policy, token) is { } chat ? Results.Ok(chat) : Results.NotFound());

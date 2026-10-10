@@ -45,7 +45,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.LastActivityAt,
         chat.PinOrder,
         chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, chat.ApprovalMode,
-        Kind: chat.Kind.Value, KindState: chat.KindState, KindStateVersion: chat.KindStateVersion), Options);
+        Kind: chat.Kind.Value, KindState: chat.KindState, KindStateVersion: chat.KindStateVersion,
+        ReasoningEffort: chat.ReasoningEffort), Options);
 
     public string SerializeSummary(ChatThread chat, long revision) => JsonSerializer.Serialize(new ChatSummaryDocument(
         SchemaVersion,
@@ -101,6 +102,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         chat.RestoreActivity(document.LastActivityAt);
         chat.RestoreArchiveState(document.ArchivedAt, document.ArchiveOperationId);
         chat.RestoreApprovalMode(document.ApprovalMode);
+        chat.RestoreReasoningEffort(document.ReasoningEffort);
 
         return new StoredChat(chat, document.Revision);
     }
@@ -187,7 +189,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         ChatApprovalMode ApprovalMode = ChatApprovalMode.Ask,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IsGuide = false,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? GuideMode = null,
-        string? Kind = null, JsonElement? KindState = null, int KindStateVersion = 1);
+        string? Kind = null, JsonElement? KindState = null, int KindStateVersion = 1,
+        string? ReasoningEffort = null);
 
     // Deliberately contains only sidebar fields. System.Text.Json skips MessageIds without
     // materialising message nodes, so listing chats stays proportional to the small manifests

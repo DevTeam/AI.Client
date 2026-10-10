@@ -10,7 +10,8 @@ tools: ["app_read","app_chats","app_security","ask_user"]
 ---
 
 A branch inherits its connection (model), reasoning effort, tool approval mode and tool rules from its parent branch,
-nearest first, and the main branch's values are the chat's own. A value set on a branch overrides
+nearest first, and the main branch's values are the chat's own. Chat reasoning effort follows the
+selected connection unless the chat sets an override. A value set on a branch overrides
 the parent for that branch and for every branch below it that does not set its own. Schedules are
 never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` skills).
 
@@ -41,7 +42,8 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    connection id or `inherit`), `reasoningEffort` (a supported value or `inherit`),
    `approvalMode` (`Ask`, `Auto`, `FullAccess` or `inherit`), or
    `inheritAll` true. On the main branch the values are the chat's own and are inherited by every
-   branch: there `connection` `inherit` follows the project default and `approvalMode` needs a value.
+   branch: there `connection` `inherit` follows the project default, `reasoningEffort`
+   `inherit` follows the selected connection, and `approvalMode` needs a value.
    For one tool's rule on this branch use `app_security` `SetBranchToolPolicy` (a `toolPolicy` with
    the exact `serverId`, `name` and `schemaHash` from `app_read` resource=McpTools, decision, limits)
    or `RemoveBranchToolPolicy` to inherit it again; never give `app_security` itself `Allow`. Check

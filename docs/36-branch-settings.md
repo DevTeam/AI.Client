@@ -4,22 +4,24 @@ Status: implemented.
 
 Each branch has an optional `ChatBranchSettings` object in the chat document. It contains
 `connectionId`, `reasoningEffort`, `approvalMode`, and `toolPolicies`. A missing field inherits from the nearest
-ancestor branch that sets it. Reasoning effort then falls back to the selected connection's
-optional value; other fields fall back to the chat. Clearing a branch field restores inheritance;
+ancestor branch that sets it. Reasoning effort then falls back to the chat's override and the
+selected connection's optional value; other fields fall back to the chat. Clearing a branch field restores inheritance;
 a branch that sets nothing stores no settings at all. Run branches therefore inherit the settings
 of the branch they forked from. Tool policy fields fall back independently, so an override of one
 decision does not erase a parent timeout or limit.
 
 The main branch has no settings object: its values are the chat's own (`ConnectionId`,
-`ApprovalMode`, `ToolPolicies`), which every branch inherits. Only its connection can fall back
-further, to the project and then the global default.
+`ReasoningEffort`, `ApprovalMode`, `ToolPolicies`), which every branch inherits. Its connection can
+fall back to the project and then the global default. Its reasoning effort can fall back to the
+selected connection.
 
 The effective connection selects the model for a run. A configured reasoning effort is sent as
 `reasoning_effort` in Chat Completions requests; with no value the provider uses its default.
 Configure a value only when the endpoint and model support it, since unsupported values may make
 the request fail. The effective approval mode and tool policies govern tool calls.
-The Connections editor offers provider default or an explicit effort. A branch can override that
-value without changing the connection used by its parent or siblings.
+The Connections editor offers provider default or an explicit effort. Chat settings can override
+that value for the main chat and inheriting branches. A branch can override the chat's value
+without changing its parent or siblings.
 
 Schedules are not inherited. Each branch has at most one schedule of its own (see
 [Scheduled chats](35-scheduled-chats.md)); a scheduled run is a child branch of its owner and
@@ -30,11 +32,11 @@ inherits the owner's connection, reasoning effort, approval mode and tool polici
 | Who | How |
 | --- | --- |
 | Person, any branch | Branch menu → **Branch settings**; on the open chat, chat menu → **Chat settings** for the main branch |
-| Person, the open branch | The composer's approval and connection pickers. On a branch other than the main one they write the branch's own value, and their menus start with **Inherit from …**, which drops it |
+| Person, the open branch | The composer's approval and model pickers. The model picker has a Reasoning screen. On a branch other than the main one they write the branch's own value, and their menus offer **Inherit from …**, which drops it |
 | Model | `app_chats` `SetBranchSettings` (connection, reasoning effort and approval mode; `inherit` per field or `inheritAll`), `app_security` `SetBranchToolPolicy` / `RemoveBranchToolPolicy`, `app_schedule` for the branch's schedule |
 | Model, creating a branch | `app_runs` `Submit` with mode `Fork` can include `branchSettings` for the new branch's connection, reasoning effort, approval mode and tool policies. These are saved with its first message, before its first run selects a model or tool policy; omitted fields inherit from the source branch. |
 | Model, by procedure | Skill `chat-branch-configure` (show, override, inherit; asks before loosening approvals), `settings-tools-reset` with scope `branch`, `settings-select-connection` with scope `Branch`, `chat-tools-configure` for this branch only |
-| Model, reading | `app_read` resource `Chat` returns `effectiveBranchSettings` for `branchId` (the current branch by default): the effective connection, branch reasoning override and approval mode with their sources. The connection's reasoning value is in Settings. |
+| Model, reading | `app_read` resource `Chat` returns `effectiveBranchSettings` for `branchId` (the current branch by default): the effective connection, chat or branch reasoning override and approval mode with their sources. The connection's reasoning value is in Settings. |
 
 `IChatService.ChangeBranchSettingsAsync` applies a change to the stored settings under the chat's
 lease, so a person and a tool editing different fields of one branch never undo one another.
@@ -60,7 +62,11 @@ override at once, tool permissions included. Changes apply as they are made.
 
 In the composer, a picker whose value is set on the open branch carries the same accent dot, and
 its tooltip says whether the value is the branch's own or inherited and from where. The branch menu
-counts the branch's own overrides.
+counts the branch's own overrides. The model picker shows the effective reasoning level in a separate
+row, and a sparkles icon on the trigger marks an explicit reasoning level. Selecting that row opens
+the levels within the same popover. The first choice follows the
+connection on the main chat or the nearest ancestor on a branch; an explicit level applies to the
+next run. A new chat keeps the chosen level when its first message creates the chat.
 
 ## Storage
 

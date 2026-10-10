@@ -122,6 +122,34 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task MainChatReasoningEffortShouldReachChildrenAndResetToConnection()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var (branch, _) = await BranchesAsync(fixture);
+        await using var session = await fixture.OpenAsync();
+
+        var set = await AppFixture.CallAsync(session, "app_chats", new
+        {
+            operation = "SetBranchSettings", projectId = fixture.ProjectId, operationId = Guid.NewGuid(),
+            branchSettings = new { reasoningEffort = "medium" }
+        });
+        set.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+            .ReasoningEffort.ShouldBe("medium");
+        var inherited = await EffectiveAsync(session, fixture, branch);
+        inherited.GetProperty("reasoningEffort").GetString().ShouldBe("medium");
+        inherited.GetProperty("reasoningEffortFrom").GetString().ShouldBe("chat");
+
+        await AppFixture.CallAsync(session, "app_chats", new
+        {
+            operation = "SetBranchSettings", projectId = fixture.ProjectId, operationId = Guid.NewGuid(),
+            branchSettings = new { reasoningEffort = "inherit" }
+        });
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+            .ReasoningEffort.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task BranchToolPolicyShouldOverrideOneToolAndInheritAgainWhenRemoved()
     {
         await using var fixture = await AppFixture.CreateAsync();

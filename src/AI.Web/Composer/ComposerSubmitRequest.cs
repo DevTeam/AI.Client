@@ -22,4 +22,5 @@ public sealed record ComposerSubmitRequest(
     ChatRunSnapshot? SelectedRun,
     Guid? SelectedBranchId = null,
     IReadOnlyList<AI.Contracts.Resources.ChatResource>? Resources = null,
-    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask);
+    ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask,
+    string? ReasoningEffort = null);

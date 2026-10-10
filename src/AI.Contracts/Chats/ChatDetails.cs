@@ -18,7 +18,7 @@ public sealed record ChatDetails(
     Guid? ArchiveOperationId = null,
     ToolApprovalMode ApprovalMode = ToolApprovalMode.Ask, string Kind = "conversation",
     JsonElement? KindState = null, string InteractionSurface = "chat", bool AllowChatNavigation = true,
-    bool ShowInMainRuns = true, int KindStateVersion = 1)
+    bool ShowInMainRuns = true, int KindStateVersion = 1, string? ReasoningEffort = null)
 {
     /// <summary>The teammate a branch of this chat belongs to, when it is a team member's branch.</summary>
     public TeamMember? MemberOf(Guid branchId) => Branches?.SingleOrDefault(branch => branch.Id == branchId)?.Member;

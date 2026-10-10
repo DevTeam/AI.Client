@@ -58,6 +58,7 @@ public sealed class ChatThread
     public string? PinOrder { get; private set; }
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
+    public string? ReasoningEffort { get; private set; }
     public ChatApprovalMode ApprovalMode { get; private set; }
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
 
@@ -192,6 +193,15 @@ public sealed class ChatThread
         ConnectionId = connectionId;
         UpdatedAt = updatedAt;
     }
+
+    public void SetReasoningEffort(string? effort, DateTimeOffset updatedAt)
+    {
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        ReasoningEffort = effort;
+        UpdatedAt = updatedAt;
+    }
+
+    public void RestoreReasoningEffort(string? effort) => ReasoningEffort = effort;
 
     public void SetApprovalMode(ChatApprovalMode mode, DateTimeOffset updatedAt)
     {

@@ -77,6 +77,16 @@ public sealed class BranchSettingsDialogRenderingTests
         text.ShouldContain("Every branch follows these unless it sets its own");
         text.ShouldContain("Project default");
         text.ShouldNotContain("Inherit everything");
+        text.ShouldContain("Reasoning effort");
+        text.ShouldContain("Connection default");
+    }
+
+    [Fact]
+    public async Task ShouldShowChatReasoningEffortAsInheritedOnChild()
+    {
+        var text = WebUtility.HtmlDecode(await RenderAsync(Chat(null, null) with { ReasoningEffort = "medium" }, Child));
+
+        text.ShouldContain("medium · from the main branch");
     }
 
     private static ChatDetails Chat(BranchSettings? parent, BranchSettings? child) => new(ChatId, ProjectId, "Chat",

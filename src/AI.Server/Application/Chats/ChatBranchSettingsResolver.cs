@@ -33,7 +33,7 @@ public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
 
     public string? ReasoningEffort(ChatDetails chat, Guid branchId) =>
         Lineage(chat, branchId).Select(branch => branch.Settings?.ReasoningEffort)
-            .FirstOrDefault(effort => effort is not null);
+            .FirstOrDefault(effort => effort is not null) ?? chat.ReasoningEffort;
 
     public ToolPolicySettings? ToolPolicy(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash) =>
         BranchToolPolicies(chat, branchId, serverId, name, schemaHash) is { Count: > 0 } policies
@@ -55,7 +55,8 @@ public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
         return new EffectiveBranchSettings(branchId, ConnectionId(chat, branchId), Source(connection, branchId),
             ApprovalMode(chat, branchId), Source(approval, branchId),
             lineage.FirstOrDefault(branch => branch.Id == branchId)?.Settings?.ToolPolicies?.Count ?? 0,
-            reasoning?.Settings?.ReasoningEffort, reasoning is null ? null : Source(reasoning, branchId));
+            reasoning?.Settings?.ReasoningEffort ?? chat.ReasoningEffort,
+            reasoning is null ? chat.ReasoningEffort is null ? null : "chat" : Source(reasoning, branchId));
     }
 
     private static string Source(ChatBranchView? branch, Guid branchId) =>

@@ -137,6 +137,16 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
         return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
     }
 
+    public async Task<ChatDetails?> UpdateReasoningEffortAsync(Guid projectId, Guid chatId,
+        UpdateChatReasoningEffortRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync(
+            $"api/projects/{projectId}/chats/{chatId}/reasoning-effort", request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatDetails>(cancellationToken);
+    }
+
     public async Task<ChatDetails?> UpdateBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
         UpdateBranchSettingsRequest request, CancellationToken cancellationToken)
     {

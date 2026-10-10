@@ -19,6 +19,22 @@ public class ChatServiceTests
     private readonly DateTimeOffset _now = new(2026, 8, 12, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task ShouldSaveReasoningEffortWhenCreatingChat()
+    {
+        _clock.SetupGet(clock => clock.UtcNow).Returns(_now);
+        _idGenerator.Setup(generator => generator.Create()).Returns(_chatId.Value);
+        _repository.Setup(repository => repository.SaveAsync(
+                It.Is<ChatThread>(chat => chat.ReasoningEffort == "high"), 0, CancellationToken.None))
+            .ReturnsAsync(ChatSaveResult.Saved(1));
+
+        var created = await CreateInstance().CreateAsync(_projectId.Value,
+            new CreateChatRequest("Chat", ReasoningEffort: "high"), CancellationToken.None);
+
+        created.ReasoningEffort.ShouldBe("high");
+        _repository.VerifyAll();
+    }
+
+    [Fact]
     public async Task ShouldRenameChatEvenWhenTheCallersRevisionIsStale()
     {
         var chat = new ChatThread(_chatId, _projectId, "Chat", _now);

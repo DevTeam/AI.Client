@@ -46,4 +46,22 @@ public sealed class ChatBranchSettingsResolverTests
         resolver.ApprovalMode(reset, chatId).ShouldBe(ToolApprovalMode.Ask);
         resolver.ReasoningEffort(reset, chatId).ShouldBeNull();
     }
+
+    [Fact]
+    public void ChatReasoningEffortAppliesToMainAndInheritingBranches()
+    {
+        var chatId = Guid.NewGuid();
+        var childId = Guid.NewGuid();
+        var chat = new ChatDetails(chatId, Guid.NewGuid(), "Chat", DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow, 1, null, [],
+            [new ChatBranchView(childId, null, "Child", chatId)], ReasoningEffort: "low");
+        var resolver = new ChatBranchSettingsResolver();
+
+        resolver.ReasoningEffort(chat, chatId).ShouldBe("low");
+        resolver.ReasoningEffort(chat, childId).ShouldBe("low");
+        resolver.Effective(chat, childId).ReasoningEffortFrom.ShouldBe("chat");
+        resolver.ReasoningEffort(chat with { Branches =
+            [new ChatBranchView(childId, null, "Child", chatId, Settings: new BranchSettings(ReasoningEffort: "high"))] },
+            childId).ShouldBe("high");
+    }
 }

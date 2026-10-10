@@ -827,16 +827,41 @@
                     else
                     {
                         var connectionInheritance = GetBranchInheritance(GetSelectedRunBranchId(), branch => branch.Settings?.ConnectionId is not null);
-                        <button class="composer-endpoint-trigger @(GetSendSetupGap() is SendSetupGap.Model or SendSetupGap.Connection ? "is-missing" : null)" type="button" title="@(connectionInheritance switch { { Overridden: true } => "Connection set on this branch", { } inherited => $"Connection inherited from {inherited.From}", _ => "Connection for this chat" })" aria-label="Connection for this @(connectionInheritance is null ? "chat" : "branch")" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu">
+                        <button class="composer-endpoint-trigger @(GetSendSetupGap() is SendSetupGap.Model or SendSetupGap.Connection ? "is-missing" : null)" type="button" title="@(connectionInheritance switch { { Overridden: true } => "Connection set on this branch", { } inherited => $"Connection inherited from {inherited.From}", _ => "Connection for this chat" })" aria-label="Model and reasoning for this @(connectionInheritance is null ? "chat" : "branch")" aria-haspopup="true" aria-expanded="@(_isEndpointMenuOpen ? "true" : "false")" @onclick="ToggleEndpointMenu">
                             <span>@GetEndpointDisplayName()</span>
                             @if (connectionInheritance?.Overridden == true) { <span class="branch-override-dot" aria-hidden="true"></span> }
+                            @if (OwnComposerReasoning is not null) { <AppIcon Name="sparkles" Class="composer-reasoning-indicator" /> }
                             <AppIcon Name="chevron-down" />
                         </button>
                     }
                     @if (_isEndpointMenuOpen)
                     {
                         <div class="context-menu-backdrop" @onclick="CloseEndpointMenu"></div>
-                        <span class="composer-endpoint-menu" role="menu">
+                        <span @key="_isEndpointReasoningOpen" class="composer-endpoint-menu" role="menu">
+                            @if (_isEndpointReasoningOpen)
+                            {
+                                <button @ref="_composerReasoningBack" type="button" role="menuitem" class="composer-reasoning-back" @onclick="CloseComposerReasoning"><AppIcon Name="chevron-left" /><span>Model and reasoning</span></button>
+                                <span class="menu-separator" role="separator"></span>
+                                <span class="composer-reasoning-heading">Reasoning effort <small>@ComposerReasoningScope</small></span>
+                                <button type="button" role="menuitemradio" aria-checked="@(OwnComposerReasoning is null)" class="composer-reasoning-choice composer-reasoning-inherit @(OwnComposerReasoning is null ? "selected" : null)" @onclick="() => SelectComposerReasoningAsync(null)">
+                                    @if (OwnComposerReasoning is null) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
+                                    <span class="composer-reasoning-choice-content">
+                                        <span>@(_selectedChat is null || GetSelectedRunBranchId() == _selectedChat.Id ? "Use connection default" : "Inherit")</span>
+                                        <small>@InheritedComposerReasoningLabel</small>
+                                    </span>
+                                </button>
+                                @foreach (var effort in ComposerReasoningLevels)
+                                {
+                                    var value = effort.Value;
+                                    <button type="button" role="menuitemradio" aria-checked="@(OwnComposerReasoning == value)" class="composer-reasoning-choice @(OwnComposerReasoning == value ? "selected" : null)" @onclick="() => SelectComposerReasoningAsync(value)">
+                                        @if (OwnComposerReasoning == value) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
+                                        <span>@effort.Label</span>
+                                    </button>
+                                }
+                                <span class="composer-reasoning-hint">The selected model must support this level.</span>
+                            }
+                            else
+                            {
                             @if (!_connections.Any(item => item.Enabled))
                             {
                                 <span class="composer-endpoint-empty">Every connection is turned off.</span>
@@ -846,8 +871,10 @@
                                 <span class="composer-endpoint-row composer-endpoint-inherit @(endpointInheritance.Overridden ? null : "selected")">
                                     <button type="button" role="menuitemradio" aria-checked="@(endpointInheritance.Overridden ? "false" : "true")" class="composer-endpoint-select" title="@($"Follow {endpointInheritance.From} and its later changes")" @onclick="InheritChatEndpointAsync">
                                         @if (!endpointInheritance.Overridden) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
-                                        <span>Inherit</span>
-                                        <span class="composer-endpoint-default">@(_connections.FirstOrDefault(item => item.Id == InheritedConnectionId(GetSelectedRunBranchId()))?.Name ?? "None")</span>
+                                        <span class="composer-endpoint-label">
+                                            <span>Inherit</span>
+                                            <small>@(_connections.FirstOrDefault(item => item.Id == InheritedConnectionId(GetSelectedRunBranchId()))?.Name ?? "None")</small>
+                                        </span>
                                     </button>
                                 </span>
                                 <span class="menu-separator" role="separator"></span>
@@ -859,13 +886,22 @@
                                 <span class="composer-endpoint-row @(isSelected ? "selected" : string.Empty)">
                                     <button type="button" role="menuitem" class="composer-endpoint-select" @onclick="() => SelectChatEndpointAsync(connection.Id)">
                                         @if (isSelected) { <AppIcon Name="check" /> } else { <span class="branch-option-spacer"></span> }
-                                        <span>@connection.Name</span>
-                                        @if (connection.IsDefault) { <span class="composer-endpoint-default">Default</span> }
+                                        <span class="composer-endpoint-label">
+                                            <span>@connection.Name</span>
+                                            @if (connection.IsDefault) { <small>Default</small> }
+                                        </span>
                                     </button>
                                     <button type="button" role="menuitem" class="icon-action composer-endpoint-edit" title="Edit connection" aria-label="@($"Edit connection {connection.Name}")" @onclick="() => EditChatConnectionAsync(connection.Id)"><AppIcon Name="edit" /></button>
                                 </span>
                             }
+                            <span class="menu-separator" role="separator"></span>
+                            <button @ref="_composerReasoningEntry" type="button" role="menuitem" class="composer-reasoning-entry" @onclick="OpenComposerReasoning">
+                                <AppIcon Name="sparkles" />
+                                <span class="composer-endpoint-label"><span>Reasoning</span><small>@EffectiveComposerReasoningLabel</small></span>
+                                <AppIcon Name="chevron-right" />
+                            </button>
                             <button type="button" role="menuitem" class="composer-endpoint-manage" @onclick="OpenConnectionsFromEndpointMenuAsync"><AppIcon Name="settings" /><span>Manage connections</span></button>
+                            }
                         </span>
                     }
                 </div>
@@ -1635,8 +1671,19 @@ else if (_guideInvitation is { } guideInvitation)
     private Guid? _confirmingBranchDeleteId;
     private Guid? _messageBranchMenuId;
     private bool _isEndpointMenuOpen;
+    private bool _isEndpointReasoningOpen;
+    private bool _focusComposerReasoningBack;
+    private bool _focusComposerReasoningEntry;
+    private ElementReference _composerReasoningBack;
+    private ElementReference _composerReasoningEntry;
     // The mode a chat not created yet will start in; a created chat carries its own.
     private ToolApprovalMode _newChatApprovalMode = ToolApprovalMode.Ask;
+    private string? _newChatReasoningEffort;
+    private static readonly (string Value, string Label)[] ComposerReasoningLevels =
+    [
+        ("none", "None"), ("minimal", "Minimal"), ("low", "Low"), ("medium", "Medium"),
+        ("high", "High"), ("xhigh", "Extra high"), ("max", "Maximum")
+    ];
     private Guid? _editingProjectId;
     private bool _isCreatingProject;
     private string _newProjectName = string.Empty;
@@ -2156,6 +2203,16 @@ else if (_guideInvitation is { } guideInvitation)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_focusComposerReasoningBack)
+        {
+            _focusComposerReasoningBack = false;
+            if (_isEndpointMenuOpen && _isEndpointReasoningOpen) await _composerReasoningBack.FocusAsync();
+        }
+        if (_focusComposerReasoningEntry)
+        {
+            _focusComposerReasoningEntry = false;
+            if (_isEndpointMenuOpen && !_isEndpointReasoningOpen) await _composerReasoningEntry.FocusAsync();
+        }
         // A chat that has just opened is read once for what it has used; the turn line and the
         // widget both show it, so it is read even while the widget column is closed.
         if (_selectedChat is { } usageChat && _usageChatId != usageChat.Id) _ = RefreshChatUsageAsync();
@@ -3405,7 +3462,7 @@ else if (_guideInvitation is { } guideInvitation)
                 GetSelectedRun(),
                 _selectedChat is null ? null : GetSelectedRunBranchId(),
                 SubmittedResources(),
-                _newChatApprovalMode);
+                _newChatApprovalMode, _newChatReasoningEffort);
 
             var outcome = await Composer.SubmitAsync(request, CancellationToken.None);
 
@@ -4056,6 +4113,7 @@ else if (_guideInvitation is { } guideInvitation)
         _selectedChat = null;
         _selectedBranchId = null;
         _branchLeafId = null;
+        _newChatReasoningEffort = null;
         await WorkspaceStateService.SetProjectContextAsync(_selectedProject.Id, null, null);
         SetJustArrivedLeaf(null);
         _wasGeneratingByBranch.Clear();
@@ -4802,7 +4860,8 @@ else if (_guideInvitation is { } guideInvitation)
             var firstLine = task.Split('\n', 2)[0].Trim();
             var title = firstLine.Length == 0 ? "Scheduled chat" : firstLine[..Math.Min(48, firstLine.Length)];
             var created = await ChatHistoryApi.CreateAsync(selectedProject.Id,
-                new CreateChatRequest(title, _chat.CredentialProfileId, ApprovalMode: _newChatApprovalMode), CancellationToken.None);
+                new CreateChatRequest(title, _chat.CredentialProfileId, ApprovalMode: _newChatApprovalMode,
+                    ReasoningEffort: _newChatReasoningEffort), CancellationToken.None);
             await ScheduleApi.SetAsync(selectedProject.Id, created.Id, request, CancellationToken.None);
             ClearScheduledComposerText(request.Settings.Task);
             await LoadChatsAsync(selectedProject.Id);
@@ -5984,7 +6043,8 @@ else if (_guideInvitation is { } guideInvitation)
         }
         else if (_isEndpointMenuOpen)
         {
-            CloseEndpointMenu();
+            if (_isEndpointReasoningOpen) CloseComposerReasoning();
+            else CloseEndpointMenu();
         }
         else if (_messageBranchMenuId is not null)
         {
@@ -6404,8 +6464,25 @@ else if (_guideInvitation is { } guideInvitation)
             await UpdateChatApprovalModeAsync(chosen);
     }
 
-    private Task SetBranchReasoningAsync(Guid branchId, string? effort) =>
-        SaveBranchSettingsAsync(branchId, GetBranchSettings(branchId) with { ReasoningEffort = effort });
+    private async Task SetBranchReasoningAsync(Guid branchId, string? effort)
+    {
+        if (_selectedChat is not { } chat || _selectedProject is not { } project) return;
+        if (branchId != chat.Id)
+        {
+            await SaveBranchSettingsAsync(branchId, GetBranchSettings(branchId) with { ReasoningEffort = effort });
+            return;
+        }
+        try
+        {
+            var updated = await ChatHistoryApi.UpdateReasoningEffortAsync(project.Id, chat.Id,
+                new UpdateChatReasoningEffortRequest(effort), CancellationToken.None);
+            if (updated is null) { Notifications.ShowError("The chat no longer exists."); return; }
+            if (_selectedChat?.Id == updated.Id)
+                _selectedChat = _selectedChat with { ReasoningEffort = updated.ReasoningEffort,
+                    Revision = Math.Max(_selectedChat.Revision, updated.Revision), UpdatedAt = updated.UpdatedAt };
+        }
+        catch (HttpRequestException error) { Notifications.ShowError($"Could not update reasoning effort: {error.Message}"); }
+    }
 
     private ToolApprovalMode GetApprovalMode() => _selectedChat is { } chat
         ? EffectiveBranchApprovalMode(GetSelectedRunBranchId()) : _newChatApprovalMode;
@@ -6449,9 +6526,73 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    private void ToggleEndpointMenu() => _isEndpointMenuOpen = !_isEndpointMenuOpen;
+    private void ToggleEndpointMenu()
+    {
+        _isEndpointMenuOpen = !_isEndpointMenuOpen;
+        _isEndpointReasoningOpen = false;
+    }
 
-    private void CloseEndpointMenu() => _isEndpointMenuOpen = false;
+    private void OpenComposerReasoning()
+    {
+        _isEndpointReasoningOpen = true;
+        _focusComposerReasoningBack = true;
+    }
+
+    private void CloseComposerReasoning()
+    {
+        _isEndpointReasoningOpen = false;
+        _focusComposerReasoningEntry = true;
+    }
+
+    private void CloseEndpointMenu()
+    {
+        _isEndpointMenuOpen = false;
+        _isEndpointReasoningOpen = false;
+        _focusComposerReasoningBack = false;
+        _focusComposerReasoningEntry = false;
+    }
+
+    private string? OwnComposerReasoning => _selectedChat is not { } chat ? _newChatReasoningEffort
+        : GetSelectedRunBranchId() == chat.Id ? chat.ReasoningEffort
+        : GetBranchSettings(GetSelectedRunBranchId()).ReasoningEffort;
+
+    private string ComposerReasoningScope => _selectedChat is not { } chat ? "New chat"
+        : GetSelectedRunBranchId() == chat.Id ? "This chat" : "This branch";
+
+    private (string? Value, string Source) InheritedComposerReasoning()
+    {
+        if (_selectedChat is { } chat && GetSelectedRunBranchId() != chat.Id)
+        {
+            var source = BranchLineage(GetSelectedRunBranchId()).Skip(1)
+                .FirstOrDefault(branch => branch.Settings?.ReasoningEffort is not null);
+            if (source is not null) return (source.Settings!.ReasoningEffort, source.Title);
+            if (chat.ReasoningEffort is not null) return (chat.ReasoningEffort, "main chat");
+        }
+        var id = _selectedChat is null ? _chat.CredentialProfileId ?? _defaultConnectionId ?? GetDefaultConnection()?.Id
+            : EffectiveBranchConnectionId(GetSelectedRunBranchId());
+        return (_connections.FirstOrDefault(connection => connection.Id == id)?.ReasoningEffort, "connection");
+    }
+
+    private static string ReasoningLabel(string? effort) =>
+        ComposerReasoningLevels.FirstOrDefault(item => item.Value == effort).Label ?? "Provider default";
+
+    private string EffectiveComposerReasoningLabel => ReasoningLabel(OwnComposerReasoning ?? InheritedComposerReasoning().Value);
+
+    private string InheritedComposerReasoningLabel
+    {
+        get
+        {
+            var inherited = InheritedComposerReasoning();
+            return $"{ReasoningLabel(inherited.Value)} · from {inherited.Source}";
+        }
+    }
+
+    private async Task SelectComposerReasoningAsync(string? effort)
+    {
+        if (_selectedChat is null) _newChatReasoningEffort = effort;
+        else await SetBranchReasoningAsync(GetSelectedRunBranchId(), effort);
+        CloseEndpointMenu();
+    }
 
     private async Task SelectChatEndpointAsync(Guid connectionId)
     {

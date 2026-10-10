@@ -36,15 +36,13 @@
                 </div>
             </section>
 
-            @if (!IsMain)
-            {
                 <section class="branch-settings-section" aria-labelledby="branch-settings-reasoning">
                     <div class="branch-settings-section-head">
                         <span class="branch-settings-section-title" id="branch-settings-reasoning"><AppIcon Name="sparkles" />Reasoning effort</span>
                         @Source(OwnReasoning is not null, ReasoningFrom)
                     </div>
                     <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-reasoning">
-                        @Choice(OwnReasoning is null, "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
+                        @Choice(OwnReasoning is null, IsMain ? "Connection default" : "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
                             "reset", () => ReasoningChanged.InvokeAsync(null), false)
                         @foreach (var effort in Efforts)
                         {
@@ -54,7 +52,6 @@
                         }
                     </div>
                 </section>
-            }
 
             <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">
                 <div class="branch-settings-section-head">
@@ -156,7 +153,7 @@
 
     private ToolApprovalMode? OwnApproval => IsMain ? Chat.ApprovalMode : Own.ApprovalMode;
 
-    private string? OwnReasoning => Own.ReasoningEffort;
+    private string? OwnReasoning => IsMain ? Chat.ReasoningEffort : Own.ReasoningEffort;
 
     /// <summary>The branches above this one, nearest first, without the main branch.</summary>
     private IEnumerable<ChatBranchView> Ancestors()
@@ -194,15 +191,16 @@
 
     private string? InheritedReasoning =>
         Ancestors().Select(item => item.Settings?.ReasoningEffort).FirstOrDefault(value => value is not null)
+        ?? (IsMain ? null : Chat.ReasoningEffort)
         ?? Connections.FirstOrDefault(item => item.Id == (OwnConnection ?? InheritedConnection))?.ReasoningEffort;
 
     private string InheritedReasoningFrom =>
         Ancestors().FirstOrDefault(item => item.Settings?.ReasoningEffort is not null) is { } source
-            ? $"from {source.Title}" : "from the connection";
+            ? $"from {source.Title}" : !IsMain && Chat.ReasoningEffort is not null ? "from the main branch" : "from the connection";
 
     private string ReasoningFrom => OwnReasoning is not null ? Here
         : Ancestors().FirstOrDefault(item => item.Settings?.ReasoningEffort is not null) is { } source
-            ? $"From {source.Title}" : "From the connection";
+            ? $"From {source.Title}" : !IsMain && Chat.ReasoningEffort is not null ? "From the main branch" : "From the connection";
 
     private string ConnectionFrom => OwnConnection is not null ? Here
         : IsMain ? "Project default"

@@ -168,6 +168,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var kind = new ChatKind(request.Kind);
         var policy = KindPolicies.Resolve(kind);
         policy.ValidateState(request.KindState, request.KindStateVersion);
+        if (request.ReasoningEffort is { } effort && !ReasoningEffortValues.IsSupported(effort))
+            throw new ArgumentException("Unsupported reasoning effort.", nameof(request));
         var chat = new ChatThread(
             new ChatId(idGenerator.Create()),
             new ProjectId(projectId),
@@ -176,6 +178,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
             request.AutoTitlePending, kind, request.KindState, request.KindStateVersion);
         if (request.ApprovalMode != ToolApprovalMode.Ask) chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
+        if (request.ReasoningEffort is not null) chat.SetReasoningEffort(request.ReasoningEffort, now);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return await policy.InitializeAsync(ToDetails(chat, result.Revision), this, cancellationToken);
     }
@@ -312,6 +315,20 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         stored.Chat.SetApprovalMode(ToDomain(request.Mode), clock.UtcNow);
         // Saved against the revision just read, under the chat's lease: a run appending messages
         // must not turn the person's choice into a conflict they have to repeat.
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
+    }
+
+    public async Task<ChatDetails?> UpdateReasoningEffortAsync(Guid projectId, Guid chatId,
+        UpdateChatReasoningEffortRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ReasoningEffort is { } effort && !ReasoningEffortValues.IsSupported(effort))
+            throw new ArgumentException("Unsupported reasoning effort.", nameof(request));
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        stored.Chat.SetReasoningEffort(request.ReasoningEffort, clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }
@@ -575,7 +592,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
         chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
         KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
-        KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
+        KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion,
+        chat.ReasoningEffort);
 
     // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
     // policies): the page may keep it as the open chat, and the full chat carries every tool
@@ -622,7 +640,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
             chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
             KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
-            KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion);
+            KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion,
+            chat.ReasoningEffort);
     }
 
     // The model's notes in a branch's last turn while it has no answer yet. A running turn shows

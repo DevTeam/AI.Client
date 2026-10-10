@@ -237,6 +237,16 @@ public class ChatDocumentSerializerTests
     }
 
     [Fact]
+    public void ShouldRestoreChatReasoningEffort()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        chat.SetReasoningEffort("medium", createdAt);
+
+        _serializer.Deserialize(_serializer.Serialize(chat, 2)).Chat.ReasoningEffort.ShouldBe("medium");
+    }
+
+    [Fact]
     public void ShouldRestoreBranchMessageParents()
     {
         // Given

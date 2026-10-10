@@ -83,7 +83,8 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                               + "or max for a compatible model, or inherit. Each field is "
                               + "inherited again when given 'inherit'; 'inheritAll' true drops every "
                               + "override of the branch, tool policies included. The main branch has nothing to inherit from: there "
-                              + "'connection' 'inherit' follows the project default and 'approvalMode' needs a value. Read the effective "
+                              + "'connection' 'inherit' follows the project default, 'reasoningEffort' 'inherit' follows "
+                              + "the connection, and 'approvalMode' needs a value. Read the effective "
                               + "values and where they come from with app_read. Change approvals or a branch's model only when the user "
                               + "asked for it. Branch tool policies belong to app_security SetBranchToolPolicy. Schedules are per branch "
                               + "and never inherited (app_schedule)."
@@ -252,8 +253,6 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         ChatDetails? updated;
         if (branchId == chatId)
         {
-            if (reasoning is { Length: > 0 })
-                throw new ArgumentException("Set the main branch's reasoning effort on its connection.");
             // The main branch's settings are the chat's own: there is no parent to fall back to.
             if (mode is { Inherit: true } || value.InheritAll == true)
                 throw new ArgumentException("The main branch has no parent to inherit from; give 'approvalMode' a value.");
@@ -264,6 +263,9 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             if (updated is not null && mode?.Value is { } approval)
                 updated = await chats.UpdateApprovalModeAsync(projectId, chatId,
                     new UpdateChatApprovalModeRequest(approval), cancellationToken);
+            if (updated is not null && reasoning is { Length: > 0 })
+                updated = await chats.UpdateReasoningEffortAsync(projectId, chatId,
+                    new UpdateChatReasoningEffortRequest(reasoning == "inherit" ? null : reasoning), cancellationToken);
         }
         else
         {

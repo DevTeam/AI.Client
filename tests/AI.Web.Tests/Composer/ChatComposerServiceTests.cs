@@ -13,6 +13,31 @@ using Xunit;
 public class ChatComposerServiceTests
 {
     [Fact]
+    public async Task ShouldPassDraftReasoningEffortToFirstChat()
+    {
+        var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);
+        var runs = new Mock<IChatRunsApi>(MockBehavior.Strict);
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, 1, null, [], [new ChatBranchView(chatId, null, "Main")]);
+        history.Setup(api => api.CreateAsync(projectId,
+                It.Is<CreateChatRequest>(request => request.ReasoningEffort == "high"), CancellationToken.None))
+            .ReturnsAsync(chat);
+        runs.Setup(api => api.SubmitAsync(projectId, chatId,
+                It.IsAny<SubmitChatMessageRequest>(), CancellationToken.None))
+            .ReturnsAsync(new ChatRunSnapshot(projectId, chatId, chatId, ChatRunStatus.Idle, "", [], false, null, 1));
+
+        var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(
+            new ComposerSubmitRequest(ComposerSubmitMode.Send, projectId, null, null, null, null,
+                null, null, null, "hello", null, ReasoningEffort: "high"), CancellationToken.None);
+
+        result.ShouldBeOfType<ComposerSubmitOutcome.Accepted>();
+        history.VerifyAll();
+        runs.VerifyAll();
+    }
+
+    [Fact]
     public async Task ShouldSubmitReviewOnlyMessageToExistingChat()
     {
         var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);

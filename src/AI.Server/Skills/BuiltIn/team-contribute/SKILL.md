@@ -18,6 +18,11 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    identity ("Ada · Backend"), scope, owned paths, deliverable, definition of done and the
    contracts you depend on. Name yourself, the lead ("Lead") and other teammates only by their
    identities from the charter.
+   Read this branch's `effectiveBranchSettings` only when a model or permission affects your task
+   or causes a failure. Its connection, approval mode and tool rules may be inherited from the
+   parent branch. If a different connection or permission is needed, send the parent lead a
+   `Question` or `Blocker` with the task requirement and the narrow change needed; do not broaden
+   the whole team's settings yourself.
 2. Before starting and before each major step, read the lead branch with `app_read`
    resource=Messages, `branchId` = the parent branch id, for decisions made since the charter. A decision
    overrides your brief. A message the lead sends into this branch arrives as a new turn or, while
@@ -32,7 +37,9 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    never edit the lead's checkout or another teammate's worktree. If a tool cannot reach the
    assigned path under the project's grants, report a blocker to the lead rather than using a
    process to bypass the grant.
-   Make the first change early: as soon as the contracts and one example of the project's style
+   Make the first change early, except when you must start a worktree subteam from your clean HEAD:
+   create those child worktrees before editing your integration checkout. Otherwise, as soon as
+   the contracts and one example of the project's style
    are known, write the smallest real part of the deliverable in your owned paths — the files,
    types and signatures the contracts fix — and grow it from there. Reading on without changing
    anything is not progress: when a few more reads still leave you unable to start, ask the lead
@@ -52,6 +59,16 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    it. Read-only Git (status, diff, log) is fine in either mode.
    A question another skill would put to the user goes to the lead first; use `ask_user` only for
    a decision the charter leaves to the user, and say in it that you are asking as <role>.
+   If the brief assigns you a subteam, run `team-assemble` from this branch for a decomposition
+   strictly inside your owned paths. You remain this branch's member of the parent team and the
+   lead of your direct children. In shared-directory mode, do not change the shared Git state.
+   In worktree mode, the parent-assigned worktree is your integration checkout: start children
+   only from its clean committed HEAD, commit your own disjoint edits before integration so the
+   checkout is clean, and integrate their exact commits there with `team-coordinate`. Any later
+   edits must also be committed only on your assigned branch. The nested lead integration is
+   the sole exception to the teammate prohibition on cherry-picking. Do not report `Done` to the
+   parent until every child is done, their changes are integrated and the combined deliverable is
+   checked. Report your own ordered branch commits, not the child commits that were cherry-picked.
 4. Write to the lead with `app_runs` with `operation` `Submit`, `branchId` = the parent branch id, no `operationId` (the application assigns it),
    `wait` false:
    - progress worth knowing: mode Aside, intent `Status`, at most once per phase;

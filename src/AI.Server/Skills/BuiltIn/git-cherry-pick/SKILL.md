@@ -5,19 +5,23 @@ icon: git-commit
 aliases: ["cherry"]
 kind: playbook
 description: Apply one or several selected commits to the current branch in the chosen order, keeping a recovery ref and pausing at conflicts; never pushes.
-parameters: {"type":"object","properties":{"commits":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}
+parameters: {"type":"object","properties":{"commits":{"type":"array","items":{"type":"string"}},"repositoryPath":{"type":"string","description":"Absolute checkout to integrate into; required when the target is a teammate's worktree"}},"additionalProperties":false}
 tools: ["read_text_file","grep_files","process_run","ask_user","run_skill"]
 ---
 
-Use `process_run` with git argument arrays in the repository root, never shell interpolation.
+Use `process_run` with git argument arrays in the selected checkout, never shell interpolation.
 Follow project instructions. Never fetch or push unless the user separately requests it.
 
-1. Inspect `git status --porcelain=v1 -uall`, the current branch and HEAD, and any operation
+1. If `repositoryPath` is supplied, verify it is an absolute, granted, registered worktree path
+   and resolve it with `git rev-parse --show-toplevel`; every Git command and check in this skill
+   uses that exact checkout. Otherwise use the project's checkout. Inspect
+   `git status --porcelain=v1 -uall`, the current branch and HEAD, and any operation
    already in progress. Preserve all existing changes, including staged and untracked files.
    Do not start a new operation during a merge, rebase, cherry-pick or revert. Before history
    changes require a clean working tree and index; offer `git-stash` for local work instead of
    silently stashing, resetting, cleaning or discarding it.
-2. Use the exact commits supplied by the user, or call `ask_user` with `pickerKind: "commit"`,
+2. Use the exact commits supplied by the user or, for an approved team's integration, the commits
+   verified from its teammate reports and charter. Otherwise call `ask_user` with `pickerKind: "commit"`,
    the absolute `repositoryPath`, `options: []`, `allowOther: false`, `multiSelect: true`.
    Read hashes from `answers[].values` in selection order. Inspect each diff and parents,
    validate each revision as a commit with `rev-parse --verify --end-of-options` and show the

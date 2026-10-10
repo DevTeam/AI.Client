@@ -23,6 +23,9 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    status table — never by a paraphrase of its role.
    A teammate's report is its result: take it as stated. Do not read a teammate's branch to learn
    what it did, to confirm a report, or to see whether it is still working.
+   A member may also lead a subteam. Its child branches report to that member, not directly to
+   this branch; use its single integrated report as this team's deliverable. Do not mark that member
+   done while its subteam has unfinished work.
 2. Handle every teammate message since your last answer, by intent:
    - `question`: answer it when the charter, the code or an earlier decision settles it; a choice
      that belongs to the user goes to `ask_user` first. Reply with `app_runs` with `operation` `Submit` into the
@@ -30,8 +33,11 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    - `blocker`: unblock it — answer, adjust the scope, or move the work to another teammate. A
      change to scope, owned paths or a contract is a decision (below).
      A `blocker` that starts with "Failed:" is the application reporting that the teammate's turn
-     failed (an endpoint or stream error, not the teammate's judgement): resume that branch once
-     with `app_runs` with `operation` `Resume`; if it fails again, tell the user which branch is stopped and why.
+     failed (an endpoint or stream error, not the teammate's judgement): read `app_read`
+     resource=Chat with that `branchId` to identify its effective connection and source. Resume
+     that branch once with `app_runs` with `operation` `Resume`; if it fails again, tell the user
+     which branch and connection are stopped and why. Do not change the parent connection to fix
+     one teammate's failure.
    - `decision` proposed by a teammate: accept or reject it as a decision.
    - `status`: nothing to send. Note it for the status table.
    - `done`: check the deliverable itself against its definition of done — the files it names
@@ -44,6 +50,12 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
 3. A decision that changes what others build goes to every affected branch as an Aside with
    intent `Decision`: a running teammate reads it at its next step, an idle one in its next turn.
    Record decisions in your answer too, so this branch stays the team's record.
+   If a later phase needs a different model or tool permission, inspect the affected branch's
+   `effectiveBranchSettings` with `app_read` resource=Chat and the enabled Connections in
+   resource=Settings. Use `chat-branch-configure` through `run_skill` with the affected branch
+   title or id for a supported change to the narrowest branch. Explain which child branches
+   inherit it; never invent capability, speed or price from a model name. Ask the person before
+   loosening tool approvals or policies unless their exact branch-scoped choice is already stated.
 4. When every teammate of a phase is done, start the next phase: one Send per teammate with intent
    `Decision` and what the phase expects of it. In worktree mode confirm the next phase still
    needs only the common base and fixed contracts; do not send a teammate to implement against
@@ -52,7 +64,8 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    check that the parts fit (build, tests, contract boundaries). In worktree mode, verify the
    lead's integration checkout is clean, each reported commit belongs to its assigned branch and
    changes only owned paths, and there are no uncommitted teammate changes. Integrate the exact
-   commits in dependency order with `git-cherry-pick` through `run_skill`; the user's worktree
+   commits in dependency order with `git-cherry-pick` through `run_skill`, passing the exact
+   absolute integration checkout as `repositoryPath`; the user's worktree
    choice authorized this local integration, not a push. Stop at conflicts or an unexpected diff,
    preserve every worktree and branch, and report the paused state. After successful integration,
    check that the parts fit together (build, tests, contract boundaries) in the integration
@@ -64,6 +77,12 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    incomplete. Teammates never commit or otherwise change the Git state of the shared working
    directory. In worktree mode they commit only on their own branches, and integration creates
    local commits in the lead's checkout. Report those hashes; never push without a separate request.
+   For a nested team, this lead's assigned worktree is the integration checkout. Cherry-pick child
+   commits there in dependency order after the same ownership and clean-status checks. The lead
+   may then make its own local commits for changes inside its parent-assigned paths, verify the
+   combined result, and report only the commits on its own Git branch to the parent lead. Do not
+   ask the parent to cherry-pick the children's original commits again. If integration conflicts,
+   stop, preserve all worktrees and report the exact state to the parent lead.
 5. While teammates work, never edit their owned paths yourself. After they finish, integration may
    change those paths in the lead's checkout; never edit their worktrees. Do not send
    acknowledgements, thanks or restatements: every message to a branch costs that teammate a

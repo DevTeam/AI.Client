@@ -10,6 +10,46 @@ using Xunit;
 public sealed partial class AppToolTests
 {
     [Fact]
+    public async Task RunsForkShouldAcceptInitialBranchSettings()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var charter = await AppFixture.CallAsync(session, "app_runs", new
+        {
+            operation = "Submit", projectId = fixture.ProjectId, chatId = fixture.ChatId,
+            content = "Team charter", mode = "Aside", intent = "Decision"
+        });
+        var connection = (await fixture.GlobalSettings.GetAsync(CancellationToken.None)).Connections[0].Id;
+        var serverId = Guid.NewGuid();
+        var fork = await AppFixture.CallAsync(session, "app_runs", new
+        {
+            operation = "Submit", projectId = fixture.ProjectId, chatId = fixture.ChatId,
+            content = "You are Ada.", mode = "Fork", parentMessageId = charter.GetProperty("messageId").GetGuid(),
+            memberName = "Ada", role = "Backend", branchSettings = new
+            {
+                connectionId = connection, approvalMode = "Auto",
+                toolPolicies = new[] { new { serverId, name = "process_run", schemaHash = "h", decision = "Deny",
+                    maxCallsPerRun = (int?)null, timeoutSeconds = (long?)null } }
+            }
+        });
+        fork.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var branchId = fork.GetProperty("branchId").GetGuid();
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        ChatBranchView? branch;
+        do
+        {
+            branch = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+                .Branches!.SingleOrDefault(item => item.Id == branchId);
+            if (branch is not null) break;
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        } while (DateTimeOffset.UtcNow < deadline);
+        var initial = branch.ShouldNotBeNull().Settings.ShouldNotBeNull();
+        initial.ConnectionId.ShouldBe(connection);
+        initial.ApprovalMode.ShouldBe(ToolApprovalMode.Auto);
+        initial.ToolPolicies.ShouldNotBeNull().ShouldHaveSingleItem().Decision.ShouldBe("Deny");
+    }
+
+    [Fact]
     public async Task BranchSettingsShouldOverrideForTheBranchAndItsChildrenAndInheritAgain()
     {
         await using var fixture = await AppFixture.CreateAsync();

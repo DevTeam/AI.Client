@@ -165,6 +165,10 @@ public sealed class ChatRunDispatcher(
             throw new ArgumentException("A message needs text or a resource reference.");
         if (request.OperationId == Guid.Empty || request.MessageId == Guid.Empty || !Enum.IsDefined(request.Mode))
             throw new ArgumentException("Valid operation, message and submission mode are required.");
+        if (request.BranchSettings is not null && request.Mode != ChatSubmitMode.Fork)
+            throw new ArgumentException("Initial branch settings are only available for a fork.");
+        if (request.BranchSettings?.ApprovalMode is { } initialMode && !Enum.IsDefined(initialMode))
+            throw new ArgumentException("Unknown initial branch approval mode.");
         // Interrupting has to finish before the queue is rewritten: the worker commits the
         // truncated answer and releases the active command on its way out, and rewriting the
         // queue underneath it would race both.
@@ -197,6 +201,12 @@ public sealed class ChatRunDispatcher(
         }
         if (known is not null)
             throw new ArgumentException("This message id is already used in the chat. Use a fresh random UUID for every new message.");
+        if (request.BranchSettings?.ConnectionId is { } requestedConnection)
+        {
+            var available = (await settings.LoadAsync(cancellationToken)).Connections;
+            if (available.All(connection => connection.Id != requestedConnection || !connection.Enabled))
+                throw new ArgumentException("Initial branch connection must name an enabled connection.");
+        }
         var validatedResources = await resources.ValidateForChatAsync(projectId, chatId, request.Resources, cancellationToken);
         // The branch of an aside moves under it by design — a running turn is what it is meant for —
         // so neither the revision nor a parent applies to it.
@@ -276,6 +286,7 @@ public sealed class ChatRunDispatcher(
             Sender: sender, BranchTitle: request.Mode == ChatSubmitMode.Fork ? request.BranchTitle : null,
             BranchMember: request is { Mode: ChatSubmitMode.Fork, BranchMember: { } member }
                 ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null,
+            BranchSettings: BranchSettingsMapping.ToDomain(request.BranchSettings),
             // A teammate's report or question waits for no one: a lead busy with a turn reads it
             // there, instead of polling for it and then spending a whole turn on it afterwards.
             JoinsTurn: joinsTurn));
@@ -444,8 +455,8 @@ public sealed class ChatRunDispatcher(
     /// <summary>
     /// A teammate whose turn stopped — for lack of progress, or failed — tells the lead, who would
     /// otherwise learn of it only by looking, and a team waits on a lead that does not look. A
-    /// teammate's branch is one that a team message of the main branch
-    /// started (docs/34-asides-and-team-messages.md); any other branch keeps the report to itself.
+    /// teammate's branch is one that a team message from its parent lead started
+    /// (docs/34-asides-and-team-messages.md); any other branch keeps the report to itself.
     /// </summary>
     private async Task ReportToLeadAsync(Runtime runtime, string report, CancellationToken token)
     {
@@ -670,17 +681,11 @@ public sealed class ChatRunDispatcher(
                     await SaveAsync(runtime, chat, token);
                     var project = await projects.GetAsync(chat.ProjectId, token) ?? throw new InvalidOperationException("Project not found.");
                     var global = await settings.LoadAsync(token);
-                    // The chain honours a chat-level override first, then the project's
-                    // connection, then the global default. A project left on 'Default' (no
+                    // The chain honours a branch override first, then the chat's and project's
+                    // connections, then the global default. A project left on 'Default' (no
                     // explicit connection) follows whatever the global default currently is, which
                     // is the point of the feature. A disabled link in the chain is passed over, as
                     // the composer passes over it: the chat runs on the model it shows.
-                    var connection = connectionChoice.Choose(global.Connections,
-                        branchSettings.ConnectionId(chat, runtime.State.BranchId), project.ConnectionId);
-                    if (connection is null)
-                    {
-                        throw new InvalidOperationException("Choose an enabled connection for this chat.");
-                    }
                     // Retaining the command until completion makes restart/resume safe: an already committed user message is reused.
                     if (chat.Messages.All(message => message.Id != queued.Id))
                     {
@@ -692,12 +697,20 @@ public sealed class ChatRunDispatcher(
                                 ReplaceSourceId: queued.ReplaceSourceId,
                                 Resources: ResourceReferences.ToContract(queued.Resources), Sender: ToContract(queued.Sender),
                                 BranchTitle: queued.BranchTitle,
-                                BranchMember: queued.BranchMember is { } member ? new TeamMember(member.Name, member.Role) : null),
+                                BranchMember: queued.BranchMember is { } member ? new TeamMember(member.Name, member.Role) : null,
+                                BranchSettings: BranchSettingsMapping.ToContract(queued.BranchSettings)),
                             RetainedMessageIds(chat.Id, queued.Id), token)
                             ?? throw new InvalidOperationException("Message conflict.");
                         TrackMessage(runtime, baseRevision, chat, queued.Id);
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
+                    var connection = connectionChoice.Choose(global.Connections,
+                        branchSettings.ConnectionId(chat, runtime.State.BranchId), project.ConnectionId);
+                    if (connection is null)
+                        throw new InvalidOperationException("Choose an enabled connection for this chat.");
+                    if (queued.BranchSettings?.ConnectionId is { } initialConnection
+                        && connection.Id != initialConnection.Value)
+                        throw new InvalidOperationException("The new branch's selected connection is no longer enabled.");
                     if (connection.ImageInput == AI.Contracts.Settings.ImageInputMode.Disabled &&
                         queued.Resources?.Any(item => item.Kind == AI.Domain.Resources.ChatResourceKind.Image) == true)
                         throw new InvalidOperationException("This connection is set to reject image input. Choose another connection or enable image input in its settings.");

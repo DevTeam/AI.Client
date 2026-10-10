@@ -12,4 +12,5 @@ public sealed record QueuedRunMessage(Guid Id, string Content, DateTimeOffset Cr
     // next step boundary like an aside, and only when no turn does it runs as one of its own.
     bool JoinsTurn = false,
     // The teammate a Fork's branch belongs to; the chat gives it its colour when the branch is made.
-    AI.Domain.Chats.ChatBranchMember? BranchMember = null);
+    AI.Domain.Chats.ChatBranchMember? BranchMember = null,
+    AI.Domain.Chats.ChatBranchSettings? BranchSettings = null);

@@ -260,7 +260,7 @@ public sealed class ChatThread
         message.Role != ChatMessageRole.Tool && message.ToolCalls is not { Count: > 0 };
 
     public void AddMessage(ChatMessage message, DateTimeOffset updatedAt, Guid? branchId = null, Guid? parentBranchId = null,
-        string? branchTitle = null, ChatBranchMember? branchMember = null)
+        string? branchTitle = null, ChatBranchMember? branchMember = null, ChatBranchSettings? branchSettings = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         if (message.ParentId is { } parentId && !_messages.ContainsKey(parentId))
@@ -291,12 +291,17 @@ public sealed class ChatThread
             var id = branchId ?? message.Id.Value;
             branch = new ChatBranch(id, message.ParentId,
                 member?.Label ?? (branchTitle is { Length: > 0 } title ? title.Trim() : message.Content[..Math.Min(48, message.Content.Length)]),
-                parentBranch?.Id ?? Id.Value, message.Id, Member: member);
+                parentBranch?.Id ?? Id.Value, message.Id, Member: member, Settings: branchSettings);
         }
         else if (branch.HeadMessageId != message.ParentId)
         {
             _messages.Remove(message.Id);
             throw new DomainException("A message can only be appended to the current branch head.");
+        }
+        else if (branchSettings is not null)
+        {
+            _messages.Remove(message.Id);
+            throw new DomainException("Initial branch settings require a new branch.");
         }
         _branches[branch.Id] = branch with { HeadMessageId = message.Id, Revision = checked(branch.Revision + 1) };
         UpdatedAt = updatedAt;

@@ -113,7 +113,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                               + "A submitted message is marked as sent by this run's branch, and 'intent' says what it is to the branch "
                               + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer. "
                               + "A Fork for a teammate takes 'memberName' and 'role' instead of 'title': the branch is named \"Name · Role\" and "
-                              + "every message from it is signed that way."
+                              + "every message from it is signed that way. On a Fork, 'branchSettings' sets the new branch's connection, "
+                              + "approval mode and tool policies before its first run; omit a field to inherit it from the source branch."
             });
 
         [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,
@@ -130,6 +131,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             string? title = null,
             string? memberName = null,
             string? role = null,
+            BranchSettings? branchSettings = null,
             Guid? parentMessageId = null,
             Guid? messageId = null,
             ChatResource[]? resources = null,
@@ -137,7 +139,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             bool wait = false,
             int waitTimeoutMs = 60_000,
             CancellationToken cancellationToken = default) =>
-            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, title, memberName, role, parentMessageId,
+            tool.RunsAsync(run, operation, projectId, chatId, operationId, branchId, content, mode, intent, title, memberName, role, branchSettings, parentMessageId,
                 messageId, resources, position, wait, waitTimeoutMs, cancellationToken);
     }
 
@@ -154,6 +156,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         string? title,
         string? memberName,
         string? role,
+        BranchSettings? branchSettings,
         Guid? parentMessageId,
         Guid? messageId,
         ChatResource[]? resources,
@@ -174,7 +177,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,
-                sender, title, memberName, role, parentMessageId, wait, waitTimeoutMs, cancellationToken),
+                sender, title, memberName, role, branchSettings, parentMessageId, wait, waitTimeoutMs, cancellationToken),
             RunOperation.Stop => CommandAsync(builder, projectId, chatId, branch, "Stopped the run.",
                 () => runs().StopAsync(projectId, chatId, branch, cancellationToken, operationId)),
             RunOperation.UpdateQueued => CommandAsync(builder, projectId, chatId, branch, "Updated the queued message.",
@@ -199,7 +202,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
     private async Task<AppWriteResult> SubmitAsync(
         AppWriteBuilder builder, Guid projectId, Guid chatId, Guid branchId, Guid operationId, string? content,
         ChatResource[]? resources, SubmitMode mode, ChatMessageSender? sender, string? title,
-        string? memberName, string? role, Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
+        string? memberName, string? role, BranchSettings? branchSettings, Guid? parentMessageId, bool wait, int waitTimeoutMs, CancellationToken cancellationToken)
     {
         var text = content ?? string.Empty;
         if (string.IsNullOrWhiteSpace(text) && resources is not { Length: > 0 })
@@ -210,6 +213,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             throw new ArgumentException("'memberName' and 'role' go together, and only with mode Fork.", nameof(memberName));
         if (mode == SubmitMode.Aside && parentMessageId is not null)
             throw new ArgumentException("An aside always joins the branch head; omit 'parentMessageId'.", nameof(parentMessageId));
+        if (branchSettings is not null && mode != SubmitMode.Fork)
+            throw new ArgumentException("'branchSettings' is only valid with mode Fork.", nameof(branchSettings));
 
         // The dispatcher dedupes by operation id too, and reusing it as the message id keeps a
         // repeated call from writing a second message with a different identity.
@@ -219,7 +224,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
             mode == SubmitMode.Replace ? parentMessageId : null, Resources: resources,
             BranchTitle: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(title) ? title.Trim() : null,
             BranchMember: mode == SubmitMode.Fork && !string.IsNullOrWhiteSpace(memberName)
-                ? new TeamMember(memberName.Trim(), role?.Trim() ?? string.Empty) : null);
+                ? new TeamMember(memberName.Trim(), role?.Trim() ?? string.Empty) : null,
+            BranchSettings: branchSettings);
         var snapshot = sender is null
             ? await runs().SubmitAsync(projectId, chatId, request, cancellationToken)
             : await runs().SubmitFromRunAsync(projectId, chatId, request, sender, cancellationToken);

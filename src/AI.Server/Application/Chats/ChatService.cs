@@ -231,7 +231,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         }
         else
             stored.Chat.AddMessage(message, now, request.BranchId, request.ParentBranchId, request.BranchTitle,
-                request.BranchMember is { } member ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null);
+                request.BranchMember is { } member ? new ChatBranchMember(member.Name, member.Role, string.Empty) : null,
+                BranchSettingsMapping.ToDomain(request.BranchSettings));
         var result = await repository.SaveAsync(stored.Chat, request.Revision, cancellationToken);
         return result.IsSaved ? ToDetails(stored.Chat, result.Revision) : null;
     }
@@ -676,12 +677,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     private static TeamMember? ToContract(ChatBranchMember? member) =>
         member is null ? null : new TeamMember(member.Name, member.Role, member.Color);
 
-    private static BranchSettings? ToContract(ChatBranchSettings? settings) => settings is null ? null : new(
-        settings.ConnectionId?.Value,
-        settings.ApprovalMode is { } mode ? ToContract(mode) : null,
-        settings.ToolPolicies?.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value,
-            policy.Tool.Name, policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+    private static BranchSettings? ToContract(ChatBranchSettings? settings) => BranchSettingsMapping.ToContract(settings);
 
     private static bool? ToolResultErrorFlag(string content)
     {

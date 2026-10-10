@@ -621,6 +621,59 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ForkShouldApplyInitialSettingsBeforeItsFirstModelCallAndNestedForksShouldInherit()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
+        var alternate = await fixture.AddConnectionAsync("Specialist", "specialist-model");
+        var root = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), root, "Team charter"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Ready.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var lead = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), lead, "Lead a subteam", ChatSubmitMode.Fork,
+            BranchId: fixture.ChatId, ParentMode: MessageParentMode.Explicit, ParentMessageId: root,
+            BranchSettings: new BranchSettings(alternate, ToolApprovalMode.Auto)));
+        var leadCall = await fixture.NextCallAsync();
+        leadCall.Request.Model.ShouldBe("specialist-model");
+        var running = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
+        running.Branches!.Single(branch => branch.Id == lead).Settings.ShouldBe(new BranchSettings(alternate, ToolApprovalMode.Auto));
+        leadCall.Answer.SetResult("Subteam charter.");
+        await fixture.WaitAsync(run => run.BranchId == lead && run.Status == ChatRunStatus.Completed);
+
+        var parentMessage = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+            .Branches!.Single(branch => branch.Id == lead).HeadMessageId!.Value;
+        var member = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), member, "Join the subteam", ChatSubmitMode.Fork,
+            BranchId: lead, ParentMode: MessageParentMode.Explicit, ParentMessageId: parentMessage));
+        var memberCall = await fixture.NextCallAsync();
+        memberCall.Request.Model.ShouldBe("specialist-model");
+        var nested = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
+        nested.Branches!.Single(branch => branch.Id == member).Settings.ShouldBeNull();
+        new ChatBranchSettingsResolver().Effective(nested, member).ApprovalMode.ShouldBe(ToolApprovalMode.Auto);
+        memberCall.Answer.SetResult("Done.");
+        await fixture.WaitAsync(run => run.BranchId == member && run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task ForkShouldRejectUnknownInitialConnectionBeforeQueuing()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var root = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), root, "Root"));
+        (await fixture.NextCallAsync()).Answer.SetResult("Ready.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await Should.ThrowAsync<ArgumentException>(() => fixture.SubmitAsync(new SubmitChatMessageRequest(
+            Guid.NewGuid(), Guid.NewGuid(), "Fork", ChatSubmitMode.Fork, BranchId: fixture.ChatId,
+            ParentMode: MessageParentMode.Explicit, ParentMessageId: root,
+            BranchSettings: new BranchSettings(Guid.NewGuid()))));
+        var chat = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
+        chat.Branches.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public async Task AnIdReusedForAnotherMessageShouldBeRefusedNotSilentlyAccepted()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2532,6 +2585,17 @@ public sealed partial class ChatExecutionTests
                     ReservedOutputTokens = reservedOutputTokens
                 }).ToArray()
             }, CancellationToken.None);
+        }
+        public async Task<Guid> AddConnectionAsync(string name, string model)
+        {
+            var current = await Settings.LoadAsync(CancellationToken.None);
+            var id = Guid.NewGuid();
+            await Settings.SaveAsync(current with
+            {
+                Connections = [.. current.Connections,
+                    new ConnectionSettings(id, name, "https://example.test/v1", model, true, false, false)]
+            }, CancellationToken.None);
+            return id;
         }
         public async Task AppendLegacyReplacementAsync(Guid sourceId, Guid replacementId, string content)
         {

@@ -114,32 +114,38 @@ the intent and a link that opens the branch.
 
 ## Team work
 
-A team is a chat whose main branch is the coordination channel and whose other branches are the
-teammates. Nothing beyond this document's mechanics is needed in code; the protocol lives in skills:
+A team is rooted at a coordinating branch, normally the chat's main branch. A teammate branch can
+also coordinate a subteam of its own direct children. The protocol lives in skills:
 
-- `team-assemble` (main branch): analyses the task (goal and done, domain glossary, areas, phased
+- `team-assemble` (the coordinating branch): analyses the task (goal and done, domain glossary,
+  areas, phased
   plan), decomposes it into parts with owned paths and contracts (a contract one part implements and
   another tests carries its edge cases as input → output examples), and decides whether a team pays
   off — at least two parts that run at once, disjoint owned paths, contracts fixable up front, each
   part substantial. If not, it says so and recommends one branch or `spawn_subtask`. Otherwise it
-  proposes 2–4 teammates, asks the user to confirm, writes the "Team charter" into the main branch
-  as an aside and forks one branch per teammate from it, named "Role — focus" by the fork's `title`.
-- `team-coordinate` (main branch, the lead): handles team messages by intent — answers questions,
+  proposes 2–4 teammates and suitable enabled connections from their saved capability, task fit,
+  context, image and price information. The person confirms a top-level team; a subteam lead
+  takes its proposal to the parent lead. It writes the "Team charter"
+  into its branch as an aside and forks one "Name · Role" branch per teammate. Initial branch
+  settings in a Fork are saved with the branch before its first model call. A subteam can only
+  subdivide its lead's assignment and workspace mode.
+- `team-coordinate` (the coordinating branch, the lead): handles team messages by intent — answers questions,
   unblocks, records decisions and sends them to the affected branches as asides, checks `done`
   against the definition of done, moves the team between phases and integrates the result.
-- `team-contribute` (teammate branch): works only in the owned paths, reads the main branch for
+- `team-contribute` (teammate branch): works only in the owned paths, reads its parent lead branch for
   decisions before each major step, and reports by the protocol: `status` as an aside, `question`,
   `blocker` and `done` as messages that wake the lead. It pins the file-writing tools and
   `run_skill`, starts the skills its brief names, and makes a first change in its owned paths early
   instead of reading on: a teammate that started with read-only tools once spent three hours and
   some 150 reads without writing a file. A conflict between the charter's contract, a reference
   and another teammate's work goes to the lead as a `question` at once, and the teammate carries on
-  by the charter's contract until the lead decides.
+  by the charter's contract until the lead decides. If its assignment warrants a subteam, it
+  coordinates those children and sends one integrated result to its own lead.
 
 Every teammate branch starts from the charter, so it inherits the whole analysis without copying it.
 The charter is written as an aside in its own step: it joins the running turn after that call's
 result, which is what makes it a message the branches can start from. The forks themselves are
-submitted from the main branch's run, so each brief shows the main branch as its sender.
+submitted from the coordinating branch's run, so each brief shows that branch as its sender.
 
 `team` is a skill domain for these playbooks.
 
@@ -182,15 +188,15 @@ A loaded playbook stays active only for the last few user messages (see
 [Skills](27-skills.md)), and team messages are user messages. So a message that carries an intent
 and comes from the same chat names the protocol in its header: "team message from the lead: keep
 to the team-contribute protocol" in a teammate's branch, "team message to the lead: handle it with
-the team-coordinate protocol" in the main branch. A fork or a message without an intent gets no
+the team-coordinate protocol" in the coordinating branch. A fork or a message without an intent gets no
 such line.
 
 Nobody polls. Waiting for an answer means ending the turn: the answer arrives as a message and wakes
 the branch. Reading the same branch again and again brings nothing new and stops the turn as a
 stall. A teammate whose turn does stop that way reports it by itself: the dispatcher sends the
-model's account of the stall to the main branch as a `blocker` from that branch, which wakes the
-lead (see the stall rule in [Hidden model instructions](22-hidden-model-instructions-and-run-completion.md)).
-A teammate's branch is recognised by its first message: a team message the main branch sent.
+model's account of the stall to its parent lead branch as a `blocker`, which wakes that lead
+(see the stall rule in [Hidden model instructions](22-hidden-model-instructions-and-run-completion.md)).
+A teammate's branch is recognised by its first message: a team message its parent lead sent.
 
 ### Identity
 
@@ -207,7 +213,7 @@ Every teammate has one identity, `Name · Role` ("Ada · Backend"), stored on it
   transcript. Only a known swatch reaches a style, as the component's `--member-color`.
 - Message headers, sender cards and queue rows name a teammate by its identity, not by the branch
   title, so renaming the branch by hand changes nothing about how it is signed. In a chat with
-  teammates the main branch is "Lead" (the model reads "From the lead").
+  teammates the coordinating branch is "Lead" (the model reads "From the lead").
 - The charter's teammate table starts with the identity and the branchId; the skills tell everyone
   to name each other only by identity in plans, decisions and reports.
 
@@ -228,7 +234,7 @@ intents, Alt+Enter asides), following the team from any branch, and how to start
 
 A lead that has to rebuild its team's state reads its own branch and every teammate's branch to do
 it, again each turn, filling its context with transcripts it already holds. Instead, every turn of
-the main branch of a team starts with a model instruction `run.team-status` written by
+each coordinating branch of a team starts with a model instruction `run.team-status` written by
 `TeamStatusBrief`: "X of N done, K waiting for you", then one line per teammate — identity,
 branchId, state (working, waiting for the person, stopped, done, idle), its latest report's intent
 and first line, and a question or blocker still waiting for the lead. It is built by the same
@@ -257,7 +263,14 @@ nor wait for someone to press Retry:
   checkout; in worktree mode each teammate uses the absolute worktree path in the charter. The
   charter assigns owned paths to each role; nothing in code enforces that ownership or the
   per-branch worktree choice.
-- The connection is chosen per chat, not per branch.
+- The connection, approval mode and tool policies can be overridden per branch; otherwise they
+  inherit from the nearest ancestor. Changing an ancestor affects descendants that still inherit.
+  `app_runs` Fork accepts initial `branchSettings` so a role-specific model is in place for the
+  branch's first run. The subtask connection pool does not select team branch models.
+- In worktree mode a subteam starts from the clean committed HEAD of its lead's assigned worktree.
+  Its lead integrates child commits into that worktree, checks the combined result, then reports
+  the commits on its own branch to the parent lead. If the lead worktree is dirty or children need
+  uncommitted files, the phase must be revised before starting the subteam.
 - A tool with an `Ask` policy stops a teammate branch until the person answers; the sidebar marks the
   branch as needing attention.
 

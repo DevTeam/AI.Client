@@ -109,6 +109,25 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldLetTheModelChangeAndInheritBranchSettings()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        var configure = catalog.GetById("chat-branch-configure").ShouldNotBeNull();
+        configure.AllowedTools.ShouldBe(["app_read", "app_chats", "app_security", "ask_user"]);
+        configure.Content.ShouldContain("SetBranchSettings");
+        configure.Content.ShouldContain("effectiveBranchSettings");
+        configure.Content.ShouldContain("Loosening approvals needs the person's word");
+        configure.Content.ShouldContain("never inherited");
+
+        var reset = catalog.GetById("settings-tools-reset").ShouldNotBeNull();
+        reset.Content.ShouldContain("RemoveBranchToolPolicy");
+        reset.ParametersSchema.GetProperty("properties").GetProperty("scope").GetProperty("enum")
+            .EnumerateArray().Select(item => item.GetString()).ShouldContain("branch");
+        catalog.GetById("settings-select-connection").ShouldNotBeNull().ParametersSchema.GetProperty("properties")
+            .GetProperty("scope").GetProperty("enum").EnumerateArray().Select(item => item.GetString()).ShouldContain("Branch");
+    }
+
+    [Fact]
     public void ShouldFollowTheSkillNamingSystem()
     {
         foreach (var skill in new BuiltInSkillCatalog().List())

@@ -27,6 +27,7 @@ inherits the owner's connection, approval mode and tool policies like any other 
 | Person, any branch | Branch menu → **Branch settings**; on the open chat, chat menu → **Chat settings** for the main branch |
 | Person, the open branch | The composer's approval and connection pickers. On a branch other than the main one they write the branch's own value, and their menus start with **Inherit from …**, which drops it |
 | Model | `app_chats` `SetBranchSettings` (connection and approval mode; `inherit` per field or `inheritAll`), `app_security` `SetBranchToolPolicy` / `RemoveBranchToolPolicy`, `app_schedule` for the branch's schedule |
+| Model, by procedure | Skill `chat-branch-configure` (show, override, inherit; asks before loosening approvals), `settings-tools-reset` with scope `branch`, `settings-select-connection` with scope `Branch`, `chat-tools-configure` for this branch only |
 | Model, reading | `app_read` resource `Chat` returns `effectiveBranchSettings` for `branchId` (the current branch by default): the effective connection and approval mode and where each comes from |
 
 `IChatService.ChangeBranchSettingsAsync` applies a change to the stored settings under the chat's

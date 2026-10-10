@@ -4,7 +4,7 @@ name: Settings select connection
 icon: settings
 kind: playbook
 description: Select an existing enabled Connection as the global default, for the current project or chat, or for the subtask pool, preserving other settings after confirmation.
-parameters: {"type":"object","properties":{"connection":{"type":"string","description":"Existing connection name or id specified by the user"},"scope":{"type":"string","enum":["Global","Project","Chat","Subtasks"],"description":"Where to apply the selection"},"inherit":{"type":"boolean","description":"Restore inheritance for Project or Chat, only when requested"}},"additionalProperties":false}
+parameters: {"type":"object","properties":{"connection":{"type":"string","description":"Existing connection name or id specified by the user"},"scope":{"type":"string","enum":["Global","Project","Chat","Branch","Subtasks"],"description":"Where to apply the selection"},"inherit":{"type":"boolean","description":"Restore inheritance for Project, Chat or Branch, only when requested"}},"additionalProperties":false}
 tools: ["app_read","app_security","app_projects","app_chats","ask_user"]
 ---
 

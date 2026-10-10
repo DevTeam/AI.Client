@@ -1,14 +1,14 @@
-@* The teammate's colour, the same in the sidebar, the transcript and the queue. Only a known
-   swatch reaches the style, which sets nothing but the component's own custom property. The
-   team's lead wears no swatch of its own: it is drawn as a ring of the same size, so a roster or a
-   sender line reads as one set of marks. *@
+@* The teammate's mark, the same in the sidebar, the transcript, the queue and the team widget: an
+   executor is a person in its own colour, the team's lead the team itself. Only a known swatch reaches the
+   style, which sets nothing but the component's own custom property. The lead wears no swatch of
+   its own: its mark is drawn in a neutral tone, which also edges its cards. *@
 @if (Member is { Swatch: { } swatch })
 {
-    <span class="member-dot" style="--member-color: @swatch" title="@Member.Label" aria-hidden="true"></span>
+    <span class="@CssClass("member-dot")" style="--member-color: @swatch" title="@Member.Label" aria-hidden="true">@if (Working) { <AppIcon Name="spinner" Class="chat-unfinished-spin" /> } else { <AppIcon Name="user" /> }</span>
 }
 else if (Lead)
 {
-    <span class="member-dot is-lead" title="Lead · Coordinator" aria-hidden="true"></span>
+    <span class="@CssClass("member-dot is-lead")" title="Lead · Coordinator" aria-hidden="true"><AppIcon Name="users" /></span>
 }
 
 @code {
@@ -18,4 +18,14 @@ else if (Lead)
     /// <summary>The mark stands for the team's lead, which has no identity of its own.</summary>
     [Parameter]
     public bool Lead { get; set; }
+
+    /// <summary>The teammate's run is going: the person gives way to a spinner in the same colour.</summary>
+    [Parameter]
+    public bool Working { get; set; }
+
+    /// <summary>Extra classes, such as the run status that colours a sidebar row's mark.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string CssClass(string own) => string.IsNullOrEmpty(Class) ? own : $"{own} {Class}";
 }

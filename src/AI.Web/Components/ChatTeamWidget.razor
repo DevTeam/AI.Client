@@ -48,7 +48,7 @@
                         <button class="chat-team-row @(member.IsCurrent ? "is-current" : null)" type="button" title="@MemberTitle(member)"
                                 aria-current="@(member.IsCurrent ? "true" : null)" @onclick="() => OnOpenBranch.InvokeAsync(member.BranchId)">
                             <span class="chat-team-mark" aria-hidden="true">
-                                <MemberDot Member="member.Identity" Lead="member.IsLead" />
+                                <MemberDot Member="member.Identity" Lead="member.IsLead" Working="@(member.State == ChatTeamMemberState.Working)" />
                             </span>
                             <span class="chat-team-body">
                                 <span class="chat-team-title">
@@ -122,7 +122,11 @@
                 {
                     <li @key="branch.BranchId">
                         <button class="chat-team-row" type="button" title="@RowTitle(branch)" @onclick="() => ShowInTranscriptAsync(branch)">
-                            <span class="chat-team-mark" aria-hidden="true"><AppIcon Name="users" /></span>
+                            <span class="chat-team-mark" aria-hidden="true">
+                                @if (Chat?.MemberOf(branch.BranchId) is { Swatch: not null } member) { <MemberDot Member="member" /> }
+                                else if (Chat?.IsTeamLead(branch.BranchId) == true) { <MemberDot Lead="true" /> }
+                                else { <AppIcon Name="user" /> }
+                            </span>
                             <span class="chat-team-body">
                                 <span class="chat-team-title">@branch.Title</span>
                                 <span class="chat-team-meta chat-usage-muted">

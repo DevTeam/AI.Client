@@ -1796,7 +1796,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 /* Something new in the chat itself — an answer, a question, a failure — makes its title bold, the
    way unread mail does: a cue that does not depend on telling the icon's colours apart. */
-.chat-link:has(> .chat-icon-with-branch-count > .app-icon:is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
+.chat-link:has(> .chat-icon-with-branch-count > :is(.app-icon, .member-dot):is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
     color: var(--color-text-strong);
     font-weight: 600;
 }
@@ -2097,17 +2097,17 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     color: var(--color-text-strong);
 }
 
-.chat-link > .app-icon.run-status-unread,
-.chat-icon-with-branch-count > .app-icon.run-status-unread,
+.chat-link > :is(.app-icon, .member-dot).run-status-unread,
+.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-unread,
 .branch-option-icon.run-status-unread { color: var(--color-unread); }
-.chat-link > .app-icon.run-status-attention,
-.chat-icon-with-branch-count > .app-icon.run-status-attention,
+.chat-link > :is(.app-icon, .member-dot).run-status-attention,
+.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-attention,
 .branch-option-icon.run-status-attention { color: var(--color-warning); }
-.chat-link > .app-icon.run-status-failed,
-.chat-icon-with-branch-count > .app-icon.run-status-failed,
+.chat-link > :is(.app-icon, .member-dot).run-status-failed,
+.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-failed,
 .branch-option-icon.run-status-failed { color: var(--color-danger); }
-.chat-link > .app-icon.run-status-interrupted,
-.chat-icon-with-branch-count > .app-icon.run-status-interrupted,
+.chat-link > :is(.app-icon, .member-dot).run-status-interrupted,
+.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-interrupted,
 .branch-option-icon.run-status-interrupted { color: var(--color-text-faint); }
 
 /* The chat's icon wrapper; the branch count used to overlay its corner and now follows the title. */
@@ -3212,21 +3212,20 @@ div.chat-tip-head { cursor: default; }
 .workspace-message.user.from-branch[style*="--member-color"] .message-body {
     border-left: 3px solid var(--member-color);
 }
+/* A teammate's mark: an executor is a person in its own colour; a run status that needs attention
+   recolours it in the sidebar, like any other row icon. */
 .member-dot {
-    display: inline-block;
+    display: inline-flex;
     flex: none;
-    width: .5rem;
-    height: .5rem;
-    border-radius: 50%;
-    background: var(--member-color);
+    align-items: center;
+    color: var(--member-color);
 }
-/* The lead has no swatch: a ring of the same size in a neutral tone, which also edges its cards. */
+.member-dot > .app-icon { width: .9rem; height: .9rem; }
+/* The lead has no swatch: the team icon in a neutral tone, which also edges its cards. */
 :root { --member-lead-color: var(--color-text-secondary); }
-.member-dot.is-lead {
-    background: none;
-    box-shadow: inset 0 0 0 1.5px var(--member-lead-color);
-}
-.branch-link .member-dot,
+.member-dot.is-lead { color: var(--member-lead-color); }
+.chat-link > .member-dot > .app-icon,
+.chat-icon-with-branch-count > .member-dot > .app-icon { width: 1rem; height: 1rem; }
 .branch-picker-row .member-dot { margin-right: .35rem; }
 .queue-aside-label .member-dot { margin-right: .3rem; vertical-align: middle; }
 .workspace-message.user.from-branch .markdown-content pre { background: var(--color-bg-inset); }
@@ -9166,7 +9165,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-team-link { padding: 0; border: 0; background: none; color: var(--color-accent); font: inherit; cursor: pointer; }
 .chat-team-link:hover, .chat-team-link:focus-visible { text-decoration: underline; outline: none; }
 .chat-team-row.is-current { background: var(--color-fill); }
-.chat-team-mark .member-dot { width: .6rem; height: .6rem; }
+.chat-team-mark .member-dot > .app-icon { width: 1rem; height: 1rem; }
 .chat-team-meta > .chat-team-report { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chat-team-open { overflow: hidden; font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
 .chat-team-done { color: var(--color-success-text); }

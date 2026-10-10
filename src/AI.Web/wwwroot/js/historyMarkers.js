@@ -375,12 +375,13 @@ export function attach(strip, scroller, scrollKey) {
     };
 
     // The strip narrows with the chat's gutter, so the peak is fitted to its current width: the
-    // widest dash (a fork's, shifted right by its branch tick) must still end inside the strip.
+    // widest dash (a fork's, shifted right past its node ring) must still end inside the strip.
     const fitBend = () => {
         const marker = strip.querySelector(".history-marker");
         if (!marker) return;
         const dash = parseFloat(getComputedStyle(marker, "::before").width);
-        const forkShift = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.25;
+        const fork = strip.querySelector(".history-marker-fork");
+        const forkShift = fork ? parseFloat(getComputedStyle(fork, "::before").marginLeft) || 0 : 0;
         if (dash > 0) bendMaxScale = Math.max(1, Math.min(BendMaxScale, (strip.clientWidth - forkShift) / dash));
     };
 

@@ -137,6 +137,17 @@ public sealed class ChatThread
         foreach (var branch in restored.Values) _branches.Add(branch.Id, branch);
     }
 
+    public void SetBranchSettings(Guid branchId, ChatBranchSettings? settings, DateTimeOffset updatedAt)
+    {
+        if (branchId == Id.Value || !_branches.TryGetValue(branchId, out var branch))
+            throw new DomainException("An alternative branch is required.");
+        if (settings?.ApprovalMode is { } mode && !Enum.IsDefined(mode))
+            throw new DomainException("Unknown approval mode.");
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        _branches[branchId] = branch with { Settings = settings, Revision = checked(branch.Revision + 1) };
+        UpdatedAt = updatedAt;
+    }
+
     public void Rename(string title, DateTimeOffset updatedAt)
     {
         if (string.IsNullOrWhiteSpace(title))

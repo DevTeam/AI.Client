@@ -14,7 +14,8 @@ using AI.Contracts.Chats;
 /// dispatcher has nothing left to do for. A row without it has no countdown to show.
 /// </param>
 /// <param name="FinishedAt">When the chat's schedule last finished a run; what orders a chat that has nothing pending.</param>
-public sealed record ScheduledChatSummary(ChatSummary Chat, DateTimeOffset? DueAt, DateTimeOffset? FinishedAt = null);
+public sealed record ScheduledChatSummary(ChatSummary Chat, DateTimeOffset? DueAt, DateTimeOffset? FinishedAt = null,
+    Guid? BranchId = null, string? BranchTitle = null);
 
 /// <summary>
 /// Which scheduled chats the sidebar lists, shared by the Host that answers the question and the

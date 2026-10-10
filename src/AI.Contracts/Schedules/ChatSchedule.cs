@@ -145,7 +145,7 @@ public sealed record ChatSchedule(
 /// <param name="Upcoming">The next occurrences, at most three; empty while paused.</param>
 public sealed record ChatScheduleView(Guid ProjectId, Guid ChatId, string ChatKind, ChatSchedule? Schedule, string? Description,
     DateTimeOffset Now = default, string? LocalNow = null, string? HostTimeZone = null,
-    IReadOnlyList<DateTimeOffset>? Upcoming = null);
+    IReadOnlyList<DateTimeOffset>? Upcoming = null, Guid? BranchId = null);
 
 /// <param name="Revision">The schedule revision the caller read; null skips the check.</param>
 public sealed record SetChatScheduleRequest(ChatScheduleSettings Settings, long? Revision = null, bool? Paused = null);

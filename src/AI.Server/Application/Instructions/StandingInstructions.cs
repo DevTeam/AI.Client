@@ -112,7 +112,7 @@ public sealed class StandingInstructions(
         + "missing; use explicit timezone offsets. Preview first, then apply only reviewed ids/revisions. ArchiveBatch "
         + "itself asks for confirmation: do not ask twice. No answer, dismissal or cancellation never authorizes batch "
         + "archiving. Report changed/skipped counts and the archive operation id for UndoArchive.\n"
-        + "- app_schedule: a chat's schedule. Setting one turns the chat into a scheduled chat the application runs on its own; "
+        + "- app_schedule: the selected branch's schedule. Each run forks from that branch; other branches may have separate schedules. "
         + "use the chat-schedule-* skills for it, and never invent a date, time, recurrence or rule the user did not give.\n"
         + "- Writes (app_chats, app_runs, app_projects, app_security, app_memory, app_instructions, app_skills, app_schedule) need a fresh operationId "
         + "and the revision you read; on a conflict re-read before deciding again. app_security replaces whole sections: "

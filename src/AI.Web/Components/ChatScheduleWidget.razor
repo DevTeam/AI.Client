@@ -1,12 +1,5 @@
-@* The schedule of the open chat. In an ordinary chat it is the way in: "Schedule this chat" opens
-   the editor with every value visible, and saving turns the chat into a scheduled one with its
-   history intact. In a scheduled chat it leads with the countdown to the next run, says how the
-   schedule stands (active, paused, running, waiting for you), offers Run now, Pause or Resume and
-   Edit, lists what the schedule does, and shows the recent runs — each opens its branch while it
-   exists. Removing the schedule asks first and keeps the chat. Before a new chat exists it
-   schedules one: the text in the message box is the task, and nothing reaches the model until
-   the first run. Alt+Shift+Enter in the message box opens the editor with that text (DraftRequest).
-   Every change goes through Home, which calls the same service the app_schedule tool uses. *@
+@* The selected branch has its own schedule. Every run forks from that branch's current head.
+   Before a chat exists, the composer text becomes the first message of a new scheduled chat. *@
 @using AI.Contracts.Chats
 @using AI.Contracts.Schedules
 @using AI.Web.Widgets
@@ -39,15 +32,17 @@
         <div class="chat-usage-section">
             <div class="chat-schedule-editor-heading" tabindex="-1" @ref="_editorHeading">
                 <AppIcon Name="stopwatch" />
-                <strong>@(_schedule is not null ? "Edit the schedule" : Chat is null ? "Schedule a new chat" : "Schedule this chat")</strong>
+                <strong>@(_schedule is not null ? "Edit the schedule" : Chat is null ? "Schedule a new chat" : IsBranch ? "Schedule this branch" : "Schedule this chat")</strong>
             </div>
             @if (_schedule is null)
             {
                 <p class="chat-usage-footnote">@(Chat is null
                     ? "The task becomes the chat's first message; the model first sees it in the first run."
+                    : IsBranch ? "Runs fork from this branch and carry out the task with its conversation as context."
                     : "Runs fork the chat from its end and carry out the task; the conversation so far stays as their context.")</p>
             }
-            <ScheduleSettingsForm Value="@draft" ValueChanged="settings => _draft = settings" Disabled="@_busy" />
+            <ScheduleSettingsForm Value="@draft" ValueChanged="settings => _draft = settings" Disabled="@_busy"
+                                  HideChatDeletion="@IsBranch" />
             @if (_error is not null)
             {
                 <p class="chat-usage-note context-note-critical" role="alert">@_error</p>
@@ -69,7 +64,7 @@
     else if (_schedule is not { } schedule)
     {
         <div class="chat-usage-section chat-schedule-intro">
-            <p class="chat-usage-empty">This chat runs only when you write in it. Schedule it to run its task on a date or a recurrence — by itself, in a branch of its own each time.</p>
+            <p class="chat-usage-empty">@(IsBranch ? "This branch" : "This chat") runs only when you write in it. Schedule it to run its task on a date or a recurrence, in a child branch each time.</p>
             @if (!CanSchedule)
             {
                 <p class="chat-usage-footnote">Only an ordinary conversation can be scheduled.</p>
@@ -77,7 +72,7 @@
             else
             {
                 <button class="compact-action chat-schedule-primary" type="button" @onclick="StartScheduling">
-                    <AppIcon Name="stopwatch" /> Schedule this chat
+                    <AppIcon Name="stopwatch" /> Schedule this @(IsBranch ? "branch" : "chat")
                 </button>
             }
         </div>
@@ -150,7 +145,10 @@
                     <span class="is-failed" title="What happens to the branch of a run that failed"><i aria-hidden="true"></i>@Presentation.Retention(retention.Failed)</span>
                     <span class="is-blocked" title="What happens to the branch of a run that waits for you"><i aria-hidden="true"></i>@Presentation.Retention(retention.Blocked)</span>
                 </dd>
-                <dt class="chat-usage-grid-row">Chat</dt><dd class="chat-usage-grid-wide">@Presentation.Deletion(settings.Deletion, settings.TimeZone, _now)</dd>
+                @if (!IsBranch)
+                {
+                    <dt class="chat-usage-grid-row">Chat</dt><dd class="chat-usage-grid-wide">@Presentation.Deletion(settings.Deletion, settings.TimeZone, _now)</dd>
+                }
                 <dt class="chat-usage-grid-row">Time zone</dt><dd class="chat-usage-grid-wide">@settings.TimeZone</dd>
             </dl>
         </div>
@@ -207,7 +205,7 @@
             @if (_confirmRemove)
             {
                 <div class="chat-usage-note context-note-warning" role="alert">
-                    <span>Remove the schedule? The chat and its branches stay as an ordinary conversation; no more runs start.</span>
+                    <span>Remove the schedule? The conversation and its branches stay; no more runs start here.</span>
                     <span class="chat-usage-note-actions">
                         <button class="compact-action chat-schedule-danger" type="button" disabled="@_busy" @onclick="RemoveAsync">Remove</button>
                         <button class="compact-action secondary-action" type="button" disabled="@_busy" @onclick="() => _confirmRemove = false">Keep</button>
@@ -232,6 +230,7 @@
 
     [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = null!;
     [Parameter] public ChatDetails? Chat { get; set; }
+    [Parameter] public Guid? BranchId { get; set; }
 
     /// <summary>Saves settings; returns what the Host refused, or null.</summary>
     [Parameter] public Func<SetChatScheduleRequest, Task<string?>>? OnSave { get; set; }
@@ -256,25 +255,41 @@
     private bool _confirmRemove;
     private bool _showAllRuns;
     private Guid? _chatId;
+    private Guid? _loadedBranchId;
+    private bool IsBranch => Chat is { } chat && BranchId is { } branchId && branchId != chat.Id;
     private DateTimeOffset _now = DateTimeOffset.UtcNow;
     private Timer? _ticker;
+    private Timer? _refreshTicker;
     private int? _draftRequest;
     private bool _focusEditor;
     private ElementReference _editorHeading;
 
     private bool CanSchedule => Chat is { Kind: "conversation" or ChatSchedule.Kind } || Chat is null && CanCreate;
 
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        if (Chat?.Id != _chatId)
+        _refreshTicker = new Timer(_ => _ = InvokeAsync(async () =>
+        {
+            await RefreshAsync();
+            _now = DateTimeOffset.UtcNow;
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Guid? selectedBranch = Chat is null ? null : BranchId ?? Chat.Id;
+        if (Chat?.Id != _chatId || selectedBranch != _loadedBranchId)
         {
             _chatId = Chat?.Id;
+            _loadedBranchId = selectedBranch;
             _draft = null;
             _error = null;
             _confirmRemove = false;
             _showAllRuns = false;
+            _schedule = null;
+            await RefreshAsync();
         }
-        _schedule = Chat is null ? null : ScheduleApi.Parse(Chat.Kind, Chat.KindState);
         _now = DateTimeOffset.UtcNow;
         if (DraftRequest is { } request && request != _draftRequest)
         {
@@ -288,6 +303,21 @@
             _focusEditor = true;
         }
         Tick();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (Chat is null || _loadedBranchId is not { } branchId) return;
+        var chatId = Chat.Id;
+        try
+        {
+            var schedule = (await ScheduleApi.GetAsync(Chat.ProjectId, chatId, branchId, CancellationToken.None)).Schedule;
+            if (Chat?.Id == chatId && _loadedBranchId == branchId) _schedule = schedule;
+        }
+        catch (AI.Web.Chats.ChatScheduleException)
+        {
+            if (Chat?.Id == chatId && _loadedBranchId == branchId) _schedule = null;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -318,7 +348,11 @@
         _ticker.Change(period, period);
     }
 
-    public void Dispose() => _ticker?.Dispose();
+    public void Dispose()
+    {
+        _ticker?.Dispose();
+        _refreshTicker?.Dispose();
+    }
 
     private static DateTimeOffset? NextRun(ChatSchedule schedule)
     {
@@ -388,6 +422,7 @@
         finally
         {
             _busy = false;
+            await RefreshAsync();
         }
     }
 

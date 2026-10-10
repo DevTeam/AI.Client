@@ -4,7 +4,7 @@ name: Chat schedule create
 icon: chat-schedule-create
 aliases: ["schedule"]
 kind: playbook
-description: Set up a task to run later or repeatedly — once at a date and time, every day, every weekday, every Monday, hourly or monthly — by turning this chat, or a new chat, into a scheduled chat instead of doing the task now; asks the user for every missing time, success, retry and cleanup rule, allows the tools and directories its runs need so a run never waits for a person, changes the chat's kind and starts automatic runs.
+description: Set up a task to run later or repeatedly on the selected branch or a new chat; asks for missing time, success, retry and cleanup rules and prepares the access its runs need.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"What each run should do, if the user said it"},"when":{"type":"string","description":"When it should run, in the user's words"},"newChat":{"type":"boolean","description":"True when the user wants a separate new chat instead of this one"}},"additionalProperties":false}
 tools: ["app_read","app_schedule","app_chats","app_security","ask_user","app_navigate"]
 ---
@@ -12,8 +12,8 @@ tools: ["app_read","app_schedule","app_chats","app_security","ask_user","app_nav
 Do not carry out the task in this turn: the user asked for it to run on a schedule, and this skill
 only sets the schedule up. The first run does the work.
 
-A scheduled chat keeps its history. At every occurrence the application forks it from the end of
-its main branch, and that run branch carries out the task with the `chat-schedule-run` skill. Nobody
+A scheduled branch keeps its history. At every occurrence the application forks it from its current
+head, and that run branch carries out the task with the `chat-schedule-run` skill. Nobody
 is watching a run: a tool call whose effective policy is `Ask`, or a path outside the project's
 directory grants, does not fail — it leaves the run `Blocked`, waiting for a person who may not be
 there. So setting a schedule also means making the run able to finish on its own, and the schedule
@@ -24,7 +24,7 @@ asked with `ask_user`. Ask only for what is missing; a value the user already na
 the branch or in the arguments is never asked again.
 
 1. Take `projectId`, `chatId` and `branchId` from output.context. Call `app_schedule` operation
-   `Get` for this chat. If it already has a schedule, follow `chat-schedule-edit` instead.
+   `Get` for this branch. If it already has a schedule, follow `chat-schedule-edit` instead.
    Read this branch with `app_read` resource=Messages to learn what the user wants done, when, how
    success looks and what should happen on failure.
 2. Collect what is already known: the task, a one-time date and time or a recurrence, the time
@@ -45,8 +45,8 @@ the branch or in the arguments is never asked again.
      JSON `value` like `{"maxAttempts":3,"delayMinutes":15}`, plus free text for the condition.
    - Run branches, if missing: "Delete successful runs, keep failed and blocked (Recommended)",
      "Keep every run", "Delete every run after a day", free text for other delays.
-   - The chat itself, if missing: "Keep the chat (Recommended)", "Delete it after the last run",
-     a date to delete it on.
+   - On the main branch only, the chat itself, if missing: "Keep the chat (Recommended)",
+     "Delete it after the last run", a date to delete it on.
    A dismissed, expired, declined or interrupted question schedules nothing: say which value is
    still missing and stop. A question left empty in a partial answer is still missing; ask it once
    more on its own, and stop if it stays unanswered. Never choose a date, time or rule yourself.
@@ -102,7 +102,8 @@ the branch or in the arguments is never asked again.
     policies when the task runs in the new chat.
 12. Call `app_schedule` operation `Set` with `settings`: `task`, `recurrence` (picker values pass
     through unchanged), `timeZone` (empty for the host's), `successCriteria`, `retry`, `retention`
-    with all three rules, and `deletion` only when the user wants the chat deleted. On an error,
+    with all three rules, and `deletion` only on the main branch when the user wants the chat deleted.
+    Pass the selected `branchId` for an existing chat. On an error,
     fix the reported value or ask about it, then call again.
 13. For a new chat, open it with `app_navigate`.
 14. Answer in one line: the schedule in words, the first run and the tools and directories allowed

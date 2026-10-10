@@ -84,6 +84,13 @@ public partial class Home
 
     private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat, ChatListSurface.Soon);
 
+    private async Task OpenSoonScheduleAsync(ScheduledChatSummary soon)
+    {
+        await OpenChatFromListAsync(soon.Chat, ChatListSurface.Soon);
+        if (soon.BranchId is { } branchId && branchId != soon.Chat.Id)
+            await NavigateToTargetAsync(new WorkspaceTarget(soon.Chat.ProjectId, soon.Chat.Id, branchId, null, false));
+    }
+
     private void SetSoonChatCount(int count)
     {
         var fetched = SoonChatsMore;

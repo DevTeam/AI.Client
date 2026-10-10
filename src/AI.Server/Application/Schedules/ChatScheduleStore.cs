@@ -2,82 +2,118 @@ namespace AI.Application.Schedules;
 
 using System.Text.Json;
 using AI.Application.Chats;
+using AI.Contracts.FileSystem;
 using AI.Contracts.Schedules;
+using AI.Infrastructure.Storage;
 
-/// <summary>
-/// Reads and writes a chat's schedule, which is the state of its <c>scheduled</c> kind. Every write
-/// is a function of the latest stored schedule, applied under the chat's lease: the widget, the
-/// tools and the dispatcher change different parts of it, and none of them may undo another.
-/// </summary>
 public interface IChatScheduleStore
 {
-    /// <summary>The chat's kind and, for a scheduled chat, its schedule; null when the chat does not exist.</summary>
-    Task<StoredSchedule?> ReadAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Replaces the schedule with <paramref name="change"/> of the stored one. The change gets null
-    /// for a chat that is not scheduled yet; returning null leaves the chat as it is. Null when the
-    /// chat does not exist.
-    /// </summary>
-    Task<StoredSchedule?> UpdateAsync(Guid projectId, Guid chatId, Func<StoredSchedule, ChatSchedule?> change,
-        CancellationToken cancellationToken);
-
-    /// <summary>Turns a scheduled chat back into a conversation, keeping its messages and branches.</summary>
-    Task<StoredSchedule?> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
-
+    Task<StoredSchedule?> ReadAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
+    Task<StoredSchedule?> UpdateAsync(Guid projectId, Guid chatId, Guid branchId,
+        Func<StoredSchedule, ChatSchedule?> change, CancellationToken cancellationToken);
+    Task<StoredSchedule?> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<StoredScheduleOwner>> ListAsync(Guid projectId, CancellationToken cancellationToken);
+    Task DeleteExceptAsync(Guid projectId, Guid chatId, IReadOnlySet<Guid>? retainedBranches, CancellationToken cancellationToken);
     ChatSchedule? Parse(JsonElement? state);
-
-    JsonElement Serialize(ChatSchedule schedule);
 }
 
-/// <param name="Schedule">Null for a chat that is not scheduled.</param>
 public sealed record StoredSchedule(string Kind, ChatSchedule? Schedule, long ChatRevision);
+public sealed record StoredScheduleOwner(Guid ProjectId, Guid ChatId, Guid BranchId, ChatSchedule Schedule);
 
-public sealed class ChatScheduleStore(IChatService chats, IScheduleCalendar calendar) : IChatScheduleStore
+/// <summary>One independently revised schedule file per branch. The chat document remains the
+/// authority for branch existence; orphaned files are removed during the scheduler scan.</summary>
+public sealed class ChatScheduleStore(IFileSystem files, IChatStoragePaths paths, IChatService chats,
+    IChatSynchronization synchronization, IScheduleCalendar calendar) : IChatScheduleStore
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    public async Task<StoredSchedule?> ReadAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
-        await chats.ChangeKindAsync(projectId, chatId, _ => null, cancellationToken) is { } read ? ToStored(read) : null;
+    public ChatSchedule? Parse(JsonElement? state) => state is { ValueKind: JsonValueKind.Object } value
+        ? value.Deserialize<ChatSchedule>(Json) : null;
 
-    public async Task<StoredSchedule?> UpdateAsync(Guid projectId, Guid chatId, Func<StoredSchedule, ChatSchedule?> change,
+    public async Task<StoredSchedule?> ReadAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
+    {
+        var chat = await chats.GetAsync(projectId, chatId, cancellationToken);
+        if (chat is null || chat.Branches?.All(branch => branch.Id != branchId) == true) return null;
+        var schedule = await ReadFileAsync(projectId, chatId, branchId, cancellationToken);
+        return new StoredSchedule(chat.Kind, schedule, chat.Revision);
+    }
+
+    public async Task<StoredSchedule?> UpdateAsync(Guid projectId, Guid chatId, Guid branchId,
+        Func<StoredSchedule, ChatSchedule?> change, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var current = await ReadAsync(projectId, chatId, branchId, cancellationToken);
+        if (current is null) return null;
+        if (change(current) is { } next)
+        {
+            var path = Path(projectId, chatId, branchId);
+            await files.WriteTextAsync(path + ".tmp", JsonSerializer.Serialize(next, Json), cancellationToken);
+            await files.MoveAsync(path + ".tmp", path, true, cancellationToken);
+            return current with { Schedule = next };
+        }
+        return current;
+    }
+
+    public async Task<StoredSchedule?> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
+    {
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var current = await ReadAsync(projectId, chatId, branchId, cancellationToken);
+        if (current is null) return null;
+        await files.DeleteFileAsync(Path(projectId, chatId, branchId), cancellationToken);
+        return current with { Schedule = null };
+    }
+
+    public async Task<IReadOnlyList<StoredScheduleOwner>> ListAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var listed = new List<StoredScheduleOwner>();
+        var chatsById = new Dictionary<Guid, AI.Contracts.Chats.ChatDetails?>();
+        foreach (var file in await files.ListFilesAsync(paths.GetChatsDirectory(new AI.Domain.Projects.ProjectId(projectId)),
+                     "*.schedule.json", cancellationToken))
+        {
+            var name = System.IO.Path.GetFileName(file).Split('.');
+            if (name.Length != 4 || !Guid.TryParseExact(name[0], "N", out var chatId)
+                || !Guid.TryParseExact(name[1], "N", out var branchId)) continue;
+            if (!chatsById.TryGetValue(chatId, out var chat))
+            {
+                chat = await chats.GetAsync(projectId, chatId, cancellationToken);
+                chatsById.Add(chatId, chat);
+            }
+            if (chat is null || chat.Branches?.All(branch => branch.Id != branchId) == true)
+            {
+                await files.DeleteFileAsync(file, cancellationToken);
+                continue;
+            }
+            if (await ReadFileAsync(projectId, chatId, branchId, cancellationToken) is { } schedule)
+                listed.Add(new StoredScheduleOwner(projectId, chatId, branchId, schedule));
+        }
+        return listed;
+    }
+
+    public async Task DeleteExceptAsync(Guid projectId, Guid chatId, IReadOnlySet<Guid>? retainedBranches,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(change);
-        var result = await chats.ChangeKindAsync(projectId, chatId, current =>
-            change(ToStored(current, 0)) is { } next
-                ? new ChatKindState(ChatSchedule.Kind, Serialize(next), ChatSchedule.StateVersion)
-                : null, cancellationToken);
-        return result is null ? null : ToStored(result);
-    }
-
-    public async Task<StoredSchedule?> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
-    {
-        var result = await chats.ChangeKindAsync(projectId, chatId, current => current.Kind == ChatSchedule.Kind
-            ? new ChatKindState("conversation", null, 1) : null, cancellationToken);
-        return result is null ? null : ToStored(result);
-    }
-
-    public ChatSchedule? Parse(JsonElement? state)
-    {
-        if (state is not { ValueKind: JsonValueKind.Object } value) return null;
-        try
+        foreach (var file in await files.ListFilesAsync(paths.GetChatsDirectory(new AI.Domain.Projects.ProjectId(projectId)),
+                     $"{chatId:N}.*.schedule.json", cancellationToken))
         {
-            // Schedules saved before zones were stored as IANA ids may name a Windows one.
-            return value.Deserialize<ChatSchedule>(Json) is { Settings.TimeZone: { Length: > 0 } zone } schedule
-                ? schedule with { Settings = schedule.Settings with { TimeZone = calendar.CanonicalTimeZoneId(zone) } }
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
+            var name = System.IO.Path.GetFileName(file).Split('.');
+            if (name.Length == 4 && Guid.TryParseExact(name[0], "N", out var ownerChatId) && ownerChatId == chatId
+                && Guid.TryParseExact(name[1], "N", out var branchId)
+                && (retainedBranches is null || !retainedBranches.Contains(branchId)))
+                await files.DeleteFileAsync(file, cancellationToken);
         }
     }
 
-    public JsonElement Serialize(ChatSchedule schedule) => JsonSerializer.SerializeToElement(schedule, Json);
+    private async Task<ChatSchedule?> ReadFileAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
+    {
+        var text = await files.ReadTextAsync(Path(projectId, chatId, branchId), cancellationToken);
+        if (text is null) return null;
+        var schedule = JsonSerializer.Deserialize<ChatSchedule>(text, Json);
+        return schedule is { Settings.TimeZone: { Length: > 0 } zone }
+            ? schedule with { Settings = schedule.Settings with { TimeZone = calendar.CanonicalTimeZoneId(zone) } }
+            : schedule;
+    }
 
-    private StoredSchedule ToStored(ChatKindChange change) => ToStored(change.Current, change.Revision);
-
-    private StoredSchedule ToStored(ChatKindState state, long revision) =>
-        new(state.Kind, state.Kind == ChatSchedule.Kind ? Parse(state.State) : null, revision);
+    private string Path(Guid projectId, Guid chatId, Guid branchId) => System.IO.Path.Combine(
+        paths.GetChatsDirectory(new AI.Domain.Projects.ProjectId(projectId)),
+        $"{chatId:N}.{branchId:N}.schedule.json");
 }

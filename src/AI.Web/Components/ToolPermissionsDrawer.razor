@@ -43,6 +43,13 @@
                                         <span title="Decision that applies when this override is reset"> · fallback: @policy.Fallback</span>
                                     }
                                 </p>
+                                @if (Scope == "Branch")
+                                {
+                                    <select aria-label="Permission for @policy.Name" value="@policy.Decision"
+                                            disabled="@_saving" @onchange="e => SetBranchPolicyAsync(policy, e.Value?.ToString())">
+                                        <option value="Ask">Ask</option><option value="Allow">Allow</option><option value="Deny">Deny</option>
+                                    </select>
+                                }
                             </div>
                             @if (policy.CanReset)
                             {
@@ -69,6 +76,7 @@
     [Parameter, EditorRequired] public string Scope { get; set; } = "Project";
     [Parameter, EditorRequired] public Guid ProjectId { get; set; }
     [Parameter] public Guid? ChatId { get; set; }
+    [Parameter] public Guid? BranchId { get; set; }
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
     [Parameter] public EventCallback Close { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
@@ -83,17 +91,19 @@
     private string? _error;
     private string? _loadedKey;
 
-    private string Description => Scope == "Chat"
+    private string Description => Scope == "Branch"
+        ? "Permissions for this branch override its parent and chat. Reset restores the inherited rule."
+        : Scope == "Chat"
         ? "Permissions saved for this chat. Resetting one restores the project or global default."
         : "Permissions saved for this project. Resetting one restores the global MCP default.";
-    private string ResetLabel => Scope == "Chat" ? "Reset to inherited default" : "Reset to global default";
+    private string ResetLabel => Scope is "Chat" or "Branch" ? "Reset to inherited default" : "Reset to global default";
     private string FooterText => $"{Overrides.Count} {Scope.ToLowerInvariant()} override{(Overrides.Count == 1 ? string.Empty : "s")}";
     private IReadOnlyList<ViewPolicy> Overrides => BuildOverrides();
     private IReadOnlyList<ViewPolicy> VisiblePolicies => _showAll ? BuildEffective() : Overrides;
 
     protected override async Task OnParametersSetAsync()
     {
-        var key = $"{Scope}:{ProjectId}:{ChatId}";
+        var key = $"{Scope}:{ProjectId}:{ChatId}:{BranchId}";
         if (_loadedKey == key) return;
         _loadedKey = key;
         await LoadAsync();
@@ -117,6 +127,9 @@
 
     private IReadOnlyList<ViewPolicy> BuildOverrides()
     {
+        if (Scope == "Branch")
+            return (CurrentBranch?.Settings?.ToolPolicies ?? [])
+                .Select(item => View(item, "Branch", true, BranchFallback(item))).ToArray();
         if (Scope == "Chat")
             return (_chat?.ToolPolicies ?? []).Select(item => View(item, "Chat", true, ProjectFallback(item))).ToArray();
         return (_project?.ToolPolicies ?? []).Select(item => View(item, "Project", true, GlobalFallback(item))).ToArray();
@@ -137,7 +150,12 @@
         foreach (var item in _global?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] =
             new ViewPolicy(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), "Global", false, null);
         foreach (var item in _project?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Project", Scope == "Project", GlobalFallback(item));
-        if (Scope == "Chat") foreach (var item in _chat?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Chat", true, ProjectFallback(item));
+        if (Scope is "Chat" or "Branch") foreach (var item in _chat?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item, "Chat", Scope == "Chat", ProjectFallback(item));
+        if (Scope == "Branch")
+            foreach (var branch in BranchLineage().Reverse())
+                foreach (var item in branch.Settings?.ToolPolicies ?? [])
+                    policies[(item.ServerId, item.Name, item.SchemaHash)] = View(item,
+                        branch.Id == BranchId ? "Branch" : branch.Title, branch.Id == BranchId, BranchFallback(item));
         return policies.Values.OrderBy(item => item.ServerName).ThenBy(item => item.Name).ToArray();
     }
 
@@ -147,6 +165,21 @@
     private string? GlobalFallback(ToolPolicySettings item) => _global?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision
         ?? ToolDefaults.GetDecision(item.ServerId, item.Name);
     private string? ProjectFallback(ToolPolicySettings item) => _project?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? GlobalFallback(item);
+    private ChatBranchView? CurrentBranch => _chat?.Branches?.FirstOrDefault(branch => branch.Id == BranchId);
+    private IEnumerable<ChatBranchView> BranchLineage()
+    {
+        if (_chat is null || BranchId is not { } id) yield break;
+        var branches = (_chat.Branches ?? []).ToDictionary(branch => branch.Id);
+        var visited = new HashSet<Guid>();
+        while (id != _chat.Id && visited.Add(id) && branches.TryGetValue(id, out var branch))
+        {
+            yield return branch;
+            id = branch.ParentBranchId ?? _chat.Id;
+        }
+    }
+    private string? BranchFallback(ToolPolicySettings item) => BranchLineage().Skip(1)
+        .SelectMany(branch => branch.Settings?.ToolPolicies ?? []).FirstOrDefault(policy => Same(policy, item))?.Decision
+        ?? _chat?.ToolPolicies?.FirstOrDefault(policy => Same(policy, item))?.Decision ?? ProjectFallback(item);
     private static bool Same(McpToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
     private static bool Same(ToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
 
@@ -162,11 +195,16 @@
         _error = null;
         try
         {
-            if (Scope == "Chat" && ChatId is { } chatId)
+            if (Scope == "Branch")
+            {
+                await SetBranchPolicyAsync(policy, null);
+                if (_error is not null) return false;
+            }
+            else if (Scope == "Chat" && ChatId is { } chatId)
                 _chat = await ChatHistoryApi.RemoveToolPolicyAsync(ProjectId, chatId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
             else
                 _project = await ProjectApi.RemoveToolPolicyAsync(ProjectId, policy.ServerId, policy.Name, policy.SchemaHash, CancellationToken.None);
-            if ((Scope == "Chat" && _chat is null) || (Scope == "Project" && _project is null))
+            if ((Scope is "Chat" or "Branch" && _chat is null) || (Scope == "Project" && _project is null))
             {
                 _error = "Permission could not be reset.";
                 return false;
@@ -178,6 +216,35 @@
         {
             _error = "Permission could not be reset.";
             return false;
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task SetBranchPolicyAsync(ViewPolicy policy, string? decision)
+    {
+        if (ChatId is not { } chatId || BranchId is not { } branchId || CurrentBranch is not { } branch) return;
+        _saving = true;
+        _error = null;
+        try
+        {
+            var previous = branch.Settings ?? new BranchSettings();
+            var policies = (previous.ToolPolicies ?? []).Where(item => !(item.ServerId == policy.ServerId
+                && item.Name == policy.Name && item.SchemaHash == policy.SchemaHash)).ToList();
+            if (decision is "Allow" or "Ask" or "Deny")
+            {
+                var old = previous.ToolPolicies?.FirstOrDefault(item => item.ServerId == policy.ServerId
+                    && item.Name == policy.Name && item.SchemaHash == policy.SchemaHash);
+                policies.Add(new ToolPolicySettings(policy.ServerId, policy.Name, policy.SchemaHash, decision,
+                    old?.MaxCallsPerRun, old?.TimeoutSeconds));
+            }
+            _chat = await ChatHistoryApi.UpdateBranchSettingsAsync(ProjectId, chatId, branchId,
+                new UpdateBranchSettingsRequest(previous with { ToolPolicies = policies }), CancellationToken.None);
+            if (_chat is null) _error = "Branch permissions could not be saved.";
+            else await Changed.InvokeAsync();
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = "Branch permissions could not be saved.";
         }
         finally { _saving = false; }
     }

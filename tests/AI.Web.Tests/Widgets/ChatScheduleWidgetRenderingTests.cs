@@ -7,6 +7,7 @@ using AI.Contracts.Navigation;
 using AI.Contracts.Runs;
 using AI.Contracts.Schedules;
 using AI.Web.Components;
+using AI.Web.Chats;
 using AI.Web.Navigation;
 using AI.Web.Widgets;
 using Microsoft.AspNetCore.Components;
@@ -168,8 +169,15 @@ public sealed class ChatScheduleWidgetRenderingTests
         registrations.AddTransient<IAppNavigationTargets, AppNavigationTargets>();
         registrations.AddTransient<IAppControlHints, AppControlHints>();
         registrations.AddSingleton(Mock.Of<IJSRuntime>());
+        var scheduleApi = new Mock<IChatScheduleApi>();
+        if (parameters.GetValueOrDefault(nameof(ChatScheduleWidget.Chat)) is ChatDetails chat)
+        {
+            var schedule = chat.KindState?.Deserialize<ChatSchedule>(Json);
+            scheduleApi.Setup(api => api.GetAsync(chat.ProjectId, chat.Id, chat.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ChatScheduleView(chat.ProjectId, chat.Id, chat.Kind, schedule, null));
+        }
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
-        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        await using var renderer = new HtmlRenderer(new ApiOverrideProvider(services, scheduleApi.Object), NullLoggerFactory.Instance);
         var html = string.Empty;
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
@@ -177,5 +185,11 @@ public sealed class ChatScheduleWidgetRenderingTests
             html = component.ToHtmlString();
         });
         return html;
+    }
+
+    private sealed class ApiOverrideProvider(IServiceProvider inner, IChatScheduleApi scheduleApi) : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => serviceType == typeof(IChatScheduleApi)
+            ? scheduleApi : inner.GetService(serviceType);
     }
 }

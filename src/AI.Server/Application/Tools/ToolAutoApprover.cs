@@ -22,21 +22,29 @@ public sealed record ToolAutoApproval(bool Allowed, string? Reason = null)
 public interface IToolAutoApprover
 {
     Task<ToolApprovalMode> ModeAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ToolApprovalMode> ModeAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken) =>
+        ModeAsync(projectId, chatId, cancellationToken);
 
     Task<ToolAutoApproval> DecideAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool, string arguments,
         CancellationToken cancellationToken);
 }
 
-public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills) : IToolAutoApprover
+public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
+    IChatBranchSettingsResolver branchSettings) : IToolAutoApprover
 {
     public async Task<ToolApprovalMode> ModeAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
         (await chats.GetAsync(projectId, chatId, cancellationToken))?.ApprovalMode ?? ToolApprovalMode.Ask;
+
+    public async Task<ToolApprovalMode> ModeAsync(Guid projectId, Guid chatId, Guid branchId,
+        CancellationToken cancellationToken) =>
+        await chats.GetAsync(projectId, chatId, cancellationToken) is { } chat
+            ? branchSettings.ApprovalMode(chat, branchId) : ToolApprovalMode.Ask;
 
     public async Task<ToolAutoApproval> DecideAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool,
         string arguments, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        var mode = await ModeAsync(projectId, chatId, cancellationToken);
+        var mode = await ModeAsync(projectId, chatId, branchId, cancellationToken);
         if (mode == ToolApprovalMode.FullAccess) return new ToolAutoApproval(true);
         var assessment = await AssessAsync(projectId, chatId, branchId, tool, arguments, cancellationToken);
         return mode == ToolApprovalMode.Auto ? assessment : assessment with { Allowed = false };

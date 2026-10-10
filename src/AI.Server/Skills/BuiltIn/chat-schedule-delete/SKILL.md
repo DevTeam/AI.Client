@@ -3,13 +3,13 @@ id: chat-schedule-delete
 name: Chat schedule delete
 icon: chat-schedule-delete
 kind: playbook
-description: Remove the schedule from a scheduled chat so it becomes an ordinary conversation with its history and branches, or delete the scheduled chat entirely, after the user confirms.
+description: Remove or pause the selected branch's schedule while keeping its history, or delete the whole chat if explicitly requested and confirmed.
 parameters: {"type":"object","properties":{"deleteChat":{"type":"boolean","description":"True when the user wants the whole chat deleted, not only its schedule"}},"additionalProperties":false}
 tools: ["app_schedule","app_read","app_chats","ask_user"]
 ---
 
-1. Take `projectId` and `chatId` from output.context, unless the user named another chat. Call
-   `app_schedule` operation `Get`. Without a schedule, say the chat is not scheduled and stop.
+1. Take `projectId`, `chatId` and `branchId` from output.context, unless the user named another chat.
+   Call `app_schedule` operation `Get` for that branch. Without a schedule, say the branch is not scheduled and stop.
 2. Decide what the user asked for: removing only the schedule (the default meaning of "stop",
    "unschedule", "turn off the schedule"), or deleting the chat with its history (`deleteChat` or an
    explicit request). When that is ambiguous, ask in the confirmation below.

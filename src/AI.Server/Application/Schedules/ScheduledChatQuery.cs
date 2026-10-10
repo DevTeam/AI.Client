@@ -31,15 +31,22 @@ public sealed class ScheduledChatQuery(
         // Every project is walked, as the dispatcher does: a schedule of a project nobody has open
         // still runs, and so still belongs on the list.
         foreach (var project in await projects.ListAsync(cancellationToken))
-        foreach (var summary in await chats.ListAsync(project.Id, cancellationToken))
         {
-            if (summary.Kind != ChatSchedule.Kind || summary.ArchivedAt is not null) continue;
-            if (await store.ReadAsync(project.Id, summary.Id, cancellationToken) is not { Schedule: { } schedule }) continue;
+        var summaries = (await chats.ListAsync(project.Id, cancellationToken)).ToDictionary(chat => chat.Id);
+        foreach (var owner in await store.ListAsync(project.Id, cancellationToken))
+        {
+            summaries.TryGetValue(owner.ChatId, out var summary);
+            if (summary is null || summary.ArchivedAt is not null) continue;
+            var schedule = owner.Schedule;
             var due = ScheduledChats.DueAt(schedule);
             var finished = ScheduledChats.FinishedAt(schedule);
             // Nothing pending and nothing ever run: the guide's demo, or a schedule not started yet.
             if (due is null && finished is null) continue;
-            listed.Add(new ScheduledChatSummary(summary, due, finished));
+            var title = owner.BranchId == summary.Id ? null
+                : (await chats.GetAsync(project.Id, summary.Id, cancellationToken))?.Branches?
+                    .FirstOrDefault(branch => branch.Id == owner.BranchId)?.Title;
+            listed.Add(new ScheduledChatSummary(summary, due, finished, owner.BranchId, title));
+        }
         }
         return ScheduledChats.Soon(listed, now, horizon, limit);
     }

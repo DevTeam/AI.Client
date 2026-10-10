@@ -109,6 +109,7 @@ internal sealed class Composition
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
                 PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
+                ChatBranchSettingsResolver,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 ChatTemporaryDirectory,

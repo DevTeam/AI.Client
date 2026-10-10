@@ -15,9 +15,8 @@ the team's coordination channel and this run its lead. How team messages work is
 docs/34-asides-and-team-messages.md: every message `app_runs` submits carries this branch as its
 sender, `intent` says what it is, and mode Aside adds information without starting a turn.
 
-1. Take `projectId`, `chatId` and `branchId` from output.context. Work only from the chat's main
-   branch (`branchId` equal to `chatId`); on another branch, say that a team is assembled from the
-   main branch and stop. Read the branch with `app_read` resource=Messages for what is already
+1. Take `projectId`, `chatId` and `branchId` from output.context. This branch is the team's lead,
+   including when it is itself a member of a parent team. Read this branch with `app_read` resource=Messages for what is already
    known, and the project's files only as far as the analysis needs them.
 2. Analyse the task before deciding anything:
    - **Goal and done**: what result is wanted, and how its completion is checked.
@@ -91,7 +90,7 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    stops partway through, report the created paths and branches for recovery and ask how to proceed;
    do not discard them or fall back to the shared directory. The team's Git branches are separate
    from its chat branches.
-9. Write the charter into this branch: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Aside`,
+9. Write the charter into this branch: `app_runs` with `operation` `Submit`, `branchId` = this lead's `branchId`, mode `Aside`,
    intent `Decision`, no `operationId`, and content headed "Team charter" with: goal and done,
    glossary, phases, a table of teammates whose first column is the identity ("Ada · Backend"),
    then scope, owned paths, deliverable and done; the lead as "Lead"; the contracts; and the
@@ -104,12 +103,13 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    `messageId`: it is the charter's id. Name teammates by their identity in the phases and
    contracts too. Make that call alone in its step: the aside joins this turn after the call's
    result, and the branches must start from it.
-10. In the next step, read the main branch with `app_read` and confirm the charter message is there.
-   Then for each teammate: `app_runs` with `operation` `Submit`, `branchId` = `chatId`, mode `Fork`,
+10. In the next step, read this lead branch with `app_read` and confirm the charter message is there.
+   Then for each teammate: `app_runs` with `operation` `Submit`, `branchId` = this lead's `branchId`, mode `Fork`,
    `parentMessageId` = the charter's id, no `operationId`, intent `Decision`, `wait` false, `memberName` and `role` = its identity (no `title`: the
    application names the branch "Name · Role" and signs its messages so), content = the teammate's
    brief: "You are <Name> · <Role> in this team. Run the team-contribute skill first." followed by the
-   scope, owned paths, deliverable, definition of done, skills to use and whom to ask. In worktree
+   lead branch id (this branch's `branchId`), scope, owned paths, deliverable, definition of done,
+   skills to use and whom to ask. In worktree
    mode include its exact absolute worktree path, Git branch and base commit. Every branch
    inherits the analysis and the charter from the message it starts from, so the brief repeats
    only what is the teammate's own. Each result's `branchId` is that teammate's branch; every
@@ -126,7 +126,7 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    send arrives here as messages.
 
 Protocol to put in the charter:
-- Teammates write to the main branch with `app_runs` with `operation` `Submit`, `branchId` = the chat id.
+- Teammates write to this lead branch with `app_runs` with `operation` `Submit`, `branchId` = the lead branch id recorded in their brief.
 - `status` goes as an Aside: it costs the lead nothing until its next step. `question`, `blocker`
   and `done` go as ordinary messages and wake the lead. No acknowledgements, no thanks.
 - Every message is self-contained: what, why, and what is needed back.
@@ -140,7 +140,7 @@ Protocol to put in the charter:
   anything is not progress.
 - A conflict between a contract, a reference and another teammate's work is a question to the lead
   as soon as it is found; until the lead decides, the charter's contract holds.
-- Before each major step a teammate reads the main branch since the charter for new decisions.
+- Before each major step a teammate reads this lead branch since the charter for new decisions.
 - Teammates do not message each other; the lead routes what one needs from another.
 - Nobody polls: waiting for an answer means ending the turn, and the answer arrives as a message.
   Reading the same branch again and again with nothing new in it stops the turn.

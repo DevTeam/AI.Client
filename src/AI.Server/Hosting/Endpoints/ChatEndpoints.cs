@@ -261,6 +261,12 @@ public sealed class ChatEndpoints : IEndpointModule
                 return chat is null ? Results.Conflict() : Results.Ok(chat);
             });
 
+        routes.MapPut("/api/projects/{projectId:guid}/chats/{chatId:guid}/branches/{branchId:guid}/settings",
+            async (Guid projectId, Guid chatId, Guid branchId, UpdateBranchSettingsRequest request,
+                IChatService service, CancellationToken token) =>
+                await service.UpdateBranchSettingsAsync(projectId, chatId, branchId, request, token) is { } chat
+                    ? Results.Ok(chat) : Results.NotFound());
+
         routes.MapDelete(
             "/api/projects/{projectId:guid}/chats/{chatId:guid}/branches/{branchId:guid}",
             async (Guid projectId, Guid chatId, Guid branchId, long revision, IChatService _, IChatRunDispatcher runs, CancellationToken cancellationToken) =>

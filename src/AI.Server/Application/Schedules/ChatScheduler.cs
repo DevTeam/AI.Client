@@ -39,13 +39,7 @@ public sealed class ChatScheduler(
     private readonly SemaphoreSlim _wake = new(0, 1);
     private readonly CancellationTokenSource _stop = new();
 
-    // The schedules last read, by chat and the chat revision they were read at. A chat that has not
-    // changed is not read again: chat documents carry their whole history.
-    private readonly Dictionary<Guid, (long Revision, ChatSchedule? Schedule)> _known = [];
-
-    // When each chat was last processed, so a run that is going is looked at every few seconds
-    // rather than on every pass.
-    private readonly Dictionary<Guid, DateTimeOffset> _watched = [];
+    private readonly Dictionary<(Guid ChatId, Guid BranchId), DateTimeOffset> _watched = [];
     private Task _loop = Task.CompletedTask;
 
     public void Start()
@@ -107,32 +101,26 @@ public sealed class ChatScheduler(
     {
         var now = clock.UtcNow;
         var wake = now + Heartbeat;
-        var seen = new HashSet<Guid>();
+        var seen = new HashSet<(Guid ChatId, Guid BranchId)>();
         foreach (var project in await projects.ListAsync(token))
-        foreach (var summary in await chats.ListAsync(project.Id, token))
         {
-            if (summary.Kind != ChatSchedule.Kind || summary.ArchivedAt is not null) continue;
-            seen.Add(summary.Id);
+        var summaries = (await chats.ListAsync(project.Id, token)).ToDictionary(chat => chat.Id);
+        foreach (var owner in await store.ListAsync(project.Id, token))
+        {
+            var key = (owner.ChatId, owner.BranchId);
+            seen.Add(key);
             try
             {
-                if (!_known.TryGetValue(summary.Id, out var known) || known.Revision != summary.Revision)
-                {
-                    var read = await store.ReadAsync(project.Id, summary.Id, token);
-                    known = (read?.ChatRevision ?? summary.Revision, read?.Schedule);
-                    _known[summary.Id] = known;
-                }
-                if (known.Schedule is not { } schedule) continue;
-                var due = pass.DueAt(schedule, now, _watched.TryGetValue(summary.Id, out var watched) ? watched : null);
+                summaries.TryGetValue(owner.ChatId, out var summary);
+                if (summary is null || summary.ArchivedAt is not null) continue;
+                var due = pass.DueAt(owner.Schedule, now, _watched.TryGetValue(key, out var watched) ? watched : null);
                 if (due <= now)
                 {
-                    await pass.ProcessAsync(project.Id, summary.Id, now, token);
-                    _watched[summary.Id] = now;
-                    // Read again on the next pass: processing changed the chat.
-                    _known.Remove(summary.Id);
-                    var after = await store.ReadAsync(project.Id, summary.Id, token);
+                    await pass.ProcessAsync(project.Id, owner.ChatId, owner.BranchId, now, token);
+                    _watched[key] = now;
+                    var after = await store.ReadAsync(project.Id, owner.ChatId, owner.BranchId, token);
                     if (after?.Schedule is { } changed)
                     {
-                        _known[summary.Id] = (after.ChatRevision, changed);
                         due = pass.DueAt(changed, now, now);
                     }
                     else due = null;
@@ -146,11 +134,10 @@ public sealed class ChatScheduler(
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 // One broken chat must not keep the others from running.
-                _known.Remove(summary.Id);
-                PassFailed(logger, summary.Id, error);
+                PassFailed(logger, owner.ChatId, error);
             }
         }
-        foreach (var gone in _known.Keys.Where(id => !seen.Contains(id)).ToArray()) _known.Remove(gone);
+        }
         foreach (var gone in _watched.Keys.Where(id => !seen.Contains(id)).ToArray()) _watched.Remove(gone);
         var delay = wake - clock.UtcNow;
         return delay < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : delay > Heartbeat ? Heartbeat : delay;

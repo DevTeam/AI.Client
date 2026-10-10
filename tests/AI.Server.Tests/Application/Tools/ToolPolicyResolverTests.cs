@@ -34,7 +34,8 @@ public sealed class ToolPolicyResolverTests
             .ReturnsAsync(() => chat);
         settings.Setup(repository => repository.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => global);
-        var resolver = new ToolPolicyResolver(projects.Object, chats.Object, settings.Object, new ToolDefaultDecision());
+        var resolver = new ToolPolicyResolver(projects.Object, chats.Object, settings.Object, new ToolDefaultDecision(),
+            new ChatBranchSettingsResolver());
 
         async Task<string> DecisionAsync(string toolName = name) =>
             (await resolver.ResolveAsync(projectId, chatId, serverId, toolName, schema, CancellationToken.None)).Decision;

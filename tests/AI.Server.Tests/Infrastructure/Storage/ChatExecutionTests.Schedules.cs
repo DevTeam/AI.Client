@@ -16,14 +16,63 @@ using Xunit;
 public sealed partial class ChatExecutionTests
 {
     [Fact]
+    public async Task DeletingABranchRemovesItsScheduleFileImmediately()
+    {
+        await using var fixture = await ScheduledFixtureAsync();
+        var branchId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), branchId, "A separate task",
+            ChatSubmitMode.Fork, fixture.ChatId));
+        (await fixture.NextCallAsync()).Answer.SetResult("Ready.");
+        await fixture.WaitAsync(run => run.BranchId == branchId && run.Status == ChatRunStatus.Completed);
+
+        await fixture.Schedules.SetAsync(fixture.ProjectId, fixture.ChatId, branchId,
+            new SetChatScheduleRequest(Settings(retry: null)), CancellationToken.None);
+        fixture.FileSystem.Files.Keys.ShouldContain(path => path.EndsWith($".{branchId:N}.schedule.json", StringComparison.Ordinal));
+
+        var chat = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
+        (await fixture.Dispatcher.DeleteBranchAsync(fixture.ProjectId, fixture.ChatId, branchId, chat.Revision,
+            CancellationToken.None)).IsDeleted.ShouldBeTrue();
+        fixture.FileSystem.Files.Keys.ShouldNotContain(path => path.EndsWith($".{branchId:N}.schedule.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BranchScheduleForksFromItsOwnerAndLeavesTheMainScheduleIndependent()
+    {
+        await using var fixture = await ScheduledFixtureAsync();
+        var branchId = Guid.NewGuid();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), branchId, "Explore another approach",
+            ChatSubmitMode.Fork, fixture.ChatId));
+        (await fixture.NextCallAsync()).Answer.SetResult("The branch is ready.");
+        await fixture.WaitAsync(run => run.BranchId == branchId && run.Status == ChatRunStatus.Completed);
+        var branchHead = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+            .Branches!.Single(branch => branch.Id == branchId).HeadMessageId;
+
+        var branchView = await fixture.Schedules.SetAsync(fixture.ProjectId, fixture.ChatId, branchId,
+            new SetChatScheduleRequest(Settings(retry: null)), CancellationToken.None);
+        branchView!.BranchId.ShouldBe(branchId);
+        (await fixture.Schedules.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Schedule.ShouldBeNull();
+        var due = branchView.Schedule!.NextRunAt!.Value;
+
+        await fixture.SchedulePass.ProcessAsync(fixture.ProjectId, fixture.ChatId, branchId, due, CancellationToken.None);
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages!.ShouldContain(message => message.Content.Contains("Explore another approach"));
+        var run = (await fixture.Schedules.GetAsync(fixture.ProjectId, fixture.ChatId, branchId,
+            CancellationToken.None))!.Schedule!.ActiveRun.ShouldNotBeNull();
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Branches!.Single(item => item.Id == run.BranchId).ParentBranchId.ShouldBe(branchId);
+        chat.Messages.Single(message => message.Id == run.BranchId).ParentId.ShouldBe(branchHead);
+        call.Answer.SetResult("Done.");
+    }
+
+    [Fact]
     public async Task ScheduledRunForksFromTheEndReportsSuccessAndDeletesItsBranch()
     {
         await using var fixture = await ScheduledFixtureAsync();
         var view = await fixture.Schedules.SetAsync(fixture.ProjectId, fixture.ChatId,
             new SetChatScheduleRequest(Settings(retry: null)), CancellationToken.None);
-        view.ShouldNotBeNull().ChatKind.ShouldBe(ChatSchedule.Kind);
+        view.ShouldNotBeNull().ChatKind.ShouldBe("conversation");
         var due = view.Schedule.ShouldNotBeNull().NextRunAt.ShouldNotBeNull();
-        (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).Single().Kind.ShouldBe(ChatSchedule.Kind);
+        (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).Single().Kind.ShouldBe("conversation");
         var mainHead = await MainHeadAsync(fixture);
 
         await fixture.SchedulePass.ProcessAsync(fixture.ProjectId, fixture.ChatId, due, CancellationToken.None);

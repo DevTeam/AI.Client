@@ -359,11 +359,13 @@
                         @foreach (var soon in visibleSoon)
                         {
                             var chat = soon.Chat;
-                            RenderChatNavRow(__builder, chat, ChatListSurface.Soon, null, GetSoonLead(soon.DueAt, DateTimeOffset.UtcNow));
-                            @if (_selectedChat?.Id == chat.Id && IsFoldedInto(ChatListSurface.Soon))
-                            {
-                                RenderChatBranchRows(__builder, chat);
-                            }
+                            <div @key="(chat.Id, soon.BranchId)" class="chat-nav-row" title="@(soon.BranchTitle ?? chat.Title)">
+                                <button class="workspace-nav-item chat-link" type="button" @onclick="() => OpenSoonScheduleAsync(soon)">
+                                    <AppIcon Name="stopwatch" />
+                                    @if (GetSoonLead(soon.DueAt, DateTimeOffset.UtcNow) is { } lead) { <span class="chat-soon-lead">@lead</span> }
+                                    <span class="nav-item-label">@(soon.BranchTitle is { } title ? $"{chat.Title} · {title}" : chat.Title)</span>
+                                </button>
+                            </div>
                         }
                         @if (allSoonChats.Count > SoonChatsShown)
                         {
@@ -974,6 +976,7 @@
                     case ChatWidgetCatalog.ChatSchedule:
                         <ChatScheduleWidget Widget="@widget"
                                             Chat="@widgetChat"
+                                            BranchId="@(_selectedChat is null ? null : (Guid?)GetSelectedRunBranchId())"
                                             CanCreate="@(_selectedProject is not null)"
                                             ComposerText="@_chat.Message"
                                             DraftRequest="@_scheduleDraft?.Number"
@@ -1277,8 +1280,8 @@ else if (_guideInvitation is { } guideInvitation)
 
 @if (_permissionsScope is not null && _selectedProject is not null)
 {
-    <ToolPermissionsDrawer Scope="@_permissionsScope" ProjectId="@_selectedProject.Id" ChatId="@_permissionsChatId"
-        Title="@(_permissionsScope == "Chat" ? _permissionsChatTitle ?? "Chat" : _selectedProject.Name)"
+    <ToolPermissionsDrawer Scope="@_permissionsScope" ProjectId="@_selectedProject.Id" ChatId="@_permissionsChatId" BranchId="@_permissionsBranchId"
+        Title="@(_permissionsScope is "Chat" or "Branch" ? _permissionsChatTitle ?? "Chat" : _selectedProject.Name)"
         Close="ClosePermissions" Changed="RefreshAfterPermissionChangeAsync" />
 }
 
@@ -1489,6 +1492,28 @@ else if (_guideInvitation is { } guideInvitation)
                             </div>
                             }
                         }
+                        <button type="button" role="menuitem" @onclick="() => _branchSettingsMenuId = _branchSettingsMenuId == branch.RootId ? null : branch.RootId"><AppIcon Name="sliders" /><span>Branch settings</span></button>
+                        <button type="button" role="menuitem" @onclick="() => OpenBranchPermissionsAsync(branch.RootId)"><AppIcon Name="shield" /><span>Tool permissions</span></button>
+                        @if (_branchSettingsMenuId == branch.RootId)
+                        {
+                            <div class="project-menu-confirm">
+                                <span>Connection · @GetBranchConnectionSource(branch.RootId)</span>
+                                <select aria-label="Branch connection" value="@(GetBranchSettings(branch.RootId).ConnectionId?.ToString() ?? string.Empty)" @onchange="e => SetBranchConnectionAsync(branch.RootId, e)">
+                                    <option value="">Inherit</option>
+                                    @foreach (var connection in _connections.Where(item => item.Enabled))
+                                    {
+                                        <option value="@connection.Id">@connection.Name</option>
+                                    }
+                                </select>
+                                <span>Approvals · @GetBranchApprovalSource(branch.RootId)</span>
+                                <select aria-label="Branch approval mode" value="@(GetBranchSettings(branch.RootId).ApprovalMode?.ToString() ?? string.Empty)" @onchange="e => SetBranchApprovalAsync(branch.RootId, e)">
+                                    <option value="">Inherit</option>
+                                    <option value="Ask">Ask</option>
+                                    <option value="Auto">Approve for me</option>
+                                    <option value="FullAccess">Full access</option>
+                                </select>
+                            </div>
+                        }
                         @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
                         {
                             @if (_confirmingSubBranchDeleteId == branch.RootId)
@@ -1578,11 +1603,13 @@ else if (_guideInvitation is { } guideInvitation)
     private bool _isConfirmingProjectDelete;
     private string? _permissionsScope;
     private Guid? _permissionsChatId;
+    private Guid? _permissionsBranchId;
     private string? _permissionsChatTitle;
     private Guid? _chatMenuId;
     private Guid? _branchMenuId;
     private Guid? _reviewSubmenuChatId;
     private Guid? _reviewSubmenuBranchId;
+    private Guid? _branchSettingsMenuId;
     private Guid? _confirmingReviewDeleteId;
     private (Guid OwnerId, bool IsBranch)? _pendingReviewSubmenu;
     private Guid? _confirmingBranchDeleteId;
@@ -3109,7 +3136,7 @@ else if (_guideInvitation is { } guideInvitation)
         var rememberedBranch = GetRememberedBranch(chat, context);
         _selectedBranchId = rememberedBranch?.Id ?? chat.Id;
         _branchLeafId = rememberedBranch?.HeadMessageId ?? GetOriginalBranchLeaf(chat);
-        if (chat.ConnectionId is { } endpointId) SelectGlobalConnection(endpointId);
+        if (EffectiveBranchConnectionId(_selectedBranchId.Value) is { } endpointId) SelectGlobalConnection(endpointId);
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
         _openedChatToSettle = (_selectedProject!.Id, chat.Id, GetSelectedRunBranchId());
@@ -4330,7 +4357,7 @@ else if (_guideInvitation is { } guideInvitation)
             }
 
             _selectedBranchId = rememberedBranch?.Id ?? _selectedChat?.Id;
-            if (_selectedChat?.ConnectionId is { } endpointId)
+            if (_selectedChat is not null && EffectiveBranchConnectionId(GetSelectedRunBranchId()) is { } endpointId)
             {
                 // Restore the selection without persisting an endpoint change when opening a chat.
                 SelectGlobalConnection(endpointId);
@@ -4740,7 +4767,7 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (_selectedChat is not null)
         {
-            var error = await ChangeScheduleAsync((project, chat) => ScheduleApi.SetAsync(project, chat, request, CancellationToken.None));
+            var error = await ChangeScheduleAsync((project, chat, branch) => ScheduleApi.SetAsync(project, chat, branch, request, CancellationToken.None));
             if (error is null) ClearScheduledComposerText(request.Settings.Task);
             StateHasChanged();
             return error;
@@ -4785,21 +4812,21 @@ else if (_guideInvitation is { } guideInvitation)
     }
 
     private Task<string?> PauseScheduleAsync(bool paused, long revision) =>
-        ChangeScheduleAsync((project, chat) => ScheduleApi.PauseAsync(project, chat, paused, revision, CancellationToken.None));
+        ChangeScheduleAsync((project, chat, branch) => ScheduleApi.PauseAsync(project, chat, branch, paused, revision, CancellationToken.None));
 
     private Task<string?> RemoveScheduleAsync() =>
-        ChangeScheduleAsync((project, chat) => ScheduleApi.RemoveAsync(project, chat, CancellationToken.None));
+        ChangeScheduleAsync((project, chat, branch) => ScheduleApi.RemoveAsync(project, chat, branch, CancellationToken.None));
 
     private Task<string?> RunScheduleNowAsync() =>
-        ChangeScheduleAsync((project, chat) => ScheduleApi.RunNowAsync(project, chat, CancellationToken.None));
+        ChangeScheduleAsync((project, chat, branch) => ScheduleApi.RunNowAsync(project, chat, branch, CancellationToken.None));
 
-    private async Task<string?> ChangeScheduleAsync(Func<Guid, Guid, Task<AI.Contracts.Schedules.ChatScheduleView>> change)
+    private async Task<string?> ChangeScheduleAsync(Func<Guid, Guid, Guid, Task<AI.Contracts.Schedules.ChatScheduleView>> change)
     {
         if (_selectedProject is not { } project || _selectedChat is not { } chat) return "Open a chat first.";
         string? error = null;
         try
         {
-            await change(project.Id, chat.Id);
+            await change(project.Id, chat.Id, GetSelectedRunBranchId());
         }
         catch (AI.Web.Chats.ChatScheduleException refused)
         {
@@ -5473,6 +5500,7 @@ else if (_guideInvitation is { } guideInvitation)
         var refreshedBranch = GetBranchTreeItems().FirstOrDefault(item => item.RootId == branch.RootId);
         _selectedBranchId = branch.RootId;
         _branchLeafId = refreshedBranch?.LeafId ?? branch.LeafId;
+        if (EffectiveBranchConnectionId(branch.RootId) is { } endpointId) SelectGlobalConnection(endpointId);
         RestoreComposerDraft();
         _pendingScrollRestoreKey = GetScrollPositionKey();
         _openedChatToSettle = (_selectedProject.Id, chatId, GetSelectedRunBranchId());
@@ -6089,6 +6117,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Project";
         _permissionsChatId = null;
+        _permissionsBranchId = null;
         _permissionsChatTitle = null;
     }
 
@@ -6100,13 +6129,26 @@ else if (_guideInvitation is { } guideInvitation)
         if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Chat";
         _permissionsChatId = chat.Id;
+        _permissionsBranchId = null;
         _permissionsChatTitle = chat.Title;
+    }
+
+    private async Task OpenBranchPermissionsAsync(Guid branchId)
+    {
+        if (_selectedChat is not { } chat) return;
+        CloseContextMenus();
+        if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
+        _permissionsScope = "Branch";
+        _permissionsChatId = chat.Id;
+        _permissionsBranchId = branchId;
+        _permissionsChatTitle = chat.Branches?.FirstOrDefault(branch => branch.Id == branchId)?.Title;
     }
 
     private void ClosePermissions()
     {
         _permissionsScope = null;
         _permissionsChatId = null;
+        _permissionsBranchId = null;
         _permissionsChatTitle = null;
     }
 
@@ -6159,6 +6201,12 @@ else if (_guideInvitation is { } guideInvitation)
         SelectChatProfile(args);
         if (_selectedProject is not null && _selectedChat is { } chat)
         {
+            if (GetSelectedRunBranchId() != chat.Id)
+            {
+                await SaveBranchSettingsAsync(GetSelectedRunBranchId(), GetBranchSettings(GetSelectedRunBranchId()) with
+                    { ConnectionId = _chat.CredentialProfileId });
+                return;
+            }
             var updated = await ChatHistoryApi.UpdateEndpointAsync(
                 _selectedProject.Id,
                 chat.Id,
@@ -6177,7 +6225,65 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    private ToolApprovalMode GetApprovalMode() => _selectedChat?.ApprovalMode ?? _newChatApprovalMode;
+    private AI.Contracts.Chats.BranchSettings GetBranchSettings(Guid branchId) =>
+        _selectedChat?.Branches?.FirstOrDefault(branch => branch.Id == branchId)?.Settings ?? new();
+
+    private IEnumerable<ChatBranchView> BranchLineage(Guid branchId)
+    {
+        if (_selectedChat is not { } chat) yield break;
+        var branches = (chat.Branches ?? []).ToDictionary(branch => branch.Id);
+        var visited = new HashSet<Guid>();
+        while (branchId != chat.Id && visited.Add(branchId) && branches.TryGetValue(branchId, out var branch))
+        {
+            yield return branch;
+            branchId = branch.ParentBranchId ?? chat.Id;
+        }
+    }
+
+    private Guid? EffectiveBranchConnectionId(Guid branchId) =>
+        BranchLineage(branchId).Select(branch => branch.Settings?.ConnectionId)
+            .FirstOrDefault(id => id is not null) ?? _selectedChat?.ConnectionId
+            ?? _defaultConnectionId ?? GetDefaultConnection()?.Id;
+
+    private ToolApprovalMode EffectiveBranchApprovalMode(Guid branchId) =>
+        BranchLineage(branchId).Select(branch => branch.Settings?.ApprovalMode)
+            .FirstOrDefault(mode => mode is not null) ?? _selectedChat?.ApprovalMode ?? _newChatApprovalMode;
+
+    private string GetBranchConnectionSource(Guid branchId) =>
+        BranchLineage(branchId).FirstOrDefault(branch => branch.Settings?.ConnectionId is not null) is { } source
+            ? source.Id == branchId ? "Override here" : $"Inherited from {source.Title}" : "Inherited from chat";
+
+    private string GetBranchApprovalSource(Guid branchId) =>
+        BranchLineage(branchId).FirstOrDefault(branch => branch.Settings?.ApprovalMode is not null) is { } source
+            ? source.Id == branchId ? "Override here" : $"Inherited from {source.Title}" : "Inherited from chat";
+
+    private async Task SaveBranchSettingsAsync(Guid branchId, AI.Contracts.Chats.BranchSettings settings)
+    {
+        if (_selectedProject is not { } project || _selectedChat is not { } chat) return;
+        try
+        {
+            var updated = await ChatHistoryApi.UpdateBranchSettingsAsync(project.Id, chat.Id, branchId,
+                new UpdateBranchSettingsRequest(settings), CancellationToken.None);
+            if (updated is null) { Notifications.ShowError("The branch no longer exists."); return; }
+            if (_selectedChat?.Id == updated.Id)
+                _selectedChat = _selectedChat with { Branches = updated.Branches,
+                    Revision = Math.Max(_selectedChat.Revision, updated.Revision), UpdatedAt = updated.UpdatedAt };
+            if (GetSelectedRunBranchId() == branchId && EffectiveBranchConnectionId(branchId) is { } connectionId)
+                SelectGlobalConnection(connectionId);
+        }
+        catch (HttpRequestException error) { Notifications.ShowError($"Could not update branch settings: {error.Message}"); }
+    }
+
+    private Task SetBranchConnectionAsync(Guid branchId, ChangeEventArgs args) =>
+        SaveBranchSettingsAsync(branchId, GetBranchSettings(branchId) with
+        { ConnectionId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null });
+
+    private Task SetBranchApprovalAsync(Guid branchId, ChangeEventArgs args) =>
+        SaveBranchSettingsAsync(branchId, GetBranchSettings(branchId) with
+        { ApprovalMode = Enum.TryParse<ToolApprovalMode>(args.Value?.ToString(), out var mode) ? mode : null });
+
+    private ToolApprovalMode GetApprovalMode() => _selectedChat is { } chat
+        ? EffectiveBranchApprovalMode(GetSelectedRunBranchId()) : _newChatApprovalMode;
 
     private async Task SetApprovalModeAsync(ToolApprovalMode mode)
     {
@@ -6185,6 +6291,12 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedChat is not { } chat)
         {
             _newChatApprovalMode = mode;
+            return;
+        }
+        if (GetSelectedRunBranchId() != chat.Id)
+        {
+            await SaveBranchSettingsAsync(GetSelectedRunBranchId(), GetBranchSettings(GetSelectedRunBranchId()) with
+                { ApprovalMode = mode });
             return;
         }
         try

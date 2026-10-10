@@ -15,6 +15,13 @@ public sealed class JsonChatRepository(
     public void Dispose() => _writes.Dispose();
 
     private readonly AsyncGate _writes = new();
+    private const long MaxReviewLookupDocumentBytes = 48L * 1024 * 1024;
+    private const long MaxReviewLookupCacheBytes = 96L * 1024 * 1024;
+    private readonly Lock _reviewLookupsGate = new();
+    private readonly Dictionary<string, ReviewLookup> _reviewLookups = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private readonly LinkedList<string> _reviewLookupOrder = new();
+    private long _reviewLookupBytes;
 
     public async Task<IReadOnlyList<StoredChatSummary>> ListSummariesAsync(ProjectId projectId, CancellationToken cancellationToken)
     {
@@ -63,24 +70,102 @@ public sealed class JsonChatRepository(
 
     public async Task<StoredChat?> GetAsync(ProjectId projectId, ChatId id, CancellationToken cancellationToken)
     {
-        var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
-        return json is null ? null : serializer.Deserialize(json);
+        var path = paths.GetChatPath(id, projectId);
+        var before = await GetStampAsync(path, cancellationToken);
+        var json = await fileSystem.ReadTextAsync(path, cancellationToken);
+        if (json is null) return null;
+        var stored = serializer.Deserialize(json);
+        if (before is { Length: <= MaxReviewLookupDocumentBytes } stamp
+            && await GetStampAsync(path, cancellationToken) == stamp)
+        {
+            var messages = stored.Chat.Messages.ToDictionary(message => message.Id.Value);
+            var reviewIds = messages.Values
+                .Where(message => message.Role == ChatMessageRole.User)
+                .SelectMany(message => message.Resources ?? [])
+                .Where(resource => resource.Kind == AI.Domain.Resources.ChatResourceKind.Review)
+                .Select(resource => resource.Id).ToHashSet();
+            StoreReviewLookup(new ReviewLookup(path, stamp, messages, reviewIds,
+                new LinkedListNode<string>(path)));
+        }
+        return stored;
     }
 
     public async Task<ChatMessageLookup?> GetMessageAsync(ProjectId projectId, ChatId id,
         ChatMessageId messageId, CancellationToken cancellationToken)
     {
-        var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
+        var path = paths.GetChatPath(id, projectId);
+        if (await CurrentReviewLookupAsync(path, cancellationToken) is { } lookup)
+            return new ChatMessageLookup(lookup.Messages.GetValueOrDefault(messageId.Value));
+        var json = await fileSystem.ReadTextAsync(path, cancellationToken);
         return json is null ? null : new ChatMessageLookup(serializer.DeserializeMessage(json, messageId.Value));
     }
 
     public async Task<bool?> MayContainReviewReferenceAsync(ProjectId projectId, ChatId id,
         Guid reviewId, CancellationToken cancellationToken)
     {
-        var json = await fileSystem.ReadTextAsync(paths.GetChatPath(id, projectId), cancellationToken);
+        var path = paths.GetChatPath(id, projectId);
+        if (await CurrentReviewLookupAsync(path, cancellationToken) is { } lookup)
+            return lookup.ReviewIds.Contains(reviewId);
+        var json = await fileSystem.ReadTextAsync(path, cancellationToken);
         // A negative check is definitive for GUIDs written by System.Text.Json. A positive check
         // falls back to the domain model because the ID may occur in unrelated message content.
         return json?.Contains(reviewId.ToString("D"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<ReviewLookup?> CurrentReviewLookupAsync(string path, CancellationToken cancellationToken)
+    {
+        ReviewLookup? lookup;
+        lock (_reviewLookupsGate) _reviewLookups.TryGetValue(path, out lookup);
+        if (lookup is null) return null;
+        if (await GetStampAsync(path, cancellationToken) != lookup.Stamp)
+        {
+            lock (_reviewLookupsGate)
+                if (_reviewLookups.TryGetValue(path, out var current) && ReferenceEquals(current, lookup))
+                    RemoveReviewLookup(path);
+            return null;
+        }
+        lock (_reviewLookupsGate)
+        {
+            if (_reviewLookups.TryGetValue(path, out var current) && ReferenceEquals(current, lookup))
+            {
+                _reviewLookupOrder.Remove(lookup.Node);
+                _reviewLookupOrder.AddFirst(lookup.Node);
+            }
+        }
+        return lookup;
+    }
+
+    private void StoreReviewLookup(ReviewLookup lookup)
+    {
+        lock (_reviewLookupsGate)
+        {
+            RemoveReviewLookup(lookup.Path);
+            _reviewLookups.Add(lookup.Path, lookup);
+            _reviewLookupOrder.AddFirst(lookup.Node);
+            _reviewLookupBytes += lookup.Stamp.Length;
+            while (_reviewLookupBytes > MaxReviewLookupCacheBytes)
+                RemoveReviewLookup(_reviewLookupOrder.Last!.Value);
+        }
+    }
+
+    private void InvalidateReviewLookup(string path)
+    {
+        lock (_reviewLookupsGate) RemoveReviewLookup(path);
+    }
+
+    // Called only while holding _reviewLookupsGate.
+    private void RemoveReviewLookup(string path)
+    {
+        if (!_reviewLookups.Remove(path, out var lookup)) return;
+        _reviewLookupOrder.Remove(lookup.Node);
+        _reviewLookupBytes -= lookup.Stamp.Length;
+    }
+
+    private async Task<FileStamp?> GetStampAsync(string path, CancellationToken cancellationToken)
+    {
+        var entry = await fileSystem.GetEntryAsync(path, cancellationToken);
+        return entry is { IsDirectory: false }
+            ? new FileStamp(entry.Length, await fileSystem.GetLastWriteTimeAsync(path, cancellationToken)) : null;
     }
 
     public async Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken)
@@ -101,6 +186,7 @@ public sealed class JsonChatRepository(
         await fileSystem.WriteTextAsync(temporaryPath, serializer.Serialize(chat, nextRevision), cancellationToken);
         await fileSystem.WriteTextAsync(temporarySummaryPath, serializer.SerializeSummary(chat, nextRevision), cancellationToken);
         await fileSystem.MoveAsync(temporaryPath, path, true, cancellationToken);
+        InvalidateReviewLookup(path);
         await fileSystem.MoveAsync(temporarySummaryPath, summaryPath, true, cancellationToken);
         return ChatSaveResult.Saved(nextRevision);
     }
@@ -118,8 +204,14 @@ public sealed class JsonChatRepository(
         var revision = JsonNode.Parse(current)!["Revision"]!.GetValue<long>();
         if (revision != expectedRevision) return new ChatDeleteResult(false, revision);
         await fileSystem.DeleteFileAsync(path, cancellationToken);
+        InvalidateReviewLookup(path);
         await fileSystem.DeleteFileAsync(paths.GetChatSummaryPath(id, projectId), cancellationToken);
         await fileSystem.DeleteFileAsync(paths.GetHistoryCheckpointsPath(id, projectId), cancellationToken);
         return new ChatDeleteResult(true, revision);
     }
+
+    private sealed record FileStamp(long Length, DateTimeOffset LastWriteTime);
+    private sealed record ReviewLookup(string Path, FileStamp Stamp,
+        IReadOnlyDictionary<Guid, ChatMessage> Messages, IReadOnlySet<Guid> ReviewIds,
+        LinkedListNode<string> Node);
 }

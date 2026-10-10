@@ -68,11 +68,11 @@ public sealed class BuiltInToolTests
         tool.SchemaHash.Length.ShouldBe(64);
         var timeoutSchema = tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
         timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
-        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(3600000);
-        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 600000 });
+        timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(86400000);
+        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 86400000 });
         session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
         Should.Throw<ArgumentException>(() => session.ValidateArguments(tool,
-            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 3600001 })));
+            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 86400001 })));
         var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();
@@ -84,6 +84,8 @@ public sealed class BuiltInToolTests
         }, timeout.Token);
         trigger.GetProperty("outcome").GetString().ShouldBe("triggered");
         trigger.GetProperty("conditionIndex").GetInt32().ShouldBe(0);
+        session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.InputSchema
+            .GetProperty("properties").GetProperty("timeoutMs").GetProperty("maximum").GetInt32().ShouldBe(86400000);
         var canonical = session.ValidateArguments(tool, "{\"executable\":\"dotnet\"}");
         using var canonicalJson = JsonDocument.Parse(canonical);
         canonicalJson.RootElement.GetProperty("executable").GetString().ShouldBe("dotnet");
@@ -168,7 +170,7 @@ public sealed class BuiltInToolTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(3600001)]
+    [InlineData(86400001)]
     public async Task ShouldRejectProcessTimeoutOutsideSupportedRange(int timeoutMs)
     {
         await Should.ThrowAsync<ArgumentException>(() => new ProcessRunner().RunAsync(

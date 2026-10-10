@@ -76,7 +76,7 @@ or scripts, and a dedicated tool when it better serves the task.
    answer leaves it running.
 6. Estimate duration: builds, data processing and automation may take hours. Check tool/client
    limits and whether a genuine managed long-running execution mechanism exists. The known
-   `timeoutMs` range is 1–3600000, default 600000. Omit it to use the effective tool policy;
+   `timeoutMs` range is 1–86400000, default 600000. Omit it to use the effective tool policy;
    set a smaller value only for an intentionally shorter deadline. Timeout/cancellation terminates the process tree of this call's own child only; a process the run did not start is never terminated.
    Do not exceed the schema. If insufficient, use safely separable batches/stages with checkpoints,
    or an available managed job/session/queue with identifier, status, logs, cancellation and final

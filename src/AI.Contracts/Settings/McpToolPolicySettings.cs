@@ -10,5 +10,5 @@ public sealed record McpToolPolicySettings(
 {
     public const int DefaultMaxCallsPerRun = 56535;
     public const int DefaultTimeoutSeconds = 600;
-    public const int MaxTimeoutSeconds = 3600;
+    public const int MaxTimeoutSeconds = 86400;
 }

@@ -41,7 +41,7 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
         [MaxLength(64)] Dictionary<string, string>? environment = null,
         [Description("Extra values exposed to the script as `Globals`, a read-only dictionary of raw JSON elements the script reads with JsonElement. Empty or null means an empty dictionary.")]
         [MaxLength(64)] Dictionary<string, JsonElement>? globals = null,
-        [Description("Timeout in milliseconds before the run is reported as timed out. Must be in [1, 3600000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the script needs a shorter deadline.")]
+        [Description("Timeout in milliseconds before the run is reported as timed out. Must be in [1, 86400000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the script needs a shorter deadline.")]
         [Range(1, ScriptLimits.MaxTimeoutMs)] int timeoutMs = ScriptLimits.DefaultTimeoutMs,
         CancellationToken cancellationToken = default)
     {

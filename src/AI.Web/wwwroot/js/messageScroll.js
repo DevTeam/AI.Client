@@ -113,6 +113,82 @@ const CurrentHighlightClass = "search-highlight-current";
 const visibleMarks = root =>
     Array.from(root.querySelectorAll(`mark.${SearchHighlightClass}`)).filter(mark => mark.getClientRects().length > 0);
 
+// Messages are laid out under content-visibility: auto, so one that has never been on screen
+// stands at its 12rem placeholder, and a real answer is several times that. Scrolling up, each
+// one reaching the viewport grows by hundreds of pixels at once. Scroll anchoring holds the
+// content still for that frame, but a smooth scroll in progress (the wheel's, or the pill's) is
+// heading for an offset computed before the growth and lands there on the next frame, so the
+// transcript jerks down by the full growth. Rendering every message once, shortly after it
+// mounts, records its real height as the remembered size (contain-intrinsic-block-size: auto),
+// and from then on reaching the viewport changes nothing.
+const MeasuringAttribute = "data-measuring";
+// Messages rendered per round. One round costs a frame's layout, so a handful keeps the frames
+// short while a long chat still finishes in well under a second of frames.
+const MeasureBatchSize = 4;
+
+const attachSizeWarmup = scroller => {
+    const measured = new WeakSet();
+    let queue = [];
+    const inFlight = new Set();
+    let scheduled = false;
+
+    // The size is remembered when ResizeObserver delivers, which is exactly when it reports the
+    // rendered box: only then can the message go back to being skipped without losing it.
+    const observer = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            const element = entry.target;
+            observer.unobserve(element);
+            if (!inFlight.delete(element)) continue;
+            measured.add(element);
+            element.removeAttribute(MeasuringAttribute);
+        }
+        if (inFlight.size === 0) schedule();
+    });
+
+    const next = () => {
+        scheduled = false;
+        if (inFlight.size > 0) return;
+        while (inFlight.size < MeasureBatchSize && queue.length > 0) {
+            const element = queue.pop();
+            if (!element.isConnected || measured.has(element)) continue;
+            inFlight.add(element);
+            element.setAttribute(MeasuringAttribute, "");
+            observer.observe(element);
+        }
+    };
+
+    // A timer, not requestAnimationFrame: the observer above already waits for a frame, and a
+    // second wait on rAF would stall in the same situations it does elsewhere in this file.
+    const schedule = () => {
+        if (scheduled || queue.length === 0) return;
+        scheduled = true;
+        setTimeout(next, 0);
+    };
+
+    // Bottom first: a chat opens at its end, and the reader scrolls up from there.
+    const enqueue = () => {
+        // A message removed mid-measurement never reports back; waiting for it would stop the run.
+        for (const element of inFlight) {
+            if (element.isConnected) continue;
+            inFlight.delete(element);
+            observer.unobserve(element);
+        }
+        queue = Array.from(scroller.querySelectorAll(":scope > .workspace-message"))
+            .filter(element => !measured.has(element) && !inFlight.has(element));
+        schedule();
+    };
+
+    return {
+        enqueue,
+        dispose: () => {
+            observer.disconnect();
+            for (const element of inFlight) element.removeAttribute(MeasuringAttribute);
+            inFlight.clear();
+            queue = [];
+        },
+    };
+};
+
 export function attach(scroller, owner) {
     let pinned = distanceFromBottom(scroller) <= PinThresholdPx;
     let notified = null;
@@ -254,11 +330,13 @@ export function attach(scroller, owner) {
     // it back, leaving the transcript hundreds of pixels off. Re-measuring the anchor every time
     // is self-correcting: while content is only being appended below, the drift is zero and this
     // does nothing.
+    const sizeWarmup = attachSizeWarmup(scroller);
     const observer = new MutationObserver(() => {
         if (pinned) scroller.scrollTop = scroller.scrollHeight;
         else restoreAnchor();
         resumeIfAtBottom();
         bindWatchedElement();
+        sizeWarmup.enqueue();
     });
     observer.observe(scroller, { childList: true, subtree: true, characterData: true });
 
@@ -379,6 +457,7 @@ export function attach(scroller, owner) {
     document.addEventListener("keydown", onKeyDown);
     captureAnchor();
     notify();
+    sizeWarmup.enqueue();
 
     return {
         // Called after new content rendered. Returns whether the feed actually followed it, so
@@ -446,6 +525,7 @@ export function attach(scroller, owner) {
         jumpToBottom: () => toBottom(true),
         dispose: () => {
             observer.disconnect();
+            sizeWarmup.dispose();
             resizeObserver.disconnect();
             visibilityObserver.disconnect();
             scroller.removeEventListener("scroll", onScroll);

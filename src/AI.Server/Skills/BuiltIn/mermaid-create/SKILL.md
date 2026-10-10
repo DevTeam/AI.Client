@@ -2,6 +2,7 @@
 id: mermaid-create
 name: Mermaid create
 icon: mermaid-create
+aliases: ["mermaid"]
 kind: playbook
 description: Create a Mermaid diagram from the user's explanation or inspected sources, selecting a compatible type and returning source or requested documentation edits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The requested diagram or change"},"source":{"type":"string","description":"Mermaid source or supplied requirements"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Explicitly supplied or selected files/directories"},"target":{"type":"string","description":"Destination renderer/version or requested output path"},"type":{"type":"string","description":"Diagram type, when explicitly requested"}},"additionalProperties":false}

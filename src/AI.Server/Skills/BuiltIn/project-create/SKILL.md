@@ -2,6 +2,7 @@
 id: project-create
 name: Project create
 icon: project
+aliases: ["new-project"]
 kind: playbook
 description: Create a project from directories the user picks, with a suggested name and access level, then open its first chat and hand it the work the user asked for there.
 parameters: {"type":"object","properties":{"name":{"type":"string","description":"The project name, only when the user already gave one"},"description":{"type":"string","description":"What the project is for, if the user said"},"task":{"type":"string","description":"Work the user wants done in the new project, such as code to write, in their words"}},"additionalProperties":false}

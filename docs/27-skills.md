@@ -39,13 +39,13 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid`, `svg`, `settings` and `team`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid`, `svg`, `settings`, `mcp` and `team`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
   "Project directory add"), so the `/` list groups skills by domain. An abbreviation keeps its
   official spelling: `qa-plan` → "QA plan", `devops-ci-create` → "DevOps CI create",
-  `svg-create` → "SVG create", `settings-import-mcp` → "Settings import MCP", `code-run-csharp` →
+  `svg-create` → "SVG create", `mcp-import` → "MCP import", `code-run-csharp` →
   "Code run C#".
 - `description` is one sentence that starts with a verb, leads with the task the skill is for and
   names every side effect. The model chooses from the catalog by it.

@@ -2,6 +2,7 @@
 id: git-conflicts-resolve
 name: Git conflicts resolve
 icon: wand
+aliases: ["conflicts"]
 kind: playbook
 description: Resolve conflicts in an existing merge, rebase, cherry-pick or revert, stage resolved files and continue the authorized operation after checks.
 parameters: {"type":"object","properties":{},"additionalProperties":false}

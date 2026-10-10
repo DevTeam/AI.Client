@@ -2,6 +2,7 @@
 id: instructions-edit
 name: Instructions edit
 icon: scroll
+aliases: ["instructions"]
 kind: playbook
 description: Change the current project's instructions as the user describes; the user reviews the new text before it applies.
 parameters: {"type":"object","properties":{"change":{"type":"string","description":"What to add, change or remove, in the user's words"}},"additionalProperties":false}

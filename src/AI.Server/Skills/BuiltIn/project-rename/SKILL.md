@@ -2,6 +2,7 @@
 id: project-rename
 name: Project rename
 icon: tag
+aliases: ["rename"]
 kind: playbook
 description: Rename the current project: offer three names from its details and apply the one the user picks.
 parameters: {"type":"object","properties":{"name":{"type":"string","description":"The exact new name, only when the user already gave one"},"hint":{"type":"string","description":"What the user wants the name to convey, if they said"}},"additionalProperties":false}

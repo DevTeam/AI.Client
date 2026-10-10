@@ -69,7 +69,7 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
    external tool -> available tool -> argument/behavior changes or unresolved requirement.
    Settings alone does not prove a tool is permitted: respect Project/Chat overrides and Deny.
 4. Reuse existing tools before adding a dependency. When an MCP capability is genuinely missing,
-   read `app_read` resource=Skills query=settings-import-mcp, then `run_skill` with that id and
+   read `app_read` resource=Skills query=mcp-import, then `run_skill` with that id and
    its goal/source. Continue its returned playbook in this chat and verify its outcome before
    adapting the dependent steps. Do not enable denied servers or broaden grants to make an import
    appear compatible. If required tools remain inaccessible, report the gap and do not save an

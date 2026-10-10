@@ -2,6 +2,7 @@
 id: settings-review-connections
 name: Settings review connections
 icon: chart
+aliases: ["models"]
 kind: playbook
 description: Compare Connections on small synthetic tasks and measured run times, report failures and recommend a default and subtask pool, then apply approved selections, deactivations or deletions.
 parameters: {"type":"object","properties":{"connections":{"type":"array","items":{"type":"string"},"description":"Connection names or ids selected by the user"},"goal":{"type":"string","description":"The user's priority: quality, speed, cost or a particular kind of work"}},"additionalProperties":false}

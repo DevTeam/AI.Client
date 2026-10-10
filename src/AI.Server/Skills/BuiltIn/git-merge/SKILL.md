@@ -2,6 +2,7 @@
 id: git-merge
 name: Git merge
 icon: git-merge
+aliases: ["merge"]
 kind: playbook
 description: Merge a chosen branch into the current branch, creating a merge commit when needed, keeping a recovery ref and pausing at conflicts; never pushes.
 parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Source branch"}},"additionalProperties":false}

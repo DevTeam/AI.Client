@@ -2,6 +2,7 @@
 id: git-stash
 name: Git stash
 icon: archive
+aliases: ["stash"]
 kind: playbook
 description: Save local work in a named stash or apply a selected stash, preserving the stash until restoration is verified; never drops work automatically.
 parameters: {"type":"object","properties":{"action":{"type":"string","enum":["save","apply"]},"message":{"type":"string"}},"additionalProperties":false}

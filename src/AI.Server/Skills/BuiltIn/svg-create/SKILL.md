@@ -2,6 +2,7 @@
 id: svg-create
 name: SVG create
 icon: svg-create
+aliases: ["svg"]
 kind: playbook
 description: Create an editable SVG image from the user's description, choosing suitable vector geometry and delivering a complete preview or requested files.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"Requested image or visual change"},"source":{"type":"string","description":"Supplied SVG source or requirements"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Explicitly supplied or selected source/destination paths"},"target":{"type":"string","description":"Requested size, embedding mode or output destination"}},"additionalProperties":false}

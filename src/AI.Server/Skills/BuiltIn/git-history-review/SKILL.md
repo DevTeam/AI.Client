@@ -2,6 +2,7 @@
 id: git-history-review
 name: Git history review
 icon: history
+aliases: ["history"]
 kind: playbook
 description: Review the history and diffs of selected branches or commits; changes nothing.
 parameters: {"type":"object","properties":{"branch":{"type":"string"},"commits":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}

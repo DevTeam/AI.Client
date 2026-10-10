@@ -2,6 +2,7 @@
 id: chat-schedule-delete
 name: Chat schedule delete
 icon: chat-schedule-delete
+aliases: ["unschedule"]
 kind: playbook
 description: Remove or pause the selected branch's schedule while keeping its history, or delete the whole chat if explicitly requested and confirmed.
 parameters: {"type":"object","properties":{"deleteChat":{"type":"boolean","description":"True when the user wants the whole chat deleted, not only its schedule"}},"additionalProperties":false}

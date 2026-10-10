@@ -2,6 +2,7 @@
 id: git-revert
 name: Git revert
 icon: history
+aliases: ["revert"]
 kind: playbook
 description: Undo one or several selected commits with new revert commits, keeping a recovery ref and pausing at conflicts; never rewrites history or pushes.
 parameters: {"type":"object","properties":{"commits":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}

@@ -2,6 +2,7 @@
 id: chat-schedule-edit
 name: Chat schedule edit
 icon: chat-schedule-edit
+aliases: ["reschedule"]
 kind: playbook
 description: Change, pause or resume the selected branch's schedule — time, recurrence, task, success, retry and cleanup rules — asking only for values the user has not named.
 parameters: {"type":"object","properties":{"change":{"type":"string","description":"What to change, in the user's words"}},"additionalProperties":false}

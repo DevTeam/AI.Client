@@ -2,7 +2,7 @@
 id: project-configure
 name: Project configure
 icon: project
-aliases: ["project-setup"]
+aliases: ["project-setup","setup"]
 kind: playbook
 description: Set up the current project from a brief or a short interview: learn its domain and goals, remember durable facts, adjust needed directories and tool permissions, find relevant MCP servers and skills, and create selected recurring chats.
 parameters: {"type":"object","properties":{"brief":{"type":"string","description":"The user's explanation of the project's domain, goals and constraints, when supplied"}},"additionalProperties":false}
@@ -84,7 +84,7 @@ still apply. Do not ask again for a decision the user already made.
    Apply changes at project scope, not globally or in this chat, and verify saved policies.
    Review findings that would remove existing access are proposals, not automatic revocations.
 7. For a selected missing external capability, use `tool_search` and existing server discovery
-   first. If no suitable connected tool exists, run `settings-import-mcp` with the specific
+   first. If no suitable connected tool exists, run `mcp-import` with the specific
    capability or user-supplied source. Continue that playbook to its verified saved/discovered
    outcome, including its global-settings implications and missing credentials. Never invent a
    server, install a whole catalog, or claim an untested tool works. After a successful import,

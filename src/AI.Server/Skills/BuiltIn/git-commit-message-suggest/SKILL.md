@@ -2,6 +2,7 @@
 id: git-commit-message-suggest
 name: Git commit message suggest
 icon: file-text
+aliases: ["message"]
 kind: playbook
 description: Suggest a commit message from the selected changes or commits in the repository's style; changes nothing.
 parameters: {"type":"object","properties":{"scope":{"type":"string","enum":["staged","working-tree","commits"]},"commits":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}

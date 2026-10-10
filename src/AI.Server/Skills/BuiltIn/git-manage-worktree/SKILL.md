@@ -2,6 +2,7 @@
 id: git-manage-worktree
 name: Git manage worktree
 icon: git-branch
+aliases: ["worktree"]
 kind: playbook
 description: Create an isolated Git worktree on a new local branch or remove a clean worktree after checking its path and preserving its branch.
 parameters: {"type":"object","properties":{"action":{"type":"string","enum":["create","remove"]},"repositoryPath":{"type":"string"},"worktreePath":{"type":"string"},"branchName":{"type":"string"},"baseCommit":{"type":"string"}},"additionalProperties":false}

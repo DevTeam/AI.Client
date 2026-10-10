@@ -2,6 +2,7 @@
 id: chat-schedule-run
 name: Chat schedule run
 icon: chat-schedule-run
+aliases: ["run-now"]
 kind: playbook
 description: Run the scheduled task of this chat — inside a scheduled run branch carry out the task, check its success criteria and report the outcome; anywhere else start a run now. Used by the application's dispatcher for every scheduled run.
 parameters: {"type":"object","properties":{},"additionalProperties":false}

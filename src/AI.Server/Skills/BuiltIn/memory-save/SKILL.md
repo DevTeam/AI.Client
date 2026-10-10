@@ -2,6 +2,7 @@
 id: memory-save
 name: Memory save
 icon: memory
+aliases: ["remember"]
 kind: playbook
 description: Remember a fact or preference for later chats, updating a matching memory instead of duplicating it.
 parameters: {"type":"object","properties":{"fact":{"type":"string","description":"What to remember, in the user's words"},"scope":{"type":"string","enum":["User","Project"],"description":"Only when the user said where it belongs"}},"additionalProperties":false}

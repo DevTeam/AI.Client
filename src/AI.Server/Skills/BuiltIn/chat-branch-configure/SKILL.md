@@ -2,6 +2,7 @@
 id: chat-branch-configure
 name: Chat branch configure
 icon: git-branch
+aliases: ["branch"]
 kind: playbook
 description: Show which model, tool approval mode and tool rules a branch runs with and where each comes from, override them for this branch, or make the branch inherit them again; use when the user asks about or changes settings of the current branch or another branch.
 parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Branch title or id named by the user; omitted means the current branch"},"connection":{"type":"string","description":"Existing connection name or id to run the branch on, or 'inherit'"},"approvalMode":{"type":"string","enum":["Ask","Auto","FullAccess","inherit"],"description":"Tool approval mode for the branch, or 'inherit'"},"inheritAll":{"type":"boolean","description":"Drop every override of the branch, tool rules included, only when the user asked for it"}},"additionalProperties":false}

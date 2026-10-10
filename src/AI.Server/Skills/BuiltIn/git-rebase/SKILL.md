@@ -2,6 +2,7 @@
 id: git-rebase
 name: Git rebase
 icon: git-rebase
+aliases: ["rebase"]
 kind: playbook
 description: Rebase the current branch onto a chosen branch, rewriting its commits, keeping a recovery ref and pausing at conflicts; never pushes.
 parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Target branch"}},"additionalProperties":false}

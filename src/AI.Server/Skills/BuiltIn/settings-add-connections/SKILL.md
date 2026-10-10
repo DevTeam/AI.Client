@@ -2,6 +2,7 @@
 id: settings-add-connections
 name: Settings add connections
 icon: link
+aliases: ["connections"]
 kind: playbook
 description: Add or merge Connections from OpenAI-compatible API URLs and discovered models, preserving existing settings and credentials, then offer a comparison and selection of defaults or subtask connections.
 parameters: {"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"API Base URLs supplied by the user"},"models":{"type":"array","items":{"type":"string"},"description":"Exact model ids to add, only when the user supplied them"}},"additionalProperties":false}

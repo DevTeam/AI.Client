@@ -2,6 +2,7 @@
 id: memory-forget
 name: Memory forget
 icon: eraser
+aliases: ["forget"]
 kind: playbook
 description: Delete memory entries the user wants forgotten, after showing exactly which ones match.
 parameters: {"type":"object","properties":{"about":{"type":"string","description":"What to forget, in the user's words"}},"additionalProperties":false}

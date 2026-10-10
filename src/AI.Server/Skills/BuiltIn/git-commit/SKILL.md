@@ -2,6 +2,7 @@
 id: git-commit
 name: Git commit
 icon: git-commit
+aliases: ["commit"]
 kind: playbook
 description: Commit the current changes after the user asks to: check for stray files, draft a message in the repository's style, and commit the chosen files after confirmation; never pushes.
 parameters: {"type":"object","properties":{"message":{"type":"string","description":"The commit message or its gist, if the user gave one"}},"additionalProperties":false}

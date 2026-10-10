@@ -2,6 +2,7 @@
 id: git-cherry-pick
 name: Git cherry pick
 icon: git-commit
+aliases: ["cherry"]
 kind: playbook
 description: Apply one or several selected commits to the current branch in the chosen order, keeping a recovery ref and pausing at conflicts; never pushes.
 parameters: {"type":"object","properties":{"commits":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}

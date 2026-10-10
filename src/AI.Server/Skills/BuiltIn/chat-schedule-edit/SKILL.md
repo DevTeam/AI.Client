@@ -29,11 +29,12 @@ Changing what a run does therefore also means checking that the run can still do
    readiness check for the new task before confirming: read `app_read` resources Project, Chat and
    Settings, and each server in play through `app_read` resource=McpTools for the exact
    `(serverId, name, schemaHash)` of every tool the run will call. Work out each effective decision
-   (chat overrides project overrides global; a disabled or denied server denies its tools; unknown
+   (branch overrides chat overrides project overrides global; a disabled or denied server denies its tools; unknown
    means `Ask`). Only `Allow` runs with nobody there. For a needed tool left at `Ask`, ask once in
    `ask_user` — what it does and why the run needs it — with "Allow it for this chat (Recommended)"
    and "Keep asking me", and apply the approved ones with `app_security` operation
-   `SetChatToolPolicy`, the chat's id, a fresh `operationId` per distinct change and the identity,
+   `SetChatToolPolicy`, the chat's id (`SetBranchToolPolicy` with the `branchId` for a schedule on
+   another branch), a fresh `operationId` per distinct change and the identity,
    `Allow` and limits (128 calls and 120 s for a bounded read, 32 for a write, 8 for something
    destructive, 600 s for `process_run`, `cs_run` and `trigger_wait`). Never grant `Allow` to a
    tool that manages its own permissions, such as `app_security`. For a missing directory or a

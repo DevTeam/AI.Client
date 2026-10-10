@@ -62,7 +62,8 @@ user's language. Use another scope only when the user explicitly requested it.
    global rule, or discovered default, already supplies the recommended decision and default
    limits. If the selected tools include `app_security`, update
    its call limit first so later writes can finish. Apply each changed policy with `app_security`
-   operation=SetChatToolPolicy, projectId and chatId from the current project and chat, a fresh operationId per distinct
+   operation=SetChatToolPolicy, projectId and chatId from the current project and chat (or, when the user asked for
+   this branch only, SetBranchToolPolicy with its branchId; RemoveBranchToolPolicy makes it inherit again), a fresh operationId per distinct
    change, and toolPolicy containing serverId, name, schemaHash, decision, maxCallsPerRun and
    timeoutSeconds. Use only this narrow operation; never replace whole security/settings documents.
    Check Applied and Error after every call. An approval required by the Host still applies;

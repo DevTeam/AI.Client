@@ -61,14 +61,16 @@ the branch or in the arguments is never asked again.
    chat once it exists, in step 10). For every server in play, read `app_read` resource=McpTools
    with its id to get each tool's exact identity `(serverId, name, schemaHash)`; never guess one and
    never use the model's own prefixed function name.
-6. Work out each needed tool's effective decision: chat overrides project overrides global, a
+6. Work out each needed tool's effective decision: branch (nearest first) overrides chat overrides project overrides global, a
    disabled or denied server denies all of its tools, and an unknown tool is `Ask`. Only `Allow`
    runs with nobody there; `Ask` leaves the run Blocked and `Deny` refuses it outright.
 7. For every needed tool that is not already `Allow`, and that the user did not ask to keep asking,
    put the tools before the user in one `ask_user` question — what each does and why the run needs
    it — with "Allow them for this chat (Recommended)" and "Keep asking me (leave them at Ask)".
    Applied tools get chat-scope policies only, so nothing else in the project changes:
-   `app_security` operation `SetChatToolPolicy` with `projectId`, the chat's id, a fresh
+   `app_security` operation `SetChatToolPolicy` with `projectId`, the chat's id (for a schedule on
+   a branch other than the main one, `SetBranchToolPolicy` with that `branchId` instead: its runs
+   are its child branches and inherit the policy, the rest of the chat does not), a fresh
    `operationId` per distinct change and `toolPolicy` containing the identity, `Allow` and limits.
    Use the starting values the tool-configuration skills use: `maxCallsPerRun` 128 for a bounded
    read, 32 for a write or an unknown tool, 8 for something destructive or externally visible, and

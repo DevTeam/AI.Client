@@ -9,7 +9,15 @@ public interface IChatBranchSettingsResolver
     ToolApprovalMode ApprovalMode(ChatDetails chat, Guid branchId);
     ToolPolicySettings? ToolPolicy(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash);
     IReadOnlyList<ToolPolicySettings> BranchToolPolicies(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash);
+
+    /// <summary>The settings a branch runs with and, for each, the branch or chat that sets it.</summary>
+    EffectiveBranchSettings Effective(ChatDetails chat, Guid branchId);
 }
+
+/// <param name="ConnectionFrom">"this branch", a branch title in quotes, or "chat" (which falls back to the project).</param>
+/// <param name="ToolPolicyOverrides">How many tool policies this branch sets itself.</param>
+public sealed record EffectiveBranchSettings(Guid BranchId, Guid? ConnectionId, string ConnectionFrom,
+    ToolApprovalMode ApprovalMode, string ApprovalModeFrom, int ToolPolicyOverrides);
 
 public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
 {
@@ -31,6 +39,19 @@ public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
         Lineage(chat, branchId).SelectMany(branch => branch.Settings?.ToolPolicies ?? [])
             .Where(policy => policy.ServerId == serverId && policy.Name == name && policy.SchemaHash == schemaHash)
             .ToArray();
+
+    public EffectiveBranchSettings Effective(ChatDetails chat, Guid branchId)
+    {
+        var lineage = Lineage(chat, branchId).ToArray();
+        var connection = lineage.FirstOrDefault(branch => branch.Settings?.ConnectionId is not null);
+        var approval = lineage.FirstOrDefault(branch => branch.Settings?.ApprovalMode is not null);
+        return new EffectiveBranchSettings(branchId, ConnectionId(chat, branchId), Source(connection, branchId),
+            ApprovalMode(chat, branchId), Source(approval, branchId),
+            lineage.FirstOrDefault(branch => branch.Id == branchId)?.Settings?.ToolPolicies?.Count ?? 0);
+    }
+
+    private static string Source(ChatBranchView? branch, Guid branchId) =>
+        branch is null ? "chat" : branch.Id == branchId ? "this branch" : $"branch \"{branch.Title}\"";
 
     private static IEnumerable<ChatBranchView> Lineage(ChatDetails chat, Guid branchId)
     {

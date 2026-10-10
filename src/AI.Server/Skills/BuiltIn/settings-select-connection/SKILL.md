@@ -14,7 +14,7 @@ tools: ["app_read","app_security","app_projects","app_chats","ask_user"]
    used only when no explicit connection was requested; several may be selected.
 2. Resolve connection by exact id or name and require enabled true. Ask for missing choices in
    one `ask_user`: scope ("Current chat (Recommended)", "Current project", "Global default",
-   "Subtasks") and connection (best fit first with " (Recommended)"). For Project/Chat also
+   "Subtasks"; when the run is on a branch other than the main one, also "This branch") and connection (best fit first with " (Recommended)"). For Project/Chat also
    offer "Use inherited connection". For Subtasks use multiSelect and display the complete
    proposed pool, including currently selected members. Do not guess ratings or benchmark
    results; offer settings-review-connections if evidence is needed.
@@ -25,6 +25,9 @@ tools: ["app_read","app_security","app_projects","app_chats","ask_user"]
 4. Re-read the affected scope immediately before writing; use a fresh operationId.
    - Chat: `app_chats` SetEndpoint with projectId, chatId, revision, and connectionId; pass
      null to restore project/global inheritance.
+   - Branch: `app_chats` SetBranchSettings with projectId, chatId, branchId and
+     `branchSettings.connection` set to the connection id, or `inherit` to follow the parent
+     branch again. Branches below it that set no connection of their own follow it.
    - Project: `app_projects` Update with projectId, revision, and connectionId; to inherit
      use useDefaultConnection true instead.
    - Global: `app_security` UpsertConnection for the selected enabled entry with IsDefault true;

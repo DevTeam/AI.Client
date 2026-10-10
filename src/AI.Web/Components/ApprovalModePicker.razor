@@ -1,19 +1,34 @@
 @using AI.Contracts.Chats
 
 <div class="composer-approval" @onkeydown="OnKeyDown">
-    <button class="composer-approval-trigger @ModeClass(Mode)" type="button" title="@($"{Description(Mode)}. Change tool approval mode for this chat")" aria-label="Tool permissions: @Title(Mode)"
+    <button class="composer-approval-trigger @ModeClass(Mode) @(Inheritance?.Overridden == true ? "is-branch-override" : null)" type="button" title="@TriggerTitle" aria-label="@AriaLabel"
             aria-haspopup="true" aria-expanded="@(_isOpen ? "true" : "false")" disabled="@Disabled" @onclick="Toggle">
         <AppIcon Name="@Icon(Mode)" />
         <span>@Title(Mode)</span>
+        @if (Inheritance?.Overridden == true) { <span class="branch-override-dot" aria-hidden="true"></span> }
     </button>
     @if (_isOpen)
     {
         <div class="context-menu-backdrop" @onclick="Close"></div>
         <div class="composer-approval-menu" role="menu" aria-label="Tool permissions">
-            <span class="composer-approval-menu-label">How should tool calls be approved?</span>
+            <span class="composer-approval-menu-label">@(Inheritance is null ? "How should tool calls be approved?" : "How should tool calls be approved on this branch?")</span>
+            @if (Inheritance is { } branch)
+            {
+                var inherited = !branch.Overridden;
+                <button type="button" role="menuitemradio" aria-checked="@(inherited ? "true" : "false")"
+                        class="composer-approval-inherit @(inherited ? "selected" : null)" @onclick="InheritAsync">
+                    <AppIcon Name="reset" />
+                    <span class="composer-approval-option">
+                        <strong>Inherit from @branch.From</strong>
+                        <span>@Title(InheritedMode) — follows its changes</span>
+                    </span>
+                    @if (inherited) { <AppIcon Name="check" Class="composer-approval-check" /> }
+                </button>
+                <span class="composer-menu-separator" role="separator"></span>
+            }
             @foreach (var mode in Modes)
             {
-                var selected = mode == Mode;
+                var selected = mode == Mode && Inheritance?.Overridden != false;
                 <button type="button" role="menuitemradio" aria-checked="@(selected ? "true" : "false")"
                         class="@ModeClass(mode) @(selected ? "selected" : null)" @onclick="() => SelectAsync(mode)">
                     <AppIcon Name="@Icon(mode)" />
@@ -38,6 +53,28 @@
     [Parameter] public EventCallback<ToolApprovalMode> ModeChanged { get; set; }
 
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Set on a branch other than the main one: whether the mode is its own and where it would come from.</summary>
+    [Parameter] public BranchInheritance? Inheritance { get; set; }
+
+    /// <summary>The mode the branch gets when it inherits.</summary>
+    [Parameter] public ToolApprovalMode InheritedMode { get; set; }
+
+    [Parameter] public EventCallback Inherit { get; set; }
+
+    private string AriaLabel => $"Tool permissions: {Title(Mode)}" + Inheritance switch
+    {
+        { Overridden: true } => ", set on this branch",
+        { } branch => $", inherited from {branch.From}",
+        _ => string.Empty
+    };
+
+    private string TriggerTitle => Inheritance switch
+    {
+        { Overridden: true } => $"{Description(Mode)}. Set on this branch; change or inherit it again",
+        { } branch => $"{Description(Mode)}. Inherited from {branch.From}; change it for this branch",
+        _ => $"{Description(Mode)}. Change tool approval mode for this chat"
+    };
 
     private static string Title(ToolApprovalMode mode) => mode switch
     {
@@ -74,6 +111,13 @@
     private async Task SelectAsync(ToolApprovalMode mode)
     {
         _isOpen = false;
-        if (mode != Mode) await ModeChanged.InvokeAsync(mode);
+        // On an inheriting branch, choosing even the inherited mode pins it to this branch.
+        if (mode != Mode || Inheritance?.Overridden == false) await ModeChanged.InvokeAsync(mode);
+    }
+
+    private async Task InheritAsync()
+    {
+        _isOpen = false;
+        if (Inheritance?.Overridden == true) await Inherit.InvokeAsync();
     }
 }

@@ -33,6 +33,18 @@ public enum SecurityOperation
     /// <summary>Drop one tool's chat policy. Needs 'projectId', 'chatId', 'serverId', 'name' and 'schemaHash'.</summary>
     RemoveChatToolPolicy,
 
+    /// <summary>
+    /// Set one tool's policy for a branch and the branches below it that do not set their own. Needs 'projectId',
+    /// 'chatId', 'branchId' and 'toolPolicy'; on the main branch it is the chat policy.
+    /// </summary>
+    SetBranchToolPolicy,
+
+    /// <summary>
+    /// Drop one tool's branch policy so the branch inherits it again. Needs 'projectId', 'chatId', 'branchId',
+    /// 'serverId', 'name' and 'schemaHash'.
+    /// </summary>
+    RemoveBranchToolPolicy,
+
     /// <summary>Replace global connections and MCP servers at once. Needs 'settings'.</summary>
     SaveGlobalSettings,
 
@@ -85,7 +97,9 @@ public sealed class AppSecurityTool(
                           + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
                           + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
                           + "must be a fresh UUID per distinct change. Use AddDirectoryGrant to grant one directory in your project; "
-                          + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants."
+                          + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants. "
+                          + "A branch inherits tool policies from its parent branch and the chat; SetBranchToolPolicy overrides one for "
+                          + "a branch and the branches below it, RemoveBranchToolPolicy makes it inherit again."
         });
 
     [McpServerTool(Name = "app_security", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
@@ -95,6 +109,7 @@ public sealed class AppSecurityTool(
         Guid operationId,
         Guid? projectId = null,
         Guid? chatId = null,
+        Guid? branchId = null,
         long revision = 0,
         DirectoryGrantPayload? directoryGrant = null,
         Guid? grantId = null,
@@ -119,6 +134,14 @@ public sealed class AppSecurityTool(
             SecurityOperation.RemoveProjectToolPolicy => RemoveProjectToolPolicyAsync(builder, projectId, serverId, name, schemaHash, cancellationToken),
             SecurityOperation.SetChatToolPolicy => SetChatToolPolicyAsync(builder, projectId, chatId, toolPolicy, cancellationToken),
             SecurityOperation.RemoveChatToolPolicy => RemoveChatToolPolicyAsync(builder, projectId, chatId, serverId, name, schemaHash, cancellationToken),
+            SecurityOperation.SetBranchToolPolicy when branchId is not null && branchId == chatId =>
+                SetChatToolPolicyAsync(builder, projectId, chatId, toolPolicy, cancellationToken),
+            SecurityOperation.RemoveBranchToolPolicy when branchId is not null && branchId == chatId =>
+                RemoveChatToolPolicyAsync(builder, projectId, chatId, serverId, name, schemaHash, cancellationToken),
+            SecurityOperation.SetBranchToolPolicy => ChangeBranchToolPolicyAsync(builder, projectId, chatId, branchId,
+                Policy(Required(toolPolicy, nameof(toolPolicy))), null, null, null, cancellationToken),
+            SecurityOperation.RemoveBranchToolPolicy => ChangeBranchToolPolicyAsync(builder, projectId, chatId, branchId,
+                null, serverId, name, schemaHash, cancellationToken),
             SecurityOperation.SaveGlobalSettings => SaveGlobalSettingsAsync(builder, settings, cancellationToken),
             SecurityOperation.UpsertConnection => UpsertConnectionAsync(builder, connection, expectedConnection, cancellationToken),
             SecurityOperation.RemoveConnection => RemoveConnectionAsync(builder, serverId, expectedConnection, cancellationToken),
@@ -222,6 +245,34 @@ public sealed class AppSecurityTool(
         return updated is null
             ? builder.Failed("Chat not found.", project, chat)
             : builder.Applied($"Removed the chat policy for '{name}'.", project, chat,
+                revision: updated.Revision, current: Element(updated with { Messages = [] }, reply.Json));
+    }
+
+    private async Task<AppWriteResult> ChangeBranchToolPolicyAsync(AppWriteBuilder builder, Guid? projectId, Guid? chatId,
+        Guid? branchId, ToolPolicySettings? policy, Guid? serverId, string? name, string? schemaHash,
+        CancellationToken cancellationToken)
+    {
+        var project = Required(projectId, nameof(projectId));
+        var chat = Required(chatId, nameof(chatId));
+        var branch = Required(branchId, nameof(branchId));
+        var tool = policy is null
+            ? (Server: Required(serverId, nameof(serverId)), Name: Text(name, nameof(name)), Hash: Text(schemaHash, nameof(schemaHash)))
+            : (Server: policy.ServerId, Name: policy.Name, Hash: policy.SchemaHash);
+        var current = await chats.GetAsync(project, chat, cancellationToken);
+        if (current is null) return builder.Failed("Chat not found.", project, chat);
+        if (current.Branches?.Any(item => item.Id == branch) != true) return builder.Failed("Branch not found.", project, chat);
+        var updated = await chats.ChangeBranchSettingsAsync(project, chat, branch, settings =>
+        {
+            var policies = (settings.ToolPolicies ?? []).Where(item => !(item.ServerId == tool.Server
+                && item.Name == tool.Name && item.SchemaHash == tool.Hash)).ToList();
+            if (policy is not null) policies.Add(policy);
+            return settings with { ToolPolicies = policies };
+        }, cancellationToken);
+        return updated is null
+            ? builder.Failed("The chat changed while saving; read it and try again.", project, chat)
+            : builder.Applied(policy is null
+                    ? $"The branch inherits the policy for '{tool.Name}' again."
+                    : $"Set '{tool.Name}' to {policy.Decision} for this branch.", project, chat,
                 revision: updated.Revision, current: Element(updated with { Messages = [] }, reply.Json));
     }
 

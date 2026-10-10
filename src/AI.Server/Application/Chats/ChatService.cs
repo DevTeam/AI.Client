@@ -329,19 +329,29 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         _ => ToolApprovalMode.Ask
     };
 
-    public async Task<ChatDetails?> UpdateBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
+    public Task<ChatDetails?> UpdateBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
         UpdateBranchSettingsRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Settings);
+        return ChangeBranchSettingsAsync(projectId, chatId, branchId, _ => request.Settings, cancellationToken);
+    }
+
+    public async Task<ChatDetails?> ChangeBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
+        Func<BranchSettings, BranchSettings> change, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(change);
         using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
         if (stored is null) return null;
-        var settings = request.Settings;
-        var policies = settings.ToolPolicies?.Select(ToPolicy).ToArray();
-        stored.Chat.SetBranchSettings(branchId, new ChatBranchSettings(
-            settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
-            settings.ApprovalMode is { } mode ? ToDomain(mode) : null, policies), clock.UtcNow);
+        var current = stored.Chat.Branches.FirstOrDefault(branch => branch.Id == branchId)?.Settings;
+        var settings = change(ToContract(current) ?? new BranchSettings());
+        var policies = settings.ToolPolicies is { Count: > 0 } items ? items.Select(ToPolicy).ToArray() : null;
+        // A branch that overrides nothing stores no settings at all, so it reads as plainly inheriting.
+        stored.Chat.SetBranchSettings(branchId, settings.ConnectionId is null && settings.ApprovalMode is null && policies is null
+            ? null
+            : new ChatBranchSettings(settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
+                settings.ApprovalMode is { } mode ? ToDomain(mode) : null, policies), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }

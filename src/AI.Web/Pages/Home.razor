@@ -1054,6 +1054,13 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
     }
 
+    @* A branch row's menu sits in the same scrolling list as a chat's, so it needs the same
+       full-screen backdrop: without it, a press anywhere outside the menu left it open. *@
+    @if (_branchMenuId is not null)
+    {
+        <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
+    }
+
     @if (_fileLinkMenu is { } fileLink)
     {
         <div class="context-menu-backdrop" @onclick="CloseFileLinkMenu" @oncontextmenu="OnFileLinkBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>

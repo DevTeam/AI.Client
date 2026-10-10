@@ -3220,6 +3220,12 @@ div.chat-tip-head { cursor: default; }
     border-radius: 50%;
     background: var(--member-color);
 }
+/* The lead has no swatch: a ring of the same size in a neutral tone, which also edges its cards. */
+:root { --member-lead-color: var(--color-text-secondary); }
+.member-dot.is-lead {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--member-lead-color);
+}
 .branch-link .member-dot,
 .branch-picker-row .member-dot { margin-right: .35rem; }
 .queue-aside-label .member-dot { margin-right: .3rem; vertical-align: middle; }

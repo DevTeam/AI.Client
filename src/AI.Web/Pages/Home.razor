@@ -590,7 +590,7 @@
                                             }
                                             @if (item.Sender is { } queuedSender)
                                             {
-                                                <span class="queue-aside-label" title="@(item.JoinsTurn ? "Sent by another branch; the turn in flight reads it at its next step, or it runs as its own turn" : "Sent by another branch")"><MemberDot Member="@_selectedChat?.MemberOf(queuedSender.BranchId)" />@GetQueuedSenderLabel(queuedSender)</span>
+                                                <span class="queue-aside-label" title="@(item.JoinsTurn ? "Sent by another branch; the turn in flight reads it at its next step, or it runs as its own turn" : "Sent by another branch")"><MemberDot Member="@_selectedChat?.MemberOf(queuedSender.BranchId)" Lead="@(_selectedChat?.IsTeamLead(queuedSender.BranchId) == true)" />@GetQueuedSenderLabel(queuedSender)</span>
                                             }
                                             @(string.IsNullOrWhiteSpace(item.Content) ? "Workspace references" : GetSingleLine(item.Content))
                                             @if (item.Resources is { Count: > 0 })

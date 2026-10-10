@@ -2297,14 +2297,26 @@
         return text[..Math.Min(text.Length, 36)] + (text.Length > 36 ? "…" : string.Empty);
     }
 
-    /// <summary>A teammate's colour before its name; any other sender keeps the branch icon.</summary>
-    private RenderFragment SenderMark(MessageSender sender) => SelectedChat?.MemberOf(sender.BranchId) is { Swatch: not null } member
-        ? builder => { builder.OpenComponent<MemberDot>(0); builder.AddAttribute(1, nameof(MemberDot.Member), member); builder.CloseComponent(); }
+    /// <summary>A teammate's colour, or the lead's ring, before its name; any other sender keeps the branch icon.</summary>
+    private RenderFragment SenderMark(MessageSender sender) =>
+        SelectedChat?.MemberOf(sender.BranchId) is { Swatch: not null } member ? builder =>
+        {
+            builder.OpenComponent<MemberDot>(0);
+            builder.AddAttribute(1, nameof(MemberDot.Member), member);
+            builder.CloseComponent();
+        }
+        : SelectedChat?.IsTeamLead(sender.BranchId) == true ? builder =>
+        {
+            builder.OpenComponent<MemberDot>(0);
+            builder.AddAttribute(1, nameof(MemberDot.Lead), true);
+            builder.CloseComponent();
+        }
         : builder => { builder.OpenComponent<AppIcon>(0); builder.AddAttribute(1, nameof(AppIcon.Name), "git-branch"); builder.CloseComponent(); };
 
     /// <summary>
     /// The article's own custom properties: its arrival delay while a turn unfolds, and the colour
-    /// of the teammate that sent it, which edges its card.
+    /// of the teammate that sent it, which edges its card. The lead's card is edged in the neutral
+    /// colour of its ring.
     /// </summary>
     private string? MessageStyle(int? revealIndex, ChatMessageView message)
     {
@@ -2312,6 +2324,8 @@
         if (revealIndex is { } index) parts.Add($"--turn-arrive-delay: {index * 60}ms");
         if (message.Sender is { } sender && SelectedChat?.MemberOf(sender.BranchId)?.Swatch is { } swatch)
             parts.Add($"--member-color: {swatch}");
+        else if (message.Sender is { } leadSender && SelectedChat?.IsTeamLead(leadSender.BranchId) == true)
+            parts.Add("--member-color: var(--member-lead-color)");
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
 

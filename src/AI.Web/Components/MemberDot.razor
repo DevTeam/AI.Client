@@ -1,11 +1,21 @@
 @* The teammate's colour, the same in the sidebar, the transcript and the queue. Only a known
-   swatch reaches the style, which sets nothing but the component's own custom property. *@
+   swatch reaches the style, which sets nothing but the component's own custom property. The
+   team's lead wears no swatch of its own: it is drawn as a ring of the same size, so a roster or a
+   sender line reads as one set of marks. *@
 @if (Member is { Swatch: { } swatch })
 {
     <span class="member-dot" style="--member-color: @swatch" title="@Member.Label" aria-hidden="true"></span>
+}
+else if (Lead)
+{
+    <span class="member-dot is-lead" title="Lead · Coordinator" aria-hidden="true"></span>
 }
 
 @code {
     [Parameter]
     public AI.Contracts.Chats.TeamMember? Member { get; set; }
+
+    /// <summary>The mark stands for the team's lead, which has no identity of its own.</summary>
+    [Parameter]
+    public bool Lead { get; set; }
 }

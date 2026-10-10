@@ -26,6 +26,13 @@ public interface IChatService
     Task<ChatDetails?> RenameBranchAsync(Guid projectId, Guid chatId, Guid branchId, RenameChatBranchRequest request, CancellationToken cancellationToken);
     Task<ChatDetails?> UpdateBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
         UpdateBranchSettingsRequest request, CancellationToken cancellationToken);
+    /// <summary>
+    /// Reads a branch's own settings and replaces them in one step under the chat's lease. A null field
+    /// inherits from the parent branch; settings with nothing set are stored as none. Null when the chat
+    /// does not exist.
+    /// </summary>
+    Task<ChatDetails?> ChangeBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
+        Func<BranchSettings, BranchSettings> change, CancellationToken cancellationToken);
     Task<ChatDetails?> SetToolPolicyAsync(Guid projectId, Guid chatId, AI.Contracts.Projects.ToolPolicySettings policy, CancellationToken cancellationToken);
     /// <summary>
     /// Reads the chat's kind and state and replaces them in one step under the chat's lease, so a

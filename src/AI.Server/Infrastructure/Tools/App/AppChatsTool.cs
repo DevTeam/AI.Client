@@ -35,6 +35,12 @@ public enum ChatOperation
     /// <summary>Change a branch's title. Needs 'chatId', 'branchId', 'title' and 'revision'.</summary>
     RenameBranch,
 
+    /// <summary>
+    /// Override or inherit a branch's settings from 'branchSettings'. 'chatId' and 'branchId' default to the
+    /// current branch; 'revision' is not needed.
+    /// </summary>
+    SetBranchSettings,
+
     /// <summary>Delete a chat and its whole history. Needs 'chatId' and 'revision'. Honours 'dryRun'.</summary>
     Delete,
 
@@ -69,7 +75,16 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                               + "chats still marked with archiveOperationId, including after restart. "
                               + "Only 'Delete', 'DeleteBranch' and 'ArchiveBatch' understand 'dryRun', and they rehearse by default: they describe "
                               + "what they would do and change nothing until 'dryRun' is false. Every other operation applies straight "
-                              + "away and rejects 'dryRun: true' rather than quietly ignoring it."
+                              + "away and rejects 'dryRun: true' rather than quietly ignoring it. "
+                              + "SetBranchSettings: a branch inherits its connection (model), tool approval mode and tool policies from "
+                              + "its parent branch, and the main branch's are the chat's own. In 'branchSettings' each of 'connection' "
+                              + "(a connection id) and 'approvalMode' (Ask, Auto, FullAccess) is left as it is when omitted, overridden "
+                              + "on this branch when given a value, and inherited again when given 'inherit'; 'inheritAll' true drops every "
+                              + "override of the branch, tool policies included. The main branch has nothing to inherit from: there "
+                              + "'connection' 'inherit' follows the project default and 'approvalMode' needs a value. Read the effective "
+                              + "values and where they come from with app_read. Change approvals or a branch's model only when the user "
+                              + "asked for it. Branch tool policies belong to app_security SetBranchToolPolicy. Schedules are per branch "
+                              + "and never inherited (app_schedule)."
             });
 
         [McpServerTool(Name = "app_chats", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
@@ -81,9 +96,11 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             DateTimeOffset? activityBefore = null, bool includePinned = false,
             ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
             string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
+            BranchSettingsPayload? branchSettings = null,
             CancellationToken cancellationToken = default) =>
             tool.ChatsAsync(run, operation, projectId, operationId, chatId, branchId, title, isPinned, connectionId,
-                revision, dryRun, activityBefore, includePinned, targets, archiveOperationId, confirmationText, confirmLabel, cancelLabel, cancellationToken);
+                revision, dryRun, activityBefore, includePinned, targets, archiveOperationId, confirmationText, confirmLabel, cancelLabel,
+                branchSettings, cancellationToken);
     }
 
     private Task<CallToolResult> ChatsAsync(
@@ -101,6 +118,7 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         DateTimeOffset? activityBefore = null, bool includePinned = false,
         ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
         string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
+        BranchSettingsPayload? branchSettings = null,
         CancellationToken cancellationToken = default) =>
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
@@ -120,6 +138,8 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             ChatOperation.Pin => PinAsync(builder, projectId, chatId, isPinned, revision, cancellationToken),
             ChatOperation.SetEndpoint => SetEndpointAsync(builder, projectId, chatId, connectionId, revision, cancellationToken),
             ChatOperation.RenameBranch => RenameBranchAsync(builder, projectId, chatId, branchId, title, revision, cancellationToken),
+            ChatOperation.SetBranchSettings => SetBranchSettingsAsync(builder, projectId, chatId ?? run.ChatId,
+                branchId ?? (chatId is null || chatId == run.ChatId ? run.BranchId : chatId.Value), branchSettings, cancellationToken),
             ChatOperation.Delete => DeleteAsync(builder, projectId, chatId, revision, dryRun ?? true, cancellationToken),
             ChatOperation.DeleteBranch => DeleteBranchAsync(builder, projectId, chatId, branchId, revision, dryRun ?? true, cancellationToken),
             _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
@@ -212,6 +232,59 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                 new RenameChatBranchRequest(Text(title, nameof(title)), revision), cancellationToken),
             _ => $"Renamed the branch to '{title}'.", cancellationToken);
 
+    private async Task<AppWriteResult> SetBranchSettingsAsync(AppWriteBuilder builder, Guid projectId, Guid chatId,
+        Guid branchId, BranchSettingsPayload? payload, CancellationToken cancellationToken)
+    {
+        var value = payload ?? throw new ArgumentException("'branchSettings' is required for this operation.", nameof(payload));
+        var connection = Setting(value.Connection, text => Guid.TryParse(text, out var id) ? id
+            : throw new ArgumentException("'connection' must be a connection id or 'inherit'."));
+        var mode = Setting(value.ApprovalMode, text =>
+            Enum.TryParse<ToolApprovalMode>(text, true, out var parsed) && Enum.IsDefined(parsed) && !int.TryParse(text, out _)
+                ? parsed : throw new ArgumentException("'approvalMode' must be Ask, Auto, FullAccess or 'inherit'."));
+        if (connection is null && mode is null && value.InheritAll != true)
+            throw new ArgumentException("Name at least one of 'connection', 'approvalMode' or 'inheritAll'.");
+        ChatDetails? updated;
+        if (branchId == chatId)
+        {
+            // The main branch's settings are the chat's own: there is no parent to fall back to.
+            if (mode is { Inherit: true } || value.InheritAll == true)
+                throw new ArgumentException("The main branch has no parent to inherit from; give 'approvalMode' a value.");
+            updated = await chats.GetAsync(projectId, chatId, cancellationToken);
+            if (updated is not null && connection is { } chosen)
+                updated = await chats.UpdateEndpointAsync(projectId, chatId,
+                    new UpdateChatEndpointRequest(chosen.Value, updated.Revision), cancellationToken);
+            if (updated is not null && mode?.Value is { } approval)
+                updated = await chats.UpdateApprovalModeAsync(projectId, chatId,
+                    new UpdateChatApprovalModeRequest(approval), cancellationToken);
+        }
+        else
+        {
+            var chat = await chats.GetAsync(projectId, chatId, cancellationToken);
+            if (chat is null) return builder.Failed("Chat not found.", projectId, chatId);
+            if (chat.Branches?.Any(branch => branch.Id == branchId) != true)
+                return builder.Failed("Branch not found.", projectId, chatId);
+            updated = await chats.ChangeBranchSettingsAsync(projectId, chatId, branchId, current =>
+            {
+                var next = value.InheritAll == true ? new BranchSettings() : current;
+                if (connection is { } chosen) next = next with { ConnectionId = chosen.Value };
+                if (mode is { } approval) next = next with { ApprovalMode = approval.Value };
+                return next;
+            }, cancellationToken);
+        }
+        return updated is null
+            ? builder.Failed("The chat changed while saving; read it and try again.", projectId, chatId)
+            : builder.Applied(value.InheritAll == true ? "The branch inherits every setting again." : "Updated the branch settings.",
+                projectId, chatId, revision: updated.Revision, current: Element(updated with { Messages = [] }, reply.Json));
+    }
+
+    /// <summary>Null when the field was left out; <c>Inherit</c> when it asks to follow the parent again.</summary>
+    private static BranchSetting<T>? Setting<T>(string? text, Func<string, T> parse) where T : struct =>
+        string.IsNullOrWhiteSpace(text) ? null
+        : string.Equals(text.Trim(), "inherit", StringComparison.OrdinalIgnoreCase) ? new BranchSetting<T>(null, true)
+        : new BranchSetting<T>(parse(text.Trim()), false);
+
+    private sealed record BranchSetting<T>(T? Value, bool Inherit) where T : struct;
+
     private async Task<AppWriteResult> DeleteAsync(
         AppWriteBuilder builder, Guid projectId, Guid? chatId, long revision, bool dryRun, CancellationToken cancellationToken)
     {
@@ -274,3 +347,8 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
     private static string Text(string? value, string name) =>
         string.IsNullOrWhiteSpace(value) ? throw new ArgumentException($"'{name}' is required for this operation.", name) : value;
 }
+
+/// <param name="Connection">A connection id to run this branch on, or "inherit"; omitted leaves it as it is.</param>
+/// <param name="ApprovalMode">Ask, Auto or FullAccess, or "inherit"; omitted leaves it as it is.</param>
+/// <param name="InheritAll">True drops every override of the branch, tool policies included, before the other fields apply.</param>
+public sealed record BranchSettingsPayload(string? Connection = null, string? ApprovalMode = null, bool? InheritAll = null);

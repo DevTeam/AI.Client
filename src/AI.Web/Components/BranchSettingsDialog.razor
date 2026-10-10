@@ -1,0 +1,260 @@
+@using AI.Contracts.Schedules
+@inject IChatScheduleApi ScheduleApi
+
+@* One place for everything a branch runs with. Each setting says where its value comes from, and a
+   branch follows its parent until a value is chosen here; "Inherit" hands it back. The main branch
+   is the chat itself: its values are what every branch inherits, so it has no "Inherit" of its own
+   except the model, which can follow the project default. *@
+<div class="modal-backdrop branch-settings-backdrop" @onclick="CloseAsync">
+    <section class="branch-settings" role="dialog" aria-modal="true" aria-labelledby="branch-settings-title"
+             tabindex="-1" @ref="_dialog" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
+        <header class="branch-settings-header">
+            <span class="branch-settings-badge" aria-hidden="true"><AppIcon Name="@(IsMain ? "message-circle" : "git-branch")" /></span>
+            <div class="branch-settings-heading">
+                <strong id="branch-settings-title">@(IsMain ? "Chat settings" : "Branch settings")</strong>
+                <span title="@Subtitle">@Subtitle</span>
+            </div>
+            <button class="icon-action" type="button" title="Close" aria-label="Close settings" @onclick="CloseAsync"><AppIcon Name="x" /></button>
+        </header>
+
+        <div class="branch-settings-body">
+            <section class="branch-settings-section" aria-labelledby="branch-settings-model">
+                <div class="branch-settings-section-head">
+                    <span class="branch-settings-section-title" id="branch-settings-model"><AppIcon Name="connection" />Model</span>
+                    @Source(OwnConnection is not null, ConnectionFrom)
+                </div>
+                <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-model">
+                    @Choice(OwnConnection is null, IsMain ? "Project default" : "Inherit",
+                        $"{ConnectionName(InheritedConnection)} · {InheritedConnectionFrom}",
+                        "reset", () => ConnectionChanged.InvokeAsync(null), false)
+                    @foreach (var connection in Connections.Where(item => item.Enabled || item.Id == OwnConnection))
+                    {
+                        var id = connection.Id;
+                        @Choice(OwnConnection == id, connection.Name, connection.Model, "connection",
+                            () => ConnectionChanged.InvokeAsync(id), false)
+                    }
+                </div>
+            </section>
+
+            <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">
+                <div class="branch-settings-section-head">
+                    <span class="branch-settings-section-title" id="branch-settings-approvals"><AppIcon Name="hand" />Tool approvals</span>
+                    @Source(OwnApproval is not null || IsMain, ApprovalFrom)
+                </div>
+                <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-approvals">
+                    @if (!IsMain)
+                    {
+                        @Choice(OwnApproval is null, "Inherit", $"{ApprovalTitle(InheritedApproval)} · from {ParentName}", "reset",
+                            () => ApprovalChanged.InvokeAsync(null), false)
+                    }
+                    @foreach (var mode in Modes)
+                    {
+                        var value = mode;
+                        @Choice((IsMain ? Chat.ApprovalMode : OwnApproval) == mode, ApprovalTitle(mode), ApprovalDescription(mode),
+                            ApprovalIcon(mode), () => ApprovalChanged.InvokeAsync(value), mode == ToolApprovalMode.FullAccess)
+                    }
+                </div>
+            </section>
+
+            <section class="branch-settings-section branch-settings-link-row">
+                <span class="branch-settings-section-title"><AppIcon Name="shield" />Tool permissions</span>
+                <span class="branch-settings-summary">@PermissionsSummary</span>
+                <button type="button" class="secondary-action compact-action" @onclick="OpenPermissions">Edit<AppIcon Name="chevron-right" /></button>
+            </section>
+
+            <section class="branch-settings-section branch-settings-link-row">
+                <span class="branch-settings-section-title"><AppIcon Name="timer" />Schedule</span>
+                <span class="branch-settings-summary">
+                    @if (_schedule?.Schedule is { } schedule)
+                    {
+                        <span class="branch-settings-schedule @(schedule.Paused ? "is-paused" : null)">@(_schedule.Description)@(schedule.Paused ? " · paused" : null)</span>
+                    }
+                    else
+                    {
+                        <span>@(_scheduleLoaded ? "None" : "…")</span>
+                    }
+                    <small>@(IsMain ? "Each branch keeps its own schedule." : "Its own; schedules are never inherited.")</small>
+                </span>
+                <button type="button" class="secondary-action compact-action" @onclick="OpenSchedule">Open<AppIcon Name="chevron-right" /></button>
+            </section>
+        </div>
+
+        <footer class="branch-settings-footer">
+            @if (!IsMain)
+            {
+                <button type="button" class="secondary-action" disabled="@(!HasOverrides)" title="Drop every value set on this branch, tool permissions included"
+                        @onclick="ResetAll"><AppIcon Name="reset" />Inherit everything</button>
+            }
+            <button type="button" @onclick="CloseAsync">Done</button>
+        </footer>
+    </section>
+</div>
+
+@code {
+    private static readonly ToolApprovalMode[] Modes = [ToolApprovalMode.Ask, ToolApprovalMode.Auto, ToolApprovalMode.FullAccess];
+
+    private ElementReference _dialog;
+    private ChatScheduleView? _schedule;
+    private bool _scheduleLoaded;
+    private (Guid, Guid)? _loadedKey;
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+
+    [Parameter, EditorRequired] public ChatDetails Chat { get; set; } = default!;
+
+    [Parameter, EditorRequired] public Guid BranchId { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyList<ConnectionSettings> Connections { get; set; } = [];
+
+    /// <summary>What the chat runs on when it names no connection: the project's, then the global default.</summary>
+    [Parameter] public Guid? FallbackConnectionId { get; set; }
+
+    /// <summary>A connection id to set, or null to inherit (on the main branch: to follow the project).</summary>
+    [Parameter] public EventCallback<Guid?> ConnectionChanged { get; set; }
+
+    /// <summary>A mode to set, or null to inherit. Never null on the main branch.</summary>
+    [Parameter] public EventCallback<ToolApprovalMode?> ApprovalChanged { get; set; }
+
+    [Parameter] public EventCallback Reset { get; set; }
+
+    [Parameter] public EventCallback PermissionsRequested { get; set; }
+
+    [Parameter] public EventCallback ScheduleRequested { get; set; }
+
+    [Parameter] public EventCallback Closed { get; set; }
+
+    private bool IsMain => BranchId == Chat.Id;
+
+    private ChatBranchView? Branch => Chat.Branches?.FirstOrDefault(item => item.Id == BranchId);
+
+    private BranchSettings Own => Branch?.Settings ?? new();
+
+    private Guid? OwnConnection => IsMain ? Chat.ConnectionId : Own.ConnectionId;
+
+    private ToolApprovalMode? OwnApproval => IsMain ? Chat.ApprovalMode : Own.ApprovalMode;
+
+    /// <summary>The branches above this one, nearest first, without the main branch.</summary>
+    private IEnumerable<ChatBranchView> Ancestors()
+    {
+        var branches = (Chat.Branches ?? []).ToDictionary(item => item.Id);
+        var visited = new HashSet<Guid> { BranchId };
+        var id = Branch?.ParentBranchId ?? Chat.Id;
+        while (id != Chat.Id && visited.Add(id) && branches.TryGetValue(id, out var branch))
+        {
+            yield return branch;
+            id = branch.ParentBranchId ?? Chat.Id;
+        }
+    }
+
+    private ChatBranchView? Parent => Branch?.ParentBranchId is { } parentId && parentId != Chat.Id
+        ? Chat.Branches?.FirstOrDefault(item => item.Id == parentId) : null;
+
+    private string ParentName => Parent?.Title is { Length: > 0 } title ? title : "the main branch";
+
+    private string Subtitle => IsMain
+        ? "Every branch follows these unless it sets its own"
+        : $"{Branch?.Title ?? "Branch"} · follows {ParentName}";
+
+    private Guid? InheritedConnection => IsMain ? FallbackConnectionId
+        : Ancestors().Select(item => item.Settings?.ConnectionId).FirstOrDefault(id => id is not null)
+          ?? Chat.ConnectionId ?? FallbackConnectionId;
+
+    /// <summary>Where the value "Inherit" would bring comes from, said as the choice's detail.</summary>
+    private string InheritedConnectionFrom => IsMain ? "follows the project"
+        : Ancestors().FirstOrDefault(item => item.Settings?.ConnectionId is not null) is { } source ? $"from {source.Title}"
+        : Chat.ConnectionId is not null ? "from the main branch" : "the project default";
+
+    private ToolApprovalMode InheritedApproval =>
+        Ancestors().Select(item => item.Settings?.ApprovalMode).FirstOrDefault(mode => mode is not null) ?? Chat.ApprovalMode;
+
+    private string ConnectionFrom => OwnConnection is not null ? Here
+        : IsMain ? "Project default"
+        : Ancestors().FirstOrDefault(item => item.Settings?.ConnectionId is not null) is { } source ? $"From {source.Title}"
+        : Chat.ConnectionId is not null ? "From the main branch" : "From the project";
+
+    private string ApprovalFrom => OwnApproval is not null ? Here
+        : Ancestors().FirstOrDefault(item => item.Settings?.ApprovalMode is not null) is { } source ? $"From {source.Title}"
+        : "From the main branch";
+
+    private string Here => IsMain ? "This chat" : "This branch";
+
+    private bool HasOverrides => Own.ConnectionId is not null || Own.ApprovalMode is not null || Own.ToolPolicies is { Count: > 0 };
+
+    private string PermissionsSummary
+    {
+        get
+        {
+            var own = IsMain ? Chat.ToolPolicies?.Count ?? 0 : Own.ToolPolicies?.Count ?? 0;
+            var inherited = IsMain ? 0 : Ancestors().SelectMany(item => item.Settings?.ToolPolicies ?? [])
+                .Concat(Chat.ToolPolicies ?? [])
+                .Select(item => (item.ServerId, item.Name, item.SchemaHash)).Distinct().Count();
+            var here = own == 0 ? "No rules here" : own == 1 ? "1 rule here" : $"{own} rules here";
+            return inherited == 0 ? here : $"{here} · {inherited} inherited";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedKey == (Chat.Id, BranchId)) return;
+        _loadedKey = (Chat.Id, BranchId);
+        _scheduleLoaded = false;
+        _schedule = null;
+        try { _schedule = await ScheduleApi.GetAsync(ProjectId, Chat.Id, BranchId, CancellationToken.None); }
+        catch (Exception error) when (error is HttpRequestException or ChatScheduleException) { _schedule = null; }
+        _scheduleLoaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _dialog.FocusAsync();
+    }
+
+    private RenderFragment Source(bool own, string text) =>
+        @<span class="branch-settings-source @(own ? "is-own" : null)">@if (own) { <span class="branch-settings-source-dot" aria-hidden="true"></span> }@text</span>;
+
+    private RenderFragment Choice(bool selected, string title, string? detail, string icon, Func<Task> select, bool warn) =>
+        @<button type="button" role="radio" aria-checked="@(selected ? "true" : "false")"
+                 class="branch-settings-choice @(selected ? "selected" : null) @(warn ? "is-full-access" : null)"
+                 @onclick="() => selected ? Task.CompletedTask : select()">
+            <AppIcon Name="@icon" />
+            <span class="branch-settings-choice-text">
+                <strong>@title</strong>
+                @if (!string.IsNullOrEmpty(detail)) { <span>@detail</span> }
+            </span>
+            <span class="branch-settings-radio" aria-hidden="true"></span>
+        </button>;
+
+    private string ConnectionName(Guid? id) =>
+        Connections.FirstOrDefault(item => item.Id == id)?.Name ?? "No connection";
+
+    private static string ApprovalTitle(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "Approve for me",
+        ToolApprovalMode.FullAccess => "Full access",
+        _ => "Ask for approval"
+    };
+
+    private static string ApprovalDescription(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "Ask only for calls a risk check finds unsafe",
+        ToolApprovalMode.FullAccess => "Run every tool call without asking",
+        _ => "Ask before every call that is not allowed yet"
+    };
+
+    private static string ApprovalIcon(ToolApprovalMode mode) => mode switch
+    {
+        ToolApprovalMode.Auto => "shield",
+        ToolApprovalMode.FullAccess => "shield-alert",
+        _ => "hand"
+    };
+
+    private Task ResetAll() => Reset.InvokeAsync();
+
+    private Task OpenPermissions() => PermissionsRequested.InvokeAsync();
+
+    private Task OpenSchedule() => ScheduleRequested.InvokeAsync();
+
+    private Task CloseAsync() => Closed.InvokeAsync();
+
+    private Task OnKeyDownAsync(KeyboardEventArgs args) => args.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+}

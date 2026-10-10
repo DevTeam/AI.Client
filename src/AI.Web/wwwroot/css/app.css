@@ -4525,7 +4525,8 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     position: absolute;
     z-index: var(--z-menu-raised);
     bottom: calc(100% + 0.4rem);
-    left: 0;
+    /* The picker sits at the composer's right edge, so its menu opens leftwards. */
+    right: 0;
     display: grid;
     min-width: 12rem;
     max-width: min(20rem, 70vw);
@@ -9350,3 +9351,79 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .schedule-deletion-at { align-items: flex-start; }
 .schedule-rules { display: grid; gap: .3rem; }
 .schedule-rule { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+
+/* Branch and chat settings (BranchSettingsDialog). Each setting names where its value comes from: a
+   tinted chip with a dot when the branch sets it, a plain one when it follows a parent. */
+.branch-settings {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(31rem, calc(100vw - 2rem));
+    max-height: min(44rem, calc(100vh - 2rem));
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-2xl);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-xl);
+}
+.branch-settings:focus { outline: none; }
+.branch-settings-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding: 1rem 1rem .9rem 1.1rem; border-bottom: 1px solid var(--color-border-subtle); }
+.branch-settings-badge { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: var(--radius-lg); background: var(--color-accent-bg); color: var(--color-accent-text); }
+.branch-settings-badge .app-icon { width: 1.1rem; height: 1.1rem; }
+.branch-settings-heading { display: grid; gap: .15rem; min-width: 0; }
+.branch-settings-heading strong { color: var(--color-text-strong); font-size: var(--font-size-xl); font-weight: 600; }
+.branch-settings-heading span { overflow: hidden; color: var(--color-text-muted); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-body { display: grid; align-content: start; gap: 1.1rem; padding: 1rem 1.1rem 1.1rem; overflow-y: auto; }
+.branch-settings-section { display: grid; gap: .5rem; min-width: 0; }
+.branch-settings-section-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; }
+.branch-settings-section-title { display: inline-flex; align-items: center; gap: .45rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.branch-settings-section-title .app-icon { width: .9rem; height: .9rem; color: var(--color-text-subtle); }
+.branch-settings-source { display: inline-flex; flex: none; align-items: center; gap: .35rem; max-width: 60%; padding: .15rem .55rem; overflow: hidden; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); color: var(--color-text-muted); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-source.is-own { border-color: color-mix(in srgb, var(--color-accent-strong) 40%, transparent); background: var(--color-accent-bg); color: var(--color-accent-text); }
+.branch-settings-source-dot,
+.branch-override-dot { flex: none; width: .4rem; height: .4rem; border-radius: 50%; background: var(--color-accent-strong); }
+
+.branch-settings-choices { display: grid; gap: .15rem; padding: .25rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-xl); background: var(--color-bg-inset); }
+.branch-settings-choice { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr) 1rem; align-items: center; gap: .65rem; padding: .42rem .6rem; border-radius: var(--radius-lg); color: var(--color-text); text-align: left; }
+.branch-settings-choice > .app-icon { width: 1rem; height: 1rem; color: var(--color-text-subtle); }
+.branch-settings-choice:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.branch-settings-choice.selected,
+.branch-settings-choice.selected:hover:not(:disabled) { background: var(--color-surface-raised); box-shadow: var(--shadow-xs), 0 0 0 1px var(--color-border); color: var(--color-text-strong); }
+.branch-settings-choice.selected > .app-icon { color: var(--color-accent); }
+.branch-settings-choice-text { display: grid; gap: .1rem; min-width: 0; }
+.branch-settings-choice-text strong { overflow: hidden; font-size: var(--font-size-base); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-choice-text span { overflow: hidden; color: var(--color-text-muted); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-radio { width: .9rem; height: .9rem; box-sizing: border-box; border: 1.5px solid var(--color-border-stronger); border-radius: 50%; transition: border-color var(--duration-fast) ease, border-width var(--duration-fast) ease; }
+.branch-settings-choice.selected .branch-settings-radio { border: .28rem solid var(--color-accent-strong); }
+.branch-settings-choice.is-full-access > .app-icon,
+.branch-settings-choice.is-full-access strong { color: var(--color-warning-text); }
+.branch-settings-choice.is-full-access.selected .branch-settings-radio { border-color: var(--color-warning); }
+
+.branch-settings-link-row { grid-template-columns: 9.5rem minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding-top: .9rem; border-top: 1px solid var(--color-border-subtle); }
+.branch-settings-summary { display: grid; gap: .1rem; min-width: 0; color: var(--color-text); font-size: var(--font-size-md); }
+.branch-settings-summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-summary small { color: var(--color-text-subtle); font-size: var(--font-size-xs); }
+.branch-settings-schedule.is-paused { color: var(--color-text-muted); }
+.branch-settings-link-row .compact-action { display: inline-flex; align-items: center; gap: .2rem; color: var(--color-accent); }
+.branch-settings-link-row .compact-action .app-icon { width: .85rem; height: .85rem; }
+.branch-settings-link-row .compact-action:hover:not(:disabled) { background: var(--color-fill-hover); }
+
+.branch-settings-footer { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; padding: .8rem 1.1rem; border-top: 1px solid var(--color-border-subtle); background: var(--color-bg-inset); }
+.branch-settings-footer button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .9rem; font-size: var(--font-size-md); }
+.branch-settings-footer button.secondary-action { margin-right: auto; color: var(--color-text-secondary); }
+.branch-settings-footer button.secondary-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
+.branch-settings-footer button:not(.secondary-action) { min-width: 5.5rem; justify-content: center; border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.branch-settings-footer button:not(.secondary-action):hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-on-accent)); color: var(--color-on-accent); }
+
+@media (width <= 560px) {
+    .branch-settings-link-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .branch-settings-link-row .branch-settings-summary { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* The composer's pickers on a branch: a dot when the branch sets the value itself, and an
+   "Inherit" row above the choices. */
+.composer-approval-trigger .branch-override-dot,
+.composer-endpoint-trigger .branch-override-dot { margin-left: -.1rem; }
+.composer-menu-separator { display: block; height: 1px; margin: .25rem .4rem; background: var(--color-border-subtle); }
+.composer-approval-menu .composer-approval-inherit > .app-icon { color: var(--color-text-subtle); }
+.composer-endpoint-inherit .composer-endpoint-default { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

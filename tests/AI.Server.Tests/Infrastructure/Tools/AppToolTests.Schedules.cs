@@ -92,7 +92,7 @@ public sealed partial class AppToolTests
 
         var set = await AppFixture.CallAsync(session, "app_schedule", new { operation = "Set", operationId = Guid.NewGuid(), settings });
         set.GetProperty("applied").GetBoolean().ShouldBeTrue();
-        set.GetProperty("effect").GetString().ShouldBe("Scheduled the chat: Every weekday at 09:00.");
+        set.GetProperty("effect").GetString().ShouldBe("Scheduled the branch: Every weekday at 09:00.");
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Kind.ShouldBe("conversation");
         chat.Messages.ShouldHaveSingleItem().Content.ShouldBe("Summarize yesterday's commits");

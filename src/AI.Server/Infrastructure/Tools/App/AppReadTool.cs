@@ -27,7 +27,10 @@ public enum AppResource
     /// <summary>The chats of one project, as summaries.</summary>
     Chats,
 
-    /// <summary>One chat's title, endpoint, branches and tool policies, without its messages.</summary>
+    /// <summary>
+    /// One chat's title, endpoint, branches and tool policies, without its messages, and the effective settings of
+    /// 'branchId' (the current branch by default) with where each comes from.
+    /// </summary>
     Chat,
 
     /// <summary>The messages of one chat, optionally only those on one branch.</summary>
@@ -88,6 +91,7 @@ public sealed class AppReadTool(
     Func<IChatRunDispatcher> runs,
     Func<IToolSessionFactory> toolSessions,
     IToolDefaultDecision toolDefaults,
+    IChatBranchSettingsResolver branchSettings,
     IAppToolReply reply) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
@@ -178,6 +182,9 @@ public sealed class AppReadTool(
             if (resource is AppResource.Chat or AppResource.Messages or AppResource.Reviews
                 && projectId == run.ProjectId && run.ChatId != Guid.Empty)
                 chatId ??= run.ChatId;
+            // A read of the run's own chat describes the settings of the branch the run is on.
+            if (resource == AppResource.Chat && chatId == run.ChatId && run.ChatId != Guid.Empty)
+                branchId ??= run.BranchId;
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, archiveScope, cancellationToken));
@@ -276,7 +283,10 @@ public sealed class AppReadTool(
                 var chat = await LoadChatAsync(projectId, chatId, cancellationToken);
                 // Messages are their own resource: a chat read would otherwise always drag the
                 // whole transcript along, and no caller asking for a title wants that.
-                return Paging.Page("Chat", [chat with { Messages = [] }], cursor, limit, reply.Json);
+                var item = JsonSerializer.SerializeToNode(chat with { Messages = [] }, reply.Json)!.AsObject();
+                item["effectiveBranchSettings"] = JsonSerializer.SerializeToNode(
+                    branchSettings.Effective(chat, branchId ?? chat.Id), reply.Json);
+                return Paging.Page("Chat", [item], cursor, limit, reply.Json);
             }
             case AppResource.Messages:
             {

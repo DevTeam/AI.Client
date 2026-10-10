@@ -66,4 +66,48 @@ public class ChatArchiveServiceTests
         repository.Verify(repo => repo.SaveAsync(chat, 3, It.IsAny<CancellationToken>()), expected ? Times.Once() : Times.Never());
         if (!expected) result.Skipped.ShouldHaveSingleItem().Reason.ShouldContain("needs attention");
     }
+
+    [Fact]
+    public async Task ShouldPermanentlyDeleteArchivedChat()
+    {
+        var (projectId, chatId, chat, repository, runs, service) = CreateDeleteScenario(archived: true, revision: 3);
+        runs.Setup(dispatcher => dispatcher.DeleteChatAsync(projectId, chatId, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatDeleteResult(true, 3));
+
+        var result = await service.DeleteAsync(projectId, new ChatArchiveDeleteRequest([new(chatId, 3)]), CancellationToken.None);
+
+        result.Changed.ShouldHaveSingleItem().ChatId.ShouldBe(chatId);
+        result.Skipped.ShouldBeEmpty();
+        runs.Verify(dispatcher => dispatcher.DeleteChatAsync(projectId, chatId, 3, It.IsAny<CancellationToken>()), Times.Once());
+    }
+
+    [Theory]
+    [InlineData(false, 3, "no longer archived")]
+    [InlineData(true, 4, "changed since")]
+    public async Task ShouldNotDeleteActiveOrChangedChat(bool archived, long listedRevision, string reason)
+    {
+        var (projectId, chatId, _, _, runs, service) = CreateDeleteScenario(archived, revision: 3);
+
+        var result = await service.DeleteAsync(projectId, new ChatArchiveDeleteRequest([new(chatId, listedRevision)]), CancellationToken.None);
+
+        result.Changed.ShouldBeEmpty();
+        result.Skipped.ShouldHaveSingleItem().Reason.ShouldContain(reason);
+        runs.Verify(dispatcher => dispatcher.DeleteChatAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never());
+    }
+
+    private static (Guid ProjectId, Guid ChatId, ChatThread Chat, Mock<IChatRepository> Repository, Mock<IChatRunDispatcher> Runs, ChatArchiveService Service)
+        CreateDeleteScenario(bool archived, long revision)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var chat = new ChatThread(new ChatId(chatId), new ProjectId(projectId), "Old conversation", now.AddDays(-60));
+        if (archived) chat.SetArchived(true, Guid.NewGuid(), now.AddDays(-1));
+        var repository = new Mock<IChatRepository>(MockBehavior.Strict);
+        repository.Setup(repo => repo.GetAsync(new ProjectId(projectId), new ChatId(chatId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StoredChat(chat, revision));
+        var runs = new Mock<IChatRunDispatcher>(MockBehavior.Strict);
+        var service = new ChatArchiveService(Mock.Of<IChatService>(), repository.Object, new ChatSynchronization(), Mock.Of<IClock>(), () => runs.Object);
+        return (projectId, chatId, chat, repository, runs, service);
+    }
 }

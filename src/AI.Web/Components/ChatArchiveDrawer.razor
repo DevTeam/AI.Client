@@ -90,7 +90,7 @@
         }
         else
         {
-            <p class="archive-intro">History, branches and settings are preserved. Sending a new message restores a chat automatically.</p>
+            <p class="archive-intro">History, branches and settings are preserved. Sending a new message restores a chat automatically. Deleting a chat from the archive removes it permanently.</p>
         }
 
         @if (!_cleanup || _preview is not null)
@@ -138,9 +138,20 @@
                                     <span title="@chat.LastActivityAt.LocalDateTime.ToString("g")">Active @Relative(chat.LastActivityAt)</span>
                                 </span>
                             </span>
-                            @if (!_cleanup)
+                            @if (!_cleanup && _confirmingDeleteId == chat.Id)
                             {
-                                <button class="icon-action archive-restore" type="button" title="Restore chat" aria-label="Restore @chat.Title" disabled="@_busy" @onclick="() => RestoreOneAsync(chat)"><AppIcon Name="reset" /></button>
+                                <span class="archive-row-confirm" role="group" aria-label="Confirm permanent deletion">
+                                    <span>Delete permanently?</span>
+                                    <button class="danger compact-action" type="button" aria-label="Delete @chat.Title permanently" disabled="@_busy" @onclick="() => DeleteOneAsync(chat)">Delete</button>
+                                    <button class="icon-action" type="button" title="Cancel" aria-label="Cancel" disabled="@_busy" @onclick="() => _confirmingDeleteId = null"><AppIcon Name="x" /></button>
+                                </span>
+                            }
+                            else if (!_cleanup)
+                            {
+                                <span class="archive-row-actions">
+                                    <button class="icon-action archive-restore" type="button" title="Restore chat" aria-label="Restore @chat.Title" disabled="@_busy" @onclick="() => RestoreOneAsync(chat)"><AppIcon Name="reset" /></button>
+                                    <button class="icon-action archive-restore archive-delete" type="button" title="Delete permanently" aria-label="Delete @chat.Title permanently" disabled="@_busy" @onclick="() => ConfirmDeleteOne(chat.Id)"><AppIcon Name="trash" /></button>
+                                </span>
                             }
                         </label>
                     }
@@ -169,17 +180,42 @@
         }
     </div>
     <footer>
+        @if (_confirmingBulkDelete && !_cleanup && _selected.Count > 0)
+        {
+            <div class="archive-footer-status archive-delete-confirm" role="alert">
+                <AppIcon Name="trash" /><span>Permanently delete @_selected.Count @Plural(_selected.Count, "chat")? This cannot be undone.</span>
+            </div>
+            <div class="archive-footer-actions">
+                <button class="compact-action" type="button" disabled="@_busy" @onclick="() => _confirmingBulkDelete = false">Cancel</button>
+                <button class="compact-action danger" type="button" disabled="@_busy" @onclick="DeleteSelectionAsync">
+                    @if (_busy) { <AppIcon Name="spinner" Class="archive-spinner" /> }
+                    else { <AppIcon Name="trash" /> }
+                    @(_busy ? "Deleting…" : "Delete permanently")
+                </button>
+            </div>
+        }
+        else
+        {
         <div class="archive-footer-status">
             @if (_undoOperation is { } operation && _notice?.Undo != operation)
             {
                 <button class="compact-action" type="button" disabled="@_busy" @onclick="() => UndoAsync(operation)"><AppIcon Name="history" />Undo last archiving</button>
             }
         </div>
-        <button class="compact-action primary" type="button" disabled="@(_busy || _previewing || _selected.Count == 0)" @onclick="ApplySelectionAsync">
-            @if (_busy) { <AppIcon Name="spinner" Class="archive-spinner" /> }
-            else { <AppIcon Name="@(_cleanup ? "archive" : "reset")" /> }
-            @(_busy ? "Working…" : (_cleanup ? "Archive" : "Restore") + (_selected.Count > 0 ? $" {_selected.Count}" : " selected"))
-        </button>
+        <div class="archive-footer-actions">
+            @if (!_cleanup && _selected.Count > 0)
+            {
+                <button class="compact-action danger" type="button" title="Permanently delete the selected chats" disabled="@_busy" @onclick="() => _confirmingBulkDelete = true">
+                    <AppIcon Name="trash" />Delete @_selected.Count
+                </button>
+            }
+            <button class="compact-action primary" type="button" disabled="@(_busy || _previewing || _selected.Count == 0)" @onclick="ApplySelectionAsync">
+                @if (_busy) { <AppIcon Name="spinner" Class="archive-spinner" /> }
+                else { <AppIcon Name="@(_cleanup ? "archive" : "reset")" /> }
+                @(_busy ? "Working…" : (_cleanup ? "Archive" : "Restore") + (_selected.Count > 0 ? $" {_selected.Count}" : " selected"))
+            </button>
+        </div>
+        }
     </footer>
 </aside>
 
@@ -195,10 +231,12 @@
     [Parameter] public EventCallback Close { get; set; }
     [Parameter] public EventCallback<Guid> Open { get; set; }
     [Parameter] public EventCallback<ChatArchiveResult> Changed { get; set; }
+    [Parameter] public EventCallback<ChatArchiveResult> Deleted { get; set; }
     [Parameter] public EventCallback SuggestionsChanged { get; set; }
     public bool IsBusy => _busy;
     private ElementReference _closeButton, _selectAll;
-    private bool _cleanup, _busy, _previewing, _includePinned, _suggestions;
+    private bool _cleanup, _busy, _previewing, _includePinned, _suggestions, _confirmingBulkDelete;
+    private Guid? _confirmingDeleteId;
     private string _age = "30", _before = "", _timeZone = "", _query = "";
     private string? _error;
     private ArchiveNotice? _notice;
@@ -259,6 +297,7 @@
     {
         if (_cleanup == cleanup) return;
         _cleanup = cleanup; _selected.Clear(); _query = ""; _visibleCount = 50; _error = null;
+        _confirmingBulkDelete = false; _confirmingDeleteId = null;
         if (cleanup && _preview is null) await RefreshPreviewAsync();
     }
 
@@ -271,11 +310,16 @@
     private Task ChangeDateAsync(ChangeEventArgs args) { _before = args.Value?.ToString() ?? ""; return RefreshPreviewAsync(); }
     private Task ChangePinnedAsync(ChangeEventArgs args) { _includePinned = args.Value is true; return RefreshPreviewAsync(); }
 
-    private void ToggleSelection(Guid id) { if (!_selected.Remove(id) && _selected.Count < SelectionLimit) _selected.Add(id); }
+    private void ToggleSelection(Guid id)
+    {
+        if (!_selected.Remove(id) && _selected.Count < SelectionLimit) _selected.Add(id);
+        _confirmingBulkDelete = false;
+    }
     private void ToggleAll()
     {
         if (SelectionState(VisibleChats) == false) { foreach (var chat in VisibleChats.Take(SelectionLimit)) _selected.Add(chat.Id); }
         else _selected.Clear();
+        _confirmingBulkDelete = false;
     }
     // true: everything that can be selected is; false: nothing is; null: some.
     private bool? SelectionState(IReadOnlyCollection<ChatSummary> items) =>
@@ -323,6 +367,19 @@
         _notice = new(Summary(result, request.IsArchived ? "archived" : "restored"), result.Skipped.Count > 0, undo);
         _selected.Clear(); _preview = null; _cleanup = false; _query = "";
         await Changed.InvokeAsync(result);
+    });
+    private void ConfirmDeleteOne(Guid id) { _confirmingDeleteId = id; _confirmingBulkDelete = false; }
+    private Task DeleteOneAsync(ChatSummary chat) => DeleteAsync([new(chat.Id, chat.Revision)]);
+    private Task DeleteSelectionAsync() =>
+        DeleteAsync(VisibleChats.Where(chat => _selected.Contains(chat.Id)).Select(chat => new ChatArchiveTarget(chat.Id, chat.Revision)).ToArray());
+    private async Task DeleteAsync(IReadOnlyList<ChatArchiveTarget> targets) => await WorkAsync(async () =>
+    {
+        var result = await ChatHistoryApi.DeleteArchivedAsync(ProjectId, new(targets), CancellationToken.None);
+        _skipped = result.Skipped;
+        _notice = new(Summary(result, "permanently deleted"), result.Skipped.Count > 0, null);
+        foreach (var target in result.Changed) _selected.Remove(target.ChatId);
+        _confirmingBulkDelete = false; _confirmingDeleteId = null;
+        await Deleted.InvokeAsync(result);
     });
     private async Task UndoAsync(Guid operation) => await WorkAsync(async () =>
     {

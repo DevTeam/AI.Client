@@ -10,6 +10,7 @@ public interface IChatHistoryApi
     Task<ChatArchivePreview> PreviewArchiveAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token);
     Task<ChatArchiveResult> ArchiveAsync(Guid projectId, ChatArchiveRequest request, CancellationToken token);
     Task<ChatArchiveResult> UndoArchiveAsync(Guid projectId, Guid operationId, CancellationToken token);
+    Task<ChatArchiveResult> DeleteArchivedAsync(Guid projectId, ChatArchiveDeleteRequest request, CancellationToken token);
     Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatTurnActivity?> GetTurnActivityAsync(Guid projectId, Guid chatId, Guid turnId, Guid branchLeafId, CancellationToken cancellationToken);

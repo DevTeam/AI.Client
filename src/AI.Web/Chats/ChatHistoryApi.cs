@@ -46,6 +46,14 @@ public sealed class ChatHistoryApi(HttpClient httpClient) : IChatHistoryApi
             ?? throw new InvalidOperationException("Archive undo response is empty.");
     }
 
+    public async Task<ChatArchiveResult> DeleteArchivedAsync(Guid projectId, ChatArchiveDeleteRequest request, CancellationToken token)
+    {
+        using var response = await httpClient.PostAsJsonAsync($"api/projects/{projectId}/chats/archive/delete", request, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatArchiveResult>(token)
+            ?? throw new InvalidOperationException("Archive delete response is empty.");
+    }
+
     public async Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
         using var response = await httpClient.GetAsync($"api/projects/{projectId}/chats/{chatId}", cancellationToken);

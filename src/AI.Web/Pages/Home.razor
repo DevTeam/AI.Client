@@ -1020,7 +1020,7 @@
 {
     <ChatArchiveDrawer @ref="_archiveDrawer" @key="archiveProject.Id" ProjectId="@archiveProject.Id" ProjectName="@archiveProject.Name"
         Chats="@_chats" StartWithCleanup="@_archiveCleanup" Close="CloseArchive"
-        Open="OpenArchivedChatAsync" Changed="ArchiveChangedAsync" SuggestionsChanged="RefreshArchiveSuggestionsAsync" />
+        Open="OpenArchivedChatAsync" Changed="ArchiveChangedAsync" Deleted="ArchiveDeletedAsync" SuggestionsChanged="RefreshArchiveSuggestionsAsync" />
 }
 
 @if (_isProjectMenuOpen && _selectedProject is not null)
@@ -5687,6 +5687,13 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedProject is { } project) await LoadChatsAsync(project.Id);
     }
 
+    private async Task ArchiveDeletedAsync(ChatArchiveResult result)
+    {
+        if (_selectedChat is { } selected && result.Changed.Any(target => target.ChatId == selected.Id)) ForgetSelectedChat();
+        await ArchiveChangedAsync(result);
+        await RefreshRecentChatsAsync();
+    }
+
     private Task ArchiveChatAsync(ChatSummary chat) => ChangeArchiveAsync(chat.ProjectId,
         new ChatArchiveRequest(true, Guid.NewGuid(), [new(chat.Id, chat.Revision)], SkipBusy: false));
 
@@ -6073,25 +6080,27 @@ else if (_guideInvitation is { } guideInvitation)
             return;
         }
 
-        if (_selectedChat?.Id == chat.Id)
-        {
-            _selectedChat = null;
-            _selectedBranchId = null;
-            _branchLeafId = null;
-            SetJustArrivedLeaf(null);
-            _wasGeneratingByBranch.Clear();
-            // An edit or fork begun in the deleted chat points at its messages; carried over, the
-            // next first message of a new chat is sent as a replacement of one that is gone.
-            ResetBranchOperationState();
-            _chat.Message = string.Empty;
-            _chatError = null;
-            _composerNeedsResize = true;
-        }
+        if (_selectedChat?.Id == chat.Id) ForgetSelectedChat();
 
         CloseContextMenus();
         if (_selectedProject?.Id == projectId) await LoadChatsAsync(projectId);
         await RefreshRecentChatsAsync();
         if (result.IsDeleted) Notifications.ShowSuccess("Chat deleted.");
+    }
+
+    private void ForgetSelectedChat()
+    {
+        _selectedChat = null;
+        _selectedBranchId = null;
+        _branchLeafId = null;
+        SetJustArrivedLeaf(null);
+        _wasGeneratingByBranch.Clear();
+        // An edit or fork begun in the deleted chat points at its messages; carried over, the
+        // next first message of a new chat is sent as a replacement of one that is gone.
+        ResetBranchOperationState();
+        _chat.Message = string.Empty;
+        _chatError = null;
+        _composerNeedsResize = true;
     }
 
     private async Task OpenProjectSettings()

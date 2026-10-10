@@ -137,6 +137,9 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapPost("/api/projects/{projectId:guid}/chats/archive",
             (Guid projectId, ChatArchiveRequest request, IChatArchiveService service, CancellationToken token) =>
                 service.ApplyAsync(projectId, request, token));
+        routes.MapPost("/api/projects/{projectId:guid}/chats/archive/delete",
+            (Guid projectId, ChatArchiveDeleteRequest request, IChatArchiveService service, CancellationToken token) =>
+                service.DeleteAsync(projectId, request, token));
         routes.MapPost("/api/projects/{projectId:guid}/chats/archive/{operationId:guid}/undo",
             (Guid projectId, Guid operationId, IChatArchiveService service, CancellationToken token) =>
                 service.UndoAsync(projectId, operationId, token));

@@ -12,6 +12,7 @@ public interface IChatArchiveService
     Task<ChatArchivePreview> PreviewAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token);
     Task<ChatArchiveResult> ApplyAsync(Guid projectId, ChatArchiveRequest request, CancellationToken token);
     Task<ChatArchiveResult> UndoAsync(Guid projectId, Guid operationId, CancellationToken token);
+    Task<ChatArchiveResult> DeleteAsync(Guid projectId, ChatArchiveDeleteRequest request, CancellationToken token);
 }
 
 /// <summary>Applies only reviewed revisions. Archive operation ids survive restart and identify exactly what Undo restores.</summary>
@@ -73,6 +74,29 @@ public sealed class ChatArchiveService(IChatService chats, IChatRepository repos
             changed.AddRange(result.Changed); skipped.AddRange(result.Skipped);
         }
         return new ChatArchiveResult(undoId, changed, skipped);
+    }
+
+    /// <summary>Permanently deletes reviewed archived chats. A chat restored or changed since it was listed is skipped.</summary>
+    public async Task<ChatArchiveResult> DeleteAsync(Guid projectId, ChatArchiveDeleteRequest request, CancellationToken token)
+    {
+        if (request.Targets is null || request.Targets.Count > 500)
+            throw new ArgumentException("Select at most 500 chats per operation.");
+        var changed = new List<ChatArchiveTarget>();
+        var skipped = new List<ChatArchiveSkip>();
+        foreach (var target in request.Targets.DistinctBy(target => target.ChatId))
+        {
+            var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(target.ChatId), token);
+            if (stored is null) { skipped.Add(new(target.ChatId, "Chat no longer exists.")); continue; }
+            if (stored.Chat.ArchivedAt is null) { skipped.Add(new(target.ChatId, "Chat is no longer archived.")); continue; }
+            if (stored.Revision != target.Revision) { skipped.Add(new(target.ChatId, "Chat changed since it was listed.")); continue; }
+            ChatDeleteResult result;
+            try { result = await runs().DeleteChatAsync(projectId, target.ChatId, target.Revision, token); }
+            catch (InvalidOperationException) { skipped.Add(new(target.ChatId, "Chat is being changed.")); continue; }
+            if (result.IsDeleted) changed.Add(target);
+            else skipped.Add(new(target.ChatId, result.Revision == 0 ? "Chat no longer exists." : "Chat changed since it was listed."));
+        }
+        // The operation id is fresh: a deletion has nothing to undo.
+        return new ChatArchiveResult(Guid.NewGuid(), changed, skipped);
     }
 
     private static bool Busy(IEnumerable<ChatRunSnapshot> snapshots, Guid chatId) => snapshots.Any(run => run.ChatId == chatId

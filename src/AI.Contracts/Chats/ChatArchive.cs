@@ -10,3 +10,4 @@ public sealed record ChatArchiveRequest(bool IsArchived, Guid OperationId, IRead
 public sealed record ChatArchiveSkip(Guid ChatId, string Reason);
 public sealed record ChatArchiveResult(Guid OperationId, IReadOnlyList<ChatArchiveTarget> Changed,
     IReadOnlyList<ChatArchiveSkip> Skipped);
+public sealed record ChatArchiveDeleteRequest(IReadOnlyList<ChatArchiveTarget> Targets);

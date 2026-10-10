@@ -80,6 +80,61 @@ public sealed class JsonChatRepositoryTests
     }
 
     [Fact]
+    public async Task ShouldReuseLoadedChatForReviewLookupsAndInvalidateAfterSave()
+    {
+        var projectId = new ProjectId(Guid.NewGuid());
+        var chatId = new ChatId(Guid.NewGuid());
+        var sourceId = new ChatMessageId(Guid.NewGuid());
+        var reviewId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var files = new MemoryFileSystem();
+        var location = new Mock<IProjectStorageLocation>();
+        location.SetupGet(item => item.RootDirectory).Returns("data");
+        var paths = new ChatStoragePaths(location.Object);
+        var chat = new ChatThread(chatId, projectId, "Chat", now);
+        chat.AddMessage(new ChatMessage(sourceId, null, ChatMessageRole.User, "Question", now,
+            resources: [new AI.Domain.Resources.ChatResource(reviewId, AI.Domain.Resources.ChatResourceKind.Review, string.Empty)]), now);
+        using var repository = new JsonChatRepository(files, paths, new ChatDocumentSerializer());
+        await repository.SaveAsync(chat, 0, CancellationToken.None);
+        await repository.GetAsync(projectId, chatId, CancellationToken.None);
+        var scheduledChat = new ChatThread(new ChatId(Guid.NewGuid()), projectId, "Scheduled", now);
+        scheduledChat.AddMessage(new ChatMessage(new ChatMessageId(Guid.NewGuid()), null,
+            ChatMessageRole.User, "Reminder", now), now);
+        await repository.SaveAsync(scheduledChat, 0, CancellationToken.None);
+        await repository.GetAsync(projectId, scheduledChat.Id, CancellationToken.None);
+        while (files.ReadPaths.TryDequeue(out _)) { }
+
+        (await repository.GetMessageAsync(projectId, chatId, sourceId, CancellationToken.None))!
+            .Message!.Content.ShouldBe("Question");
+        (await repository.MayContainReviewReferenceAsync(projectId, chatId, reviewId,
+            CancellationToken.None)).ShouldBe(true);
+        (await repository.MayContainReviewReferenceAsync(projectId, chatId, Guid.NewGuid(),
+            CancellationToken.None)).ShouldBe(false);
+        files.ReadPaths.ShouldBeEmpty();
+
+        chat.RemoveReviewReferences(reviewId, now.AddSeconds(1)).ShouldBeTrue();
+        (await repository.SaveAsync(chat, 1, CancellationToken.None)).IsSaved.ShouldBeTrue();
+        while (files.ReadPaths.TryDequeue(out _)) { }
+
+        (await repository.MayContainReviewReferenceAsync(projectId, chatId, reviewId,
+            CancellationToken.None)).ShouldBe(false);
+        files.ReadPaths.ShouldContain(paths.GetChatPath(chatId, projectId));
+
+        await repository.GetAsync(projectId, chatId, CancellationToken.None);
+        while (files.ReadPaths.TryDequeue(out _)) { }
+        var nextId = new ChatMessageId(Guid.NewGuid());
+        chat.AddMessage(new ChatMessage(nextId, sourceId, ChatMessageRole.Assistant, "Answer",
+            now.AddSeconds(2)), now.AddSeconds(2));
+        using var otherRepository = new JsonChatRepository(files, paths, new ChatDocumentSerializer());
+        (await otherRepository.SaveAsync(chat, 2, CancellationToken.None)).IsSaved.ShouldBeTrue();
+        while (files.ReadPaths.TryDequeue(out _)) { }
+
+        (await repository.GetMessageAsync(projectId, chatId, nextId, CancellationToken.None))!
+            .Message!.Content.ShouldBe("Answer");
+        files.ReadPaths.ShouldContain(paths.GetChatPath(chatId, projectId));
+    }
+
+    [Fact]
     public async Task ShouldMigrateBranchCountForAnOlderSummary()
     {
         var projectId = new ProjectId(Guid.NewGuid());

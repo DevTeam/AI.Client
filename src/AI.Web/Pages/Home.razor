@@ -4264,7 +4264,8 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task SelectChatAsync(Guid chatId)
     {
         await CloseReviewAsync();
-        _reviewChat = null;
+        if (_reviewChat?.Id != chatId || _reviewChat.ProjectId != _selectedProject?.Id)
+            _reviewChat = null;
         _attachComposer = true;
         ResetBranchOperationState();
         CloseContextMenus();
@@ -5441,7 +5442,6 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (_selectedProject is null || _selectedChat is null) return;
         await CloseReviewAsync();
-        _reviewChat = null;
         ResetBranchOperationState();
 
         // A branch is a transcript too, so switching to one is superseded by the next click the
@@ -6881,8 +6881,11 @@ else if (_guideInvitation is { } guideInvitation)
             if (_selectedChat?.Id == chatId)
             {
                 RemoveReviewFromDraft(reviewId);
-                var refreshed = await ChatHistoryApi.GetAsync(ownerProjectId, chatId, CancellationToken.None);
-                if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+                if (HasReviewReference(_selectedChat, reviewId))
+                {
+                    var refreshed = await ChatHistoryApi.GetAsync(ownerProjectId, chatId, CancellationToken.None);
+                    if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+                }
                 if (_reviewStartId == reviewId) CloseReview();
             }
             if (notify) Notifications.ShowSuccess("Review deleted.");
@@ -6960,11 +6963,18 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedChat?.Id == chatId && _selectedProject?.Id == projectId)
         {
             _draftResources.RemoveAll(item => deletedIds.Contains(item.Id));
-            var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
-            if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+            if (deletedIds.Any(id => HasReviewReference(_selectedChat, id)))
+            {
+                var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
+                if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+            }
         }
         return kept;
     }
+
+    private static bool HasReviewReference(ChatDetails chat, Guid reviewId) =>
+        chat.Messages.Any(message => message.Resources?.Any(resource =>
+            resource.Kind == ChatResourceKind.Review && resource.Id == reviewId) == true);
 
     private async Task OpenReviewAsync(Guid id)
     {
@@ -7042,6 +7052,8 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedProject is null || _selectedChat is null) return false;
         var projectId = _selectedProject.Id;
         var chatId = _selectedChat.Id;
+        if (_reviewChat is { } cached && cached.ProjectId == projectId && cached.Id == chatId
+            && cached.Revision == _selectedChat.Revision) return true;
         try
         {
             var full = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);

@@ -51,6 +51,8 @@ public sealed partial class ChatExecutionTests
             new SetChatScheduleRequest(Settings(retry: null)), CancellationToken.None);
         branchView!.BranchId.ShouldBe(branchId);
         (await fixture.Schedules.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.Schedule.ShouldBeNull();
+        (await fixture.Schedules.ListAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
+            .Select(view => view.BranchId).ShouldBe([branchId]);
         var due = branchView.Schedule!.NextRunAt!.Value;
 
         await fixture.SchedulePass.ProcessAsync(fixture.ProjectId, fixture.ChatId, branchId, due, CancellationToken.None);

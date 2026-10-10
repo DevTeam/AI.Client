@@ -178,6 +178,19 @@ owner's recent runs with outcomes and opens a run branch while it exists. Branch
 the run branches in the ordinary branch tree. The existing chat and branch cleanup actions remove
 their schedules with them.
 
+Schedules are not inherited, so the widget always says whose schedule it shows:
+
+- When the chat has more than one schedule, or a branch other than the main one is open, a chip
+  names the branch that owns the schedule (also in the editor's heading).
+- On a run branch, or a branch forked from one, a card above everything says "Run #N of the
+  schedule on …" with the run's outcome, moment and summary, and **Open its schedule** goes to the
+  owner. A run branch can still get a schedule of its own.
+- Under the open branch's schedule (or its invitation to schedule), "Other schedules in this chat"
+  lists every other branch's schedule with its recurrence and countdown or state; a click opens
+  that branch. The list comes from `GET /api/projects/{projectId}/chats/{chatId}/schedules`
+  (`IChatScheduleService.ListAsync`), the main branch first.
+- Scheduling a branch starts from its own first request rather than the chat's.
+
 ## In the sidebar
 
 The sidebar's **Scheduled** section lists branch schedules the Host will act on within the next

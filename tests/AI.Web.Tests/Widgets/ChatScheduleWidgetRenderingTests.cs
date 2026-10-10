@@ -136,6 +136,43 @@ public sealed class ChatScheduleWidgetRenderingTests
         text.ShouldContain("time-picker");
     }
 
+    [Fact]
+    public async Task ARunBranchShouldSayWhichScheduleItIsARunOf()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var schedule = new ChatSchedule(Settings(), NextRunAt: now.AddHours(3), RunNumber: 2, Runs:
+        [
+            new ScheduleRunRecord(Guid.NewGuid(), RunBranch, 2, now.AddHours(-1), now.AddHours(-1), 1, ScheduleRunStatus.Failed,
+                FinishedAt: now.AddHours(-1), Summary: "Two tests failed")
+        ]);
+
+        var text = WebUtility.HtmlDecode(await RenderWidgetAsync(Chat("conversation", schedule), RunBranch));
+
+        text.ShouldContain("Run #2 of the schedule on");
+        text.ShouldContain("Main branch");
+        text.ShouldContain("Two tests failed");
+        text.ShouldContain("Open its schedule");
+        text.ShouldContain("Schedules are never inherited");
+        // The owner's schedule is the card above, not repeated as one of the others.
+        text.ShouldNotContain("Other schedules in this chat");
+    }
+
+    [Fact]
+    public async Task AnUnscheduledBranchShouldListTheChatsSchedules()
+    {
+        var plain = Guid.NewGuid();
+        var schedule = new ChatSchedule(Settings(), NextRunAt: DateTimeOffset.UtcNow.AddHours(3), Runs: []);
+        var chat = Chat("conversation", schedule);
+        chat = chat with { Branches = [.. chat.Branches!, new ChatBranchView(plain, null, "Ideas", ChatId)] };
+
+        var text = WebUtility.HtmlDecode(await RenderWidgetAsync(chat, plain));
+
+        text.ShouldContain("Schedule this branch");
+        text.ShouldContain("Schedules in this chat");
+        text.ShouldContain("Main branch");
+        text.ShouldContain("Every weekday at 09:00");
+    }
+
     private static ChatScheduleSettings Settings() => new(
         "Check the nightly build",
         new ScheduleRecurrence(ScheduleFrequency.Daily, "2030-01-07", "09:00",
@@ -150,7 +187,7 @@ public sealed class ChatScheduleWidgetRenderingTests
         [new ChatBranchView(ChatId, null, "Nightly"), new ChatBranchView(RunBranch, null, "#2 · run", ChatId)],
         Kind: kind, KindState: schedule is null ? null : JsonSerializer.SerializeToElement(schedule, Json));
 
-    private static Task<string> RenderWidgetAsync(ChatDetails chat)
+    private static Task<string> RenderWidgetAsync(ChatDetails chat, Guid? branchId = null)
     {
         var definition = new ChatWidgetCatalog(new AppNavigationTargets()).Find(ChatWidgetCatalog.ChatSchedule)!;
         var widget = new ChatWidgetContext(definition, new(definition.Id), () => Task.CompletedTask, () => Task.CompletedTask,
@@ -158,7 +195,8 @@ public sealed class ChatScheduleWidgetRenderingTests
         return RenderAsync<ChatScheduleWidget>(new Dictionary<string, object?>
         {
             [nameof(ChatScheduleWidget.Widget)] = widget,
-            [nameof(ChatScheduleWidget.Chat)] = chat
+            [nameof(ChatScheduleWidget.Chat)] = chat,
+            [nameof(ChatScheduleWidget.BranchId)] = branchId
         });
     }
 
@@ -173,8 +211,12 @@ public sealed class ChatScheduleWidgetRenderingTests
         if (parameters.GetValueOrDefault(nameof(ChatScheduleWidget.Chat)) is ChatDetails chat)
         {
             var schedule = chat.KindState?.Deserialize<ChatSchedule>(Json);
-            scheduleApi.Setup(api => api.GetAsync(chat.ProjectId, chat.Id, chat.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new ChatScheduleView(chat.ProjectId, chat.Id, chat.Kind, schedule, null));
+            scheduleApi.Setup(api => api.GetAsync(chat.ProjectId, chat.Id, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid _, Guid _, Guid branch, CancellationToken _) =>
+                    new ChatScheduleView(chat.ProjectId, chat.Id, chat.Kind, branch == chat.Id ? schedule : null, null, BranchId: branch));
+            scheduleApi.Setup(api => api.ListAsync(chat.ProjectId, chat.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(schedule is null ? [] : [new ChatScheduleView(chat.ProjectId, chat.Id, chat.Kind, schedule,
+                    "Every weekday at 09:00", BranchId: chat.Id)]);
         }
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(new ApiOverrideProvider(services, scheduleApi.Object), NullLoggerFactory.Instance);

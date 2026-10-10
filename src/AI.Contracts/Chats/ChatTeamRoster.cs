@@ -34,6 +34,7 @@ public sealed record ChatTeamReport(Guid MessageId, string? Intent, string Text,
 /// A question or blocker of this teammate that the lead has not answered: nothing reached its
 /// branch from the lead after it. For the lead, null; its open items are the teammates' ones.
 /// </param>
+/// <param name="SubTeam">How many teammates of its own this teammate leads; 0 for the lead and for most teammates.</param>
 public sealed record ChatTeamMember(
     Guid BranchId,
     string Name,
@@ -44,20 +45,34 @@ public sealed record ChatTeamMember(
     ChatTeamMemberState State,
     ChatTeamReport? LastReport,
     int Reports,
-    ChatTeamReport? Open);
+    ChatTeamReport? Open,
+    int SubTeam = 0);
+
+/// <summary>The team a nested team's lead is itself a member of.</summary>
+/// <param name="LeadBranchId">The branch of that team's lead.</param>
+/// <param name="LeadName">How that lead is named: a teammate's name, or "the main branch".</param>
+public sealed record ChatTeamParent(Guid LeadBranchId, string LeadName);
 
 /// <summary>
 /// The whole team of a chat, the same whichever branch is open: the task as the person gave it, the
 /// charter the lead wrote, and every member with its state, its latest report and what it waits for.
 /// </summary>
-/// <param name="Task">The person's first message on the main branch: the task the team works on.</param>
-/// <param name="Charter">The lead's latest "Team charter" message on the main branch.</param>
+/// <param name="Task">
+/// The task the team works on: the person's first message on the main branch, or for a nested team
+/// the brief its lead was given.
+/// </param>
+/// <param name="Charter">The lead's latest "Team charter" message on its own branch.</param>
 /// <param name="Members">The lead first, then the teammates in the order they were started.</param>
+/// <param name="Parent">For a nested team, the team its lead belongs to; null for the chat's top team.</param>
 public sealed record ChatTeamRoster(
     ChatTeamReport? Task,
     ChatTeamReport? Charter,
-    IReadOnlyList<ChatTeamMember> Members)
+    IReadOnlyList<ChatTeamMember> Members,
+    ChatTeamParent? Parent = null)
 {
+    /// <summary>The branch the team's task and charter live on.</summary>
+    public Guid? LeadBranchId => Members.Count == 0 ? null : Members[0].BranchId;
+
     public static ChatTeamRoster Empty { get; } = new(null, null, []);
 
     /// <summary>A chat is a team once it has at least one teammate's branch.</summary>
@@ -99,9 +114,17 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
             : branches.FirstOrDefault(branch => branch.Id == current)?.ParentBranchId ?? chat.Id;
         var teammates = branches.Where(branch => branch.ParentBranchId == leadId && branch.Member is not null).ToArray();
         if (teammates.Length == 0) return ChatTeamRoster.Empty;
-        var main = Chain(byId, branches.SingleOrDefault(branch => branch.Id == leadId)?.HeadMessageId);
+        var leadBranch = branches.SingleOrDefault(branch => branch.Id == leadId);
+        var chain = Chain(byId, leadBranch?.HeadMessageId);
+        // A nested lead's own messages start at its branch's root, the brief its own lead sent; what
+        // came before belongs to the team above.
+        var nested = leadId != chat.Id;
+        var main = nested && leadBranch?.RootMessageId is { } leadRoot && chain.Any(message => message.Id == leadRoot)
+            ? chain.SkipWhile(message => message.Id != leadRoot).ToList()
+            : chain;
 
-        var task = main.FirstOrDefault(message => message is { Role: "User", Sender: null, Delivery: MessageDelivery.Turn });
+        var task = nested ? main.FirstOrDefault(message => message.Role == "User")
+            : main.FirstOrDefault(message => message is { Role: "User", Sender: null, Delivery: MessageDelivery.Turn });
         var charter = main.LastOrDefault(message => message.Role == "User" && FirstLine(message.Content)
             .StartsWith("Team charter", StringComparison.OrdinalIgnoreCase));
         var reports = main
@@ -109,10 +132,12 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
             .GroupBy(message => message.Sender!.BranchId)
             .ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
 
+        // A nested lead keeps its identity: it is a teammate above and the lead here.
+        var leadIdentity = nested ? leadBranch?.Member : null;
         var members = new List<ChatTeamMember>
         {
-            new(leadId, "Lead", "Coordinator", null, true, current == leadId, State(Run(runs, leadId), null), null,
-                0, null)
+            new(leadId, leadIdentity?.Name ?? "Lead", leadIdentity?.Role ?? "Coordinator", leadIdentity, true, current == leadId,
+                State(Run(runs, leadId), null), null, 0, null)
         };
         foreach (var branch in teammates
                      .OrderBy(branch => branch.RootMessageId is { } root && byId.TryGetValue(root, out var first)
@@ -129,10 +154,19 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
             var asked = sent.LastOrDefault(message => message.Sender!.Intent is "question" or "blocker");
             var open = asked is not null && asked.CreatedAt > fromLead ? Report(asked) : null;
             members.Add(new ChatTeamMember(branch.Id, branch.Member!.Name, branch.Member.Role, branch.Member, false,
-                current == branch.Id, State(Run(runs, branch.Id), last), last, sent.Length, open));
+                current == branch.Id, State(Run(runs, branch.Id), last), last, sent.Length, open,
+                branches.Count(item => item.ParentBranchId == branch.Id && item.Member is not null)));
         }
 
-        return new ChatTeamRoster(task is null ? null : Report(task), charter is null ? null : Report(charter), members);
+        ChatTeamParent? parent = null;
+        if (leadIdentity is not null)
+        {
+            var above = leadBranch!.ParentBranchId ?? chat.Id;
+            var aboveBranch = branches.FirstOrDefault(branch => branch.Id == above);
+            parent = new ChatTeamParent(above, aboveBranch?.Member?.Name
+                ?? (above == chat.Id ? "the main branch" : aboveBranch?.Title ?? "a branch"));
+        }
+        return new ChatTeamRoster(task is null ? null : Report(task), charter is null ? null : Report(charter), members, parent);
     }
 
     private static ChatRunSnapshot? Run(IReadOnlyList<ChatRunSnapshot> runs, Guid branchId) =>

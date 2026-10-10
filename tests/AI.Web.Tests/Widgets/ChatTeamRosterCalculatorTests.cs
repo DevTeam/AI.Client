@@ -94,6 +94,18 @@ public sealed class ChatTeamRosterCalculatorTests
         roster.Members[1].IsCurrent.ShouldBeTrue();
         roster.Members[1].LastReport!.Text.ShouldBe("Investigation complete.");
         roster.Charter!.MessageId.ShouldBe(charter.Id);
+        // The nested lead keeps its identity, its task is the brief it was given, and the team above is named.
+        roster.Members[0].Name.ShouldBe("Ada");
+        roster.Members[0].Identity.ShouldNotBeNull();
+        roster.Task!.Text.ShouldBe("You are Ada · Backend.");
+        roster.LeadBranchId.ShouldBe(ada);
+        roster.Parent.ShouldBe(new ChatTeamParent(chat.Id, "the main branch"));
+
+        // Seen from the top team, Ada is a teammate who leads a team of one.
+        var top = new ChatTeamRosterCalculator().Calculate(chat, [], chat.Id);
+        top.Parent.ShouldBeNull();
+        top.Members.Single(member => member.BranchId == ada).SubTeam.ShouldBe(1);
+        top.Members[0].Name.ShouldBe("Lead");
     }
 
     [Fact]

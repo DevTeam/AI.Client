@@ -76,6 +76,17 @@ public sealed class ChatTeamWidgetRenderingTests
         text.ShouldNotContain("Branches that send team messages into this one appear here.");
     }
 
+    [Fact]
+    public async Task TheLeadShouldWearARingLikeTheTeammatesDots()
+    {
+        var (chat, ada, _, _, _) = ChatTeamRosterCalculatorTests.Team();
+
+        var html = await RenderAsync([], chat.Branches, chat, ada);
+
+        html.ShouldContain("member-dot is-lead");
+        html.ShouldNotContain("chat-team-mark\" aria-hidden=\"true\"><svg");
+    }
+
     private static async Task<string> RenderAsync(IReadOnlyList<ChatMessageView> messages,
         IReadOnlyList<ChatBranchView>? branches, ChatDetails? chat = null, Guid? selectedBranchId = null,
         IReadOnlyList<AI.Contracts.Runs.ChatRunSnapshot>? runs = null)

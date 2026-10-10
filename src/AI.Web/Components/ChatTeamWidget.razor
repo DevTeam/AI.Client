@@ -48,8 +48,7 @@
                         <button class="chat-team-row @(member.IsCurrent ? "is-current" : null)" type="button" title="@MemberTitle(member)"
                                 aria-current="@(member.IsCurrent ? "true" : null)" @onclick="() => OnOpenBranch.InvokeAsync(member.BranchId)">
                             <span class="chat-team-mark" aria-hidden="true">
-                                @if (member.Identity is { Swatch: not null } identity) { <MemberDot Member="identity" /> }
-                                else { <AppIcon Name="users" /> }
+                                <MemberDot Member="member.Identity" Lead="member.IsLead" />
                             </span>
                             <span class="chat-team-body">
                                 <span class="chat-team-title">
@@ -61,7 +60,8 @@
                                     <span class="@StateClass(member.State)">@StateLabel(member.State)</span>
                                     @if (member.LastReport is { } report)
                                     {
-                                        <span class="chat-team-report"><span class="@IntentClass(report.Intent)">@IntentLabel(report.Intent)</span> · @report.Text</span>
+                                        @* A done report already reads as the Done state; the intent word would only repeat it. *@
+                                        <span class="chat-team-report">@if (!(member.State == ChatTeamMemberState.Done && report.Intent == "done")) { <span class="@IntentClass(report.Intent)">@IntentLabel(report.Intent)</span>@(" · ") }@report.Text</span>
                                     }
                                     else if (member.IsLead && _roster.Open > 0)
                                     {

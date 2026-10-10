@@ -3,7 +3,7 @@ id: chat-archive
 name: Chat archive
 icon: archive
 kind: playbook
-description: Archive or restore named chats, clean up a project's old conversations by date and time, or undo a specific archive operation while preserving history and branches.
+description: Archive or restore named chats, clean up a project's old conversations by date and time, or undo a specific archive operation while preserving history and branches, and then offer, after the person's confirmation, to delete this chat when it did nothing but that work.
 aliases: ["archive"]
 parameters: {"type":"object","properties":{"action":{"type":"string","enum":["archive","restore","cleanup","undo"]},"projectId":{"type":"string","format":"uuid"},"chatId":{"type":"string","format":"uuid"},"before":{"type":"string","format":"date-time","description":"Exclusive last-activity cutoff with an explicit timezone offset"},"archiveOperationId":{"type":"string","format":"uuid"}},"additionalProperties":false}
 tools: ["app_read","ask_user","app_chats"]
@@ -41,3 +41,12 @@ tools: ["app_read","ask_user","app_chats"]
 7. Report changed and skipped counts and their reasons. After archiving, include the operationId
    so the user can request undo later, including after restarting. Archive reads and searches use
    archiveScope Archived or All. Opening a chat leaves it archived; a new user message restores it.
+8. Only when this work ran in a chat: once it is finished and reported, check with app_read Messages
+   whether this chat did anything besides it. When the chat holds nothing but the archive request and
+   its report, ask once through ask_user whether to delete this chat, saying that deletion removes it
+   together with all its branches and its whole history, and that a dismissed, expired, interrupted
+   or unanswered question keeps the chat. On an affirmative answer, read this chat with app_read Chat
+   for its revision, then call app_chats Delete with projectId, this chatId, that revision, a fresh
+   operationId and dryRun false; when the application refuses the deletion, report that and leave the
+   chat. When the chat did anything else, when another run of it is still working, or when the answer
+   is anything but affirmative, keep the chat and say so in one line.

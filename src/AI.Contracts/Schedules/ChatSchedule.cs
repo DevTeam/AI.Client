@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 /// <summary>How often a schedule fires. New values go at the end: the names are stored in chat state.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ScheduleFrequency>))]
-public enum ScheduleFrequency { Once, Hourly, Daily, Weekly, Monthly, Yearly }
+public enum ScheduleFrequency { Once, Hourly, Daily, Weekly, Monthly, Yearly, Minutely }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ScheduleWeekday>))]
 public enum ScheduleWeekday { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
@@ -19,8 +19,8 @@ public sealed record ScheduleMonthWeekday(int Ordinal, ScheduleWeekday Day);
 /// and in an answer to a picker, and never depends on the culture that wrote it.
 /// </summary>
 /// <param name="Start">The first date the schedule may fire; for <see cref="ScheduleFrequency.Once"/> the date it fires.</param>
-/// <param name="Time">The time of day it fires; for <see cref="ScheduleFrequency.Hourly"/> the first firing.</param>
-/// <param name="Interval">Every N hours, days, weeks, months or years; ignored by Once.</param>
+/// <param name="Time">The time of day it fires; for Minutely and Hourly, the first firing.</param>
+/// <param name="Interval">Every N minutes, hours, days, weeks, months or years; ignored by Once.</param>
 /// <param name="Weekdays">Weekly: the days it fires. Daily: limits firing to these days (interval 1 only).</param>
 /// <param name="MonthDay">Monthly and Yearly: day of the month, 1–31, or -1 for the last day. A month too short fires on its last day.</param>
 /// <param name="MonthWeekday">Monthly: fires on a counted weekday instead of a day number.</param>

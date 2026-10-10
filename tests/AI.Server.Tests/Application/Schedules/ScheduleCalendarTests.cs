@@ -77,6 +77,43 @@ public sealed class ScheduleCalendarTests
     }
 
     [Fact]
+    public void ShouldFireEveryFewMinutesWithoutWalkingFromTheStart()
+    {
+        var minutely = new ScheduleRecurrence(ScheduleFrequency.Minutely, "2020-01-01", "00:02", Interval: 5);
+
+        _calendar.Upcoming(minutely, "UTC", Utc(2030, 1, 1, 1, 2), 3)
+            .ShouldBe([Utc(2030, 1, 1, 1, 7), Utc(2030, 1, 1, 1, 12), Utc(2030, 1, 1, 1, 17)]);
+        _descriptions.Describe(minutely).ShouldBe("Every 5 minutes from 00:02");
+        _descriptions.Describe(minutely with { Interval = 1 }).ShouldBe("Every minute from 00:02");
+    }
+
+    [Fact]
+    public void ShouldApplyCountAndLastDateToMinuteOccurrences()
+    {
+        var counted = new ScheduleRecurrence(ScheduleFrequency.Minutely, "2030-01-01", "23:58", Count: 3);
+        _calendar.Upcoming(counted, "UTC", Utc(2030, 1, 1, 23, 57), 5)
+            .ShouldBe([Utc(2030, 1, 1, 23, 58), Utc(2030, 1, 1, 23, 59), Utc(2030, 1, 2)]);
+        _calendar.NextAfter(counted, "UTC", Utc(2030, 1, 2)).ShouldBeNull();
+
+        var until = counted with { Count = null, Until = "2030-01-01" };
+        _calendar.Upcoming(until, "UTC", Utc(2030, 1, 1, 23, 57), 5)
+            .ShouldBe([Utc(2030, 1, 1, 23, 58), Utc(2030, 1, 1, 23, 59)]);
+    }
+
+    [Fact]
+    public void ShouldKeepMinuteIntervalsAcrossARepeatedClockHour()
+    {
+        var minutely = new ScheduleRecurrence(ScheduleFrequency.Minutely, "2030-10-27", "02:58");
+        var zone = _calendar.FindTimeZone("Europe/Berlin").ShouldNotBeNull();
+        var after = new DateTimeOffset(2030, 10, 27, 2, 58, 0, TimeSpan.FromHours(2));
+
+        _calendar.Upcoming(minutely, zone.Id, after, 3)
+            .ShouldBe([new DateTimeOffset(2030, 10, 27, 2, 59, 0, TimeSpan.FromHours(2)),
+                new DateTimeOffset(2030, 10, 27, 2, 0, 0, TimeSpan.FromHours(1)),
+                new DateTimeOffset(2030, 10, 27, 2, 1, 0, TimeSpan.FromHours(1))]);
+    }
+
+    [Fact]
     public void ShouldKeepTheWallClockTimeAcrossADaylightSavingChange()
     {
         var daily = new ScheduleRecurrence(ScheduleFrequency.Daily, "2030-03-30", "09:00");
@@ -125,6 +162,9 @@ public sealed class ScheduleCalendarTests
         var recurrence = SchedulePickers.Normalize("recurrence",
             "{ \"frequency\": \"Weekly\", \"start\": \"2030-01-07\", \"time\": \"09:00\", \"weekdays\": [\"Monday\"] }", _calendar);
         recurrence.ShouldBe("{\"frequency\":\"Weekly\",\"start\":\"2030-01-07\",\"time\":\"09:00\",\"interval\":1,\"weekdays\":[\"Monday\"]}");
+        var minutely = SchedulePickers.Normalize("recurrence",
+            "{ \"frequency\": \"Minutely\", \"start\": \"2030-01-07\", \"time\": \"09:00\", \"interval\": 5 }", _calendar);
+        minutely.ShouldBe("{\"frequency\":\"Minutely\",\"start\":\"2030-01-07\",\"time\":\"09:00\",\"interval\":5}");
     }
 
     [Fact]

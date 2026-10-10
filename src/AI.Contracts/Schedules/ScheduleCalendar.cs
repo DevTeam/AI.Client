@@ -63,6 +63,21 @@ public sealed class ScheduleCalendar : IScheduleCalendar
         var zone = FindTimeZone(timeZone) ?? TimeZoneInfo.Local;
         var result = new List<DateTimeOffset>(count);
         DateOnly? last = recurrence.Until is { } until ? ParseDate(until) : null;
+        if (recurrence.Frequency is ScheduleFrequency.Minutely or ScheduleFrequency.Hourly)
+        {
+            var first = ToMoment(ParseDate(recurrence.Start).ToDateTime(ParseTime(recurrence.Time)), zone);
+            var step = recurrence.Frequency == ScheduleFrequency.Minutely
+                ? TimeSpan.FromMinutes(recurrence.Interval) : TimeSpan.FromHours(recurrence.Interval);
+            var skip = after > first ? (long)Math.Floor((after - first) / step) : 0;
+            for (var index = skip; result.Count < count; index++)
+            {
+                if (recurrence.Count is { } total && index >= total) break;
+                var moment = first + step * index;
+                if (last is { } lastDate && DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(moment, zone).DateTime) > lastDate) break;
+                if (moment > after) result.Add(moment);
+            }
+            return result;
+        }
         foreach (var (local, index) in Occurrences(recurrence, zone, after))
         {
             if (recurrence.Count is { } total && index >= total) break;
@@ -76,8 +91,7 @@ public sealed class ScheduleCalendar : IScheduleCalendar
     }
 
     /// <summary>
-    /// Occurrences in local time with their position from the start, in order. Hourly firings are
-    /// counted from the first so a long-running schedule is not walked hour by hour from its start.
+    /// Occurrences in local time with their position from the start, in order.
     /// </summary>
     private static IEnumerable<(DateTime Time, int Index)> Occurrences(ScheduleRecurrence recurrence, TimeZoneInfo zone, DateTimeOffset after)
     {
@@ -89,17 +103,6 @@ public sealed class ScheduleCalendar : IScheduleCalendar
             case ScheduleFrequency.Once:
                 yield return (start.ToDateTime(time), 0);
                 yield break;
-            case ScheduleFrequency.Hourly:
-            {
-                var first = ToMoment(start.ToDateTime(time), zone);
-                var step = TimeSpan.FromHours(interval);
-                var skip = after > first ? (int)Math.Min(int.MaxValue - 1, Math.Floor((after - first) / step)) : 0;
-                // An hour the clocks repeat maps back to its first pass; the duplicate is then not
-                // after the previous firing and is skipped.
-                for (var index = skip; index < skip + MaxSteps; index++)
-                    yield return (TimeZoneInfo.ConvertTime(first + step * index, zone).DateTime, index);
-                yield break;
-            }
             case ScheduleFrequency.Daily:
             {
                 var days = recurrence.Weekdays is { Count: > 0 } weekdays ? weekdays.ToHashSet() : null;

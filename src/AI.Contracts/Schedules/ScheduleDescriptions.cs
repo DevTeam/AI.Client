@@ -29,6 +29,7 @@ public sealed class ScheduleDescriptions : IScheduleDescriptions
         {
             ScheduleFrequency.Once => ScheduleCalendar.TryParseDate(recurrence.Start, out var date)
                 ? $"Once on {date.ToString("ddd d MMM yyyy", Culture)}{at}" : $"Once{at}",
+            ScheduleFrequency.Minutely => (every ? $"Every {recurrence.Interval} minutes" : "Every minute") + $" from {recurrence.Time}",
             ScheduleFrequency.Hourly => (every ? $"Every {recurrence.Interval} hours" : "Every hour") + $" from {recurrence.Time}",
             ScheduleFrequency.Daily when recurrence.Weekdays is { Count: > 0 } days => $"Every {Days(days)}{at}",
             ScheduleFrequency.Daily => (every ? $"Every {recurrence.Interval} days" : "Every day") + at,

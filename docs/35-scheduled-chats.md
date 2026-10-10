@@ -30,7 +30,7 @@ chat's synchronization lease and an atomic file replacement. The types live in
 
 | Type | Holds |
 | --- | --- |
-| `ScheduleRecurrence` | `frequency` (Once, Hourly, Daily, Weekly, Monthly, Yearly), `start` (`yyyy-MM-dd`), `time` (`HH:mm`), `interval`, `weekdays`, `monthDay` (1–31, -1 last), `monthWeekday` (`{ordinal 1–4 or -1, day}`), `until`, `count` |
+| `ScheduleRecurrence` | `frequency` (Once, Minutely, Hourly, Daily, Weekly, Monthly, Yearly), `start` (`yyyy-MM-dd`), `time` (`HH:mm`), `interval` (1–999 units, including minutes for Minutely), `weekdays`, `monthDay` (1–31, -1 last), `monthWeekday` (`{ordinal 1–4 or -1, day}`), `until`, `count` |
 | `ChatScheduleSettings` | `task`, `recurrence`, `timeZone` (accepted as an IANA or Windows id, stored and read back as IANA: the browser does not know Windows ids), `successCriteria`, `retry`, `retention`, `deletion` |
 | `ScheduleRetry` | `maxAttempts` (1–10 retries after the first attempt), `delayMinutes`, `condition` in the user's words |
 | `ScheduleBranchRetention` | One `ScheduleRetentionRule` (`Keep` or `Delete` after `delayMinutes`, 0 = at the next pass) per outcome: `succeeded`, `failed`, `blocked` |
@@ -38,8 +38,10 @@ chat's synchronization lease and an atomic file replacement. The types live in
 | `ChatSchedule` | `settings`, `paused`, `revision`, `nextRunAt`, `retryAt`, `runRequestedAt`, `runNumber`, `runs` (the last 50 `ScheduleRunRecord`s) |
 | `ScheduleRunRecord` | number, branch, occurrence, start, attempt, status (Running, Blocked, Succeeded, Failed, Skipped, Missed), manual, finish, the outcome the run reported, summary, branch deletion |
 
-Wall-clock times are in the schedule's time zone. A time the clocks skip fires when they resume; an
-hour they repeat fires the first time round. A month too short for `monthDay` fires on its last day.
+Wall-clock times are in the schedule's time zone. Minutely and Hourly intervals run from the first
+firing as elapsed time, including across daylight saving changes. For calendar-based schedules, a
+time the clocks skip fires when they resume and an hour they repeat fires the first time round.
+A month too short for `monthDay` fires on its last day.
 `IScheduleCalendar` computes occurrences and validates settings; `IScheduleDescriptions` says them in
 words ("Every weekday at 09:00") and names run branches. `IChatScheduleStore` turns every
 schedule write into a function of the latest stored schedule, so
@@ -241,7 +243,7 @@ demo only while it is still a demo with nothing written in it.
 ## Verification
 
 - `ScheduleCalendarTests`: weekdays, every other week, last day and last weekday of a month, short
-  months, `until`/`count`, hourly arithmetic, daylight saving, validation, picker value spelling and
+  months, `until`/`count`, minute and hourly arithmetic, daylight saving, validation, picker value spelling and
   run titles.
 - `ChatExecutionTests.Schedules`: through the shipped graph — a conversation becomes scheduled, a pass
   forks from the end, a reported success deletes the branch by rule, a run without a report fails,

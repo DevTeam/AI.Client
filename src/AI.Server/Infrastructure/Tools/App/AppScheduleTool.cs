@@ -53,7 +53,7 @@ public sealed class AppScheduleTool(IChatScheduleService schedules, IAppWrites w
                               + "from its current head and the run carries out 'settings.task'. projectId, chatId and branchId "
                               + "default to the current branch. Set creates or replaces only that branch's schedule; "
                               + "an empty main branch gets the task as its first message. settings.recurrence is "
-                              + "{frequency: Once|Hourly|Daily|Weekly|Monthly|Yearly, start:'yyyy-MM-dd', time:'HH:mm', interval, weekdays:[Monday…], "
+                              + "{frequency: Once|Minutely|Hourly|Daily|Weekly|Monthly|Yearly, start:'yyyy-MM-dd', time:'HH:mm', interval (1–999 minutes for Minutely), weekdays:[Monday…], "
                               + "monthDay (1–31, -1 last), monthWeekday:{ordinal 1–4 or -1, day}, until:'yyyy-MM-dd', count} in settings.timeZone "
                               + $"(IANA id; empty means the host's '{tool.LocalTimeZone}'). Recurrence values from ask_user pickerKind='recurrence' "
                               + "can be passed as they are. settings.successCriteria says how a run tells success from failure; settings.retry "

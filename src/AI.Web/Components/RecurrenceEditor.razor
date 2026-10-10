@@ -1,4 +1,4 @@
-@* One editor for every recurrence a schedule can have — once, every N hours, days, weeks, months or
+@* One editor for every recurrence a schedule can have — once, every N minutes, hours, days, weeks, months or
    years, on chosen weekdays or a day of the month, from a start date until a date or a number of
    runs. It is used by the recurrence picker of ask_user and by the schedule widget. Every change
    hands the whole recurrence back, and under the controls the editor says the result in words and
@@ -10,7 +10,7 @@
 
 <div class="recurrence-editor @(Disabled ? "is-disabled" : null)" @onkeydown:stopPropagation="true">
     <div class="recurrence-frequency" role="radiogroup" aria-label="Repeats">
-        @foreach (var frequency in Enum.GetValues<ScheduleFrequency>())
+        @foreach (var frequency in Frequencies)
         {
             var chosen = Value.Frequency == frequency;
             <button type="button" role="radio" aria-checked="@(chosen ? "true" : "false")" class="@(chosen ? "is-selected" : null)"
@@ -97,7 +97,7 @@
     }
 
     <div class="recurrence-row">
-        <span class="recurrence-label">@(Value.Frequency == ScheduleFrequency.Hourly ? "First at" : "At")</span>
+        <span class="recurrence-label">@(Value.Frequency is ScheduleFrequency.Minutely or ScheduleFrequency.Hourly ? "First at" : "At")</span>
         <TimePickerField Value="@Value.Time" ValueChanged="time => ChangeAsync(Value with { Time = time ?? Value.Time })"
                          Disabled="@Disabled" ShowPresets="false" Label="Time of day" />
     </div>
@@ -187,6 +187,9 @@
 
 @code {
     private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
+    private static readonly ScheduleFrequency[] Frequencies =
+        [ScheduleFrequency.Once, ScheduleFrequency.Minutely, ScheduleFrequency.Hourly, ScheduleFrequency.Daily,
+            ScheduleFrequency.Weekly, ScheduleFrequency.Monthly, ScheduleFrequency.Yearly];
     private static readonly (int Ordinal, string Label)[] Ordinals = [(1, "first"), (2, "second"), (3, "third"), (4, "fourth"), (-1, "last")];
     private enum DateField { None, Start, Until }
 
@@ -266,6 +269,7 @@
         var one = Value.Interval == 1;
         return Value.Frequency switch
         {
+            ScheduleFrequency.Minutely => one ? "minute" : "minutes",
             ScheduleFrequency.Hourly => one ? "hour" : "hours",
             ScheduleFrequency.Daily => one ? "day" : "days",
             ScheduleFrequency.Weekly => one ? "week" : "weeks",
@@ -277,6 +281,7 @@
     private static string FrequencyLabel(ScheduleFrequency frequency) => frequency switch
     {
         ScheduleFrequency.Once => "Once",
+        ScheduleFrequency.Minutely => "Minutely",
         ScheduleFrequency.Hourly => "Hourly",
         ScheduleFrequency.Daily => "Daily",
         ScheduleFrequency.Weekly => "Weekly",

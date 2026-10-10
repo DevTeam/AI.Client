@@ -8,7 +8,7 @@ using AI.Application.Resources;
 public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModelProjection resources,
     IModelMessageHeader headers) : IChatContextBuilder
 {
-    public IReadOnlyList<ChatCompletionMessage> Build(ChatDetails chat, Guid headId)
+    public IReadOnlyList<ChatCompletionMessage> Build(ChatDetails chat, Guid headId, Guid? branchId = null)
     {
         var byId = chat.Messages.ToDictionary(message => message.Id);
         var path = new List<ChatCompletionMessage>();
@@ -20,7 +20,7 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
                 throw new InvalidOperationException("Invalid message ancestry.");
             var role = message.Role.ToLowerInvariant();
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
-            if (role == "user") modelContent = headers.Apply(message, chat, resources.Project(message.Content, message.Resources));
+            if (role == "user") modelContent = headers.Apply(message, chat, resources.Project(message.Content, message.Resources), branchId);
             path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
                     .Select(item => item.AssetId).OfType<string>().ToArray(),
@@ -32,7 +32,7 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
     }
 
     public async Task<IReadOnlyList<ChatCompletionMessage>> BuildAsync(ChatDetails chat, Guid headId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? branchId = null)
     {
         var byId = chat.Messages.ToDictionary(message => message.Id);
         var path = new List<ChatCompletionMessage>();
@@ -45,7 +45,7 @@ public sealed class ChatContext(IToolResultCodec toolResultCodec, IResourceModel
             var role = message.Role.ToLowerInvariant();
             var modelContent = role == "tool" ? toolResultCodec.TryRead(message.Content)?.ModelContent : null;
             if (role == "user") modelContent = headers.Apply(message, chat, await resources.ProjectAsync(chat.ProjectId,
-                chat.Id, message.Content, message.Resources, cancellationToken));
+                chat.Id, message.Content, message.Resources, cancellationToken), branchId);
             path.Add(new ChatCompletionMessage(role, message.Content, message.ToolCalls, message.ToolCallId, modelContent, message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
                     .Select(item => item.AssetId).OfType<string>().ToArray(),

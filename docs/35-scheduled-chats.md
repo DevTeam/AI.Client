@@ -2,22 +2,19 @@
 
 Status: implemented.
 
-A scheduled chat is an ordinary chat whose state holds a schedule: a one-time date or a recurrence,
-what each run does, how a run tells success from failure, what happens after a failure, what
-happens to run branches, and whether the chat itself is deleted later. The Host's dispatcher runs
-it: at every occurrence it forks the chat from the end of its main branch, and the new branch
-carries out the task with the `chat-schedule-run` skill and reports how it went.
+A schedule belongs to a branch. It defines a one-time date or recurrence, the run task and success
+criteria, retries, retention of run branches, and optional chat deletion for the main branch.
+At every occurrence the Host forks the owner branch from its current head. The new branch carries
+out the task with the `chat-schedule-run` skill and reports how it went.
 
-Any conversation can become scheduled without losing its messages or branches, and can become an
-ordinary conversation again. It is set up from the chat itself (the `chat-schedule-*` skills over
-the `app_schedule` tool), from another chat (the same skills naming a chat), or in the Schedule
-widget. In the chat list a scheduled chat has a stopwatch icon.
+Any branch can have its own schedule without changing the chat kind or other branches' schedules.
+The Schedule widget and `app_schedule` tool edit the selected branch's schedule.
 
 ## Terms
 
 | Term | Meaning |
 | --- | --- |
-| Scheduled chat | A chat of kind `scheduled`; its versioned state is a `ChatSchedule` |
+| Scheduled branch | A branch with a schedule file; each branch can have one schedule |
 | Schedule | `ChatScheduleSettings` (task, recurrence, time zone, success criteria, retry, run-branch retention, chat deletion) plus the dispatcher's runtime fields |
 | Occurrence | One moment the recurrence names |
 | Run | One fork of the chat made for an occurrence, a retry or a "Run now" |
@@ -25,9 +22,11 @@ widget. In the chat list a scheduled chat has a stopwatch icon.
 
 ## State
 
-The schedule is the chat's kind state (`Kind = "scheduled"`, `KindStateVersion = 1`) and is read and
-written through the chat contract like other chat metadata (`ChatDetails.KindState`). The types live
-in `AI.Contracts.Schedules` so the Host and the Web share them:
+Each schedule is stored in `<chatId>.<branchId>.schedule.json` beside the chat document. The chat
+document remains the authority for branch existence. A schedule file is removed when its branch or
+chat is deleted, and orphaned files are removed during scheduler scans. Schedule writes use the
+chat's synchronization lease and an atomic file replacement. The types live in
+`AI.Contracts.Schedules` so the Host and the Web share them:
 
 | Type | Holds |
 | --- | --- |
@@ -42,20 +41,18 @@ in `AI.Contracts.Schedules` so the Host and the Web share them:
 Wall-clock times are in the schedule's time zone. A time the clocks skip fires when they resume; an
 hour they repeat fires the first time round. A month too short for `monthDay` fires on its last day.
 `IScheduleCalendar` computes occurrences and validates settings; `IScheduleDescriptions` says them in
-words ("Every weekday at 09:00") and names run branches. `ChatThread.SetKind` and
-`IChatService.ChangeKindAsync` change a chat's kind and state under the chat's lease;
-`IChatScheduleStore` turns every schedule write into a function of the latest stored schedule, so
+words ("Every weekday at 09:00") and names run branches. `IChatScheduleStore` turns every
+schedule write into a function of the latest stored schedule, so
 the widget, the tools and the dispatcher never undo one another.
 
-Only a `conversation` can become scheduled. A schedule whose recurrence has no occurrence after now
-is refused with a message saying so. Setting a schedule on an empty chat writes the task as its first
-user message: an empty chat is hidden from the list and has nothing to fork runs from.
+A schedule whose recurrence has no occurrence after now is refused. Setting a schedule on an empty
+main branch writes the task as its first user message: an empty chat is hidden from the list and
+has nothing to fork runs from. Chat deletion rules apply only to main branch schedules.
 
 ## Dispatcher
 
 `ScheduledChatKindPolicy` starts the dispatcher when the Host starts and stops it with the Host.
-`ChatScheduler` is one loop. It lists the scheduled chats of every project, keeps each schedule by
-the chat revision it was read at (chat documents carry their whole history), and processes a chat
+`ChatScheduler` is one loop. It lists the branch schedules of every project and processes each owner
 when something is due: an occurrence, a retry, a "Run now", a branch or chat deletion, or a run that
 is going (looked at every 5 seconds). It sleeps until the earliest due moment, at most 30 seconds,
 and wakes at once when a schedule changes or a run reports. A failure is logged and never stops the
@@ -81,7 +78,7 @@ re-read it.
    closed) is recorded as **Missed** and not run; the next one is after now. While paused nothing
    starts, and resuming skips the occurrences that passed meanwhile.
 
-A run is a fork of the main branch's head (`ChatSubmitMode.Fork`, `MessageParentMode.BranchHead`, or
+A run is a fork of the owner branch's head (`ChatSubmitMode.Fork`, `MessageParentMode.BranchHead`, or
 `Root` for an empty chat), submitted as an interactive run, so approvals and `ask_user` wait for the
 person as in any chat. Its message carries the `chat-schedule-run` skill chip and states the run
 number, the moment, the task, the success criteria, the retry condition and the instruction to report
@@ -97,15 +94,15 @@ previous run did. Its branch title says when it started and how it ended:
 
 ## Tools
 
-`app_schedule` (App tools server) is the chat-editing tool for schedules; projectId and chatId default
-to the current chat:
+`app_schedule` (App tools server) edits a branch schedule; `projectId`, `chatId`, and `branchId`
+default to the current branch:
 
 | Operation | Effect |
 | --- | --- |
 | `Get` | The schedule, its description in words, the next three runs, and the host's `localNow` and `hostTimeZone` so a model can resolve "tomorrow" exactly |
-| `Set` | Creates or replaces the schedule from `settings`; turns a conversation into a scheduled chat |
+| `Set` | Creates or replaces the branch schedule from `settings` |
 | `Pause`, `Resume` | Stop or start runs; take the schedule `revision` |
-| `Remove` | The chat becomes an ordinary conversation, keeping messages and branches |
+| `Remove` | Removes the branch schedule, keeping messages and branches |
 | `RunNow` | Asks the dispatcher for a run now |
 | `ReportRun` | From a run branch (or a branch forked from it): `succeeded`, a one-line `summary`, and on failure `retry` |
 
@@ -120,7 +117,7 @@ the widget uses.
 
 | id | What it does |
 | --- | --- |
-| `chat-schedule-create` | Turns this chat, or a new one, into a scheduled chat. It reads what the user already said and asks with `ask_user` only for what is missing — date, time or recurrence through the pickers, success criteria, retry, run-branch rules, chat deletion — never filling a value in silently; a dismissed or unanswered question schedules nothing. It also works out which tools and directories each run needs, and asks once to allow them for the chat (`app_security` `SetChatToolPolicy` and `AddDirectoryGrant`), so the run does not wait for a person |
+| `chat-schedule-create` | Schedules the selected branch or a new chat. It asks for missing values and prepares tool and directory access for the run |
 | `chat-schedule-edit` | Changes, pauses or resumes a schedule, asking only for values not named, and confirms old and new values side by side unless the user gave them exactly. When the change touches what a run does, it repeats the readiness check and asks once to allow the new tools and directories |
 | `chat-schedule-delete` | Removes the schedule (keeping the chat), pauses it instead, or deletes the chat, after one confirmation |
 | `chat-schedule-run` | In a run branch: carries out the task with the tools and directories the schedule was set up to allow, checks the success criteria with evidence and reports with `ReportRun`. Anywhere else: starts a run now. The dispatcher puts it on every run message |
@@ -174,51 +171,28 @@ a date and time). It has no time zone field: a schedule set in the form uses thi
 zone. Only a schedule in another zone (set by a tool, or on another device) says which, with *Use my
 time zone* to switch to the local one; wall-clock times stay as they are. Refusals from the Host appear in the widget in its words, and while the form is invalid a note under it says why Save is unavailable.
 
-## Run branches in the branch picker and the sidebar
+## Run branches
 
-A scheduled chat gains a branch per run, so both places that list branches group them. Runs are
-recognised from the schedule (`runs[].branchId`), never from their titles.
-
-- **Branch picker** (`BranchPickerMenu`): a few lines stay a plain list. With more than seven it gets a
-  filter box that takes the keyboard at once (↑ ↓ move, Enter opens), splits *Conversation* from
-  *Scheduled runs*, filters runs by outcome with counted chips, and shows the newest six runs plus
-  *Show all*; the current line is always shown. A run reads `#12 · 8 Oct 09:00` with an outcome dot
-  and word and a `manual` or `retry n` tag; its full title and summary are the tooltip. The menu never
-  grows wider than the feed it opens in.
-- **Sidebar**: the runs sit under one *Runs* row with a dot and count per outcome, which is always
-  shown while the chat has runs. Up to six runs show unfolded; more fold until the row is clicked, and
-  a click on the row folds or unfolds them from then on. Unfolded, it shows the newest six and
-  *Show all N runs*; folded, only the current run stays visible. Today's runs show
-  their time alone, older ones their date as well. Folding, unfolding and *Show all* keep the phone drawer open (`data-stays-in-drawer`);
-  opening a run closes it as any navigation does.
-- **Clearing them out**: the chat's menu offers *Delete all branches (N)* — every branch, the main
-  conversation stays — and a branch's menu *Delete all sub-branches (N)* — every branch below it, at
-  any depth, the branch itself stays. Both ask once, delete deepest first against the current chat
-  revision, and move the view to the remaining branch when the open one was among them.
-
-A run's branch has its own icon in both places: an outlined play that takes the run status exactly as
-a branch icon does — bright while generating, coloured for an unread answer, a question or an
-approval, a failure — with the run's outcome as a small dot in its corner (none while it runs). Runs
-not opened yet are always listed, even while the sidebar's Runs row is folded or they are older than
-the newest few, and the Runs row says how many there are ("2 new", coloured by the most urgent one).
-Opening a run clears its status.
+Each scheduled run creates a child branch of its schedule owner. The Schedule widget lists the
+owner's recent runs with outcomes and opens a run branch while it exists. Branch navigation shows
+the run branches in the ordinary branch tree. The existing chat and branch cleanup actions remove
+their schedules with them.
 
 ## In the sidebar
 
-The sidebar's **Scheduled** section lists the scheduled chats the Host will act on within the next
+The sidebar's **Scheduled** section lists branch schedules the Host will act on within the next
 day, across every project, the soonest first — the soonest of a requested run, a retry and the next
 occurrence, the dispatcher's own due rule. A row leads with how long is left (`now`, `~33s`, `~5m`,
-`~3h`, `~2d`) and opens the chat like a Recents row; the section folds, pages and is configured in
-Settings → Sidebar → Chats per section → Scheduled, and it is absent while nothing is coming. A scheduled chat is
-never listed by Recents, which drops it at the Host before counting its places.
+`~3h`, `~2d`) and opens the owning branch. The section folds, pages and is configured in
+Settings → Sidebar → Chats per section → Scheduled. It is absent while nothing is coming.
 
 ## From the message box
 
 Typing a request and pressing Enter starts a turn, which is wrong for a task meant to run later.
 **Alt+Shift+Enter** (or the send button while those keys are held) sends nothing: it opens the
 Schedule widget — shown and unfolded even if it was hidden — with the composer text as the task and
-the keyboard in the editor. In an open chat it schedules that chat (in a scheduled chat it edits the
-schedule with the new task); with no chat open the widget offers *Schedule a new chat*, and saving
+the keyboard in the editor. In an open chat it schedules the selected branch or edits its existing
+schedule with the new task; with no chat open the widget offers *Schedule a new chat*, and saving
 creates the chat with the task as its first message, which the model first sees in the first run.
 The composer is cleared only after the schedule is saved.
 

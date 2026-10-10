@@ -160,7 +160,8 @@ public class ChatToolRiskAssessSkillTests
         var catalog = new BuiltInSkillCatalog();
         var skill = new ChatToolRiskAssessSkill(catalog, chats.Object, projects.Object, settings.Object, secrets.Object,
             completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
-        return new ToolAutoApprover(chats.Object, new SkillRunner(catalog, null!, chatToolRiskAssessSkill: skill));
+        return new ToolAutoApprover(chats.Object, new SkillRunner(catalog, null!, chatToolRiskAssessSkill: skill),
+            new ChatBranchSettingsResolver());
     }
 
     private async IAsyncEnumerable<ChatCompletionChunk> Respond(ChatCompletionRequest request, string answer,

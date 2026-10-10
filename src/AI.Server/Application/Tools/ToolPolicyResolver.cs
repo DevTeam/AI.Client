@@ -23,11 +23,15 @@ public sealed record EffectiveToolPolicy(
 /// user grants the tool from settings instead of from the prompt.
 /// </remarks>
 public sealed class ToolPolicyResolver(IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
-    IToolDefaultDecision defaults)
+    IToolDefaultDecision defaults, IChatBranchSettingsResolver branchSettings)
     : IToolPolicyResolver
 {
     public async Task<EffectiveToolPolicy> ResolveAsync(
         Guid projectId, Guid chatId, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
+        => await ResolveAsync(projectId, chatId, chatId, serverId, name, schemaHash, cancellationToken);
+
+    public async Task<EffectiveToolPolicy> ResolveAsync(Guid projectId, Guid chatId, Guid branchId,
+        Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
     {
         var global = await settings.LoadAsync(cancellationToken);
         var server = global.McpServers.SingleOrDefault(item => item.Id == serverId);
@@ -38,20 +42,25 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
             && item.Name == name && item.SchemaHash == schemaHash);
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken)
             ?? throw new InvalidOperationException("Chat not found.");
+        var branchPolicies = branchSettings.BranchToolPolicies(chat, branchId, serverId, name, schemaHash);
         var chatPolicy = chat.ToolPolicies?.SingleOrDefault(item => item.ServerId == serverId
             && item.Name == name && item.SchemaHash == schemaHash);
         var globalPolicy = global.ToolPolicies.SingleOrDefault(item => item.ServerId == serverId
             && item.Name == name && item.SchemaHash == schemaHash);
-        var policyDecision = chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision
+        var policyDecision = (branchPolicies.Count > 0 ? branchPolicies[0].Decision : null)
+            ?? chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision
             ?? defaults.GetDecision(serverId, name);
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
-        var maxCalls = chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun
+        var maxCalls = branchPolicies.Select(policy => policy.MaxCallsPerRun).FirstOrDefault(value => value is not null)
+            ?? chatPolicy?.MaxCallsPerRun ?? projectPolicy?.MaxCallsPerRun
             ?? globalPolicy?.MaxCallsPerRun ?? McpToolPolicySettings.DefaultMaxCallsPerRun;
-        var maxCallsScope = chatPolicy?.MaxCallsPerRun is not null ? "chat"
+        var maxCallsScope = branchPolicies.Any(policy => policy.MaxCallsPerRun is not null) ? "branch"
+            : chatPolicy?.MaxCallsPerRun is not null ? "chat"
             : projectPolicy?.MaxCallsPerRun is not null ? "project"
             : globalPolicy?.MaxCallsPerRun is not null ? "global" : "default";
-        var timeout = chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds
+        var timeout = branchPolicies.Select(policy => policy.TimeoutSeconds).FirstOrDefault(value => value is not null)
+            ?? chatPolicy?.TimeoutSeconds ?? projectPolicy?.TimeoutSeconds
             ?? globalPolicy?.TimeoutSeconds ?? McpToolPolicySettings.DefaultTimeoutSeconds;
         return new EffectiveToolPolicy(
             decision,

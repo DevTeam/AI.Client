@@ -94,22 +94,27 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
             return ChatTeamRoster.Empty;
         var byId = chat.Messages.ToDictionary(message => message.Id);
         var current = selectedBranchId ?? chat.Id;
-        var main = Chain(byId, branches.SingleOrDefault(branch => branch.Id == chat.Id)?.HeadMessageId);
+        var leadId = branches.Any(branch => branch.ParentBranchId == current && branch.Member is not null)
+            ? current
+            : branches.FirstOrDefault(branch => branch.Id == current)?.ParentBranchId ?? chat.Id;
+        var teammates = branches.Where(branch => branch.ParentBranchId == leadId && branch.Member is not null).ToArray();
+        if (teammates.Length == 0) return ChatTeamRoster.Empty;
+        var main = Chain(byId, branches.SingleOrDefault(branch => branch.Id == leadId)?.HeadMessageId);
 
         var task = main.FirstOrDefault(message => message is { Role: "User", Sender: null, Delivery: MessageDelivery.Turn });
         var charter = main.LastOrDefault(message => message.Role == "User" && FirstLine(message.Content)
             .StartsWith("Team charter", StringComparison.OrdinalIgnoreCase));
-        var reports = chat.Messages
-            .Where(message => message.Sender is { } sender && sender.ChatId == chat.Id && sender.BranchId != chat.Id)
+        var reports = main
+            .Where(message => message.Sender is { } sender && sender.ChatId == chat.Id && sender.BranchId != leadId)
             .GroupBy(message => message.Sender!.BranchId)
             .ToDictionary(group => group.Key, group => group.OrderBy(message => message.CreatedAt).ToArray());
 
         var members = new List<ChatTeamMember>
         {
-            new(chat.Id, "Lead", "Coordinator", null, true, current == chat.Id, State(Run(runs, chat.Id), null), null,
+            new(leadId, "Lead", "Coordinator", null, true, current == leadId, State(Run(runs, leadId), null), null,
                 0, null)
         };
-        foreach (var branch in branches.Where(branch => branch.Member is not null)
+        foreach (var branch in teammates
                      .OrderBy(branch => branch.RootMessageId is { } root && byId.TryGetValue(root, out var first)
                          ? first.CreatedAt : DateTimeOffset.MaxValue))
         {
@@ -117,7 +122,7 @@ public sealed class ChatTeamRosterCalculator : IChatTeamRosterCalculator
             var last = sent.Length == 0 ? null : Report(sent[^1]);
             // What the lead last sent into this branch: an answer, a decision, or the brief itself.
             var fromLead = Chain(byId, branch.HeadMessageId)
-                .Where(message => message.Sender is { } sender && sender.ChatId == chat.Id && sender.BranchId == chat.Id)
+                .Where(message => message.Sender is { } sender && sender.ChatId == chat.Id && sender.BranchId == leadId)
                 .Select(message => message.CreatedAt)
                 .DefaultIfEmpty(DateTimeOffset.MinValue)
                 .Max();

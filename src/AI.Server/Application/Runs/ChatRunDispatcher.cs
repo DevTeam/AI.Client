@@ -20,6 +20,7 @@ using AI.Application.Usage;
 using Contracts.Usage;
 using Domain.Runs;
 using Domain.Chats;
+using AI.Application.Schedules;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
@@ -34,7 +35,8 @@ public sealed class ChatRunDispatcher(
     IToolAutoApprover autoApprover, ITokenUsageMeter usageMeter, ITokenUsageAggregator usageAggregator,
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
     Func<IChatKindPolicyRegistry> kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus,
-    IChatTemporaryDirectory temporaryDirectory)
+    IChatTemporaryDirectory temporaryDirectory, IChatBranchSettingsResolver branchSettings,
+    IChatScheduleStore scheduleStore)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -397,7 +399,7 @@ public sealed class ChatRunDispatcher(
             var projected = await resourceProjection.ProjectAsync(chat.ProjectId, chat.Id, message.Content,
                 message.Resources, token);
             taken.Add(new ChatCompletionMessage("user", message.Content,
-                ModelContent: headers.Apply(message, chat, projected), MessageId: message.Id,
+                ModelContent: headers.Apply(message, chat, projected, runtime.State.BranchId), MessageId: message.Id,
                 ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
                     .Select(item => item.AssetId).OfType<string>().ToArray(), JoinsTurn: true));
         }
@@ -453,14 +455,16 @@ public sealed class ChatRunDispatcher(
         var root = chat?.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.RootMessageId is { } rootId
             ? chat.Messages.SingleOrDefault(message => message.Id == rootId)
             : null;
-        if (root?.Sender is not { Intent.Length: > 0 } brief || brief.ChatId != chatId || brief.BranchId != chatId) return;
+        var leadId = chat?.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.ParentBranchId;
+        if (leadId is null || root?.Sender is not { Intent.Length: > 0 } brief
+            || brief.ChatId != chatId || brief.BranchId != leadId) return;
         var id = ids.Create();
         // The teammate's own answer is the report either way; a lead that cannot be told now is
         // no reason to fail the turn that is telling it.
         try
         {
             await SubmitCoreAsync(projectId, chatId, new SubmitChatMessageRequest(id, id,
-                    report, ChatSubmitMode.Send, chatId),
+                    report, ChatSubmitMode.Send, leadId),
                 true, token, new ChatMessageSender(chatId, branchId, "blocker"));
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException
@@ -671,7 +675,8 @@ public sealed class ChatRunDispatcher(
                     // explicit connection) follows whatever the global default currently is, which
                     // is the point of the feature. A disabled link in the chain is passed over, as
                     // the composer passes over it: the chat runs on the model it shows.
-                    var connection = connectionChoice.Choose(global.Connections, chat.ConnectionId, project.ConnectionId);
+                    var connection = connectionChoice.Choose(global.Connections,
+                        branchSettings.ConnectionId(chat, runtime.State.BranchId), project.ConnectionId);
                     if (connection is null)
                     {
                         throw new InvalidOperationException("Choose an enabled connection for this chat.");
@@ -705,11 +710,12 @@ public sealed class ChatRunDispatcher(
                         kindPolicies().Resolve(new ChatKind(chat.Kind)).Behavior.UseFullHistory
                             ? chat.Messages.Select(message => new ChatCompletionMessage(message.Role.ToLowerInvariant(),
                             message.Content, message.ToolCalls, message.ToolCallId,
-                            ModelContent: message.Role == "User" ? headers.Apply(message, chat, message.Content) : null,
+                            ModelContent: message.Role == "User" ? headers.Apply(message, chat, message.Content, runtime.State.BranchId) : null,
                             ImageAssetIds: message.Resources?.Where(item => item.Kind == AI.Contracts.Resources.ChatResourceKind.Image)
                                 .Select(item => item.AssetId).OfType<string>().ToArray())).ToArray()
                             : await historyCheckpoints.ApplyAsync(chat.ProjectId, chat.Id,
-                                await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token), token),
+                                await contextBuilder.BuildAsync(chat, ResumeHead(chat, runtime.State.BranchId, queued.Id), token,
+                                    runtime.State.BranchId), token),
                         Kind: new ChatKind(chat.Kind), KindState: chat.KindState,
                         KindStateVersion: chat.KindStateVersion, ProjectId: runtime.State.ProjectId,
                         TeamStatus: teamStatus.Describe(chat, runtime.State.BranchId, _runtimes.Values
@@ -983,7 +989,7 @@ public sealed class ChatRunDispatcher(
         if (automatic.Allowed) return ToolApprovalAction.Allow;
         if (runtime.State.Queue.FirstOrDefault(item => item.Id == runtime.ActiveMessageId)?.Interactive == false)
             return ToolApprovalAction.Deny;
-        var mode = await autoApprover.ModeAsync(projectId, chatId, token);
+        var mode = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
@@ -1002,13 +1008,13 @@ public sealed class ChatRunDispatcher(
                 // The card is not the only way to answer it. Someone who goes to settings and
                 // grants the tool there has answered just as clearly, and expects the call they
                 // were looking at to proceed — so the standing policy is re-read while waiting.
-                var policy = await policies.ResolveAsync(runtime.State.ProjectId, runtime.State.ChatId,
+                var policy = await policies.ResolveAsync(runtime.State.ProjectId, runtime.State.ChatId, branchId,
                     tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
                 if (policy.Decision == "Allow") return ToolApprovalAction.Allow;
                 if (policy.Decision == "Deny") return ToolApprovalAction.Deny;
                 // Switching the chat's mode while the card waits answers it too: Full access lets the
                 // call through, and "Approve for me" gets the one assessment it would have had.
-                var current = await autoApprover.ModeAsync(projectId, chatId, token);
+                var current = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
                 if (current == mode) continue;
                 mode = current;
                 if (current != ToolApprovalMode.Ask
@@ -1466,6 +1472,7 @@ public sealed class ChatRunDispatcher(
             if (result.IsDeleted)
             {
                 await RemoveAsync(projectId, chatId, null, CancellationToken.None);
+                await scheduleStore.DeleteExceptAsync(projectId, chatId, null, CancellationToken.None);
                 await reviews.DeleteChatAsync(projectId, chatId, CancellationToken.None);
                 temporaryDirectory.DeleteChat(projectId, chatId);
             }
@@ -1495,6 +1502,7 @@ public sealed class ChatRunDispatcher(
             foreach (var runtime in _runtimes.Values.Where(item => item.State.ChatId == chatId && !retained.Contains(item.State.BranchId)))
                 runtime.State.Clear();
             await RemoveAsync(projectId, chatId, retained, CancellationToken.None);
+            await scheduleStore.DeleteExceptAsync(projectId, chatId, retained, CancellationToken.None);
             return result;
         }
         finally { _maintenance.TryRemove(chatId, out _); }

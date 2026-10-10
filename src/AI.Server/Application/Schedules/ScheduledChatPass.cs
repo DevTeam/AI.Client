@@ -23,7 +23,9 @@ public interface IScheduledChatPass
     /// </summary>
     DateTimeOffset? DueAt(ChatSchedule schedule, DateTimeOffset now, DateTimeOffset? watchedAt);
 
-    Task ProcessAsync(Guid projectId, Guid chatId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task ProcessAsync(Guid projectId, Guid chatId, Guid ownerBranchId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task ProcessAsync(Guid projectId, Guid chatId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        ProcessAsync(projectId, chatId, chatId, now, cancellationToken);
 }
 
 public sealed class ScheduledChatPass(
@@ -74,13 +76,13 @@ public sealed class ScheduledChatPass(
         return candidates.OfType<DateTimeOffset>().Select(at => (DateTimeOffset?)at).Min();
     }
 
-    public async Task ProcessAsync(Guid projectId, Guid chatId, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task ProcessAsync(Guid projectId, Guid chatId, Guid ownerBranchId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         // Whatever this pass changes — a run started or finished, a branch or the chat deleted — the
         // open windows re-read; nobody there asked for it.
         try
         {
-            await ProcessCoreAsync(projectId, chatId, now, cancellationToken);
+            await ProcessCoreAsync(projectId, chatId, ownerBranchId, now, cancellationToken);
         }
         finally
         {
@@ -88,23 +90,23 @@ public sealed class ScheduledChatPass(
         }
     }
 
-    private async Task ProcessCoreAsync(Guid projectId, Guid chatId, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task ProcessCoreAsync(Guid projectId, Guid chatId, Guid ownerBranchId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var schedule = await ReadAsync(projectId, chatId, cancellationToken);
+        var schedule = await ReadAsync(projectId, chatId, ownerBranchId, cancellationToken);
         if (schedule is null or { Demo: true }) return;
         if (schedule.ActiveRun is { } active)
         {
-            await WatchAsync(projectId, chatId, schedule, active, now, cancellationToken);
-            schedule = await ReadAsync(projectId, chatId, cancellationToken);
+            await WatchAsync(projectId, chatId, ownerBranchId, schedule, active, now, cancellationToken);
+            schedule = await ReadAsync(projectId, chatId, ownerBranchId, cancellationToken);
             if (schedule is null) return;
         }
 
         foreach (var run in (schedule.Runs ?? []).Where(run =>
                      run is { BranchDeleteAt: { } at, BranchDeleted: false, BranchId: not null } && at <= now).ToArray())
             if (await DeleteRunBranchAsync(projectId, chatId, run.BranchId!.Value, cancellationToken))
-                await ChangeRunAsync(projectId, chatId, run.Id, item => item with { BranchDeleted = true }, cancellationToken);
+                await ChangeRunAsync(projectId, chatId, ownerBranchId, run.Id, item => item with { BranchDeleted = true }, cancellationToken);
 
-        schedule = await ReadAsync(projectId, chatId, cancellationToken);
+        schedule = await ReadAsync(projectId, chatId, ownerBranchId, cancellationToken);
         if (schedule is null) return;
         if (schedule.ActiveRun is null && (schedule.Settings.Deletion?.At <= now || ChatDeletionAt(schedule) <= now))
         {
@@ -112,10 +114,10 @@ public sealed class ScheduledChatPass(
             return;
         }
 
-        await StartDueAsync(projectId, chatId, schedule, now, cancellationToken);
+        await StartDueAsync(projectId, chatId, ownerBranchId, schedule, now, cancellationToken);
     }
 
-    private async Task WatchAsync(Guid projectId, Guid chatId, ChatSchedule schedule, ScheduleRunRecord run,
+    private async Task WatchAsync(Guid projectId, Guid chatId, Guid ownerBranchId, ChatSchedule schedule, ScheduleRunRecord run,
         DateTimeOffset now, CancellationToken cancellationToken)
     {
         var branchId = run.BranchId!.Value;
@@ -135,23 +137,23 @@ public sealed class ScheduledChatPass(
         {
             var blockedAt = run.BlockedAt ?? now;
             if (run.Status != ScheduleRunStatus.Blocked)
-                await ChangeRunAsync(projectId, chatId, run.Id,
+                await ChangeRunAsync(projectId, chatId, ownerBranchId, run.Id,
                     item => item with { Status = ScheduleRunStatus.Blocked, BlockedAt = blockedAt }, cancellationToken);
             var rule = Retention(schedule).Blocked;
             if (rule.Action == ScheduleRetentionAction.Delete && blockedAt.AddMinutes(rule.DelayMinutes) <= now
                 && await DeleteRunBranchAsync(projectId, chatId, branchId, cancellationToken))
-                await FinishAsync(projectId, chatId, schedule, run, ScheduleRunStatus.Blocked,
+                await FinishAsync(projectId, chatId, ownerBranchId, schedule, run, ScheduleRunStatus.Blocked,
                     "It waited for a person until the rule for blocked runs deleted its branch.", true, now, cancellationToken);
             return;
         }
         if (run.Status == ScheduleRunStatus.Blocked)
-            await ChangeRunAsync(projectId, chatId, run.Id,
+            await ChangeRunAsync(projectId, chatId, ownerBranchId, run.Id,
                 item => item with { Status = ScheduleRunStatus.Running, BlockedAt = null }, cancellationToken);
         if (busy) return;
         if (!exists)
         {
             if (now - run.StartedAt < StartGrace) return;
-            await FinishAsync(projectId, chatId, schedule, run, run.Reported ?? ScheduleRunStatus.Failed,
+            await FinishAsync(projectId, chatId, ownerBranchId, schedule, run, run.Reported ?? ScheduleRunStatus.Failed,
                 run.Summary ?? "The run branch was deleted before the run reported an outcome.", true, now, cancellationToken);
             return;
         }
@@ -163,10 +165,10 @@ public sealed class ScheduledChatPass(
         var summary = run.Summary ?? (status is ChatRunStatus.Completed or ChatRunStatus.Idle
             ? "The run ended without reporting an outcome."
             : snapshot?.Error ?? $"The run stopped ({status.ToString().ToLowerInvariant()}).");
-        await FinishAsync(projectId, chatId, schedule, run, outcome, summary, false, now, cancellationToken);
+        await FinishAsync(projectId, chatId, ownerBranchId, schedule, run, outcome, summary, false, now, cancellationToken);
     }
 
-    private async Task FinishAsync(Guid projectId, Guid chatId, ChatSchedule schedule, ScheduleRunRecord run,
+    private async Task FinishAsync(Guid projectId, Guid chatId, Guid ownerBranchId, ChatSchedule schedule, ScheduleRunRecord run,
         ScheduleRunStatus outcome, string? summary, bool branchDeleted, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var retention = Retention(schedule);
@@ -180,7 +182,7 @@ public sealed class ScheduledChatPass(
         var retry = outcome == ScheduleRunStatus.Failed && schedule.Settings.Retry is { } policy
             && run.RetryRequested != false && run.Attempt <= policy.MaxAttempts && !run.Manual
             ? now.AddMinutes(policy.DelayMinutes) : (DateTimeOffset?)null;
-        await store.UpdateAsync(projectId, chatId, current => current.Schedule is not { } latest ? null : latest with
+        await store.UpdateAsync(projectId, chatId, ownerBranchId, current => current.Schedule is not { } latest ? null : latest with
         {
             Runs = (latest.Runs ?? []).Select(item => item.Id != run.Id ? item : item with
             {
@@ -198,7 +200,7 @@ public sealed class ScheduledChatPass(
                     schedule.Settings.Retry?.MaxAttempts ?? 0, outcome), 0), cancellationToken);
     }
 
-    private async Task StartDueAsync(Guid projectId, Guid chatId, ChatSchedule schedule, DateTimeOffset now,
+    private async Task StartDueAsync(Guid projectId, Guid chatId, Guid ownerBranchId, ChatSchedule schedule, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var settings = schedule.Settings;
@@ -206,7 +208,7 @@ public sealed class ScheduledChatPass(
         {
             // One run at a time: an occurrence that comes while one is still going is skipped.
             if (!schedule.Paused && schedule.NextRunAt is { } due && due <= now)
-                await AppendAsync(projectId, chatId, new ScheduleRunRecord(Guid.CreateVersion7(), null, 0, due, now, 1,
+                await AppendAsync(projectId, chatId, ownerBranchId, new ScheduleRunRecord(Guid.CreateVersion7(), null, 0, due, now, 1,
                         ScheduleRunStatus.Skipped, FinishedAt: now, Summary: $"Run #{active.Number} was still going."),
                     latest => latest with { NextRunAt = Following(latest, due, now) }, cancellationToken);
             return;
@@ -214,7 +216,7 @@ public sealed class ScheduledChatPass(
 
         if (schedule.RunRequestedAt is not null)
         {
-            await StartAsync(projectId, chatId, schedule, now, 1, true, now,
+            await StartAsync(projectId, chatId, ownerBranchId, schedule, now, 1, true, now,
                 latest => latest with { RunRequestedAt = null }, cancellationToken);
             return;
         }
@@ -222,7 +224,7 @@ public sealed class ScheduledChatPass(
         if (schedule.RetryAt is { } retryAt && retryAt <= now
             && schedule.Runs?.LastOrDefault(run => run is { Status: ScheduleRunStatus.Failed, Manual: false }) is { } failed)
         {
-            await StartAsync(projectId, chatId, schedule, failed.ScheduledFor, failed.Attempt + 1, false, now,
+            await StartAsync(projectId, chatId, ownerBranchId, schedule, failed.ScheduledFor, failed.Attempt + 1, false, now,
                 latest => latest with { RetryAt = null }, cancellationToken);
             return;
         }
@@ -230,13 +232,13 @@ public sealed class ScheduledChatPass(
         if (now - next > MissedAfter)
         {
             var missed = calendar.Upcoming(settings.Recurrence, settings.TimeZone, next.AddTicks(-1), 1000).Count(at => at <= now);
-            await AppendAsync(projectId, chatId, new ScheduleRunRecord(Guid.CreateVersion7(), null, 0, next, now, 1,
+            await AppendAsync(projectId, chatId, ownerBranchId, new ScheduleRunRecord(Guid.CreateVersion7(), null, 0, next, now, 1,
                     ScheduleRunStatus.Missed, FinishedAt: now,
                     Summary: missed > 1 ? $"{missed} occurrences passed while the application was closed." : "The application was closed at that time."),
                 latest => latest with { NextRunAt = calendar.NextAfter(settings.Recurrence, settings.TimeZone, now) }, cancellationToken);
             return;
         }
-        await StartAsync(projectId, chatId, schedule, next, 1, false, now,
+        await StartAsync(projectId, chatId, ownerBranchId, schedule, next, 1, false, now,
             latest => latest with { NextRunAt = Following(latest, next, now), RetryAt = null, Occurrences = latest.Occurrences + 1 },
             cancellationToken);
     }
@@ -244,7 +246,7 @@ public sealed class ScheduledChatPass(
     private DateTimeOffset? Following(ChatSchedule schedule, DateTimeOffset occurrence, DateTimeOffset now) =>
         calendar.NextAfter(schedule.Settings.Recurrence, schedule.Settings.TimeZone, occurrence > now ? occurrence : now);
 
-    private async Task StartAsync(Guid projectId, Guid chatId, ChatSchedule schedule, DateTimeOffset scheduledFor, int attempt,
+    private async Task StartAsync(Guid projectId, Guid chatId, Guid ownerBranchId, ChatSchedule schedule, DateTimeOffset scheduledFor, int attempt,
         bool manual, DateTimeOffset now, Func<ChatSchedule, ChatSchedule> advance, CancellationToken cancellationToken)
     {
         var settings = schedule.Settings;
@@ -255,13 +257,13 @@ public sealed class ScheduledChatPass(
             ScheduleRunStatus.Running, manual);
         var maxAttempts = settings.Retry?.MaxAttempts ?? 0;
         var local = calendar.ToLocal(now, settings.TimeZone);
-        var head = chat.Branches?.SingleOrDefault(branch => branch.Id == chatId)?.HeadMessageId;
+        var head = chat.Branches?.SingleOrDefault(branch => branch.Id == ownerBranchId)?.HeadMessageId;
         try
         {
             // A fork from the end of the main branch: the run sees the whole conversation that set
             // the task up, and nothing a previous run did.
             await dispatcher.SubmitAsync(projectId, chatId, new SubmitChatMessageRequest(
-                Guid.CreateVersion7(), messageId, Message(schedule, record, local, maxAttempts), ChatSubmitMode.Fork, chatId,
+                Guid.CreateVersion7(), messageId, Message(schedule, record, local, maxAttempts), ChatSubmitMode.Fork, ownerBranchId,
                 head is null ? MessageParentMode.Root : MessageParentMode.BranchHead,
                 Resources: [new ChatResource(Guid.CreateVersion7(), ChatResourceKind.Skill, RunSkillId, "Chat schedule run")],
                 BranchTitle: descriptions.RunTitle(record, local, maxAttempts)), cancellationToken);
@@ -274,7 +276,7 @@ public sealed class ScheduledChatPass(
                 Summary = $"The run could not start: {error.Message}"
             };
         }
-        await AppendAsync(projectId, chatId, record, latest => advance(latest) with { RunNumber = record.Number }, cancellationToken);
+        await AppendAsync(projectId, chatId, ownerBranchId, record, latest => advance(latest) with { RunNumber = record.Number }, cancellationToken);
     }
 
     private string Message(ChatSchedule schedule, ScheduleRunRecord run, DateTime local, int maxAttempts)
@@ -293,9 +295,9 @@ public sealed class ScheduledChatPass(
         return string.Join("\n\n", lines);
     }
 
-    private async Task AppendAsync(Guid projectId, Guid chatId, ScheduleRunRecord record, Func<ChatSchedule, ChatSchedule> change,
+    private async Task AppendAsync(Guid projectId, Guid chatId, Guid ownerBranchId, ScheduleRunRecord record, Func<ChatSchedule, ChatSchedule> change,
         CancellationToken cancellationToken) =>
-        await store.UpdateAsync(projectId, chatId, current => current.Schedule is not { } latest ? null
+        await store.UpdateAsync(projectId, chatId, ownerBranchId, current => current.Schedule is not { } latest ? null
             : change(latest) with { Runs = Trim([.. latest.Runs ?? [], record]) }, cancellationToken);
 
     /// <summary>
@@ -313,9 +315,9 @@ public sealed class ScheduledChatPass(
         return runs.Where(run => !dropped.Contains(run.Id)).ToArray();
     }
 
-    private Task<StoredSchedule?> ChangeRunAsync(Guid projectId, Guid chatId, Guid runId, Func<ScheduleRunRecord, ScheduleRunRecord> change,
+    private Task<StoredSchedule?> ChangeRunAsync(Guid projectId, Guid chatId, Guid ownerBranchId, Guid runId, Func<ScheduleRunRecord, ScheduleRunRecord> change,
         CancellationToken cancellationToken) =>
-        store.UpdateAsync(projectId, chatId, current => current.Schedule is not { } latest ? null : latest with
+        store.UpdateAsync(projectId, chatId, ownerBranchId, current => current.Schedule is not { } latest ? null : latest with
         {
             Runs = (latest.Runs ?? []).Select(item => item.Id == runId ? change(item) : item).ToArray()
         }, cancellationToken);
@@ -388,6 +390,6 @@ public sealed class ScheduledChatPass(
 
     private static ScheduleBranchRetention Retention(ChatSchedule schedule) => schedule.Settings.Retention ?? DefaultRetention;
 
-    private async Task<ChatSchedule?> ReadAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
-        (await store.ReadAsync(projectId, chatId, cancellationToken))?.Schedule;
+    private async Task<ChatSchedule?> ReadAsync(Guid projectId, Guid chatId, Guid ownerBranchId, CancellationToken cancellationToken) =>
+        (await store.ReadAsync(projectId, chatId, ownerBranchId, cancellationToken))?.Schedule;
 }

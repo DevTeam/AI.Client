@@ -1,6 +1,7 @@
 namespace AI.Application.Schedules;
 
 using System.Globalization;
+using System.Text.Json;
 using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Contracts.Chats;
@@ -98,8 +99,11 @@ public sealed class ScheduleDemo(
 
         var schedule = new ChatSchedule(settings, NextRunAt: calendar.NextAfter(settings.Recurrence, zone, now),
             Occurrences: Runs.Length, RunNumber: Runs.Length, Runs: records, Demo: true);
-        _ = await store.UpdateAsync(projectId, chat.Id, _ => schedule, cancellationToken)
+        _ = await store.UpdateAsync(projectId, chat.Id, chat.Id, _ => schedule, cancellationToken)
             ?? throw new InvalidOperationException("The schedule demo chat could not be written.");
+        _ = await chats.ChangeKindAsync(projectId, chat.Id,
+            _ => new ChatKindState(ChatSchedule.Kind, JsonSerializer.SerializeToElement(schedule), ChatSchedule.StateVersion),
+            cancellationToken);
         return await chats.GetAsync(projectId, chat.Id, cancellationToken)
             ?? throw new InvalidOperationException("The schedule demo chat could not be written.");
     }

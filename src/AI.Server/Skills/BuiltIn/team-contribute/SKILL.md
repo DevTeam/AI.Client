@@ -3,7 +3,7 @@ id: team-contribute
 name: Team contribute
 icon: users
 kind: playbook
-description: Work as a teammate in a branch: do the assigned part and report to the main branch.
+description: Work as a teammate in a branch: do the assigned part and report to its parent lead branch.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
 tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run"]
 ---
@@ -13,13 +13,13 @@ This branch is one teammate of a team assembled by team-assemble. The "Team char
 the analysis before it are in this branch's history; the brief that started this branch is the
 part that is yours. Team messages are described in docs/34-asides-and-team-messages.md.
 
-1. Take `projectId`, `chatId` and `branchId` from output.context. The lead is the chat's main
-   branch, whose id equals `chatId`. From the charter and your brief, restate for yourself: your
+1. Take `projectId`, `chatId` and `branchId` from output.context. The lead is this branch's parent
+   branch; read its id from the branch metadata in `app_read` resource=Chat. From the charter and your brief, restate for yourself: your
    identity ("Ada · Backend"), scope, owned paths, deliverable, definition of done and the
    contracts you depend on. Name yourself, the lead ("Lead") and other teammates only by their
    identities from the charter.
-2. Before starting and before each major step, read the main branch with `app_read`
-   resource=Messages, `branchId` = `chatId`, for decisions made since the charter. A decision
+2. Before starting and before each major step, read the lead branch with `app_read`
+   resource=Messages, `branchId` = the parent branch id, for decisions made since the charter. A decision
    overrides your brief. A message the lead sends into this branch arrives as a new turn or, while
    you work, before your next step.
 3. Do the work. Start each skill your brief names with `run_skill` in this turn and follow its
@@ -52,12 +52,12 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    it. Read-only Git (status, diff, log) is fine in either mode.
    A question another skill would put to the user goes to the lead first; use `ask_user` only for
    a decision the charter leaves to the user, and say in it that you are asking as <role>.
-4. Write to the lead with `app_runs` with `operation` `Submit`, `branchId` = `chatId`, no `operationId` (the application assigns it),
+4. Write to the lead with `app_runs` with `operation` `Submit`, `branchId` = the parent branch id, no `operationId` (the application assigns it),
    `wait` false:
    - progress worth knowing: mode Aside, intent `Status`, at most once per phase;
    - something only the lead or the user can settle: mode Send, intent `Question`; then carry on
      with what does not depend on the answer, or end the turn saying what you wait for. Do not
-     poll the main branch for the answer: it arrives in this branch as a message, and reading the
+     poll the lead branch for the answer: it arrives in this branch as a message, and reading the
      same thing again and again stops the turn as making no progress;
    - stuck with no way forward: mode Send, intent `Blocker`, with what you tried;
    - a decision others must follow that your scope lets you make: mode Aside, intent `Decision`.

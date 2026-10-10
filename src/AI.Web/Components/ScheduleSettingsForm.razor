@@ -76,6 +76,8 @@
         </div>
     </div>
 
+    @if (!HideChatDeletion)
+    {
     <div class="schedule-field">
         <span class="schedule-field-label">The chat itself</span>
         <select aria-label="When the chat is deleted" disabled="@Disabled" @onchange="SetDeletionAsync">
@@ -99,6 +101,7 @@
             </div>
         }
     </div>
+    }
 
     @* Times are the person's own: a new schedule takes this device's time zone and the form says
        nothing about it. Only a schedule set elsewhere in another zone names it, with a way back. *@
@@ -122,6 +125,7 @@
     [Parameter, EditorRequired] public ChatScheduleSettings Value { get; set; } = null!;
     [Parameter] public EventCallback<ChatScheduleSettings> ValueChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool HideChatDeletion { get; set; }
 
     private ScheduleBranchRetention Retention => Value.Retention ?? new ScheduleBranchRetention(
         new ScheduleRetentionRule(ScheduleRetentionAction.Delete), new ScheduleRetentionRule(ScheduleRetentionAction.Keep),

@@ -329,6 +329,23 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         _ => ToolApprovalMode.Ask
     };
 
+    public async Task<ChatDetails?> UpdateBranchSettingsAsync(Guid projectId, Guid chatId, Guid branchId,
+        UpdateBranchSettingsRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Settings);
+        using var lease = await synchronization.EnterAsync(chatId, cancellationToken);
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        if (stored is null) return null;
+        var settings = request.Settings;
+        var policies = settings.ToolPolicies?.Select(ToPolicy).ToArray();
+        stored.Chat.SetBranchSettings(branchId, new ChatBranchSettings(
+            settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
+            settings.ApprovalMode is { } mode ? ToDomain(mode) : null, policies), clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
+        return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
+    }
+
     public async Task<ChatSummary?> PinAsync(
         Guid projectId,
         Guid chatId,
@@ -535,7 +552,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         chat.ConnectionId?.Value,
         chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message)).ToArray(),
         chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member))).ToArray(),
+            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
+            ToContract(branch.Settings))).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
             policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
@@ -581,7 +599,8 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.ConnectionId?.Value,
             projected,
             chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member))).ToArray(),
+                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
+                ToContract(branch.Settings))).ToArray(),
             chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
                 policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
                 policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
@@ -646,6 +665,13 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 
     private static TeamMember? ToContract(ChatBranchMember? member) =>
         member is null ? null : new TeamMember(member.Name, member.Role, member.Color);
+
+    private static BranchSettings? ToContract(ChatBranchSettings? settings) => settings is null ? null : new(
+        settings.ConnectionId?.Value,
+        settings.ApprovalMode is { } mode ? ToContract(mode) : null,
+        settings.ToolPolicies?.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value,
+            policy.Tool.Name, policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
 
     private static bool? ToolResultErrorFlag(string content)
     {

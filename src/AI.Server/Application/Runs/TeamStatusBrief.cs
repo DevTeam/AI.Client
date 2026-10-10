@@ -12,8 +12,8 @@ public sealed class TeamStatusBrief(IChatTeamRosterCalculator roster) : ITeamSta
 {
     public string? Describe(ChatDetails chat, Guid branchId, IReadOnlyList<ChatRunSnapshot> runs)
     {
-        if (branchId != chat.Id) return null;
-        var team = roster.Calculate(chat, runs, chat.Id);
+        var team = roster.Calculate(chat, runs, branchId);
+        if (team.Members.Count == 0 || team.Members[0].BranchId != branchId) return null;
         if (!team.IsTeam) return null;
         var text = new StringBuilder()
             .Append("Team status as this turn starts, from the application (")

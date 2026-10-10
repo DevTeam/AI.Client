@@ -68,7 +68,7 @@ public sealed class AppSubtaskTool(
     IToolResultCodec toolResultCodec,
     IAppToolReply reply,
     Func<IToolAutoApprover> autoApprover,
-    ITokenUsageMeter usageMeter) : IAppTool
+    ITokenUsageMeter usageMeter, IChatBranchSettingsResolver branchSettings) : IAppTool
 {
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
@@ -154,7 +154,8 @@ public sealed class AppSubtaskTool(
             var wanted = tasks.Select(item => item.ConnectionId ?? connectionId)
                 .Select(chosen => (Chosen: chosen, Turn: chosen is null ? unaddressed++ : 0)).ToArray();
             endpoints = await Task.WhenAll(wanted.Select(item =>
-                RequestTemplateAsync(projectId, chatId, item.Chosen, item.Turn, cancellationToken)));
+                RequestTemplateAsync(projectId, chatId, chatId == run.ChatId ? run.BranchId : chatId,
+                    item.Chosen, item.Turn, cancellationToken)));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -304,7 +305,7 @@ public sealed class AppSubtaskTool(
     /// providers at once rather than queueing behind one.
     /// </param>
     private async Task<(ChatCompletionRequest Template, string Name)> RequestTemplateAsync(
-        Guid projectId, Guid chatId, Guid? requested, int turn, CancellationToken cancellationToken)
+        Guid projectId, Guid chatId, Guid branchId, Guid? requested, int turn, CancellationToken cancellationToken)
     {
         var chat = await chats.GetAsync(projectId, chatId, cancellationToken)
             ?? throw new InvalidOperationException("Chat not found.");
@@ -315,7 +316,7 @@ public sealed class AppSubtaskTool(
         // for subtasks — the whole point of that mark is that delegated work need not cost what the
         // conversation costs — and only then to whatever the conversation itself runs on.
         var marked = global.Connections.Where(item => item.ForSubtasks && item.Enabled).ToArray();
-        var inheritedConnectionId = chat.ConnectionId ?? project.ConnectionId;
+        var inheritedConnectionId = branchSettings.ConnectionId(chat, branchId) ?? project.ConnectionId;
         var connection = requested is { } named
             ? global.Connections.SingleOrDefault(item => item.Id == named && item.Enabled)
               ?? throw new InvalidOperationException("No enabled connection has that id. Read the settings to see which exist.")

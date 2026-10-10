@@ -13,6 +13,23 @@ public sealed class ScheduleEndpoints : IEndpointModule
 
     public void Map(IEndpointRouteBuilder routes)
     {
+        const string branchRoute = "/api/projects/{projectId:guid}/chats/{chatId:guid}/branches/{branchId:guid}/schedule";
+        routes.MapGet(branchRoute, async (Guid projectId, Guid chatId, Guid branchId, IChatScheduleService schedules, CancellationToken token) =>
+            Found(await schedules.GetAsync(projectId, chatId, branchId, token)));
+        routes.MapPut(branchRoute, async (Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request,
+            IChatScheduleService schedules, CancellationToken token) =>
+            await GuardAsync(() => schedules.SetAsync(projectId, chatId, branchId, request, token)));
+        routes.MapDelete(branchRoute, async (Guid projectId, Guid chatId, Guid branchId, IChatScheduleService schedules, CancellationToken token) =>
+            Found(await schedules.RemoveAsync(projectId, chatId, branchId, token)));
+        routes.MapPost(branchRoute + "/pause", async (Guid projectId, Guid chatId, Guid branchId, long? revision,
+            IChatScheduleService schedules, CancellationToken token) =>
+            await GuardAsync(() => schedules.PauseAsync(projectId, chatId, branchId, true, revision, token)));
+        routes.MapPost(branchRoute + "/resume", async (Guid projectId, Guid chatId, Guid branchId, long? revision,
+            IChatScheduleService schedules, CancellationToken token) =>
+            await GuardAsync(() => schedules.PauseAsync(projectId, chatId, branchId, false, revision, token)));
+        routes.MapPost(branchRoute + "/run", async (Guid projectId, Guid chatId, Guid branchId,
+            IChatScheduleService schedules, CancellationToken token) =>
+            Found(await schedules.RunNowAsync(projectId, chatId, branchId, token)));
         routes.MapGet(Route, async (Guid projectId, Guid chatId, IChatScheduleService schedules, CancellationToken token) =>
             Found(await schedules.GetAsync(projectId, chatId, token)));
         routes.MapPut(Route, async (Guid projectId, Guid chatId, SetChatScheduleRequest request, IChatScheduleService schedules,

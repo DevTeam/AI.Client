@@ -3,13 +3,13 @@ id: team-coordinate
 name: Team coordinate
 icon: workflow
 kind: playbook
-description: Lead a team from the main branch: answer teammates, record decisions, unblock, track status, integrate.
+description: Lead a team from its coordinating branch: answer teammates, record decisions, unblock, track status, integrate.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
 tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill"]
 ---
 
 The user's instructions take precedence over this playbook, and the user's messages in this branch
-come first. Ask questions and report results in the user's language. This is the main branch of a
+come first. Ask questions and report results in the user's language. This is the coordinating branch of a
 team assembled by team-assemble; its "Team charter" message names the teammates, their branches,
 owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md).
 

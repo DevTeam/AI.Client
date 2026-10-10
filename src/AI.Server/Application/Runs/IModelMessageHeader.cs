@@ -6,5 +6,5 @@ using Contracts.Chats;
 public interface IModelMessageHeader
 {
     /// <summary>The model text of a message: its header, when it needs one, above <paramref name="content"/>.</summary>
-    string Apply(ChatMessageView message, ChatDetails chat, string content);
+    string Apply(ChatMessageView message, ChatDetails chat, string content, Guid? recipientBranchId = null);
 }

@@ -9,20 +9,29 @@ using Contracts.Chats;
 /// </summary>
 public sealed class ModelMessageHeader : IModelMessageHeader
 {
-    public string Apply(ChatMessageView message, ChatDetails chat, string content)
+    public string Apply(ChatMessageView message, ChatDetails chat, string content, Guid? recipientBranchId = null)
     {
         if (message.Role != "User") return content;
         var parts = new List<string>();
         if (message.Sender is { } sender)
         {
-            parts.Add(From(sender, chat));
+            parts.Add(From(sender, chat, recipientBranchId));
             // Only team messages carry an intent. Lead and teammates exchange them as ordinary user
             // messages, which push the loaded team playbook out of the active-skill window after a
             // few rounds, so each one names the protocol to keep following.
             if (sender.Intent is { Length: > 0 } && sender.ChatId == chat.Id)
-                parts.Add(sender.BranchId == chat.Id
-                    ? "team message from the lead: keep to the team-contribute protocol"
-                    : "team message to the lead: handle it with the team-coordinate protocol");
+            {
+                var branches = chat.Branches ?? [];
+                var senderBranch = branches.FirstOrDefault(branch => branch.Id == sender.BranchId);
+                var recipientBranch = branches.FirstOrDefault(branch => branch.Id == recipientBranchId);
+                var fromLead = recipientBranchId is null ? sender.BranchId == chat.Id
+                    : recipientBranch?.ParentBranchId == sender.BranchId;
+                var toLead = recipientBranchId is null ? sender.BranchId != chat.Id
+                    : senderBranch?.ParentBranchId == recipientBranchId
+                      || recipientBranchId == chat.Id && sender.BranchId != chat.Id;
+                if (fromLead) parts.Add("team message from the lead: keep to the team-contribute protocol");
+                else if (toLead) parts.Add("team message to the lead: handle it with the team-coordinate protocol");
+            }
         }
         switch (message.Delivery)
         {
@@ -38,7 +47,7 @@ public sealed class ModelMessageHeader : IModelMessageHeader
         return content.Length == 0 ? header : header + "\n" + content;
     }
 
-    private static string From(MessageSender sender, ChatDetails chat)
+    private static string From(MessageSender sender, ChatDetails chat, Guid? recipientBranchId)
     {
         var intent = sender.Intent is { Length: > 0 } value ? $" ({value})" : string.Empty;
         if (sender.ChatId != chat.Id)
@@ -46,7 +55,9 @@ public sealed class ModelMessageHeader : IModelMessageHeader
         var branch = chat.Branches?.SingleOrDefault(item => item.Id == sender.BranchId);
         // A teammate is named by its identity, not by the branch title a person may have renamed;
         // in a team the main branch is the lead.
-        var name = branch?.Member is { } member ? member.Label
+        var isLead = recipientBranchId is { } recipient && chat.Branches?.Any(item => item.Id == recipient
+            && item.ParentBranchId == sender.BranchId) == true;
+        var name = isLead ? "the lead" : branch?.Member is { } member ? member.Label
             : sender.BranchId == chat.Id
                 ? chat.Branches?.Any(item => item.Member is not null) == true ? "the lead" : "the main branch"
             : branch?.Title is { Length: > 0 } title ? $"branch \"{title}\"" : "a branch";

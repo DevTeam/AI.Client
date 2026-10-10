@@ -13,6 +13,7 @@ using AI.Contracts.Schedules;
 public interface IChatScheduleService
 {
     Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Sets the schedule of a conversation or a scheduled chat. A conversation becomes scheduled
@@ -20,14 +21,18 @@ public interface IChatScheduleService
     /// an instruction to fork runs from. Null when the chat does not exist.
     /// </summary>
     Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken);
+    Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request, CancellationToken cancellationToken);
 
     Task<ChatScheduleView?> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision, CancellationToken cancellationToken);
+    Task<ChatScheduleView?> PauseAsync(Guid projectId, Guid chatId, Guid branchId, bool paused, long? revision, CancellationToken cancellationToken);
 
     /// <summary>Turns the chat back into a conversation. Runs already going keep going.</summary>
     Task<ChatScheduleView?> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ChatScheduleView?> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
 
     /// <summary>Asks the dispatcher for a run now, outside the recurrence.</summary>
     Task<ChatScheduleView?> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ChatScheduleView?> RunNowAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Records the outcome a run reports about itself. <paramref name="branchId"/> is the reporting
@@ -52,26 +57,32 @@ public sealed class ChatScheduleService(
     IClock clock,
     Func<IChatScheduler> scheduler) : IChatScheduleService
 {
-    private const string Conversation = "conversation";
+    public Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        GetAsync(projectId, chatId, chatId, cancellationToken);
 
-    public async Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
-        await store.ReadAsync(projectId, chatId, cancellationToken) is { } stored ? View(projectId, chatId, stored) : null;
+    public async Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken) =>
+        await store.ReadAsync(projectId, chatId, branchId, cancellationToken) is { } stored
+            ? View(projectId, chatId, branchId, stored) : null;
 
-    public async Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request,
+    public Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken) =>
+        SetAsync(projectId, chatId, chatId, request, cancellationToken);
+
+    public async Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         var settings = Normalize(request.Settings);
         if (calendar.Validate(settings) is { } invalid) throw new ArgumentException(invalid);
+        if (branchId != chatId && settings.Deletion is not null)
+            throw new ArgumentException("Automatic chat deletion is available only on the main branch schedule.");
         var now = clock.UtcNow;
         var next = calendar.NextAfter(settings.Recurrence, settings.TimeZone, now)
             ?? throw new ArgumentException($"'{descriptions.Describe(settings.Recurrence)}' has no occurrence after now. Pick a later date or time.");
-        var stored = await store.UpdateAsync(projectId, chatId, current =>
+        var stored = await store.UpdateAsync(projectId, chatId, branchId, current =>
         {
-            RequireSchedulable(current);
             if (current.Schedule is { } existing)
             {
-                RequireRevision(projectId, chatId, current, request.Revision);
+                RequireRevision(projectId, chatId, branchId, current, request.Revision);
                 return existing with
                 {
                     Settings = settings,
@@ -87,19 +98,23 @@ public sealed class ChatScheduleService(
             return new ChatSchedule(settings, request.Paused ?? false, NextRunAt: next, Runs: []);
         }, cancellationToken);
         if (stored is null) return null;
-        await WriteInstructionAsync(projectId, chatId, settings.Task, cancellationToken);
+        if (branchId == chatId) await WriteInstructionAsync(projectId, chatId, settings.Task, cancellationToken);
+        await UnsetDemoKindAsync(projectId, chatId, stored, cancellationToken);
         scheduler().Nudge();
-        return View(projectId, chatId, stored);
+        return View(projectId, chatId, branchId, stored);
     }
 
-    public async Task<ChatScheduleView?> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision,
+    public Task<ChatScheduleView?> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision, CancellationToken cancellationToken) =>
+        PauseAsync(projectId, chatId, chatId, paused, revision, cancellationToken);
+
+    public async Task<ChatScheduleView?> PauseAsync(Guid projectId, Guid chatId, Guid branchId, bool paused, long? revision,
         CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
-        var stored = await store.UpdateAsync(projectId, chatId, current =>
+        var stored = await store.UpdateAsync(projectId, chatId, branchId, current =>
         {
             var existing = Scheduled(current);
-            RequireRevision(projectId, chatId, current, revision);
+            RequireRevision(projectId, chatId, branchId, current, revision);
             if (existing.Paused == paused) return null;
             // Occurrences that passed while paused are not caught up: the next one is after now.
             return existing with
@@ -113,23 +128,32 @@ public sealed class ChatScheduleService(
             };
         }, cancellationToken);
         if (stored is null) return null;
+        await UnsetDemoKindAsync(projectId, chatId, stored, cancellationToken);
         scheduler().Nudge();
-        return View(projectId, chatId, stored);
+        return View(projectId, chatId, branchId, stored);
     }
 
-    public async Task<ChatScheduleView?> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    public Task<ChatScheduleView?> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        RemoveAsync(projectId, chatId, chatId, cancellationToken);
+
+    public async Task<ChatScheduleView?> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
     {
-        var current = await store.ReadAsync(projectId, chatId, cancellationToken);
+        var current = await store.ReadAsync(projectId, chatId, branchId, cancellationToken);
         if (current is null) return null;
         Scheduled(current);
-        var stored = await store.RemoveAsync(projectId, chatId, cancellationToken);
-        return stored is null ? null : View(projectId, chatId, stored);
+        var stored = await store.RemoveAsync(projectId, chatId, branchId, cancellationToken);
+        if (stored is not null) await UnsetDemoKindAsync(projectId, chatId, stored, cancellationToken);
+        scheduler().Nudge();
+        return stored is null ? null : View(projectId, chatId, branchId, stored);
     }
 
-    public async Task<ChatScheduleView?> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    public Task<ChatScheduleView?> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        RunNowAsync(projectId, chatId, chatId, cancellationToken);
+
+    public async Task<ChatScheduleView?> RunNowAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
-        var stored = await store.UpdateAsync(projectId, chatId, current =>
+        var stored = await store.UpdateAsync(projectId, chatId, branchId, current =>
         {
             var existing = Scheduled(current);
             if (existing.ActiveRun is { } active)
@@ -137,8 +161,9 @@ public sealed class ChatScheduleService(
             return existing with { RunRequestedAt = now, Demo = false };
         }, cancellationToken);
         if (stored is null) return null;
+        await UnsetDemoKindAsync(projectId, chatId, stored, cancellationToken);
         scheduler().Nudge();
-        return View(projectId, chatId, stored);
+        return View(projectId, chatId, branchId, stored);
     }
 
     public async Task<ScheduleRunRecord> ReportRunAsync(Guid projectId, Guid chatId, Guid branchId, bool succeeded,
@@ -148,8 +173,15 @@ public sealed class ChatScheduleService(
         var chat = await chats.GetTranscriptAsync(projectId, chatId, cancellationToken)
             ?? throw new InvalidOperationException("Chat not found.");
         var lineage = Lineage(chat, branchId);
+        var proximity = lineage.Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
         ScheduleRunRecord? reported = null;
-        await store.UpdateAsync(projectId, chatId, current =>
+        var owner = (await store.ListAsync(projectId, cancellationToken))
+            .Where(item => item.ChatId == chatId && lineage.Contains(item.BranchId))
+            .OrderBy(item => proximity[item.BranchId])
+            .FirstOrDefault(item => item.Schedule.Runs?.Any(run => run.BranchId is { } id && lineage.Contains(id)
+                && run.Status is ScheduleRunStatus.Running or ScheduleRunStatus.Blocked) == true)
+            ?? throw new InvalidOperationException("This branch is not a scheduled run that is still going.");
+        await store.UpdateAsync(projectId, chatId, owner.BranchId, current =>
         {
             var existing = Scheduled(current);
             var run = existing.Runs?.LastOrDefault(item => item.BranchId is { } id && lineage.Contains(id)
@@ -167,7 +199,7 @@ public sealed class ChatScheduleService(
         return reported ?? throw new InvalidOperationException("Chat not found.");
     }
 
-    private ChatScheduleView View(Guid projectId, Guid chatId, StoredSchedule stored)
+    private ChatScheduleView View(Guid projectId, Guid chatId, Guid branchId, StoredSchedule stored)
     {
         var now = clock.UtcNow;
         var schedule = stored.Schedule;
@@ -177,7 +209,7 @@ public sealed class ChatScheduleService(
         return new ChatScheduleView(projectId, chatId, stored.Kind, schedule,
             schedule is null ? null : descriptions.Describe(schedule.Settings.Recurrence), now,
             calendar.ToLocal(now, calendar.LocalTimeZoneId).ToString("yyyy-MM-dd HH:mm dddd", System.Globalization.CultureInfo.InvariantCulture),
-            calendar.LocalTimeZoneId, upcoming);
+            calendar.LocalTimeZoneId, upcoming, branchId);
     }
 
     private ChatScheduleSettings Normalize(ChatScheduleSettings? settings)
@@ -205,28 +237,34 @@ public sealed class ChatScheduleService(
             new AppendChatMessageRequest(Guid.CreateVersion7(), null, "User", task, chat.Revision), cancellationToken);
     }
 
-    private static HashSet<Guid> Lineage(ChatDetails chat, Guid branchId)
+    private static List<Guid> Lineage(ChatDetails chat, Guid branchId)
     {
         var branches = (chat.Branches ?? []).ToDictionary(branch => branch.Id);
-        var lineage = new HashSet<Guid>();
+        var lineage = new List<Guid>();
+        var visited = new HashSet<Guid>();
         Guid? cursor = branchId;
-        while (cursor is { } id && lineage.Add(id))
+        while (cursor is { } id && visited.Add(id))
+        {
+            lineage.Add(id);
             cursor = branches.TryGetValue(id, out var branch) ? branch.ParentBranchId : null;
+        }
         return lineage;
-    }
-
-    private static void RequireSchedulable(StoredSchedule current)
-    {
-        if (current.Kind is not (Conversation or ChatSchedule.Kind))
-            throw new InvalidOperationException($"A '{current.Kind}' chat cannot be scheduled; only a conversation can.");
     }
 
     private static ChatSchedule Scheduled(StoredSchedule current) => current.Schedule
         ?? throw new InvalidOperationException("This chat has no schedule. Set one first.");
 
-    private void RequireRevision(Guid projectId, Guid chatId, StoredSchedule current, long? revision)
+    private async Task UnsetDemoKindAsync(Guid projectId, Guid chatId, StoredSchedule stored,
+        CancellationToken cancellationToken)
+    {
+        if (stored.Kind != ChatSchedule.Kind) return;
+        await chats.ChangeKindAsync(projectId, chatId, current => current.Kind == ChatSchedule.Kind
+            ? new ChatKindState("conversation", null, 1) : null, cancellationToken);
+    }
+
+    private void RequireRevision(Guid projectId, Guid chatId, Guid branchId, StoredSchedule current, long? revision)
     {
         if (revision is { } expected && current.Schedule is { } schedule && schedule.Revision != expected)
-            throw new ScheduleConflictException(View(projectId, chatId, current));
+            throw new ScheduleConflictException(View(projectId, chatId, branchId, current));
     }
 }

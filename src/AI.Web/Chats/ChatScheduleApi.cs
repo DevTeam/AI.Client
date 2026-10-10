@@ -8,10 +8,15 @@ using AI.Contracts.Schedules;
 /// <summary>The schedule of a chat, as the schedule widget changes it.</summary>
 public interface IChatScheduleApi
 {
+    Task<ChatScheduleView> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
     Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken);
+    Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request, CancellationToken cancellationToken);
     Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision, CancellationToken cancellationToken);
+    Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, Guid branchId, bool paused, long? revision, CancellationToken cancellationToken);
     Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
     Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
 
     /// <summary>
     /// The scheduled chats of every project the sidebar's Scheduled section lists: the ones the
@@ -34,31 +39,49 @@ public sealed class ChatScheduleApi(HttpClient httpClient) : IChatScheduleApi
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request,
-        CancellationToken cancellationToken)
+    public async Task<ChatScheduleView> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
     {
-        using var response = await httpClient.PutAsJsonAsync(Route(projectId, chatId), request, Json, cancellationToken);
+        using var response = await httpClient.GetAsync(Route(projectId, chatId, branchId), cancellationToken);
         return await ReadAsync(response, cancellationToken);
     }
 
-    public async Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision,
+    public Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request,
+        CancellationToken cancellationToken) => SetAsync(projectId, chatId, chatId, request, cancellationToken);
+
+    public async Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync(Route(projectId, chatId, branchId), request, Json, cancellationToken);
+        return await ReadAsync(response, cancellationToken);
+    }
+
+    public Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision,
+        CancellationToken cancellationToken) => PauseAsync(projectId, chatId, chatId, paused, revision, cancellationToken);
+
+    public async Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, Guid branchId, bool paused, long? revision,
         CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsync(
-            $"{Route(projectId, chatId)}/{(paused ? "pause" : "resume")}{(revision is { } value ? $"?revision={value}" : string.Empty)}",
+            $"{Route(projectId, chatId, branchId)}/{(paused ? "pause" : "resume")}{(revision is { } value ? $"?revision={value}" : string.Empty)}",
             null, cancellationToken);
         return await ReadAsync(response, cancellationToken);
     }
 
-    public async Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    public Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        RemoveAsync(projectId, chatId, chatId, cancellationToken);
+
+    public async Task<ChatScheduleView> RemoveAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
     {
-        using var response = await httpClient.DeleteAsync(Route(projectId, chatId), cancellationToken);
+        using var response = await httpClient.DeleteAsync(Route(projectId, chatId, branchId), cancellationToken);
         return await ReadAsync(response, cancellationToken);
     }
 
-    public async Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    public Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
+        RunNowAsync(projectId, chatId, chatId, cancellationToken);
+
+    public async Task<ChatScheduleView> RunNowAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken)
     {
-        using var response = await httpClient.PostAsync($"{Route(projectId, chatId)}/run", null, cancellationToken);
+        using var response = await httpClient.PostAsync($"{Route(projectId, chatId, branchId)}/run", null, cancellationToken);
         return await ReadAsync(response, cancellationToken);
     }
 
@@ -79,7 +102,8 @@ public sealed class ChatScheduleApi(HttpClient httpClient) : IChatScheduleApi
         }
     }
 
-    private static string Route(Guid projectId, Guid chatId) => $"api/projects/{projectId}/chats/{chatId}/schedule";
+    private static string Route(Guid projectId, Guid chatId, Guid branchId) =>
+        $"api/projects/{projectId}/chats/{chatId}/branches/{branchId}/schedule";
 
     private static async Task<ChatScheduleView> ReadAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

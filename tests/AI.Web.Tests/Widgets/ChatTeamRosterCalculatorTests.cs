@@ -69,6 +69,34 @@ public sealed class ChatTeamRosterCalculatorTests
     }
 
     [Fact]
+    public void NestedTeamUsesItsParentBranchAsLead()
+    {
+        var (chat, ada, _, _, _) = Team();
+        var charter = new ChatMessageView(Guid.NewGuid(), ada, "User", "# Team charter\nInvestigate API behavior.",
+            T0.AddSeconds(20), Sender: new MessageSender(chat.Id, ada, "decision"));
+        var childBrief = new ChatMessageView(Guid.NewGuid(), charter.Id, "User", "You are Cleo · Research.",
+            T0.AddSeconds(21), Sender: new MessageSender(chat.Id, ada, "decision"));
+        var report = new ChatMessageView(Guid.NewGuid(), charter.Id, "User", "Investigation complete.",
+            T0.AddSeconds(22), Sender: new MessageSender(chat.Id, childBrief.Id, "done"));
+        chat = chat with
+        {
+            Messages = [.. chat.Messages, charter, childBrief, report],
+            Branches = [.. chat.Branches!.Select(branch => branch.Id == ada
+                ? branch with { HeadMessageId = report.Id } : branch),
+                new ChatBranchView(childBrief.Id, childBrief.Id, "Cleo · Research", ada, childBrief.Id,
+                    Member: new TeamMember("Cleo", "Research", "violet"))]
+        };
+
+        var roster = new ChatTeamRosterCalculator().Calculate(chat, [], childBrief.Id);
+
+        roster.Members.Select(member => member.BranchId).ShouldBe([ada, childBrief.Id]);
+        roster.Members[0].IsLead.ShouldBeTrue();
+        roster.Members[1].IsCurrent.ShouldBeTrue();
+        roster.Members[1].LastReport!.Text.ShouldBe("Investigation complete.");
+        roster.Charter!.MessageId.ShouldBe(charter.Id);
+    }
+
+    [Fact]
     public void AnAnswerFromTheLeadShouldCloseTheQuestion()
     {
         var (chat, _, bo, _, _) = Team();

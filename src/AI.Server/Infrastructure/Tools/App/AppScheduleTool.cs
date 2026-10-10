@@ -12,7 +12,7 @@ public enum ScheduleOperation
     /// <summary>Read the chat's schedule, its next run and its recent runs. Changes nothing.</summary>
     Get,
 
-    /// <summary>Create or replace the schedule from 'settings'; a conversation becomes a scheduled chat with its history intact.</summary>
+    /// <summary>Create or replace the selected branch's schedule from 'settings'.</summary>
     Set,
 
     /// <summary>Stop starting runs until Resume. The run going now keeps going.</summary>
@@ -21,7 +21,7 @@ public enum ScheduleOperation
     /// <summary>Start runs again; occurrences that passed while paused are skipped.</summary>
     Resume,
 
-    /// <summary>Remove the schedule: the chat becomes an ordinary conversation, keeping messages and branches.</summary>
+    /// <summary>Remove the selected branch's schedule, keeping messages and branches.</summary>
     Remove,
 
     /// <summary>Start a run now, outside the recurrence.</summary>
@@ -32,9 +32,8 @@ public enum ScheduleOperation
 }
 
 /// <summary>
-/// The schedule of a chat: the chat-editing tool for scheduled chats. Setting a schedule turns an
-/// ordinary conversation into one the Host's dispatcher runs — each run a fork from the end of the
-/// chat that follows the <c>chat-schedule-run</c> skill and reports here how it went.
+/// The schedule of a branch: each run forks from that branch's current head and follows the
+/// <c>chat-schedule-run</c> skill.
 /// </summary>
 [McpServerToolType]
 public sealed class AppScheduleTool(IChatScheduleService schedules, IAppWrites writes, IScheduleCalendar calendar) : IAppTool
@@ -50,17 +49,17 @@ public sealed class AppScheduleTool(IChatScheduleService schedules, IAppWrites w
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Read and change the schedule of a chat. A scheduled chat is run by the application on its own: at each "
-                              + "occurrence it forks the chat from its end and the run carries out 'settings.task'. projectId and chatId "
-                              + "default to the current chat. Set creates or replaces the schedule and turns a conversation into a scheduled "
-                              + "chat without losing its history; an empty chat gets the task as its first message. settings.recurrence is "
+                Description = "Read and change a branch schedule. At each occurrence the application forks the owner branch "
+                              + "from its current head and the run carries out 'settings.task'. projectId, chatId and branchId "
+                              + "default to the current branch. Set creates or replaces only that branch's schedule; "
+                              + "an empty main branch gets the task as its first message. settings.recurrence is "
                               + "{frequency: Once|Hourly|Daily|Weekly|Monthly|Yearly, start:'yyyy-MM-dd', time:'HH:mm', interval, weekdays:[Monday…], "
                               + "monthDay (1–31, -1 last), monthWeekday:{ordinal 1–4 or -1, day}, until:'yyyy-MM-dd', count} in settings.timeZone "
                               + $"(IANA id; empty means the host's '{tool.LocalTimeZone}'). Recurrence values from ask_user pickerKind='recurrence' "
                               + "can be passed as they are. settings.successCriteria says how a run tells success from failure; settings.retry "
                               + "{maxAttempts, delayMinutes, condition} retries failures; settings.retention {succeeded, failed, blocked} each "
                               + "{action: Keep|Delete, delayMinutes} decides what happens to run branches by outcome (blocked = waiting for a person); "
-                              + "settings.deletion {at, afterLastRunMinutes} deletes the chat itself. Never invent a date, time, recurrence, "
+                              + "settings.deletion {at, afterLastRunMinutes} deletes the chat itself and is only valid on the main branch. Never invent a date, time, recurrence, "
                               + "success criteria, retry or deletion rule the user did not give: ask for the missing ones with ask_user "
                               + "(pickerKind 'date', 'time', 'recurrence'). Pass the schedule 'revision' you read to Set, Pause and Resume; a stale "
                               + "one changes nothing and returns the current schedule. 'operationId' must be a fresh UUID per change. "
@@ -72,25 +71,27 @@ public sealed class AppScheduleTool(IChatScheduleService schedules, IAppWrites w
             UseStructuredContent = true, OutputSchemaType = typeof(AppWriteResult))]
         private Task<CallToolResult> ScheduleAsync(
             ScheduleOperation operation, Guid operationId = default, Guid? projectId = null, Guid? chatId = null,
+            Guid? branchId = null,
             ChatScheduleSettings? settings = null, long? revision = null, bool? paused = null,
             bool? succeeded = null, string? summary = null, bool? retry = null,
             CancellationToken cancellationToken = default) =>
-            tool.ScheduleAsync(run, reply, operation, operationId, projectId ?? run.ProjectId, chatId ?? run.ChatId, settings, revision,
+            tool.ScheduleAsync(run, reply, operation, operationId, projectId ?? run.ProjectId, chatId ?? run.ChatId,
+                branchId ?? (chatId is { } targetChat && targetChat != run.ChatId ? targetChat : run.BranchId), settings, revision,
                 paused, succeeded, summary, retry, cancellationToken);
     }
 
     private async Task<CallToolResult> ScheduleAsync(ToolRunContext run, IAppToolReply reply, ScheduleOperation operation,
-        Guid operationId, Guid projectId, Guid chatId, ChatScheduleSettings? settings, long? revision, bool? paused,
+        Guid operationId, Guid projectId, Guid chatId, Guid branchId, ChatScheduleSettings? settings, long? revision, bool? paused,
         bool? succeeded, string? summary, bool? retry, CancellationToken cancellationToken)
     {
         if (operation == ScheduleOperation.Get)
         {
-            var view = await schedules.GetAsync(projectId, chatId, cancellationToken);
+            var view = await schedules.GetAsync(projectId, chatId, branchId, cancellationToken);
             var builder = AppWriteBuilder.For(nameof(ScheduleOperation.Get));
             var result = view is null
                 ? builder.Failed("Chat not found.", projectId, chatId)
                 : new AppWriteResult(nameof(ScheduleOperation.Get), false, false,
-                    view.Schedule is null ? "The chat has no schedule." : $"Schedule: {view.Description}.", projectId, chatId, null, null,
+                    view.Schedule is null ? "This branch has no schedule." : $"Schedule: {view.Description}.", projectId, chatId, null, null,
                     view.Schedule?.Revision ?? 0, "Read", Element(view, reply.Json), false, null);
             return reply.Reply(result, result.Error is not null);
         }
@@ -101,17 +102,17 @@ public sealed class AppScheduleTool(IChatScheduleService schedules, IAppWrites w
             {
                 return operation switch
                 {
-                    ScheduleOperation.Set => Reply(builder, reply, projectId, chatId, await schedules.SetAsync(projectId, chatId,
+                    ScheduleOperation.Set => Reply(builder, reply, projectId, chatId, await schedules.SetAsync(projectId, chatId, branchId,
                         new SetChatScheduleRequest(settings ?? throw new ArgumentException("'settings' is required for Set."), revision, paused),
-                        cancellationToken), view => $"Scheduled the chat: {view.Description}."),
+                        cancellationToken), view => $"Scheduled the branch: {view.Description}."),
                     ScheduleOperation.Pause or ScheduleOperation.Resume => Reply(builder, reply, projectId, chatId,
-                        await schedules.PauseAsync(projectId, chatId, operation == ScheduleOperation.Pause, revision, cancellationToken),
+                        await schedules.PauseAsync(projectId, chatId, branchId, operation == ScheduleOperation.Pause, revision, cancellationToken),
                         _ => operation == ScheduleOperation.Pause ? "Paused the schedule." : "Resumed the schedule."),
                     ScheduleOperation.Remove => Reply(builder, reply, projectId, chatId,
-                        await schedules.RemoveAsync(projectId, chatId, cancellationToken),
-                        _ => "Removed the schedule; the chat is an ordinary conversation again."),
+                        await schedules.RemoveAsync(projectId, chatId, branchId, cancellationToken),
+                        _ => "Removed this branch's schedule."),
                     ScheduleOperation.RunNow => Reply(builder, reply, projectId, chatId,
-                        await schedules.RunNowAsync(projectId, chatId, cancellationToken),
+                        await schedules.RunNowAsync(projectId, chatId, branchId, cancellationToken),
                         _ => "Asked for a run now; it starts within seconds."),
                     ScheduleOperation.ReportRun => await ReportAsync(builder, reply, run, succeeded, summary, retry, cancellationToken),
                     _ => throw new ArgumentException("Unknown operation.", nameof(operation))

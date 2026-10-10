@@ -44,8 +44,9 @@ tools: ["app_read","ask_user","app_chats"]
 8. Only when this work ran in a chat: once it is finished and reported, check with app_read Messages
    whether this chat did anything besides it. When the chat holds nothing but the archive request and
    its report, ask once through ask_user whether to delete this chat, saying that deletion removes it
-   together with all its branches and its whole history, and that a dismissed, expired, interrupted
-   or unanswered question keeps the chat. On an affirmative answer, read this chat with app_read Chat
+   together with all its branches and its whole history: "Keep this chat (Recommended)" and "Delete
+   this chat". A dismissed, expired, interrupted or unanswered question, or any other answer, keeps
+   the chat. On delete, read this chat with app_read Chat
    for its revision, then call app_chats Delete with projectId, this chatId, that revision, a fresh
    operationId and dryRun false; when the application refuses the deletion, report that and leave the
    chat. When the chat did anything else, when another run of it is still working, or when the answer

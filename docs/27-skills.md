@@ -62,6 +62,22 @@ application permissions, and every write still goes through tool approval.
 
 `BuiltInSkillCatalogTests` checks the naming of every bundled skill.
 
+A playbook that changes application data and ends with a one-line report offers, as its last step,
+to delete the chat when the chat did nothing but that work: one `ask_user` question saying that
+deletion removes the chat with all its branches and its whole history, "Keep this chat
+(Recommended)" and "Delete this chat", the chat kept by anything but a clear yes, and on deletion
+`app_read resource=Chat` for the revision followed by `app_chats` Delete with the project id, the
+chat id, that revision, a fresh `operationId` and `dryRun` false. `chat-archive`,
+`chat-branch-cleanup`, `project-rename`, `project-describe`, `project-directory-add`,
+`project-directory-remove`, `instructions-edit`, `memory-save`, `memory-review`, `memory-forget`,
+`settings-select-connection`, `settings-tools-configure`, `project-tools-configure`,
+`chat-tools-configure` and `settings-tools-reset` follow it, and the tool-policy ones say in the
+question that the report above goes with the chat. A skill whose answer is the deliverable
+(`chat-summary`, a review, a draft) does not offer it, `chat-compact` deliberately keeps the old
+chat, and `chat-schedule-delete` already offers deletion as one of its own choices. `chat-summary`
+says in its steps that it never offers it, because its answer is the deliverable and the safe
+testing example.
+
 ## Built-in skills
 
 | id | What it does | Tools |

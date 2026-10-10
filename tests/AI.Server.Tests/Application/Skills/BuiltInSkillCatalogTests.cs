@@ -128,6 +128,34 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldOfferToDeleteTheChatOnlyFromPlaybooksThatCanDeleteIt()
+    {
+        var skills = new BuiltInSkillCatalog().List();
+
+        // Offering the deletion is the last step of a playbook that changed data and reported one line.
+        string[] offering =
+        [
+            "chat-archive", "chat-branch-cleanup", "project-rename", "project-describe", "project-directory-add",
+            "project-directory-remove", "instructions-edit", "memory-save", "memory-review", "memory-forget",
+            "settings-select-connection", "settings-tools-configure", "project-tools-configure",
+            "chat-tools-configure", "settings-tools-reset",
+        ];
+        foreach (var id in offering)
+        {
+            var skill = skills.Single(item => item.Id == id);
+            SkillMarkdown.Body(skill.Content).Contains("delete this chat", StringComparison.Ordinal).ShouldBeTrue(id);
+            skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats", id);
+        }
+
+        // Every playbook that mentions the offer declares the tool, and the safe testing example never
+        // offers it: its answer is the deliverable.
+        foreach (var skill in skills.Where(item => item.Kind == SkillKinds.Playbook))
+            if (SkillMarkdown.Body(skill.Content).Contains("delete this chat", StringComparison.Ordinal))
+                skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats", skill.Id);
+        skills.Single(item => item.Id == "chat-summary").Content.ShouldContain("never offers to delete the chat");
+    }
+
+    [Fact]
     public void ShouldFollowTheSkillNamingSystem()
     {
         foreach (var skill in new BuiltInSkillCatalog().List())

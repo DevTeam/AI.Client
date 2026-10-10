@@ -5,7 +5,7 @@ icon: shield
 kind: playbook
 description: Automatically choose and apply recommended MCP tool permissions for the project scope, including call limits and timeouts; Use for project permission setup or MCP permission setup without an explicit scope.
 parameters: {"type":"object","properties":{"servers":{"type":"array","items":{"type":"string"},"description":"Exact MCP server names supplied by the user; omitted means all servers in this scope"},"tools":{"type":"array","items":{"type":"string"},"description":"Exact original tool names supplied by the user; omitted means all declared tools of the selected servers"}},"additionalProperties":false}
-tools: ["app_read","app_security"]
+tools: ["app_read","app_security","app_chats","ask_user"]
 ---
 
 Configure the project scope only. The request to configure recommended permissions authorizes
@@ -78,6 +78,15 @@ user's language. Use another scope only when the user explicitly requested it.
    short explanation of choices. Distinguish saved overrides from effective access: chat overrides
    project overrides global, with independent fallback for limits and timeout. Disabled/denied
    servers remain inaccessible. Narrower chat overrides may mask project recommendations.
+6. Only when this work ran in a chat and the report above is not needed there: check with `app_read`
+   resource=Messages whether this chat did anything besides it. When the chat holds nothing but the
+   request and its report, ask once through `ask_user` whether to delete this chat, saying that
+   deletion removes it together with all its branches, its whole history and the report above, with
+   "Keep this chat (Recommended)" and "Delete this chat". A dismissed, expired, interrupted or
+   unanswered question, or any other answer, keeps the chat. On delete, read this chat with `app_read`
+   resource=Chat for its revision, then call `app_chats` Delete with `projectId`, this `chatId`, that
+   revision, a fresh `operationId` and `dryRun` false; when the application refuses the deletion,
+   report that and leave the chat.
    Do not claim success for unverified writes or claim that existing in-flight calls changed.
 
 ## Links to skills and tools

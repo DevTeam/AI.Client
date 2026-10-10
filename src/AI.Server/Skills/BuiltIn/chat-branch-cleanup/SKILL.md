@@ -17,4 +17,13 @@ tools: ["app_read","ask_user","app_chats"]
    with `allowOther` off. Dismissed, expired or interrupted: delete nothing.
 4. For each chosen branch, `app_chats` DeleteBranch with dryRun true first, then dryRun false with
    the revision the rehearsal reported. Use each result's revision for the next.
-5. Answer with one line: how many branches were deleted.
+5. Only when this work ran in a chat: once it is finished and reported, check with `app_read`
+   resource=Messages whether this chat did anything besides it. When the chat holds nothing but the
+   request and its report, ask once through `ask_user` whether to delete this chat, saying that
+   deletion removes it together with all its branches and its whole history, with "Keep this chat
+   (Recommended)" and "Delete this chat". A dismissed, expired, interrupted or unanswered question,
+   or any other answer, keeps the chat. On delete, read this chat with `app_read` resource=Chat for
+   its revision, then call `app_chats` Delete with `projectId`, this `chatId`, that revision, a fresh
+   `operationId` and `dryRun` false; when the application refuses the deletion, report that and
+   leave the chat.
+6. Answer with one line: how many branches were deleted, and whether the chat was kept.

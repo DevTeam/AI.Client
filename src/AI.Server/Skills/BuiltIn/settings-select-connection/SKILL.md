@@ -38,3 +38,12 @@ tools: ["app_read","app_security","app_projects","app_chats","ask_user"]
    On a conflict re-read, check the approved change still applies, and retry once.
 5. Verify the saved scope with `app_read`. Answer with one line naming the selected connection
    or inheritance, scope and effective connection; no ids, revisions or credentials.
+6. Only when this work ran in a chat: once it is finished and reported, check with `app_read`
+   resource=Messages whether this chat did anything besides it. When the chat holds nothing but the
+   request and its report, ask once through `ask_user` whether to delete this chat, saying that
+   deletion removes it together with all its branches and its whole history, with "Keep this chat
+   (Recommended)" and "Delete this chat". A dismissed, expired, interrupted or unanswered question,
+   or any other answer, keeps the chat. On delete, read this chat with `app_read` resource=Chat for
+   its revision, then call `app_chats` Delete with `projectId`, this `chatId`, that revision, a fresh
+   `operationId` and `dryRun` false; when the application refuses the deletion, report that and
+   leave the chat.

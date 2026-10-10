@@ -14,4 +14,5 @@ tools: ["app_read"]
    goal, the outcome and what is still open. `full`: the sections Goal, Decisions, Done, Open and
    Files and commands, each only when it has content.
 3. Quote ids, paths and commands exactly, and never report progress that the messages do not show.
-   This skill is read-only, which makes it a safe example when the user asks to test skills.
+   This skill is read-only, which makes it a safe example when the user asks to test skills. It
+   never offers to delete the chat, however little the chat holds: the summary is the deliverable.

@@ -5,7 +5,7 @@ icon: shield
 kind: playbook
 description: Reset selected MCP tool permission overrides in a requested branch, chat, project or global scope to inherited policies; use when the user requests reset, not recommended configuration.
 parameters: {"type":"object","properties":{"scope":{"type":"string","enum":["branch","chat","project","global"]},"servers":{"type":"array","items":{"type":"string"}},"tools":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}
-tools: ["app_read","app_security","ask_user"]
+tools: ["app_read","app_security","ask_user","app_chats"]
 ---
 
 1. Resolve scope from parameters or the user's request; use the current chat if unspecified, and
@@ -35,3 +35,12 @@ tools: ["app_read","app_security","ask_user"]
    and limits, unchanged and failed items in the user's language. Call the action Reset, not Delete.
    State that a global reset affects every project/chat inheriting it; narrower overrides remain.
    A branch reset also reaches the branches below it that set no rule of their own.
+5. Only when this work ran in a chat and the report above is not needed there: check with `app_read`
+   resource=Messages whether this chat did anything besides it. When the chat holds nothing but the
+   request and its report, ask once through `ask_user` whether to delete this chat, saying that
+   deletion removes it together with all its branches, its whole history and the report above, with
+   "Keep this chat (Recommended)" and "Delete this chat". A dismissed, expired, interrupted or
+   unanswered question, or any other answer, keeps the chat. On delete, read this chat with `app_read`
+   resource=Chat for its revision, then call `app_chats` Delete with `projectId`, this `chatId`, that
+   revision, a fresh `operationId` and `dryRun` false; when the application refuses the deletion,
+   report that and leave the chat.

@@ -35,6 +35,14 @@ The HTTP endpoint `PUT …/branches/{branchId}/settings` replaces the whole obje
 
 ## In the UI
 
+The chat menu and the branch menu in the sidebar have the same three groups, split by separators:
+what to do with the item (*Pin chat*, *Reviews*), its settings (*Chat settings* or *Branch
+settings*, then *Tool permissions*), and clearing it out (*Archive chat*, *Delete all branches* or
+*Delete all sub-branches*, *Delete chat* or *Delete branch*, each confirmed in place). A count beside
+*Branch settings* is how many of the model and approval mode the branch sets itself; beside *Tool
+permissions*, how many tool rules the chat or branch sets; beside a bulk delete, how many branches
+it removes. *Chat settings* opens the chat first when another one is open.
+
 The settings dialog lists, for one branch: the model, the tool approval mode, a summary of its tool
 permission rules (with **Edit**, which opens the permissions drawer in branch scope) and its
 schedule (with **Open**, which goes to the branch and shows the Schedule widget). Each setting has a

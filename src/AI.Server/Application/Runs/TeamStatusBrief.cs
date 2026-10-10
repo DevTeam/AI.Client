@@ -28,6 +28,8 @@ public sealed class TeamStatusBrief(IChatTeamRosterCalculator roster) : ITeamSta
                 text.Append("; latest report ").Append(report.Intent ?? "without intent")
                     .Append(": \"").Append(report.Text).Append('"');
             else text.Append("; no report yet");
+            if (member.SubTeam > 0)
+                text.Append("; leads its own team of ").Append(member.SubTeam);
             if (member.Open is { } open)
                 text.Append("; waiting for your answer to its ").Append(open.Intent)
                     .Append(": \"").Append(open.Text).Append('"');

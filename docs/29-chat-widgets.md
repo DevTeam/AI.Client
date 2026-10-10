@@ -740,6 +740,13 @@ same whichever branch is open, so a teammate's branch shows the task it is part 
   latest question or blocker came after the lead's last message into its branch shows
   "Waiting for the lead: …". A click opens that member's branch.
 - **Summary.** "X/N done", with "· K waiting" when there are open items.
+- **Nested teams.** A teammate can lead a team of its own (its member branches are children of its
+  branch). The roster shows the team of the visible branch: the team it leads, or else the team it
+  belongs to. A nested team's lead keeps its name and role with a **Lead** tag, its **Task** is the
+  brief its own lead sent it, and **Task** and **Charter** open the nested lead's branch. A link
+  "Part of the team led by …" above the task opens the lead of the team above. In the team above,
+  a teammate that leads a team carries a count tag, and the lead's team status says "leads its own
+  team of N".
 
 The statistics below, under "Messages into this branch", are the per-branch figures described next.
 

@@ -850,7 +850,7 @@
                                         <span class="composer-endpoint-default">@(_connections.FirstOrDefault(item => item.Id == InheritedConnectionId(GetSelectedRunBranchId()))?.Name ?? "None")</span>
                                     </button>
                                 </span>
-                                <span class="composer-menu-separator" role="separator"></span>
+                                <span class="menu-separator" role="separator"></span>
                             }
                             @foreach (var connection in _connections.Where(item => item.Enabled))
                             {
@@ -1403,21 +1403,11 @@ else if (_guideInvitation is { } guideInvitation)
             @if (_chatMenuId == chat.Id && actionsHere)
             {
                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                    @* Every chat and branch menu has the same three groups: what to do with the item, its
+                       settings, and clearing it out — the destructive entries last, each confirmed in place. *@
                     <button type="button" role="menuitem" @onclick="() => ToggleChatPinAsync(chat)">
                         <AppIcon Name="@(chat.IsPinned ? "unpin" : "pin")" />
                         <span>@(chat.IsPinned ? "Unpin chat" : "Pin chat")</span>
-                    </button>
-                    @if (_selectedChat?.Id == chat.Id)
-                    {
-                        <button type="button" role="menuitem" @onclick="() => OpenBranchSettings(chat.Id)"><AppIcon Name="sliders" /><span>Chat settings</span></button>
-                    }
-                    <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">
-                        <AppIcon Name="tool" />
-                        <span>Tool permissions</span>
-                        @if (GetChatPermissionCount(chat.Id) > 0)
-                        {
-                            <span class="menu-count">@GetChatPermissionCount(chat.Id)</span>
-                        }
                     </button>
                     @if (_menuReviews.TryGetValue(chat.Id, out var chatReviews) && chatReviews.Any(item => item.Kind == ChatReviewKind.Diff))
                     {
@@ -1446,6 +1436,18 @@ else if (_guideInvitation is { } guideInvitation)
                         </div>
                         }
                     }
+                    <span class="menu-separator" role="separator"></span>
+                    <button type="button" role="menuitem" @onclick="() => OpenChatSettingsAsync(chat)"><AppIcon Name="sliders" /><span>Chat settings</span></button>
+                    <button type="button" role="menuitem" @onclick="() => OpenChatPermissions(chat)">
+                        <AppIcon Name="tool" />
+                        <span>Tool permissions</span>
+                        @if (GetChatPermissionCount(chat.Id) > 0)
+                        {
+                            <span class="menu-count" title="@($"{GetChatPermissionCount(chat.Id)} set on this chat")">@GetChatPermissionCount(chat.Id)</span>
+                        }
+                    </button>
+                    <span class="menu-separator" role="separator"></span>
+                    <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
                     @if (chat.BranchCount > 0)
                     {
                         @if (_confirmingSubBranchDeleteId == chat.Id)
@@ -1454,17 +1456,16 @@ else if (_guideInvitation is { } guideInvitation)
                         }
                         else
                         {
-                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = chat.Id"><AppIcon Name="git-branch" /><span>Delete all branches (@chat.BranchCount)</span></button>
+                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = chat.Id"><AppIcon Name="git-branch" /><span>Delete all branches</span><span class="menu-count">@chat.BranchCount</span></button>
                         }
                     }
-                    <button type="button" role="menuitem" @onclick="() => ArchiveChatAsync(chat)"><AppIcon Name="archive" /><span>Archive chat</span></button>
                     @if (_isConfirmingChatDelete)
                     {
                         <div class="project-menu-confirm"><span>Delete this chat and all its branches?</span><button class="danger compact-action" type="button" disabled="@(_deletingChatId is not null)" @onclick="() => DeleteChatAsync(chat)">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelChatDelete"><AppIcon Name="x" /></button></div>
                     }
                     else
                     {
-                        <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmChatDelete"><AppIcon Name="trash" />Delete chat</button>
+                        <button class="menu-danger" type="button" role="menuitem" @onclick="ConfirmChatDelete"><AppIcon Name="trash" /><span>Delete chat</span></button>
                     }
                 </div>
             }
@@ -1525,7 +1526,13 @@ else if (_guideInvitation is { } guideInvitation)
                             </div>
                             }
                         }
+                        @if (ReviewsForBranch(branch).Count > 0)
+                        {
+                            <span class="menu-separator" role="separator"></span>
+                        }
                         <button type="button" role="menuitem" @onclick="() => OpenBranchSettings(branch.RootId)"><AppIcon Name="sliders" /><span>Branch settings</span>@if (CountBranchOverrides(branch.RootId) is > 0 and var overrides) { <span class="menu-count" title="@($"{overrides} set on this branch")">@overrides</span> }</button>
+                        <button type="button" role="menuitem" @onclick="() => OpenBranchPermissionsAsync(branch.RootId)"><AppIcon Name="tool" /><span>Tool permissions</span>@if (GetBranchSettings(branch.RootId).ToolPolicies?.Count is > 0 and var branchRules) { <span class="menu-count" title="@($"{branchRules} set on this branch")">@branchRules</span> }</button>
+                        <span class="menu-separator" role="separator"></span>
                         @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
                         {
                             @if (_confirmingSubBranchDeleteId == branch.RootId)
@@ -1534,7 +1541,7 @@ else if (_guideInvitation is { } guideInvitation)
                             }
                             else
                             {
-                                <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = branch.RootId"><AppIcon Name="git-branch" /><span>Delete all sub-branches (@subBranches)</span></button>
+                                <button class="menu-danger" type="button" role="menuitem" @onclick="() => _confirmingSubBranchDeleteId = branch.RootId"><AppIcon Name="git-branch" /><span>Delete all sub-branches</span><span class="menu-count">@subBranches</span></button>
                             }
                         }
                         @if (_confirmingBranchDeleteId == branch.RootId)
@@ -1543,7 +1550,7 @@ else if (_guideInvitation is { } guideInvitation)
                         }
                         else
                         {
-                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => ConfirmBranchDelete(branch.RootId)"><AppIcon Name="trash" />Delete branch</button>
+                            <button class="menu-danger" type="button" role="menuitem" @onclick="() => ConfirmBranchDelete(branch.RootId)"><AppIcon Name="trash" /><span>Delete branch</span></button>
                         }
                     </div>
                 }
@@ -3730,13 +3737,14 @@ else if (_guideInvitation is { } guideInvitation)
 
     /// <summary>
     /// Shows a message of the lead's branch — the task or the charter — from a teammate's branch
-    /// too: the lead's branch is opened first, and the transcript scrolls once it holds the message.
+    /// too: the lead's branch (the main one, or a nested team's lead) is opened first, and the
+    /// transcript scrolls once it holds the message.
     /// </summary>
-    private async Task ShowTeamMessageAsync(Guid messageId)
+    private async Task ShowTeamMessageAsync((Guid BranchId, Guid MessageId) target)
     {
-        if (_selectedChat is not { } chat) return;
-        if (GetSelectedRunBranchId() != chat.Id) await OpenSenderBranchAsync(chat.Id);
-        await ScrollToTurnAsync(messageId);
+        if (_selectedChat is null) return;
+        if (GetSelectedRunBranchId() != target.BranchId) await OpenSenderBranchAsync(target.BranchId);
+        await ScrollToTurnAsync(target.MessageId);
     }
 
     // The Branches widget lists every stored branch and lets the person click one to make it the
@@ -6290,7 +6298,16 @@ else if (_guideInvitation is { } guideInvitation)
     }
 
     private int CountBranchOverrides(Guid branchId) => GetBranchSettings(branchId) is var settings
-        ? (settings.ConnectionId is null ? 0 : 1) + (settings.ApprovalMode is null ? 0 : 1) + (settings.ToolPolicies?.Count ?? 0) : 0;
+        ? (settings.ConnectionId is null ? 0 : 1) + (settings.ApprovalMode is null ? 0 : 1) : 0;
+
+    /// <summary>Opens a chat's settings from its menu; a chat that is not open is opened first.</summary>
+    private async Task OpenChatSettingsAsync(ChatSummary chat)
+    {
+        CloseContextMenus();
+        if (_selectedChat?.Id != chat.Id || GetSelectedRunBranchId() != chat.Id)
+            await NavigateToTargetAsync(new WorkspaceTarget(chat.ProjectId, chat.Id, chat.Id, null, false));
+        if (_selectedChat?.Id == chat.Id) _branchSettingsId = chat.Id;
+    }
 
     private void OpenBranchSettings(Guid branchId)
     {

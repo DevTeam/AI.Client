@@ -13,10 +13,18 @@
     @if (_roster.IsTeam)
     {
         <div class="chat-usage-section chat-team-task">
+            @if (_roster.Parent is { } parent)
+            {
+                @* A nested team: its lead is a teammate of the team above, which is one click away. *@
+                <button class="chat-team-parent" type="button" title="@($"This team's lead is a member of the team led by {parent.LeadName} — click to open that lead's branch")"
+                        @onclick="() => OnOpenBranch.InvokeAsync(parent.LeadBranchId)">
+                    <AppIcon Name="chevron-left" /><span>Part of the team led by <b>@parent.LeadName</b></span>
+                </button>
+            }
             @if (_roster.Task is { } task)
             {
-                <button class="chat-team-task-text" type="button" title="@($"The task as the person gave it: {task.Text} — click to show it in the lead's branch")"
-                        @onclick="() => OnShowTeamMessage.InvokeAsync(task.MessageId)">@task.Text</button>
+                <button class="chat-team-task-text" type="button" title="@($"{(_roster.Parent is null ? "The task as the person gave it" : "The brief this team's lead was given")}: {task.Text} — click to show it in the lead's branch")"
+                        @onclick="() => ShowTeamMessageAsync(task.MessageId)">@task.Text</button>
             }
             <div class="chat-team-progress chat-usage-muted">
                 <span title="Teammates whose latest report is done, out of all teammates">@_roster.Done of @_roster.Teammates done</span>
@@ -27,7 +35,7 @@
                 @if (_roster.Charter is { } charter)
                 {
                     <button class="chat-team-link" type="button" title="The charter: goal, phases, who owns what, contracts and protocol — click to show it in the lead's branch"
-                            @onclick="() => OnShowTeamMessage.InvokeAsync(charter.MessageId)">Charter</button>
+                            @onclick="() => ShowTeamMessageAsync(charter.MessageId)">Charter</button>
                 }
             </div>
         </div>
@@ -44,7 +52,11 @@
                                 else { <AppIcon Name="users" /> }
                             </span>
                             <span class="chat-team-body">
-                                <span class="chat-team-title">@member.Name · @member.Role@(member.IsCurrent ? " · this branch" : null)</span>
+                                <span class="chat-team-title">
+                                    <span class="chat-team-name">@member.Name · @member.Role@(member.IsCurrent ? " · this branch" : null)</span>
+                                    @if (member.IsLead && member.Identity is not null) { <span class="chat-team-tag" title="Leads this team and is a teammate of the team above">Lead</span> }
+                                    @if (member.SubTeam > 0) { <span class="chat-team-tag is-subteam" title="@($"Leads a team of its own with {member.SubTeam} {(member.SubTeam == 1 ? "teammate" : "teammates")} — open its branch to see it")"><AppIcon Name="users" />@member.SubTeam</span> }
+                                </span>
                                 <span class="chat-team-meta chat-usage-muted">
                                     <span class="@StateClass(member.State)">@StateLabel(member.State)</span>
                                     @if (member.LastReport is { } report)
@@ -175,9 +187,12 @@
     [Parameter]
     public EventCallback<Guid> OnOpenBranch { get; set; }
 
-    /// <summary>Shows a message of the lead's branch: the task, the charter.</summary>
+    /// <summary>Shows a message of the lead's branch, the task or the charter: the lead's branch and the message.</summary>
     [Parameter]
-    public EventCallback<Guid> OnShowTeamMessage { get; set; }
+    public EventCallback<(Guid BranchId, Guid MessageId)> OnShowTeamMessage { get; set; }
+
+    private Task ShowTeamMessageAsync(Guid messageId) => _roster.LeadBranchId is { } lead
+        ? OnShowTeamMessage.InvokeAsync((lead, messageId)) : Task.CompletedTask;
 
     private ChatWidgetScope _scope = ChatWidgetScope.Chat;
 
@@ -285,11 +300,12 @@
     private static string MemberTitle(ChatTeamMember member)
     {
         var state = StateLabel(member.State).ToLowerInvariant();
+        var subTeam = member.SubTeam > 0 ? $" Leads a team of {member.SubTeam}." : null;
         var reports = member.IsLead ? null
             : member.Reports == 0 ? " No report yet." : $" {member.Reports} {(member.Reports == 1 ? "report" : "reports")} to the lead.";
         var last = member.LastReport is { } report
             ? $" Latest: {IntentLabel(report.Intent)} — {report.Text} (≈ {report.At.LocalDateTime:g})." : null;
-        return $"{member.Name} · {member.Role} — {state}.{reports}{last} Click to open this branch.";
+        return $"{member.Name} · {member.Role} — {state}.{reports}{last}{subTeam} Click to open this branch.";
     }
 
     // The protocol's intent words. An intent this build does not know keeps its own spelling, so a

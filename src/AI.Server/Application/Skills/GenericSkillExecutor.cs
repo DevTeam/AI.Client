@@ -34,7 +34,8 @@ public sealed class GenericSkillExecutor(IProjectService projects, IGlobalSettin
                 new("user", $"Run {skill.Id} with arguments: {invocation.Parameters.GetRawText()}")
             };
             var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-                await secrets.GetAsync("connection", connection.Id, token), skill.Name, connection.Id, messages, []);
+                await secrets.GetAsync("connection", connection.Id, token), skill.Name, connection.Id, messages, [],
+                ReasoningEffort: connection.ReasoningEffort);
             var content = new StringBuilder();
             await foreach (var chunk in completion.StreamAsync(request, token))
             {

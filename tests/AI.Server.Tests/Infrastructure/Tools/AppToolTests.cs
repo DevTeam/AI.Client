@@ -765,6 +765,11 @@ public sealed partial class AppToolTests
 
         var whole = await AppFixture.CallAsync(session, "app_read", new { resource = "Messages", resourceId = toolId });
         whole.GetProperty("items").EnumerateArray().ShouldHaveSingleItem().GetProperty("content").GetString().ShouldBe(body);
+
+        var later = await AppFixture.CallAsync(session, "app_read", new
+            { resource = "Messages", afterMessageId = user.Messages[^1].Id });
+        later.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("id").GetGuid())
+            .ShouldBe([callerId, toolId]);
     }
 
     [Fact]

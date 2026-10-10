@@ -20,6 +20,10 @@ namespace AI.Contracts.Settings;
 /// What the endpoint charges per million tokens, used to price usage it does not price itself;
 /// null leaves such usage unpriced rather than guessing.
 /// </param>
+/// <param name="ReasoningEffort">
+/// Optional Chat Completions reasoning_effort sent only when the configured endpoint supports it;
+/// null leaves the provider's default untouched.
+/// </param>
 /// <summary>
 /// One model the endpoint advertises through <c>GET /v1/models</c>. The resolver normalises the
 /// upstream OpenAI-compatible payload into this shape so the UI does not need to know the
@@ -61,4 +65,5 @@ public sealed record ConnectionSettings(
     long? ContextWindowTokens = null,
     long? ReservedOutputTokens = null,
     Usage.TokenPrices? Prices = null,
-    ImageInputMode ImageInput = ImageInputMode.Automatic);
+    ImageInputMode ImageInput = ImageInputMode.Automatic,
+    string? ReasoningEffort = null);

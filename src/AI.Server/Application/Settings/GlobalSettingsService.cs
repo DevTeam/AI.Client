@@ -320,6 +320,8 @@ public sealed class GlobalSettingsService(
         {
             throw new ArgumentException($"Token prices must be between 0 and {MaxPricePerMillion} per million tokens.");
         }
+        if (item.ReasoningEffort is { } effort && !ReasoningEffortValues.IsSupported(effort))
+            throw new ArgumentException("Unsupported reasoning effort.");
 
         var effective = contextLimits.Resolve(item);
         if (effective.ReservedOutputTokens >= effective.ContextWindowTokens)

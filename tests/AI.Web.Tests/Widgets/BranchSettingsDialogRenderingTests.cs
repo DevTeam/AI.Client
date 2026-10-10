@@ -37,7 +37,7 @@ public sealed class BranchSettingsDialogRenderingTests
         text.ShouldContain("Full access · from Parent");
         text.ShouldContain("Its own; schedules are never inherited.");
         // Both settings follow the parent, so "Inherit" is the chosen line and nothing is set here.
-        Count(html, "aria-checked=\"true\"").ShouldBe(2);
+        Count(html, "aria-checked=\"true\"").ShouldBe(3);
         html.ShouldNotContain("branch-settings-source is-own");
         html.ShouldContain("disabled");
     }
@@ -53,6 +53,19 @@ public sealed class BranchSettingsDialogRenderingTests
         text.ShouldContain("1 rule here");
         text.ShouldContain("Every weekday at 09:00");
         html.ShouldNotContain("disabled=\"\"");
+    }
+
+    [Fact]
+    public async Task ShouldShowInheritedAndOwnReasoningEffort()
+    {
+        var inherited = WebUtility.HtmlDecode(await RenderAsync(Chat(
+            new BranchSettings(ReasoningEffort: "high"), null), Child));
+        inherited.ShouldContain("high · from Parent");
+
+        var own = await RenderAsync(Chat(new BranchSettings(ReasoningEffort: "high"),
+            new BranchSettings(ReasoningEffort: "low")), Child);
+        WebUtility.HtmlDecode(own).ShouldContain("Reasoning effort");
+        Count(own, "branch-settings-source is-own").ShouldBe(1);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ namespace AI.Application.Chats;
 
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
+using AI.Contracts.Settings;
 using AI.Domain.Chats;
 using AI.Domain.Projects;
 
@@ -17,7 +18,10 @@ internal static class BranchSettingsMapping
                 ? decision : throw new ArgumentException($"Unsupported tool policy '{policy.Decision}'."),
             policy.MaxCallsPerRun,
             policy.TimeoutSeconds is { } timeout ? TimeSpan.FromSeconds(timeout) : null)).ToArray() : null;
-        return settings.ConnectionId is null && settings.ApprovalMode is null && policies is null ? null
+        if (settings.ReasoningEffort is { } effort && !ReasoningEffortValues.IsSupported(effort))
+            throw new ArgumentException("Unsupported reasoning effort.");
+        return settings.ConnectionId is null && settings.ApprovalMode is null && policies is null
+            && settings.ReasoningEffort is null ? null
             : new ChatBranchSettings(settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
                 settings.ApprovalMode is { } mode ? mode switch
                 {
@@ -25,7 +29,7 @@ internal static class BranchSettingsMapping
                     ToolApprovalMode.Auto => ChatApprovalMode.Auto,
                     ToolApprovalMode.FullAccess => ChatApprovalMode.FullAccess,
                     _ => throw new ArgumentException("Unknown branch approval mode.")
-                } : null, policies);
+                } : null, policies, settings.ReasoningEffort);
     }
 
     public static BranchSettings? ToContract(ChatBranchSettings? settings) => settings is null ? null : new(
@@ -38,5 +42,6 @@ internal static class BranchSettingsMapping
         } : null,
         settings.ToolPolicies?.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value,
             policy.Tool.Name, policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray());
+            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
+        settings.ReasoningEffort);
 }

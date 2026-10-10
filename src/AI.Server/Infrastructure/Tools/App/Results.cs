@@ -61,6 +61,7 @@ public sealed record ProjectSecurityPayload(
     IReadOnlyList<McpServerBindingPayload> McpServers,
     IReadOnlyList<ToolPolicyPayload> ToolPolicies);
 
+/// <param name="ReasoningEffort">Optional effort for a compatible Chat Completions endpoint; null leaves the provider default.</param>
 public sealed record ConnectionPayload(
     Guid Id,
     string Name,
@@ -73,7 +74,8 @@ public sealed record ConnectionPayload(
     string? GoodFor = null,
     long? ContextWindowTokens = null,
     long? ReservedOutputTokens = null,
-    AI.Contracts.Usage.TokenPrices? Prices = null);
+    AI.Contracts.Usage.TokenPrices? Prices = null,
+    string? ReasoningEffort = null);
 
 public sealed record McpEnvironmentVariablePayload(string Name, string? Value, bool IsSecret);
 

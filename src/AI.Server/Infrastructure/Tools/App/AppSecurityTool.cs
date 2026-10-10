@@ -291,7 +291,9 @@ public sealed class AppSecurityTool(
                 connection.ContextWindowTokens, connection.ReservedOutputTokens,
                 // Prices are kept when the payload leaves them out: a model rewriting the whole
                 // document rarely restates them, and dropping them would silently unprice usage.
-                connection.Prices ?? stored.Connections.SingleOrDefault(item => item.Id == connection.Id)?.Prices)).ToArray(),
+                connection.Prices ?? stored.Connections.SingleOrDefault(item => item.Id == connection.Id)?.Prices,
+                ReasoningEffort: connection.ReasoningEffort
+                    ?? stored.Connections.SingleOrDefault(item => item.Id == connection.Id)?.ReasoningEffort)).ToArray(),
             value.McpServers.Select(server => new AI.Contracts.Settings.McpServerSettings(
                 server.Id, server.Name, server.Transport, server.Enabled, server.Policy, server.Url, server.Command,
                 server.Arguments, server.WorkingDirectory,
@@ -338,7 +340,8 @@ public sealed class AppSecurityTool(
 
     private static ConnectionSettings Connection(ConnectionPayload item) => new(
         item.Id, item.Name, item.BaseUrl, item.Model, item.Enabled, item.IsDefault, false,
-        item.ForSubtasks, item.Capability, item.GoodFor, item.ContextWindowTokens, item.ReservedOutputTokens, item.Prices);
+        item.ForSubtasks, item.Capability, item.GoodFor, item.ContextWindowTokens, item.ReservedOutputTokens, item.Prices,
+        ReasoningEffort: item.ReasoningEffort);
 
     private static AI.Contracts.Settings.McpServerSettings McpServer(McpServerPayload item) => new(
         item.Id, item.Name, item.Transport, item.Enabled, item.Policy, item.Url, item.Command,

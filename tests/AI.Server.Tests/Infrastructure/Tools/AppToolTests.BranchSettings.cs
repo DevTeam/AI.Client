@@ -27,7 +27,7 @@ public sealed partial class AppToolTests
             content = "You are Ada.", mode = "Fork", parentMessageId = charter.GetProperty("messageId").GetGuid(),
             memberName = "Ada", role = "Backend", branchSettings = new
             {
-                connectionId = connection, approvalMode = "Auto",
+                connectionId = connection, approvalMode = "Auto", reasoningEffort = "low",
                 toolPolicies = new[] { new { serverId, name = "process_run", schemaHash = "h", decision = "Deny",
                     maxCallsPerRun = (int?)null, timeoutSeconds = (long?)null } }
             }
@@ -46,6 +46,7 @@ public sealed partial class AppToolTests
         var initial = branch.ShouldNotBeNull().Settings.ShouldNotBeNull();
         initial.ConnectionId.ShouldBe(connection);
         initial.ApprovalMode.ShouldBe(ToolApprovalMode.Auto);
+        initial.ReasoningEffort.ShouldBe("low");
         initial.ToolPolicies.ShouldNotBeNull().ShouldHaveSingleItem().Decision.ShouldBe("Deny");
     }
 
@@ -61,13 +62,15 @@ public sealed partial class AppToolTests
         {
             operation = "SetBranchSettings", projectId = fixture.ProjectId, operationId = Guid.NewGuid(),
             chatId = fixture.ChatId, branchId = branch,
-            branchSettings = new { connection = connection.ToString(), approvalMode = "FullAccess" }
+            branchSettings = new { connection = connection.ToString(), approvalMode = "FullAccess", reasoningEffort = "high" }
         });
         set.GetProperty("applied").GetBoolean().ShouldBeTrue();
 
         var inherited = await EffectiveAsync(session, fixture, child);
         inherited.GetProperty("connectionId").GetGuid().ShouldBe(connection);
         inherited.GetProperty("approvalMode").GetString().ShouldBe("FullAccess");
+        inherited.GetProperty("reasoningEffort").GetString().ShouldBe("high");
+        inherited.GetProperty("reasoningEffortFrom").GetString().ShouldBe("branch \"Branch\"");
         inherited.GetProperty("approvalModeFrom").GetString().ShouldBe("branch \"Branch\"");
         (await EffectiveAsync(session, fixture, branch)).GetProperty("approvalModeFrom").GetString().ShouldBe("this branch");
         (await EffectiveAsync(session, fixture, fixture.ChatId)).GetProperty("approvalMode").GetString().ShouldBe("Ask");
@@ -76,11 +79,13 @@ public sealed partial class AppToolTests
         await AppFixture.CallAsync(session, "app_chats", new
         {
             operation = "SetBranchSettings", projectId = fixture.ProjectId, operationId = Guid.NewGuid(),
-            chatId = fixture.ChatId, branchId = branch, branchSettings = new { approvalMode = "inherit" }
+            chatId = fixture.ChatId, branchId = branch,
+            branchSettings = new { approvalMode = "inherit", reasoningEffort = "inherit" }
         });
         var settings = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!
             .Branches!.Single(item => item.Id == branch).Settings.ShouldNotBeNull();
         settings.ApprovalMode.ShouldBeNull();
+        settings.ReasoningEffort.ShouldBeNull();
         settings.ConnectionId.ShouldBe(connection);
 
         await AppFixture.CallAsync(session, "app_chats", new

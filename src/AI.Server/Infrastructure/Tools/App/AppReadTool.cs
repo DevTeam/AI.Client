@@ -108,6 +108,7 @@ public sealed class AppReadTool(
                               + "'Projects' and 'Settings' need no ids. 'Project', 'Chats', 'Resources', 'Chat', 'Messages', "
                               + "'Reviews' and 'Review' use projectId; the last four also use chatId, and 'Review' needs resourceId. "
                               + "'Messages' omits the body of tool results (contentOmitted); pass a message id as resourceId to read that one message whole. "
+                              + "For 'Messages', afterMessageId returns only later messages on the selected branch; retain the last seen id to read changes without replaying the branch. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
                               + "'McpTools' needs resourceId of an enabled MCP server from Settings. Pass includeSchemas=false "
@@ -138,6 +139,7 @@ public sealed class AppReadTool(
             Guid? chatId = null,
             Guid? branchId = null,
             Guid? resourceId = null,
+            Guid? afterMessageId = null,
             string? cursor = null,
             int limit = Paging.DefaultLimit,
             string? query = null,
@@ -149,7 +151,7 @@ public sealed class AppReadTool(
             DateTimeOffset? activityAfter = null,
             bool includeSchemas = true,
             CancellationToken cancellationToken = default) =>
-            tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, cursor, limit, query, isRegex,
+            tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, afterMessageId, cursor, limit, query, isRegex,
                 ignoreCase, roles, archiveScope, activityBefore, activityAfter, includeSchemas, cancellationToken);
     }
 
@@ -160,6 +162,7 @@ public sealed class AppReadTool(
         Guid? chatId = null,
         Guid? branchId = null,
         Guid? resourceId = null,
+        Guid? afterMessageId = null,
         string? cursor = null,
         int limit = Paging.DefaultLimit,
         string? query = null,
@@ -188,7 +191,7 @@ public sealed class AppReadTool(
             if (resource == AppResource.Search)
                 return reply.Reply(await SearchAsync(projectId, chatId, branchId, cursor, limit, query, isRegex, ignoreCase,
                     roles, archiveScope, cancellationToken));
-            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, cursor, limit, query,
+            return reply.Reply(await PageAsync(resource, projectId, chatId, branchId, resourceId, afterMessageId, cursor, limit, query,
                 archiveScope, activityBefore, activityAfter, includeSchemas, cancellationToken));
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
@@ -219,7 +222,8 @@ public sealed class AppReadTool(
     }
 
     private async Task<AppReadResult> PageAsync(
-        AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId, string? cursor, int limit,
+        AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId,
+        Guid? afterMessageId, string? cursor, int limit,
         string? query, ChatArchiveScope archiveScope, DateTimeOffset? activityBefore, DateTimeOffset? activityAfter,
         bool includeSchemas, CancellationToken cancellationToken)
     {
@@ -297,7 +301,14 @@ public sealed class AppReadTool(
                 if (resourceId is { } messageId)
                     return Paging.Page("Messages", [chat.Messages.SingleOrDefault(message => message.Id == messageId)
                         ?? throw new InvalidOperationException("Message not found.")], cursor, limit, reply.Json);
-                return Paging.Page("Messages", Branch(chat, branchId).Select(message => message is { Role: "Tool", Content.Length: > 0 }
+                var branchMessages = Branch(chat, branchId);
+                if (afterMessageId is { } after)
+                {
+                    var position = branchMessages.ToList().FindIndex(message => message.Id == after);
+                    if (position < 0) throw new ArgumentException("'afterMessageId' is not on this branch.");
+                    branchMessages = branchMessages.Skip(position + 1).ToArray();
+                }
+                return Paging.Page("Messages", branchMessages.Select(message => message is { Role: "Tool", Content.Length: > 0 }
                     ? message with { Content = string.Empty, ContentOmitted = true } : message).ToArray(), cursor, limit, reply.Json);
             }
             case AppResource.Runs:

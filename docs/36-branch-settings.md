@@ -3,8 +3,9 @@
 Status: implemented.
 
 Each branch has an optional `ChatBranchSettings` object in the chat document. It contains
-`connectionId`, `approvalMode`, and `toolPolicies`. A missing field inherits from the nearest
-ancestor branch that sets it, then from the chat. Clearing a branch field restores inheritance;
+`connectionId`, `reasoningEffort`, `approvalMode`, and `toolPolicies`. A missing field inherits from the nearest
+ancestor branch that sets it. Reasoning effort then falls back to the selected connection's
+optional value; other fields fall back to the chat. Clearing a branch field restores inheritance;
 a branch that sets nothing stores no settings at all. Run branches therefore inherit the settings
 of the branch they forked from. Tool policy fields fall back independently, so an override of one
 decision does not erase a parent timeout or limit.
@@ -13,12 +14,16 @@ The main branch has no settings object: its values are the chat's own (`Connecti
 `ApprovalMode`, `ToolPolicies`), which every branch inherits. Only its connection can fall back
 further, to the project and then the global default.
 
-The effective connection selects the model for a run. The effective approval mode and tool
-policies govern its tool calls.
+The effective connection selects the model for a run. A configured reasoning effort is sent as
+`reasoning_effort` in Chat Completions requests; with no value the provider uses its default.
+Configure a value only when the endpoint and model support it, since unsupported values may make
+the request fail. The effective approval mode and tool policies govern tool calls.
+The Connections editor offers provider default or an explicit effort. A branch can override that
+value without changing the connection used by its parent or siblings.
 
 Schedules are not inherited. Each branch has at most one schedule of its own (see
 [Scheduled chats](35-scheduled-chats.md)); a scheduled run is a child branch of its owner and
-inherits the owner's connection, approval mode and tool policies like any other branch.
+inherits the owner's connection, reasoning effort, approval mode and tool policies like any other branch.
 
 ## Changing them
 
@@ -26,10 +31,10 @@ inherits the owner's connection, approval mode and tool policies like any other 
 | --- | --- |
 | Person, any branch | Branch menu → **Branch settings**; on the open chat, chat menu → **Chat settings** for the main branch |
 | Person, the open branch | The composer's approval and connection pickers. On a branch other than the main one they write the branch's own value, and their menus start with **Inherit from …**, which drops it |
-| Model | `app_chats` `SetBranchSettings` (connection and approval mode; `inherit` per field or `inheritAll`), `app_security` `SetBranchToolPolicy` / `RemoveBranchToolPolicy`, `app_schedule` for the branch's schedule |
-| Model, creating a branch | `app_runs` `Submit` with mode `Fork` can include `branchSettings` for the new branch's connection, approval mode and tool policies. These are saved with its first message, before its first run selects a model or tool policy; omitted fields inherit from the source branch. |
+| Model | `app_chats` `SetBranchSettings` (connection, reasoning effort and approval mode; `inherit` per field or `inheritAll`), `app_security` `SetBranchToolPolicy` / `RemoveBranchToolPolicy`, `app_schedule` for the branch's schedule |
+| Model, creating a branch | `app_runs` `Submit` with mode `Fork` can include `branchSettings` for the new branch's connection, reasoning effort, approval mode and tool policies. These are saved with its first message, before its first run selects a model or tool policy; omitted fields inherit from the source branch. |
 | Model, by procedure | Skill `chat-branch-configure` (show, override, inherit; asks before loosening approvals), `settings-tools-reset` with scope `branch`, `settings-select-connection` with scope `Branch`, `chat-tools-configure` for this branch only |
-| Model, reading | `app_read` resource `Chat` returns `effectiveBranchSettings` for `branchId` (the current branch by default): the effective connection and approval mode and where each comes from |
+| Model, reading | `app_read` resource `Chat` returns `effectiveBranchSettings` for `branchId` (the current branch by default): the effective connection, branch reasoning override and approval mode with their sources. The connection's reasoning value is in Settings. |
 
 `IChatService.ChangeBranchSettingsAsync` applies a change to the stored settings under the chat's
 lease, so a person and a tool editing different fields of one branch never undo one another.
@@ -41,11 +46,11 @@ The chat menu and the branch menu in the sidebar have the same three groups, spl
 what to do with the item (*Pin chat*, *Reviews*), its settings (*Chat settings* or *Branch
 settings*, then *Tool permissions*), and clearing it out (*Archive chat*, *Delete all branches* or
 *Delete all sub-branches*, *Delete chat* or *Delete branch*, each confirmed in place). A count beside
-*Branch settings* is how many of the model and approval mode the branch sets itself; beside *Tool
+*Branch settings* is how many of the model, reasoning effort and approval mode the branch sets itself; beside *Tool
 permissions*, how many tool rules the chat or branch sets; beside a bulk delete, how many branches
 it removes. *Chat settings* opens the chat first when another one is open.
 
-The settings dialog lists, for one branch: the model, the tool approval mode, a summary of its tool
+The settings dialog lists, for one branch: the model, reasoning effort, the tool approval mode, a summary of its tool
 permission rules (with **Edit**, which opens the permissions drawer in branch scope) and its
 schedule (with **Open**, which goes to the branch and shows the Schedule widget). Each setting has a
 chip saying where its value comes from: *This branch* (accent tint and dot) when the branch sets it,

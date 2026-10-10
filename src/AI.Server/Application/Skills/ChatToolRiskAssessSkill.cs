@@ -104,7 +104,7 @@ public sealed class ChatToolRiskAssessSkill(
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),
-            "Assess a tool call", connection.Id, conversation);
+            "Assess a tool call", connection.Id, conversation, ReasoningEffort: connection.ReasoningEffort);
         var content = new StringBuilder();
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         if (Parse(content.ToString()) is not { } verdict)

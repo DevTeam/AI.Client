@@ -93,7 +93,8 @@ public sealed class ChatRenameSkill(
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),
-            "Name this chat", connection.Id, conversation, [ReadChatTool]);
+            "Name this chat", connection.Id, conversation, [ReadChatTool],
+            ReasoningEffort: connection.ReasoningEffort);
         var first = await AnswerAsync(request, token);
         if (first.Calls is not [{ Name: "read_chat" } call])
             return new("Failed", "The model did not call read_chat.", chatId);

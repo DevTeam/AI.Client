@@ -114,7 +114,8 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
                               + "that reads it. Mode Aside starts no turn: use it for status and other information that needs no answer. "
                               + "A Fork for a teammate takes 'memberName' and 'role' instead of 'title': the branch is named \"Name · Role\" and "
                               + "every message from it is signed that way. On a Fork, 'branchSettings' sets the new branch's connection, "
-                              + "approval mode and tool policies before its first run; omit a field to inherit it from the source branch."
+                              + "reasoning effort, approval mode and tool policies before its first run; omit a field to inherit it "
+                              + "from the source branch. Set reasoning effort only for a compatible endpoint."
             });
 
         [McpServerTool(Name = "app_runs", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false,

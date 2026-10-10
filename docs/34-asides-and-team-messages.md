@@ -143,6 +143,17 @@ also coordinate a subteam of its own direct children. The protocol lives in skil
   coordinates those children and sends one integrated result to its own lead.
 
 Every teammate branch starts from the charter, so it inherits the whole analysis without copying it.
+The charter stores conclusions rather than exploration, and each brief adds only the teammate's
+goal, owned paths, contract examples, completion check and first step. Teammates make one short
+execution plan, then report only new facts; questions include the concrete case, options and
+recommendation, while done reports carry deliverables and verification evidence. At a phase
+boundary the lead and teammate leave a compact handoff in their own branches with current results,
+decisions, open questions and the next action. This preserves task-specific context when older
+history is compacted without making the parent read child transcripts. The lead sends decisions
+only to affected branches and shows a full team status table when it changed or the person asks.
+For reads of its parent's decisions, a teammate records the last seen message id and passes it as
+`afterMessageId` to `app_read` `Messages` on the next major step, so old messages are not returned
+again. The id must belong to the selected branch; a branch change requires a fresh read.
 The charter is written as an aside in its own step: it joins the running turn after that call's
 result, which is what makes it a message the branches can start from. The forks themselves are
 submitted from the coordinating branch's run, so each brief shows that branch as its sender.
@@ -267,6 +278,10 @@ nor wait for someone to press Retry:
   inherit from the nearest ancestor. Changing an ancestor affects descendants that still inherit.
   `app_runs` Fork accepts initial `branchSettings` so a role-specific model is in place for the
   branch's first run. The subtask connection pool does not select team branch models.
+  Reasoning effort can be set on a compatible connection or overridden per branch. A team proposal
+  names any role-specific effort; when unset, the provider's default remains in force. The skills
+  reduce repeated explanation and messaging, but only this request parameter can ask a supporting
+  provider to use less internal reasoning.
 - In worktree mode a subteam starts from the clean committed HEAD of its lead's assigned worktree.
   Its lead integrates child commits into that worktree, checks the combined result, then reports
   the commits on its own branch to the parent lead. If the lead worktree is dirty or children need

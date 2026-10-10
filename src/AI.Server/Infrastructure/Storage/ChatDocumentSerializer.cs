@@ -36,7 +36,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision,
             branch.Member is { } member ? new MemberDocument(member.Name, member.Role, member.Color) : null,
             branch.Settings is { } settings ? new BranchSettingsDocument(settings.ConnectionId?.Value,
-                settings.ApprovalMode, settings.ToolPolicies?.Select(ToDocument).ToArray()) : null)).ToArray(),
+                settings.ApprovalMode, settings.ToolPolicies?.Select(ToDocument).ToArray(),
+                settings.ReasoningEffort) : null)).ToArray(),
         chat.ToolPolicies.Select(policy => new ToolPolicyDocument(policy.Tool.ServerId.Value, policy.Tool.Name,
             policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout)).ToArray(),
         chat.IsPinned,
@@ -89,7 +90,8 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             branch.Member is { } member ? new ChatBranchMember(member.Name, member.Role, member.Color) : null,
             branch.Settings is { } settings ? new ChatBranchSettings(
                 settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
-                settings.ApprovalMode, settings.ToolPolicies?.Select(ToDomain).ToArray()) : null)));
+                settings.ApprovalMode, settings.ToolPolicies?.Select(ToDomain).ToArray(),
+                settings.ReasoningEffort) : null)));
         foreach (var policy in document.ToolPolicies ?? [])
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
@@ -224,7 +226,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         policy.Decision, policy.MaxCallsPerRun, policy.Timeout);
 
     private sealed record BranchSettingsDocument(Guid? ConnectionId, ChatApprovalMode? ApprovalMode,
-        ToolPolicyDocument[]? ToolPolicies);
+        ToolPolicyDocument[]? ToolPolicies, string? ReasoningEffort = null);
 
     private sealed record BranchDocument(Guid Id, Guid? HeadMessageId, string Title, Guid? ParentBranchId,
         Guid? RootMessageId, long Revision,

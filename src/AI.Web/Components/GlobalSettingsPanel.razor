@@ -286,6 +286,7 @@
                                             @if (_resolvingModelsForId == connection.Id) { <span class="model-loading" aria-label="Loading models" role="status"><AppIcon Name="spinner" Class="tool-row-spinner" /></span> }
                                             <SettingsFieldError Message="@problems.GetValueOrDefault(ModelField)" />
                                         </div>
+                                        <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reasoning effort</span><span class="settings-row-hint">Send only when this endpoint supports the Chat Completions parameter</span></span><select class="text-input" @bind="connection.ReasoningEffort"><option value="">Provider default</option><option value="none">None</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Maximum</option></select></label>
                                         @{ var testingImage = _testingImageForId == connection.Id; }
                                         <div class="settings-row settings-field image-input-row">
                                             <span class="settings-row-text"><span class="settings-row-label" id="connection-image-input">Image input</span><span class="settings-row-hint">@ImageInputHint(connection.ImageInput)</span></span>
@@ -1959,6 +1960,7 @@
         public string Name { get; set; } = "OpenAI connection";
         public string BaseUrl { get; set; } = string.Empty;
         public string Model { get; set; } = string.Empty;
+        public string ReasoningEffort { get; set; } = string.Empty;
         public ImageInputMode ImageInput { get; set; } = ImageInputMode.Automatic;
         public bool Enabled { get; set; } = true;
         public bool IsDefault { get; set; }
@@ -1979,7 +1981,8 @@
 
         public static ConnectionEditor From(ConnectionSettings item) => new()
         {
-            Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model, ImageInput = item.ImageInput,
+            Id = item.Id, Name = item.Name, BaseUrl = item.BaseUrl, Model = item.Model,
+            ReasoningEffort = item.ReasoningEffort ?? string.Empty, ImageInput = item.ImageInput,
             Enabled = item.Enabled, IsDefault = item.IsDefault, HasCredential = item.HasCredential,
             ForSubtasks = item.ForSubtasks, Capability = item.Capability ?? 0,
             GoodFor = item.GoodFor ?? string.Empty,
@@ -2000,7 +2003,8 @@
                 InputPrice is { } input && OutputPrice is { } output
                     ? new AI.Contracts.Usage.TokenPrices(input, output, CachedInputPrice)
                     : null,
-                ImageInput);
+                ImageInput,
+                string.IsNullOrWhiteSpace(ReasoningEffort) ? null : ReasoningEffort);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

@@ -328,7 +328,8 @@ public sealed class AppSubtaskTool(
                     : global.Connections.SingleOrDefault(item => item.IsDefault && item.Enabled)
                       ?? throw new InvalidOperationException("The calling chat has no enabled connection.");
         return (new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-            await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, connection.Id, []),
+            await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, connection.Id, [],
+            ReasoningEffort: connection.ReasoningEffort),
             connection.Name);
     }
 

@@ -39,7 +39,9 @@ tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","as
    after two suites per candidate; ask before any more usage. Do not treat a timeout, auth
    error, rate limit or one bad answer as permanent failure.
 5. Show a compact table: connection/model, completion status, checked quality, measured run
-   time, known cost and error. Capability is a user rating from 1 to 5; use token prices or reported usage for cost. Do not infer prices,
+   time, configured reasoning effort, known cost and error. A provider may reject an unsupported
+   effort; report that as the request's error rather than silently retrying at another effort.
+   Capability is a user rating from 1 to 5; use token prices or reported usage for cost. Do not infer prices,
    context size or capabilities from model names or elapsed time. Mark missing cost unknown
    and explain when a cost-efficiency recommendation cannot be made. Recommend an enabled
    default for goal and an optional subtask pool; several entries may have ForSubtasks true.

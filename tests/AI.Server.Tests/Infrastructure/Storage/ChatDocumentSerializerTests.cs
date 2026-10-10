@@ -221,6 +221,22 @@ public class ChatDocumentSerializerTests
     }
 
     [Fact]
+    public void ShouldRestoreBranchReasoningEffort()
+    {
+        var createdAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero);
+        var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", createdAt);
+        var message = new ChatMessage(new ChatMessageId(Guid.CreateVersion7()), null, ChatMessageRole.User,
+            "Question", createdAt);
+        chat.AddMessage(message, createdAt, message.Id.Value);
+        chat.SetBranchSettings(message.Id.Value, new ChatBranchSettings(ReasoningEffort: "low"), createdAt);
+
+        var restored = _serializer.Deserialize(_serializer.Serialize(chat, 2));
+
+        restored.Chat.Branches.Single(branch => branch.Id == message.Id.Value)
+            .Settings!.ReasoningEffort.ShouldBe("low");
+    }
+
+    [Fact]
     public void ShouldRestoreBranchMessageParents()
     {
         // Given

@@ -634,11 +634,13 @@ public sealed partial class ChatExecutionTests
         var lead = Guid.NewGuid();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), lead, "Lead a subteam", ChatSubmitMode.Fork,
             BranchId: fixture.ChatId, ParentMode: MessageParentMode.Explicit, ParentMessageId: root,
-            BranchSettings: new BranchSettings(alternate, ToolApprovalMode.Auto)));
+            BranchSettings: new BranchSettings(alternate, ToolApprovalMode.Auto, ReasoningEffort: "low")));
         var leadCall = await fixture.NextCallAsync();
         leadCall.Request.Model.ShouldBe("specialist-model");
+        leadCall.Request.ReasoningEffort.ShouldBe("low");
         var running = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
-        running.Branches!.Single(branch => branch.Id == lead).Settings.ShouldBe(new BranchSettings(alternate, ToolApprovalMode.Auto));
+        running.Branches!.Single(branch => branch.Id == lead).Settings.ShouldBe(
+            new BranchSettings(alternate, ToolApprovalMode.Auto, ReasoningEffort: "low"));
         leadCall.Answer.SetResult("Subteam charter.");
         await fixture.WaitAsync(run => run.BranchId == lead && run.Status == ChatRunStatus.Completed);
 
@@ -649,6 +651,7 @@ public sealed partial class ChatExecutionTests
             BranchId: lead, ParentMode: MessageParentMode.Explicit, ParentMessageId: parentMessage));
         var memberCall = await fixture.NextCallAsync();
         memberCall.Request.Model.ShouldBe("specialist-model");
+        memberCall.Request.ReasoningEffort.ShouldBe("low");
         var nested = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!;
         nested.Branches!.Single(branch => branch.Id == member).Settings.ShouldBeNull();
         new ChatBranchSettingsResolver().Effective(nested, member).ApprovalMode.ShouldBe(ToolApprovalMode.Auto);

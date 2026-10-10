@@ -6,6 +6,7 @@ using AI.Contracts.Projects;
 public interface IChatBranchSettingsResolver
 {
     Guid? ConnectionId(ChatDetails chat, Guid branchId);
+    string? ReasoningEffort(ChatDetails chat, Guid branchId);
     ToolApprovalMode ApprovalMode(ChatDetails chat, Guid branchId);
     ToolPolicySettings? ToolPolicy(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash);
     IReadOnlyList<ToolPolicySettings> BranchToolPolicies(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash);
@@ -17,7 +18,8 @@ public interface IChatBranchSettingsResolver
 /// <param name="ConnectionFrom">"this branch", a branch title in quotes, or "chat" (which falls back to the project).</param>
 /// <param name="ToolPolicyOverrides">How many tool policies this branch sets itself.</param>
 public sealed record EffectiveBranchSettings(Guid BranchId, Guid? ConnectionId, string ConnectionFrom,
-    ToolApprovalMode ApprovalMode, string ApprovalModeFrom, int ToolPolicyOverrides);
+    ToolApprovalMode ApprovalMode, string ApprovalModeFrom, int ToolPolicyOverrides,
+    string? ReasoningEffort = null, string? ReasoningEffortFrom = null);
 
 public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
 {
@@ -28,6 +30,10 @@ public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
     public ToolApprovalMode ApprovalMode(ChatDetails chat, Guid branchId) =>
         Lineage(chat, branchId).Select(branch => branch.Settings?.ApprovalMode)
             .FirstOrDefault(mode => mode is not null) ?? chat.ApprovalMode;
+
+    public string? ReasoningEffort(ChatDetails chat, Guid branchId) =>
+        Lineage(chat, branchId).Select(branch => branch.Settings?.ReasoningEffort)
+            .FirstOrDefault(effort => effort is not null);
 
     public ToolPolicySettings? ToolPolicy(ChatDetails chat, Guid branchId, Guid serverId, string name, string schemaHash) =>
         BranchToolPolicies(chat, branchId, serverId, name, schemaHash) is { Count: > 0 } policies
@@ -45,9 +51,11 @@ public sealed class ChatBranchSettingsResolver : IChatBranchSettingsResolver
         var lineage = Lineage(chat, branchId).ToArray();
         var connection = lineage.FirstOrDefault(branch => branch.Settings?.ConnectionId is not null);
         var approval = lineage.FirstOrDefault(branch => branch.Settings?.ApprovalMode is not null);
+        var reasoning = lineage.FirstOrDefault(branch => branch.Settings?.ReasoningEffort is not null);
         return new EffectiveBranchSettings(branchId, ConnectionId(chat, branchId), Source(connection, branchId),
             ApprovalMode(chat, branchId), Source(approval, branchId),
-            lineage.FirstOrDefault(branch => branch.Id == branchId)?.Settings?.ToolPolicies?.Count ?? 0);
+            lineage.FirstOrDefault(branch => branch.Id == branchId)?.Settings?.ToolPolicies?.Count ?? 0,
+            reasoning?.Settings?.ReasoningEffort, reasoning is null ? null : Source(reasoning, branchId));
     }
 
     private static string Source(ChatBranchView? branch, Guid branchId) =>

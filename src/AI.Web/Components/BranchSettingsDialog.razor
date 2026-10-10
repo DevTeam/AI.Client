@@ -36,6 +36,26 @@
                 </div>
             </section>
 
+            @if (!IsMain)
+            {
+                <section class="branch-settings-section" aria-labelledby="branch-settings-reasoning">
+                    <div class="branch-settings-section-head">
+                        <span class="branch-settings-section-title" id="branch-settings-reasoning"><AppIcon Name="sparkles" />Reasoning effort</span>
+                        @Source(OwnReasoning is not null, ReasoningFrom)
+                    </div>
+                    <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-reasoning">
+                        @Choice(OwnReasoning is null, "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
+                            "reset", () => ReasoningChanged.InvokeAsync(null), false)
+                        @foreach (var effort in Efforts)
+                        {
+                            var value = effort;
+                            @Choice(OwnReasoning == value, value, "Send to a compatible model", "sparkles",
+                                () => ReasoningChanged.InvokeAsync(value), false)
+                        }
+                    </div>
+                </section>
+            }
+
             <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">
                 <div class="branch-settings-section-head">
                     <span class="branch-settings-section-title" id="branch-settings-approvals"><AppIcon Name="hand" />Tool approvals</span>
@@ -92,6 +112,7 @@
 
 @code {
     private static readonly ToolApprovalMode[] Modes = [ToolApprovalMode.Ask, ToolApprovalMode.Auto, ToolApprovalMode.FullAccess];
+    private static readonly string[] Efforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
     private ElementReference _dialog;
     private ChatScheduleView? _schedule;
@@ -115,6 +136,8 @@
     /// <summary>A mode to set, or null to inherit. Never null on the main branch.</summary>
     [Parameter] public EventCallback<ToolApprovalMode?> ApprovalChanged { get; set; }
 
+    [Parameter] public EventCallback<string?> ReasoningChanged { get; set; }
+
     [Parameter] public EventCallback Reset { get; set; }
 
     [Parameter] public EventCallback PermissionsRequested { get; set; }
@@ -132,6 +155,8 @@
     private Guid? OwnConnection => IsMain ? Chat.ConnectionId : Own.ConnectionId;
 
     private ToolApprovalMode? OwnApproval => IsMain ? Chat.ApprovalMode : Own.ApprovalMode;
+
+    private string? OwnReasoning => Own.ReasoningEffort;
 
     /// <summary>The branches above this one, nearest first, without the main branch.</summary>
     private IEnumerable<ChatBranchView> Ancestors()
@@ -167,6 +192,18 @@
     private ToolApprovalMode InheritedApproval =>
         Ancestors().Select(item => item.Settings?.ApprovalMode).FirstOrDefault(mode => mode is not null) ?? Chat.ApprovalMode;
 
+    private string? InheritedReasoning =>
+        Ancestors().Select(item => item.Settings?.ReasoningEffort).FirstOrDefault(value => value is not null)
+        ?? Connections.FirstOrDefault(item => item.Id == (OwnConnection ?? InheritedConnection))?.ReasoningEffort;
+
+    private string InheritedReasoningFrom =>
+        Ancestors().FirstOrDefault(item => item.Settings?.ReasoningEffort is not null) is { } source
+            ? $"from {source.Title}" : "from the connection";
+
+    private string ReasoningFrom => OwnReasoning is not null ? Here
+        : Ancestors().FirstOrDefault(item => item.Settings?.ReasoningEffort is not null) is { } source
+            ? $"From {source.Title}" : "From the connection";
+
     private string ConnectionFrom => OwnConnection is not null ? Here
         : IsMain ? "Project default"
         : Ancestors().FirstOrDefault(item => item.Settings?.ConnectionId is not null) is { } source ? $"From {source.Title}"
@@ -178,7 +215,8 @@
 
     private string Here => IsMain ? "This chat" : "This branch";
 
-    private bool HasOverrides => Own.ConnectionId is not null || Own.ApprovalMode is not null || Own.ToolPolicies is { Count: > 0 };
+    private bool HasOverrides => Own.ConnectionId is not null || Own.ApprovalMode is not null
+        || Own.ReasoningEffort is not null || Own.ToolPolicies is { Count: > 0 };
 
     private string PermissionsSummary
     {

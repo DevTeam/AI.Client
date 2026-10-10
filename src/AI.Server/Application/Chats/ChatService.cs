@@ -4,6 +4,7 @@ namespace AI.Application.Chats;
 using Projects;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
+using AI.Contracts.Settings;
 using AI.Contracts.Tools;
 using AI.Contracts.Workspace;
 using AI.Domain.Chats;
@@ -349,10 +350,13 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var settings = change(ToContract(current) ?? new BranchSettings());
         var policies = settings.ToolPolicies is { Count: > 0 } items ? items.Select(ToPolicy).ToArray() : null;
         // A branch that overrides nothing stores no settings at all, so it reads as plainly inheriting.
-        stored.Chat.SetBranchSettings(branchId, settings.ConnectionId is null && settings.ApprovalMode is null && policies is null
+        if (settings.ReasoningEffort is { } effort && !ReasoningEffortValues.IsSupported(effort))
+            throw new ArgumentException("Unsupported reasoning effort.");
+        stored.Chat.SetBranchSettings(branchId, settings.ConnectionId is null && settings.ApprovalMode is null
+            && policies is null && settings.ReasoningEffort is null
             ? null
             : new ChatBranchSettings(settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
-                settings.ApprovalMode is { } mode ? ToDomain(mode) : null, policies), clock.UtcNow);
+                settings.ApprovalMode is { } mode ? ToDomain(mode) : null, policies, settings.ReasoningEffort), clock.UtcNow);
         var result = await repository.SaveAsync(stored.Chat, stored.Revision, cancellationToken);
         return result.IsSaved ? ToTranscript(stored.Chat, result.Revision) : null;
     }

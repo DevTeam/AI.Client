@@ -32,6 +32,11 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    later. When one part implements a contract and another tests it, write the contract's edge
    cases as examples, input → output (empty values, separators, limits, paths that leave a root),
    so both read the same answer instead of each inferring its own.
+   Keep the charter compact and decision-oriented: record the result of analysis, not the exploration
+   that produced it. For each teammate prepare a working brief with only its goal, owned paths,
+   contract examples, dependencies, definition of done and the first executable step. Do not copy
+   the whole plan or the same background into every brief: the charter is already in each branch's
+   history. A teammate should not need to re-plan the whole team to start its assigned work.
 4. Decide whether a team pays off. All of these must hold:
    - at least two parts can run at the same time;
    - their owned paths do not overlap, and shared files have one owner;
@@ -63,6 +68,13 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    not chat branches. Prefer inheritance when no different connection has a supported advantage.
    A subteam lead may use one connection for coordination while its children inherit or override
    it according to their own work.
+   If a connection explicitly configures reasoning effort and its endpoint supports that value,
+   factor it into role choice:
+   prefer less effort for bounded implementation and lookup, and more for ambiguous contracts,
+   integration and review. Never infer an effort setting or provider support from a model name.
+   When the endpoint is known to accept Chat Completions `reasoning_effort`, propose an initial
+   branch override per role only if it has a clear task-specific benefit; otherwise inherit the
+   connection or parent setting. State the proposed effort in the team proposal and charter.
 6. For a team editing files in a Git repository, check whether separate Git worktrees are usable
    before asking the user. Offer
    them only when every teammate can finish its assigned edits from the same committed base;
@@ -90,7 +102,8 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    destination. If the lead worktree is dirty or children need its uncommitted files, ask the
    parent lead to revise the phase; do not silently switch the subteam to shared-directory mode.
 7. For a top-level team, show the proposed team with `ask_user`, labelled "Team": the plan in one
-   line per phase and one line per teammate, including its proposed connection or inheritance and
+   line per phase and one line per teammate, including its proposed connection and reasoning effort
+   or their inheritance, and
    any proposed subteam.
    Name this lead branch's effective connection and explain that descendants inherit later changes
    to it unless they override the field. Do not change the parent team's connection to optimize
@@ -134,7 +147,8 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    then scope, owned paths, deliverable and done; the lead as "Lead"; the contracts; and the
    protocol below. Record the chosen workspace mode. For worktrees, record the repository root,
    base commit, each teammate's absolute worktree path and Git branch, and the lead's integration
-   checkout. Record the proposed connection for each role and whether it inherits from this lead.
+   checkout. Record the proposed connection and reasoning effort for each role and whether each
+   inherits from this lead or the connection.
    For a subteam record the parent lead's identity, branch, assigned scope and integration checkout.
    Owned paths remain repository-relative and must be resolved inside the assigned
    worktree. A compact Mermaid diagram may follow the text when it clarifies actual phases,
@@ -151,7 +165,7 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    lead branch id (this branch's `branchId`), scope, owned paths, deliverable, definition of done,
    skills to use and whom to ask. In worktree
    mode include its exact absolute worktree path, Git branch and base commit. Pass `branchSettings`
-   in this Fork for each approved role-specific `connectionId`, `approvalMode` or `toolPolicies`;
+   in this Fork for each approved role-specific `connectionId`, `reasoningEffort`, `approvalMode` or `toolPolicies`;
    omit fields that should inherit. For a tool policy use the exact `serverId`, `name` and
    `schemaHash` from `app_read` resource=McpTools, and include its decision, call limit and timeout
    (null when inherited). These initial settings are saved with the branch before its first model
@@ -163,6 +177,9 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    inherits the analysis and the charter from the message it starts from, so the brief repeats
    only what is the teammate's own. Each result's `branchId` is that teammate's branch; every
    message it sends you carries the same branchId in its header.
+   End each brief with a compact handoff: "Current decision", "First step", and "Open dependency"
+   (use "none" when there is no dependency). These are facts and actions, not a request for the
+   teammate to explain its private reasoning.
 11. If this is a subteam, first send its parent lead one `Status` Aside with the approved members,
    assigned paths, models and expected deliverable. Later questions and the integrated `Done`
    follow the parent-team protocol; do not make the parent inspect child branches. Then answer
@@ -182,6 +199,9 @@ Protocol to put in the charter:
 - `status` goes as an Aside: it costs the lead nothing until its next step. `question`, `blocker`
   and `done` go as ordinary messages and wake the lead. No acknowledgements, no thanks.
 - Every message is self-contained: what, why, and what is needed back.
+- Reports carry only new information. A question gives the concrete case, options, recommended
+  answer and what is blocked. A done report names deliverables and verification evidence. Do not
+  repeat the charter, earlier reports, tool transcripts or private reasoning.
 - Everyone is named by identity — "Ada · Backend", "Lead" — in plans, decisions and reports; the
   application signs each message with its sender's identity, so nobody introduces themselves.
 - A teammate changes only its owned paths; anything else is a question to the lead.

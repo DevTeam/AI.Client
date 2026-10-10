@@ -91,7 +91,8 @@ public sealed class SkillRouteSkill(
             }))
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-            await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation);
+            await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation,
+            ReasoningEffort: connection.ReasoningEffort);
         var plan = contextPlanner.Plan(connection, connection.Model, conversation, []);
         if (!plan.Fits)
             return new("Skipped", "The routing catalogue exceeds this connection's context budget; use progressive discovery in the chat.", invocation.CurrentChatId);

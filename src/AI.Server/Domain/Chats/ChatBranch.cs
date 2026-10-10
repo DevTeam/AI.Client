@@ -7,4 +7,5 @@ public sealed record ChatBranch(Guid Id, ChatMessageId? HeadMessageId, string Ti
     ChatBranchMember? Member = null, ChatBranchSettings? Settings = null);
 
 public sealed record ChatBranchSettings(ConnectionId? ConnectionId = null,
-    ChatApprovalMode? ApprovalMode = null, IReadOnlyList<ToolPolicy>? ToolPolicies = null);
+    ChatApprovalMode? ApprovalMode = null, IReadOnlyList<ToolPolicy>? ToolPolicies = null,
+    string? ReasoningEffort = null);

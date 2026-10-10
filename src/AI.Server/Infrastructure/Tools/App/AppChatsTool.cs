@@ -79,7 +79,9 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                               + "SetBranchSettings: a branch inherits its connection (model), tool approval mode and tool policies from "
                               + "its parent branch, and the main branch's are the chat's own. In 'branchSettings' each of 'connection' "
                               + "(a connection id) and 'approvalMode' (Ask, Auto, FullAccess) is left as it is when omitted, overridden "
-                              + "on this branch when given a value, and inherited again when given 'inherit'; 'inheritAll' true drops every "
+                              + "on this branch when given a value. 'reasoningEffort' accepts none, minimal, low, medium, high, xhigh "
+                              + "or max for a compatible model, or inherit. Each field is "
+                              + "inherited again when given 'inherit'; 'inheritAll' true drops every "
                               + "override of the branch, tool policies included. The main branch has nothing to inherit from: there "
                               + "'connection' 'inherit' follows the project default and 'approvalMode' needs a value. Read the effective "
                               + "values and where they come from with app_read. Change approvals or a branch's model only when the user "
@@ -241,11 +243,17 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         var mode = Setting(value.ApprovalMode, text =>
             Enum.TryParse<ToolApprovalMode>(text, true, out var parsed) && Enum.IsDefined(parsed) && !int.TryParse(text, out _)
                 ? parsed : throw new ArgumentException("'approvalMode' must be Ask, Auto, FullAccess or 'inherit'."));
-        if (connection is null && mode is null && value.InheritAll != true)
-            throw new ArgumentException("Name at least one of 'connection', 'approvalMode' or 'inheritAll'.");
+        var reasoning = value.ReasoningEffort?.Trim().ToLowerInvariant();
+        if (reasoning is { Length: > 0 } && reasoning != "inherit"
+            && !AI.Contracts.Settings.ReasoningEffortValues.IsSupported(reasoning))
+            throw new ArgumentException("'reasoningEffort' must be a supported value or 'inherit'.");
+        if (connection is null && mode is null && reasoning is not { Length: > 0 } && value.InheritAll != true)
+            throw new ArgumentException("Name at least one of 'connection', 'approvalMode', 'reasoningEffort' or 'inheritAll'.");
         ChatDetails? updated;
         if (branchId == chatId)
         {
+            if (reasoning is { Length: > 0 })
+                throw new ArgumentException("Set the main branch's reasoning effort on its connection.");
             // The main branch's settings are the chat's own: there is no parent to fall back to.
             if (mode is { Inherit: true } || value.InheritAll == true)
                 throw new ArgumentException("The main branch has no parent to inherit from; give 'approvalMode' a value.");
@@ -268,6 +276,8 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                 var next = value.InheritAll == true ? new BranchSettings() : current;
                 if (connection is { } chosen) next = next with { ConnectionId = chosen.Value };
                 if (mode is { } approval) next = next with { ApprovalMode = approval.Value };
+                if (reasoning is { Length: > 0 }) next = next with
+                    { ReasoningEffort = reasoning == "inherit" ? null : reasoning };
                 return next;
             }, cancellationToken);
         }
@@ -350,5 +360,7 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
 
 /// <param name="Connection">A connection id to run this branch on, or "inherit"; omitted leaves it as it is.</param>
 /// <param name="ApprovalMode">Ask, Auto or FullAccess, or "inherit"; omitted leaves it as it is.</param>
+/// <param name="ReasoningEffort">For a compatible model: none, minimal, low, medium, high, xhigh or max; "inherit" clears the override.</param>
 /// <param name="InheritAll">True drops every override of the branch, tool policies included, before the other fields apply.</param>
-public sealed record BranchSettingsPayload(string? Connection = null, string? ApprovalMode = null, bool? InheritAll = null);
+public sealed record BranchSettingsPayload(string? Connection = null, string? ApprovalMode = null,
+    bool? InheritAll = null, string? ReasoningEffort = null);

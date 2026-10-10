@@ -4,12 +4,12 @@ name: Chat branch configure
 icon: git-branch
 aliases: ["branch"]
 kind: playbook
-description: Show which model, tool approval mode and tool rules a branch runs with and where each comes from, override them for this branch, or make the branch inherit them again; use when the user asks about or changes settings of the current branch or another branch.
-parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Branch title or id named by the user; omitted means the current branch"},"connection":{"type":"string","description":"Existing connection name or id to run the branch on, or 'inherit'"},"approvalMode":{"type":"string","enum":["Ask","Auto","FullAccess","inherit"],"description":"Tool approval mode for the branch, or 'inherit'"},"inheritAll":{"type":"boolean","description":"Drop every override of the branch, tool rules included, only when the user asked for it"}},"additionalProperties":false}
+description: Show which model, reasoning effort, tool approval mode and tool rules a branch runs with and where each comes from, override them for this branch, or make the branch inherit them again; use when the user asks about or changes settings of the current branch or another branch.
+parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Branch title or id named by the user; omitted means the current branch"},"connection":{"type":"string","description":"Existing connection name or id to run the branch on, or 'inherit'"},"reasoningEffort":{"type":"string","enum":["none","minimal","low","medium","high","xhigh","max","inherit"],"description":"Chat Completions reasoning effort for a compatible branch model, or 'inherit'"},"approvalMode":{"type":"string","enum":["Ask","Auto","FullAccess","inherit"],"description":"Tool approval mode for the branch, or 'inherit'"},"inheritAll":{"type":"boolean","description":"Drop every override of the branch, tool rules included, only when the user asked for it"}},"additionalProperties":false}
 tools: ["app_read","app_chats","app_security","ask_user"]
 ---
 
-A branch inherits its connection (model), tool approval mode and tool rules from its parent branch,
+A branch inherits its connection (model), reasoning effort, tool approval mode and tool rules from its parent branch,
 nearest first, and the main branch's values are the chat's own. A value set on a branch overrides
 the parent for that branch and for every branch below it that does not set its own. Schedules are
 never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` skills).
@@ -18,7 +18,7 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    among the chat's branches from `app_read` resource=Chat. When several titles match, ask with
    `ask_user` which one; a dismissed or unanswered question changes nothing.
 2. Read `app_read` resource=Chat with that `branchId`. Its `effectiveBranchSettings` gives the
-   effective `connectionId` and `approvalMode` with `connectionFrom` and `approvalModeFrom` ("this
+   effective `connectionId`, `reasoningEffort` and `approvalMode` with their source fields ("this
    branch", a branch title, or "chat"), and `toolPolicyOverrides`; the branch's own values are in
    `branches[].settings`. Read `app_read` resource=Settings for connection names. When the user only
    asked what the branch runs with, answer from this and stop: name each value, say whether the
@@ -28,6 +28,8 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    words (Ask for approval, Approve for me, Full access), with "Inherit from <source>" as the first
    option. A connection must be enabled. "Inherit", "follow the parent", "reset" or "as before"
    means `inherit` for that field; resetting everything means `inheritAll` true.
+   For reasoning effort, use only a value the connection's endpoint supports. If support is
+   unknown, explain that the provider may reject the request and prefer inheritance.
 4. Loosening approvals needs the person's word: a change to Full access, or from Ask to Approve for
    me — directly or because inheriting brings a looser mode — is applied only when the user asked
    for exactly that in this conversation. Otherwise ask once with `ask_user`, saying that tool
@@ -36,7 +38,8 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    avoid a pending approval card. Making approvals stricter needs no confirmation.
 5. Apply with `app_chats` operation `SetBranchSettings`, `projectId`, `chatId`, `branchId`, a fresh
    `operationId` and `branchSettings` holding only the fields that change: `connection` (a
-   connection id or `inherit`), `approvalMode` (`Ask`, `Auto`, `FullAccess` or `inherit`), or
+   connection id or `inherit`), `reasoningEffort` (a supported value or `inherit`),
+   `approvalMode` (`Ask`, `Auto`, `FullAccess` or `inherit`), or
    `inheritAll` true. On the main branch the values are the chat's own and are inherited by every
    branch: there `connection` `inherit` follows the project default and `approvalMode` needs a value.
    For one tool's rule on this branch use `app_security` `SetBranchToolPolicy` (a `toolPolicy` with

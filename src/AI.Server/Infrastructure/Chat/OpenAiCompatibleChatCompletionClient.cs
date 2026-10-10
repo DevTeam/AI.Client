@@ -283,6 +283,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             messages.Add(message);
         }
         var body = new Dictionary<string, object?> { ["model"] = request.Model.Trim(), ["messages"] = messages, ["stream"] = stream };
+        if (request.ReasoningEffort is { Length: > 0 } effort) body["reasoning_effort"] = effort;
         // Without it a stream says nothing about what it used: the report is an extra final chunk
         // that endpoints send only when asked.
         if (stream && askUsage) body["stream_options"] = new { include_usage = true };

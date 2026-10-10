@@ -23,7 +23,7 @@ public sealed class ChatBranchSettingsResolverTests
         {
             new ChatBranchView(chatId, null, "Main"),
             new ChatBranchView(parentId, null, "Parent", chatId, Settings: new BranchSettings(
-                parentConnection, ToolApprovalMode.Auto, [parentPolicy])),
+                parentConnection, ToolApprovalMode.Auto, [parentPolicy], "high")),
             new ChatBranchView(childId, null, "Child", parentId, Settings: new BranchSettings(
                 ToolPolicies: [childPolicy]))
         };
@@ -33,6 +33,7 @@ public sealed class ChatBranchSettingsResolverTests
 
         resolver.ConnectionId(chat, childId).ShouldBe(parentConnection);
         resolver.ApprovalMode(chat, childId).ShouldBe(ToolApprovalMode.Auto);
+        resolver.ReasoningEffort(chat, childId).ShouldBe("high");
         resolver.BranchToolPolicies(chat, childId, serverId, "execute", "schema")
             .ShouldBe([childPolicy, parentPolicy]);
 
@@ -43,5 +44,6 @@ public sealed class ChatBranchSettingsResolverTests
             .ShouldBe([parentPolicy]);
         resolver.ConnectionId(reset, chatId).ShouldBe(chatConnection);
         resolver.ApprovalMode(reset, chatId).ShouldBe(ToolApprovalMode.Ask);
+        resolver.ReasoningEffort(reset, chatId).ShouldBeNull();
     }
 }

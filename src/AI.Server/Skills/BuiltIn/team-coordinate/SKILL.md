@@ -50,12 +50,19 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
 3. A decision that changes what others build goes to every affected branch as an Aside with
    intent `Decision`: a running teammate reads it at its next step, an idle one in its next turn.
    Record decisions in your answer too, so this branch stays the team's record.
+   State each decision once as a compact record: the decision, reason that affects implementation,
+   affected contracts or paths, effective phase, and the earlier decision it supersedes if any.
+   Send it only to branches whose assignment changes. Do not replay the whole discussion or forward
+   raw teammate messages. A question's answer should address its exact case and close that question;
+   unrelated decisions must not be described as answers.
    If a later phase needs a different model or tool permission, inspect the affected branch's
    `effectiveBranchSettings` with `app_read` resource=Chat and the enabled Connections in
    resource=Settings. Use `chat-branch-configure` through `run_skill` with the affected branch
    title or id for a supported change to the narrowest branch. Explain which child branches
    inherit it; never invent capability, speed or price from a model name. Ask the person before
    loosening tool approvals or policies unless their exact branch-scoped choice is already stated.
+   A different reasoning effort is a branch setting too: lower it for a bounded phase only when
+   the endpoint is known to support that value, and restore inheritance when the phase ends.
 4. When every teammate of a phase is done, start the next phase: one Send per teammate with intent
    `Decision` and what the phase expects of it. In worktree mode confirm the next phase still
    needs only the common base and fixed contracts; do not send a teammate to implement against
@@ -83,6 +90,11 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    combined result, and report only the commits on its own Git branch to the parent lead. Do not
    ask the parent to cherry-pick the children's original commits again. If integration conflicts,
    stop, preserve all worktrees and report the exact state to the parent lead.
+   At each phase boundary, leave a short handoff in your answer in this branch with accepted deliverables and
+   evidence, decisions still in force, open questions, and the next phase's first action. This
+   preserves the team's working context across later turns and context compaction. Do not summarize
+   every tool call or repeat the charter. A nested lead sends its parent only the integrated result
+   and the decisions the parent must act on, not its children's transcripts.
 5. While teammates work, never edit their owned paths yourself. After they finish, integration may
    change those paths in the lead's checkout; never edit their worktrees. Do not send
    acknowledgements, thanks or restatements: every message to a branch costs that teammate a
@@ -92,7 +104,8 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    or as a new turn once you have ended yours. End the turn when you are waiting, and their
    messages wake you. A teammate whose
    turn stopped for lack of progress reports it here as a `blocker` on its own.
-6. Answer with a short status table built from the Team status and the messages of this turn
-   (teammate as "Name · Role", state, last report, open question) and what you decided
-   or are waiting for. When the work is complete, give the final report instead: what each
-   teammate delivered, how it was verified, and what is left.
+6. Answer with the new event, decision or next action. Show a short status table built from the
+   Team status (teammate as "Name · Role", state, last report, open question) when the team state
+   changed materially or the person asks for it; do not reproduce an unchanged table every turn.
+   When the work is complete, give the final report instead: what each teammate delivered, how it
+   was verified, and what is left.

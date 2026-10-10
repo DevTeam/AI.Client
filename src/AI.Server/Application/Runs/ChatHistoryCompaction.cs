@@ -71,7 +71,8 @@ public sealed class ChatHistoryCompaction(
                 Error: "The history is already summarized up to the latest turn.");
 
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-            await secrets.GetAsync("connection", connection.Id, cancellationToken), "Summarize", connection.Id);
+            await secrets.GetAsync("connection", connection.Id, cancellationToken), "Summarize", connection.Id,
+            ReasoningEffort: connection.ReasoningEffort);
         ContextSummary? summary;
         using (usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Compaction, projectId, chatId, branchId)))
             summary = await summaryWriter.WriteAsync(coverable, budget.HistorySummaryTargetTokens, new Summarizer(completion, request),

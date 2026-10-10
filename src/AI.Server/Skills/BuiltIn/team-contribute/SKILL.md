@@ -27,6 +27,10 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    resource=Messages, `branchId` = the parent branch id, for decisions made since the charter. A decision
    overrides your brief. A message the lead sends into this branch arrives as a new turn or, while
    you work, before your next step.
+   Keep the last message id you saw on that branch. On later reads pass it as `afterMessageId` and
+   page only through new messages; do not repeatedly reread the charter or older decisions. Apply
+   new `Decision` messages and remember the newest id even if the page contained no decision. If
+   there is no new decision, continue the existing assignment.
 3. Do the work. Start each skill your brief names with `run_skill` in this turn and follow its
    steps; with none named, follow the project's conventions and its checks. Change only your owned
    paths. A change anywhere else, or to a contract, is a question to the lead. Read the charter's
@@ -37,6 +41,11 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    never edit the lead's checkout or another teammate's worktree. If a tool cannot reach the
    assigned path under the project's grants, report a blocker to the lead rather than using a
    process to bypass the grant.
+   Make one short execution plan from the brief, then act on it. Do not re-plan the whole team,
+   narrate routine tool results, or repeatedly explain your reasoning to yourself. Reconsider the
+   plan when a contract, new decision, failed check or unexpected result changes the facts. Give
+   uncertain contracts, security-sensitive changes and integration enough analysis to be correct;
+   concise communication is not a reason to skip verification.
    Make the first change early, except when you must start a worktree subteam from your clean HEAD:
    create those child worktrees before editing your integration checkout. Otherwise, as soon as
    the contracts and one example of the project's style
@@ -81,9 +90,18 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    The lead reads each message under a header with your identity and its intent, added by the
    application: do not open it with your name, role or status. Every message is self-contained — what, why, and what you need back. No acknowledgements, no
    thanks, and no messages to other teammates: the lead routes them.
+   Send only the delta since your last report. For a question, state the exact case, viable options,
+   your recommendation and what is blocked. For a status, state completed work, the next step and
+   any new risk in a few lines. Do not send raw tool output, a diary of attempts, repeated charter
+   text or private reasoning. Include a file path, message id or commit hash when it lets the lead
+   verify or act without asking you to repeat the context.
 5. When the deliverable meets its definition of done, check it once more against the charter's
    contracts, then send intent `Done` (mode Send) with what changed (paths), how it was verified,
    and anything left open. In worktree mode include the worktree path, branch, base commit, ordered
    commit hashes and clean/dirty status so the lead can integrate the exact result. Do not call
    the result done while assigned changes remain uncommitted.
+   At a phase boundary or after a long turn, use your answer in this branch as a compact handoff: current
+   result, decisions applied, open question, next action and evidence locations. Omit finished
+   exploration and tool transcripts. This is for resuming work after context compaction, not an
+   additional message to the lead unless one of those facts changed for the team.
 6. Answer in this branch with the same summary, or with what you are waiting for and why.

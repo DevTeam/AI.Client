@@ -98,7 +98,7 @@ public sealed class ChatReplySuggestSkill(
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),
-            "Suggest a reply", connection.Id, conversation);
+            "Suggest a reply", connection.Id, conversation, ReasoningEffort: connection.ReasoningEffort);
         var content = new StringBuilder();
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         var text = Clean(content.ToString());

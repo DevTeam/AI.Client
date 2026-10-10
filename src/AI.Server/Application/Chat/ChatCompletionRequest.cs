@@ -13,4 +13,5 @@ public sealed record ChatCompletionRequest(
     IReadOnlyList<ChatToolDefinition>? Tools = null, ChatKind Kind = default, JsonElement? KindState = null,
     int KindStateVersion = 1, Guid? ProjectId = null,
     // The team's state as the turn starts, for a team lead's run; see docs/34-asides-and-team-messages.md.
-    string? TeamStatus = null);
+    string? TeamStatus = null,
+    string? ReasoningEffort = null);

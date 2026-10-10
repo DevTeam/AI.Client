@@ -74,6 +74,25 @@ public class OpenAiCompatibleChatCompletionClientTests
         capturedContent.ShouldNotBeNull();
         capturedContent.ShouldContain("\"model\":\"test-model\"");
         capturedContent.ShouldContain("\"stream\":false");
+        capturedContent.ShouldNotContain("reasoning_effort");
+    }
+
+    [Fact]
+    public async Task ShouldSendConfiguredReasoningEffort()
+    {
+        var client = CreateInstance();
+        string? payload = null;
+        _handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((request, _) =>
+                payload = request.Content!.ReadAsStringAsync(CancellationToken.None).GetAwaiter().GetResult())
+            .ReturnsAsync(CreateResponse(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Hello"}}]}"""));
+
+        await client.CompleteAsync(new ChatCompletionRequest("https://llm.example/v1", "model", null, "Hi",
+            ReasoningEffort: "low"), CancellationToken.None);
+
+        using var document = JsonDocument.Parse(payload.ShouldNotBeNull());
+        document.RootElement.GetProperty("reasoning_effort").GetString().ShouldBe("low");
     }
 
     [Fact]

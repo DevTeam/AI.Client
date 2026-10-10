@@ -108,7 +108,7 @@ public sealed class ChatCommentSuggestSkill(
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),
-            "Suggest a review comment", connection.Id, conversation);
+            "Suggest a review comment", connection.Id, conversation, ReasoningEffort: connection.ReasoningEffort);
         var content = new StringBuilder();
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         var text = Clean(content.ToString());

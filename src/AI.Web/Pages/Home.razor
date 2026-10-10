@@ -1300,6 +1300,7 @@ else if (_guideInvitation is { } guideInvitation)
     <BranchSettingsDialog ProjectId="@_selectedProject.Id" Chat="@settingsChat" BranchId="@settingsBranchId"
         Connections="@_connections" FallbackConnectionId="@(_defaultConnectionId ?? GetDefaultConnection()?.Id)"
         ConnectionChanged="id => SetBranchConnectionAsync(settingsBranchId, id)"
+        ReasoningChanged="effort => SetBranchReasoningAsync(settingsBranchId, effort)"
         ApprovalChanged="mode => SetBranchApprovalAsync(settingsBranchId, mode)"
         Reset="() => SaveBranchSettingsAsync(settingsBranchId, new())"
         PermissionsRequested="() => OpenSettingsPermissionsAsync(settingsBranchId)"
@@ -6307,7 +6308,8 @@ else if (_guideInvitation is { } guideInvitation)
     }
 
     private int CountBranchOverrides(Guid branchId) => GetBranchSettings(branchId) is var settings
-        ? (settings.ConnectionId is null ? 0 : 1) + (settings.ApprovalMode is null ? 0 : 1) : 0;
+        ? (settings.ConnectionId is null ? 0 : 1) + (settings.ApprovalMode is null ? 0 : 1)
+          + (settings.ReasoningEffort is null ? 0 : 1) : 0;
 
     /// <summary>Opens a chat's settings from its menu; a chat that is not open is opened first.</summary>
     private async Task OpenChatSettingsAsync(ChatSummary chat)
@@ -6401,6 +6403,9 @@ else if (_guideInvitation is { } guideInvitation)
         else if (mode is { } chosen)
             await UpdateChatApprovalModeAsync(chosen);
     }
+
+    private Task SetBranchReasoningAsync(Guid branchId, string? effort) =>
+        SaveBranchSettingsAsync(branchId, GetBranchSettings(branchId) with { ReasoningEffort = effort });
 
     private ToolApprovalMode GetApprovalMode() => _selectedChat is { } chat
         ? EffectiveBranchApprovalMode(GetSelectedRunBranchId()) : _newChatApprovalMode;

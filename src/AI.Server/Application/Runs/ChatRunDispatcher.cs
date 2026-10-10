@@ -732,7 +732,9 @@ public sealed class ChatRunDispatcher(
                         Kind: new ChatKind(chat.Kind), KindState: chat.KindState,
                         KindStateVersion: chat.KindStateVersion, ProjectId: runtime.State.ProjectId,
                         TeamStatus: teamStatus.Describe(chat, runtime.State.BranchId, _runtimes.Values
-                            .Where(item => item.State.ChatId == chat.Id).Select(item => item.Snapshot).ToArray()));
+                            .Where(item => item.State.ChatId == chat.Id).Select(item => item.Snapshot).ToArray()),
+                        ReasoningEffort: branchSettings.ReasoningEffort(chat, runtime.State.BranchId)
+                            ?? connection.ReasoningEffort);
                     if (connection.ImageInput == AI.Contracts.Settings.ImageInputMode.Disabled)
                         request = request with { ContextMessages = request.ContextMessages?
                             .Select(item => item with { ImageAssetIds = null }).ToArray() };

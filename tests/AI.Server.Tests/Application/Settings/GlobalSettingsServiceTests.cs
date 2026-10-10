@@ -92,6 +92,19 @@ public class GlobalSettingsServiceTests
         connection.GoodFor.ShouldBe("vision");
     }
 
+    [Fact]
+    public async Task ShouldKeepConfiguredReasoningEffortAndRejectUnknownValue()
+    {
+        var connection = new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one",
+            true, true, false, ReasoningEffort: "low");
+        var saved = await SaveAsync(connection);
+        saved.Connections.Single().ReasoningEffort.ShouldBe("low");
+
+        var action = () => CreateInstance().SaveAsync(new SaveGlobalSettingsRequest(
+            [connection with { ReasoningEffort = "custom" }], [], []), CancellationToken.None);
+        await action.ShouldThrowAsync<ArgumentException>();
+    }
+
     [Theory]
     [InlineData(1023L, null)]
     [InlineData(32768L, 32768L)]

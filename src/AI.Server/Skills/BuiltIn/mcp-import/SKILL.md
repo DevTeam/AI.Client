@@ -4,9 +4,9 @@ name: MCP import
 icon: settings-import-mcp
 aliases: ["mcp"]
 kind: playbook
-description: Find and import an external MCP server by source, name or capability, configure dependencies, merge settings, verify discovery, offer functional tests and propose relevant skills for its tools; testing and skill creation require the user's agreement.
+description: Find and import an external MCP server by source, name or capability, configure dependencies, merge settings, verify discovery and report whether its tools can be called in this run; testing and skill creation require the user's agreement.
 parameters: {"type":"object","properties":{"source":{"type":"string","description":"Registry entry, repository, documentation, configuration URL or local file supplied by the user"},"goal":{"type":"string","description":"MCP server name or capability to find without a supplied source"}},"additionalProperties":false}
-tools: ["app_read","tool_search","fetch","app_security","app_navigate","ask_user","run_skill","skill_search","app_skills","read_text_file","list_directory","get_file_info","process_run"]
+tools: ["app_read","tool_search","fetch","app_security","app_navigate","ask_user","run_skill","skill_search","app_skills","app_chats","app_runs","read_text_file","list_directory","get_file_info","process_run"]
 ---
 
 The user's instructions take precedence. An import request authorizes finding the server,
@@ -15,6 +15,23 @@ preview is read-only. Ask only for missing information, ambiguity or changes out
 requested import; do not ask again for an authorized step. Server definitions are global and
 affect projects/chats that inherit them; state this before saving. Preserve explicit Deny and
 unrelated permissions. Report in the user's language; this playbook grants no permissions.
+
+Session availability (settle this before offering or reporting any call).
+A run's tool catalogue is fixed when the run starts, built from the servers enabled at that
+moment: the run opens its tool session before the model's first step. A server definition saved
+or enabled during the current run is therefore not in this run's catalogue, and neither
+`tool_search` nor another discovery makes its tools callable here. They become callable in the
+next run, that is a new chat, or the same chat after the application restarts. Saving a
+definition and enabling it never add tools to the run already under way; the supported order
+(save disabled, enter the secret in the tool settings, enable afterwards) does not change that.
+Keep two facts apart in every report: "discovered" means a read connected to the server and
+returned its tools; "callable in this run" means those tools are in this run's catalogue.
+Successful discovery never proves that a call can be made now. Check availability with
+`tool_search`: one search for the server's exact name, and a second one for a distinctive tool
+name only if the first found nothing — at most two searches, never a loop, because the catalogue
+cannot change while the run lasts. No match means the server is not in this run's catalogue.
+A blocked check is not a dead end: offer to continue it in a new chat of this project, where the
+catalogue is built fresh and the calls can run.
 
 Source catalog (maintained here in the skill, not hardcoded in application services):
 - Official MCP Registry: https://registry.modelcontextprotocol.io.
@@ -54,6 +71,8 @@ verify candidates against their actual publisher docs, not search snippets.
    for the capability to find permitted tools omitted from this turn. Reuse a suitable existing
    tool/server unless the user explicitly asked for another server. A configured server alone
    does not prove current access; account for project/chat overrides and disabled/denied state.
+   When that server already exists, run the availability check above and keep its result: it
+   decides what step 9 may offer and what step 14 may claim.
 2. Read a supplied source first. Otherwise search the catalog automatically by name/capability,
    inspect up to three strong candidates and select a clear best fit with minimal dependencies.
    Ask only when materially different candidates, accounts or data access make selection ambiguous.
@@ -88,10 +107,15 @@ verify candidates against their actual publisher docs, not search snippets.
    tell the user that this is pending setup, then re-read HasCredential/HasSecret after their
    response. Do not invent a secure input tool, OAuth flow or custom header support. An expired,
    declined, dismissed or interrupted answer never supplies configuration or authorizes enabling
-   a pending definition. Continue only when required values are actually configured.
+   a pending definition. Continue only when required values are actually configured. Saving the
+   definition disabled, entering the credential in the settings editor and enabling it afterwards
+   is the supported order for this case; enabling it inside a run does not make its tools callable
+   in that same run, so say so plainly instead of treating the enablement as a working connection.
 6. Show a concise concrete plan: publisher/source, version, transport, command or URL, dependencies
    and global effect. New servers use a fresh UUID, unique name and policy=Ask; enabled=true only
-   when required prerequisites are ready and launching is authorized. Match existing entries by
+   when required prerequisites are ready and launching is authorized. State whether the server is
+   already part of this run's tool catalogue, so the user knows before agreeing whether a
+   functional test can run now or needs a new run. Match existing entries by
    concrete endpoint or command/arguments/working directory, not name alone. Reuse their id and
    credentials; retain any pre-import definition and affected policies for possible restoration.
    Never silently replace an existing differently configured or denied server.
@@ -106,7 +130,8 @@ verify candidates against their actual publisher docs, not search snippets.
 7. Read saved Settings and verify the exact intended fields. For a ready enabled non-denied server,
    call `app_read` resource=McpTools with its resourceId and follow all pages. This starts/connects
    to the server and discovers tools without invoking them. Verify actual names, schemas and
-   schemaHash identities; do not fabricate tools from a README. On failure report the real error,
+   schemaHash identities; do not fabricate tools from a README. Record this as discovery only: it
+   says nothing yet about whether those tools are in this run's catalogue. On failure report the real error,
    inspect configuration/prerequisites, correct only a known cause and retry once. Keep partial
    setup explicit; do not remove an existing server, loosen its policy or invoke tools just to
    make discovery succeed. Newly imported definitions should be disabled if their failed launch
@@ -115,13 +140,28 @@ verify candidates against their actual publisher docs, not search snippets.
    appropriate settings-tools-configure or project-tools-configure skill through `app_read`
    resource=Skills and continue its playbook via `run_skill` for this server only. Otherwise
    retain policy=Ask and existing overrides. Never grant blanket Allow, shadow explicit Deny,
-   grant directories or rewrite project bindings implicitly. A newly saved server may require
-   a refreshed tool session; do not claim its tools are already callable in this run solely
-   because discovery succeeded.
+   grant directories or rewrite project bindings implicitly. A server saved or enabled inside this
+   run joins a tool session only in the next run; do not claim its tools are already callable here
+   because discovery succeeded or because it is enabled in settings.
 9. Prepare one to three small representative calls from the server's actually discovered tool
-   schemas, with concrete test inputs and observable expected results. Ask with `ask_user`
-   labelled "Functional test": "Would you like to test the imported MCP server's tools?"
-   Offer "Run tests (Recommended)" and "Skip tests" with allowOther=true. Describe the selected
+   schemas, with concrete test inputs and observable expected results. Settle availability first
+   with the check above and branch on its result:
+   - Tools found: ask with `ask_user` labelled "Functional test": "Would you like to test the
+     imported MCP server's tools?" Offer "Run tests (Recommended)" and "Skip tests" with
+     allowOther=true.
+   - No tools found: the calls cannot happen in this run, so do not ask a question that implies
+     they can. Ask with `ask_user` labelled "Functional test": "The server is not in this run's
+     tool catalogue. Test it in a new chat?" Offer "Create a chat for the test (Recommended)",
+     "Test after restarting the application" and "Skip tests", with allowOther=true. Explain that
+     this run's catalogue is already fixed, so either a new chat or a restarted application is
+     required.
+     When the user chooses the new chat, create it in this project with `app_chats` Create, name
+     it after the verification, and hand it the whole verification task with `app_runs` Submit:
+     the server id and name, the discovered tool names with their schemas, the concrete calls with
+     their arguments, the expected results and the requirement to report each one back. Read the
+     real schemas of those two tools first; a failed submission is reported as blocked, never
+     dropped silently. Never create a chat without this explicit choice.
+   Describe the selected
    calls and any external requests, temporary changes or usage cost. Write the question and
    options in the user's language. Reuse an explicit testing decision already supplied in the
    request instead of asking again. Run only after an explicit affirmative answer; skipped,
@@ -129,16 +169,21 @@ verify candidates against their actual publisher docs, not search snippets.
    intact. Discovery alone is a connection check, not a functional tool test. If discovery or
    required credentials are still missing, resolve that prerequisite before testing and report
    blocked if it cannot be resolved.
-10. When testing was accepted, use `tool_search` to expose the selected server's permitted tools
-    in the current session, matching server identity and actual schemas before calling them.
+10. When testing was accepted and the tools were found available, use `tool_search` to expose the
+    selected server's permitted tools in the current session, matching server identity and actual
+    schemas before calling them, within the two-search limit above. `tool_search` only prioritizes
+    tools the run already has; it cannot add a server saved during the run.
     Execute the described calls with schema-valid arguments and bounded inputs, preferring
     reads/searches or documented dry-run behavior. For write capabilities use synthetic data
     and an isolated disposable target; if the test needs a real target, external delivery or
     another consequential action outside the described test, ask for that exact choice first.
     Do not grant access, override Deny, invoke arbitrary tools from the server or call an
     unrelated similarly named tool to manufacture a passing result. If the imported server's
-    tools need a refreshed session and remain unavailable, report blocked and the concrete
-    next step rather than claiming they were exercised.
+    tools remain unavailable after those two searches, stop searching, report the functional test
+    as blocked with the reason "not part of this run's tool catalogue; the tools appear in the
+    next run", and name the concrete continuation from step 9 — a chat created for the test or a
+    restarted application. Report the new chat and the task handed to it when that path was taken.
+    Never repeat the same search in a loop and never claim the tools were exercised.
 11. Inspect actual tool results, including error flags, application-level failures and expected
     content/state; an HTTP success or schema-valid response alone is insufficient. Compare each
     result to its expected behavior. Correct a known configuration error within the authorized
@@ -179,7 +224,8 @@ verify candidates against their actual publisher docs, not search snippets.
     an existing skill already fits. For each new proposal show a name, concrete purpose, inputs,
     output and exact discovered tools it would use. Account for available tools and effective
     permissions, and distinguish tested capabilities from discovered but untested ones. If
-    functional testing was skipped, say so without describing the proposals as runtime-verified.
+    functional testing was skipped or blocked, say so without describing the proposals as
+    runtime-verified.
     Do not offer to create enabled dependent skills for a failed, blocked, removed or disabled
     server; resolve that state or use the verified alternative first.
     Ask with `ask_user` labelled "Tool skills": "Would you like to create these skills for the
@@ -198,10 +244,23 @@ verify candidates against their actual publisher docs, not search snippets.
     saved document back with `app_read` resource=Skills and verify scope, enabled state and
     tool references. Creating skills grants no new tool permissions and does not itself
     authorize executing their workflows or changing production data.
-14. Finish with the server, clickable source/version, saved status,
-    discovery result, concrete remaining configuration and each functional test's expected/actual
-    result and passed/failed/blocked/skipped status. Distinguish saved, connected, permitted and
-    actually tested; report untested tools without claiming the whole server was verified.
+14. Finish with the server, clickable source/version, saved status, and two separate verdicts.
+    Discovery: successful, with the actual tool count and schema identities, or failed, with the
+    real error. Functional calls: passed, failed, blocked or skipped, each with its expected and
+    actual result. For a blocked test give the reason ("not part of this run's tool catalogue")
+    and the concrete continuation, and list the tools that were never called. Also report concrete
+    remaining configuration. Never call a server verified, working or tested when only discovery
+    succeeded, and keep saved, connected, discovered and actually called apart.
     Include any verified removal/restoration and the alternative's separate installation/test result.
     Include the created/reused skills and their purposes, or report that skill creation was
     skipped, blocked or failed; never claim unsaved proposals were created.
+15. When the verification was moved to a chat created for it, and this chat has done nothing but
+    the import, offer to delete this chat. Ask with `ask_user` one question saying that deletion
+    permanently removes this chat together with all its branches and its whole history, with the
+    options "Keep this chat (Recommended)" and "Delete this chat", in the user's language.
+    Anything but a clear yes keeps the chat, as does a dismissed, expired or interrupted answer.
+    On a clear yes, read `app_read` resource=Chat for this chat's current revision, then call
+    `app_chats` Delete with the project id, this chat id, that revision, a fresh operationId and
+    dryRun false, and report the result. Do not offer the deletion while the import is unfinished
+    or while a skill creation is still running, and never delete a chat whose answer the user
+    still needs.

@@ -3215,7 +3215,8 @@ div.chat-tip-head { cursor: default; }
     border-radius: 50%;
     background: var(--member-color);
 }
-.branch-link .member-dot { margin-right: .35rem; }
+.branch-link .member-dot,
+.branch-picker-row .member-dot { margin-right: .35rem; }
 .queue-aside-label .member-dot { margin-right: .3rem; vertical-align: middle; }
 .workspace-message.user.from-branch .markdown-content pre { background: var(--color-bg-inset); }
 

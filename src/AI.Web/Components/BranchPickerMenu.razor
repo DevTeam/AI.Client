@@ -158,11 +158,16 @@
             {
                 <BranchRunIcon Outcome="@status" StatusClass="@item.IconClass" />
             }
+            else if (item.IconClass == "run-status-generating")
+            {
+                @* A live line spins, as its row does in the sidebar. *@
+                <AppIcon Name="spinner" Class="branch-option-icon run-status-generating chat-unfinished-spin" />
+            }
             else
             {
                 <AppIcon Name="@item.Icon" Class="@($"branch-option-icon {item.IconClass}")" />
             }
-            <span class="branch-option-label"><span class="branch-option-text">@item.Title</span>@if (item.RunTag is { } tag) { <span class="branch-run-tag">@tag</span> }</span>
+            <span class="branch-option-label"><MemberDot Member="@item.Member" /><span class="branch-option-text">@item.Title</span>@if (item.RunTag is { } tag) { <span class="branch-run-tag">@tag</span> }</span>
             @if (item.RunStatus is { } outcome)
             {
                 <span class="branch-run-outcome is-@outcome.ToString().ToLowerInvariant()">@OutcomeLabel(outcome).ToLowerInvariant()</span>
@@ -170,6 +175,10 @@
             else if (item.EndsHere)
             {
                 <span class="branch-option-tag">ends here</span>
+            }
+            else if (item.IsMain)
+            {
+                <span class="branch-option-tag">main</span>
             }
         </button>;
 

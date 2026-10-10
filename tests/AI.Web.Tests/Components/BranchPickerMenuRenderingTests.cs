@@ -28,6 +28,25 @@ public sealed class BranchPickerMenuRenderingTests
     }
 
     [Fact]
+    public async Task ShouldShowTeammatesAsTheSidebarDoes()
+    {
+        var html = await RenderAsync(
+        [
+            new BranchPickerItem(1, "Replace file access", "message-circle", null, null, true, false, IsMain: true),
+            new BranchPickerItem(2, "Ada · Analyst", "git-branch", "run-status-generating", null, false, false,
+                Member: new AI.Contracts.Chats.TeamMember("Ada", "Analyst", "teal")),
+            new BranchPickerItem(3, "Eva · QA", "git-branch", null, null, false, false,
+                Member: new AI.Contracts.Chats.TeamMember("Eva", "QA", "pink"))
+        ]);
+
+        html.ShouldContain(">main</span>");
+        // A live line spins and an idle one keeps its branch icon; both carry the teammate's dot.
+        html.ShouldContain("chat-unfinished-spin");
+        html.Split("chat-unfinished-spin").Length.ShouldBe(2);
+        html.Split("class=\"member-dot\"").Length.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task ShouldGroupManyRunsFilterThemByOutcomeAndShowTheNewestWithTheCurrentOne()
     {
         var statuses = new[] { ScheduleRunStatus.Succeeded, ScheduleRunStatus.Failed, ScheduleRunStatus.Blocked };

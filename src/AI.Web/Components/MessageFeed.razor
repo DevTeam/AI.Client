@@ -2415,8 +2415,11 @@
                     $"{branch.Title}{(run.Summary is { Length: > 0 } summary ? $" · {summary}" : null)}",
                     IsOptionActive(option), false, run.Status, run.Number, tag);
             }
+            var lineBranch = option.Branch;
             return new BranchPickerItem(option, title, GetBranchOptionIcon(option), GetOptionStatusClass(option), tooltip,
-                IsOptionActive(option), option.EndsHere);
+                IsOptionActive(option), option.EndsHere,
+                Member: lineBranch is null ? null : SelectedChat?.MemberOf(lineBranch.Id),
+                IsMain: lineBranch is not null && lineBranch.Id == SelectedChat?.Id);
         }).ToArray();
     }
 

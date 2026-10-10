@@ -218,7 +218,7 @@ public class GlobalSettingsServiceTests
     }
 
     [Fact]
-    public async Task ShouldAllowOneHourToolTimeoutButRejectLonger()
+    public async Task ShouldAllowTwentyFourHourToolTimeoutButRejectLonger()
     {
         GlobalSettings saved = new([], [], []);
         _repository.Setup(item => item.UpdateAsync(
@@ -234,10 +234,10 @@ public class GlobalSettingsServiceTests
             McpToolPolicySettings.DefaultMaxCallsPerRun, McpToolPolicySettings.MaxTimeoutSeconds);
 
         var result = await service.SetToolPolicyAsync(policy, CancellationToken.None);
-        result.ToolPolicies.ShouldHaveSingleItem().TimeoutSeconds.ShouldBe(3600);
+        result.ToolPolicies.ShouldHaveSingleItem().TimeoutSeconds.ShouldBe(86400);
 
         await Should.ThrowAsync<ArgumentException>(() =>
-            service.SetToolPolicyAsync(policy with { TimeoutSeconds = 3601 }, CancellationToken.None));
+            service.SetToolPolicyAsync(policy with { TimeoutSeconds = 86401 }, CancellationToken.None));
     }
 
     private async Task<GlobalSettings> SaveAsync(params ConnectionSettings[] connections)

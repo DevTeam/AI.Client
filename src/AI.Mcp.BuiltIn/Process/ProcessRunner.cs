@@ -42,7 +42,7 @@ public sealed class ProcessRunner : IProcessRunner
 
     public const int OutputLimit = 32768;
     public const int DefaultTimeoutMs = 600000;
-    public const int MaxTimeoutMs = 3600000;
+    public const int MaxTimeoutMs = 86400000;
 
     public async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken)
     {

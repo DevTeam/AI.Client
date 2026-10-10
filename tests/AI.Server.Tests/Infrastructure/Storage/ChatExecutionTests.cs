@@ -1372,16 +1372,19 @@ public sealed partial class ChatExecutionTests
     [InlineData("process_run", 90, 600000, 90000)]
     [InlineData("process_run", 600, 120000, 120000)]
     [InlineData("process_run", 3600, null, 3600000)]
+    [InlineData("process_run", 86400, null, 86400000)]
     [InlineData("cs_run", null, null, 600000)]
     [InlineData("cs_run", 600, null, 600000)]
     [InlineData("cs_run", 90, null, 90000)]
     [InlineData("cs_run", 90, 600000, 90000)]
     [InlineData("cs_run", 600, 120000, 120000)]
     [InlineData("cs_run", 3600, null, 3600000)]
+    [InlineData("cs_run", 86400, null, 86400000)]
     [InlineData("trigger_wait", 90, null, 90000)]
     [InlineData("trigger_wait", 90, 600000, 90000)]
     [InlineData("trigger_wait", 600, 120000, 120000)]
     [InlineData("trigger_wait", 3600, null, 3600000)]
+    [InlineData("trigger_wait", 86400, null, 86400000)]
     public async Task ExecutionTimeoutShouldUsePolicyAndHonorShorterExplicitDeadline(
         string toolName, int? policySeconds, int? requestedMs, int expectedMs)
     {

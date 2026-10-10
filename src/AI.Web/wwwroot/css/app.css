@@ -3421,6 +3421,13 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     content-visibility: visible;
 }
 
+/* Rendered once, off screen, by messageScroll.js so the real height is remembered before the
+   reader scrolls to it. Left at the placeholder, a message grew by hundreds of pixels on reaching
+   the viewport and a smooth scroll in progress jerked the transcript by that much. */
+.workspace-message[data-measuring] {
+    content-visibility: visible;
+}
+
 /* A branch chooser opens outside the article and must not be clipped. */
 .workspace-message:has(.branch-picker-menu) {
     overflow: visible;

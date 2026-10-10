@@ -30,6 +30,9 @@ public sealed class ScheduleEndpoints : IEndpointModule
         routes.MapPost(branchRoute + "/run", async (Guid projectId, Guid chatId, Guid branchId,
             IChatScheduleService schedules, CancellationToken token) =>
             Found(await schedules.RunNowAsync(projectId, chatId, branchId, token)));
+        routes.MapGet("/api/projects/{projectId:guid}/chats/{chatId:guid}/schedules", async (Guid projectId, Guid chatId,
+            IChatScheduleService schedules, CancellationToken token) =>
+            await schedules.ListAsync(projectId, chatId, token) is { } views ? Results.Ok(views) : Results.NotFound());
         routes.MapGet(Route, async (Guid projectId, Guid chatId, IChatScheduleService schedules, CancellationToken token) =>
             Found(await schedules.GetAsync(projectId, chatId, token)));
         routes.MapPut(Route, async (Guid projectId, Guid chatId, SetChatScheduleRequest request, IChatScheduleService schedules,

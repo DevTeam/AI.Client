@@ -16,6 +16,12 @@ public interface IChatScheduleService
     Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every schedule of a chat's branches, the main branch first and then in branch order; empty when
+    /// no branch has one. Null when the chat does not exist.
+    /// </summary>
+    Task<IReadOnlyList<ChatScheduleView>?> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Sets the schedule of a conversation or a scheduled chat. A conversation becomes scheduled
     /// with its history intact; an empty chat gets the task as its first message, so the chat has
     /// an instruction to fork runs from. Null when the chat does not exist.
@@ -63,6 +69,20 @@ public sealed class ChatScheduleService(
     public async Task<ChatScheduleView?> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken) =>
         await store.ReadAsync(projectId, chatId, branchId, cancellationToken) is { } stored
             ? View(projectId, chatId, branchId, stored) : null;
+
+    public async Task<IReadOnlyList<ChatScheduleView>?> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var chat = await chats.GetAsync(projectId, chatId, cancellationToken);
+        if (chat is null) return null;
+        var order = (chat.Branches ?? []).Select((branch, index) => (branch.Id, index))
+            .ToDictionary(item => item.Id, item => item.Id == chatId ? -1 : item.index);
+        // A file whose branch is gone waits for the scheduler's scan; it is no schedule of this chat.
+        return (await store.ListAsync(projectId, cancellationToken))
+            .Where(item => item.ChatId == chatId && order.ContainsKey(item.BranchId))
+            .OrderBy(item => order[item.BranchId])
+            .Select(item => View(projectId, chatId, item.BranchId, new StoredSchedule(chat.Kind, item.Schedule, chat.Revision)))
+            .ToArray();
+    }
 
     public Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken) =>
         SetAsync(projectId, chatId, chatId, request, cancellationToken);

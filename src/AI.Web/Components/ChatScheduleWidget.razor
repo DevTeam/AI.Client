@@ -1,5 +1,7 @@
 @* The selected branch has its own schedule. Every run forks from that branch's current head.
-   Before a chat exists, the composer text becomes the first message of a new scheduled chat. *@
+   Before a chat exists, the composer text becomes the first message of a new scheduled chat.
+   Schedules are never inherited, so the widget also says which run of which branch's schedule the
+   open branch is, and lists the chat's other schedules to go to. *@
 @using AI.Contracts.Chats
 @using AI.Contracts.Schedules
 @using AI.Web.Widgets
@@ -33,6 +35,7 @@
             <div class="chat-schedule-editor-heading" tabindex="-1" @ref="_editorHeading">
                 <AppIcon Name="stopwatch" />
                 <strong>@(_schedule is not null ? "Edit the schedule" : Chat is null ? "Schedule a new chat" : IsBranch ? "Schedule this branch" : "Schedule this chat")</strong>
+                @if (Chat is not null && ShowOwner) { @Owner() }
             </div>
             @if (_schedule is null)
             {
@@ -63,15 +66,19 @@
     }
     else if (_schedule is not { } schedule)
     {
+        @if (RunOf() is { } runOf)
+        {
+            @RunOfCard(runOf.Owner, runOf.Run)
+        }
         <div class="chat-usage-section chat-schedule-intro">
-            <p class="chat-usage-empty">@(IsBranch ? "This branch" : "This chat") runs only when you write in it. Schedule it to run its task on a date or a recurrence, in a child branch each time.</p>
+            <p class="chat-usage-empty">@(IsBranch ? "This branch" : "This chat") runs only when you write in it. Schedule it to run its task on a date or a recurrence, in a child branch each time.@(IsBranch ? " Schedules are never inherited: the parent's runs stay the parent's." : null)</p>
             @if (!CanSchedule)
             {
                 <p class="chat-usage-footnote">Only an ordinary conversation can be scheduled.</p>
             }
             else
             {
-                <button class="compact-action chat-schedule-primary" type="button" @onclick="StartScheduling">
+                <button class="compact-action @(RunOf() is null ? "chat-schedule-primary" : null)" type="button" @onclick="StartScheduling">
                     <AppIcon Name="stopwatch" /> Schedule this @(IsBranch ? "branch" : "chat")
                 </button>
             }
@@ -82,7 +89,12 @@
         var state = Presentation.State(schedule);
         var settings = schedule.Settings;
         var next = NextRun(schedule);
+        @if (RunOf() is { } runOf)
+        {
+            @RunOfCard(runOf.Owner, runOf.Run)
+        }
         <div class="chat-usage-section">
+            @if (ShowOwner) { <div class="chat-schedule-owner-line">@Owner()</div> }
             <div class="chat-widget-headline">
                 @if (next is { } at && state.Kind is ChatScheduleStateKind.Active or ChatScheduleStateKind.Running or ChatScheduleStateKind.Blocked)
                 {
@@ -220,6 +232,37 @@
             }
         </div>
     }
+    @if (Chat is not null && _draft is null && OtherSchedules() is { Count: > 0 } others)
+    {
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading">
+                <span>@(_schedule is null && RunOf() is null ? "Schedules in this chat" : "Other schedules in this chat")</span>
+                <span class="chat-usage-muted">@others.Count</span>
+            </div>
+            <ul class="chat-schedule-others">
+                @foreach (var other in others)
+                {
+                    var otherSchedule = other.Schedule!;
+                    var otherState = Presentation.State(otherSchedule);
+                    var otherBranch = other.BranchId ?? other.ChatId;
+                    <li @key="otherBranch">
+                        <button type="button" class="chat-schedule-other" title="@($"Go to {BranchName(otherBranch)} and its schedule")"
+                                @onclick="() => OnOpenBranch.InvokeAsync(otherBranch)">
+                            <AppIcon Name="@(otherBranch == Chat.Id ? "message-circle" : "git-branch")" />
+                            <span class="chat-schedule-other-body">
+                                <span class="chat-schedule-other-title">@BranchName(otherBranch)</span>
+                                <span class="chat-schedule-other-meta">@(other.Description ?? Descriptions.Describe(otherSchedule.Settings.Recurrence))</span>
+                            </span>
+                            <span class="chat-schedule-state is-@otherState.Kind.ToString().ToLowerInvariant()" title="@otherState.Title">
+                                <i aria-hidden="true"></i>@(otherState.Kind is ChatScheduleStateKind.Active && NextRun(otherSchedule) is { } otherNext
+                                    ? $"in {Presentation.Countdown(otherNext, _now)}" : otherState.Label)
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
 </ChatWidget>
 
 @code {
@@ -249,6 +292,7 @@
     [Parameter] public int? DraftRequest { get; set; }
 
     private ChatSchedule? _schedule;
+    private IReadOnlyList<ChatScheduleView> _chatSchedules = [];
     private ChatScheduleSettings? _draft;
     private string? _error;
     private bool _busy;
@@ -288,6 +332,7 @@
             _confirmRemove = false;
             _showAllRuns = false;
             _schedule = null;
+            _chatSchedules = [];
             await RefreshAsync();
         }
         _now = DateTimeOffset.UtcNow;
@@ -309,16 +354,89 @@
     {
         if (Chat is null || _loadedBranchId is not { } branchId) return;
         var chatId = Chat.Id;
+        var projectId = Chat.ProjectId;
         try
         {
-            var schedule = (await ScheduleApi.GetAsync(Chat.ProjectId, chatId, branchId, CancellationToken.None)).Schedule;
+            var schedule = (await ScheduleApi.GetAsync(projectId, chatId, branchId, CancellationToken.None)).Schedule;
             if (Chat?.Id == chatId && _loadedBranchId == branchId) _schedule = schedule;
         }
         catch (AI.Web.Chats.ChatScheduleException)
         {
             if (Chat?.Id == chatId && _loadedBranchId == branchId) _schedule = null;
         }
+        try
+        {
+            var schedules = await ScheduleApi.ListAsync(projectId, chatId, CancellationToken.None);
+            if (Chat?.Id == chatId) _chatSchedules = schedules ?? [];
+        }
+        catch (Exception error) when (error is HttpRequestException or AI.Web.Chats.ChatScheduleException)
+        {
+            // The rest of the widget is about the open branch; the list of the others can wait for the next refresh.
+        }
     }
+
+    /// <summary>
+    /// Which scheduled run the open branch is, or is under: the run of the nearest schedule whose run
+    /// branch is this branch or one of its parents.
+    /// </summary>
+    private (ChatScheduleView Owner, ScheduleRunRecord Run)? RunOf()
+    {
+        if (Chat is null || _loadedBranchId is not { } branchId) return null;
+        foreach (var id in Lineage(branchId))
+            foreach (var view in _chatSchedules)
+                if ((view.BranchId ?? view.ChatId) != id
+                    && view.Schedule?.Runs?.LastOrDefault(run => run.BranchId == id) is { } run)
+                    return (view, run);
+        return null;
+    }
+
+    /// <summary>The chat's schedules other than the open branch's and the one it is a run of.</summary>
+    private IReadOnlyList<ChatScheduleView> OtherSchedules()
+    {
+        var owner = RunOf()?.Owner;
+        return _chatSchedules.Where(view => view.Schedule is not null && (view.BranchId ?? view.ChatId) != _loadedBranchId
+            && !ReferenceEquals(view, owner)).ToArray();
+    }
+
+    /// <summary>The open branch and its parents, nearest first, ending with the main branch.</summary>
+    private IEnumerable<Guid> Lineage(Guid branchId)
+    {
+        if (Chat is null) yield break;
+        var branches = (Chat.Branches ?? []).ToDictionary(branch => branch.Id);
+        var visited = new HashSet<Guid>();
+        Guid? cursor = branchId;
+        while (cursor is { } id && visited.Add(id))
+        {
+            yield return id;
+            cursor = id == Chat.Id ? null : branches.TryGetValue(id, out var branch) ? branch.ParentBranchId ?? Chat.Id : null;
+        }
+    }
+
+    private string BranchName(Guid branchId) => Chat is { } chat && branchId != chat.Id
+        && chat.Branches?.FirstOrDefault(branch => branch.Id == branchId)?.Title is { Length: > 0 } title
+            ? title : "Main branch";
+
+    /// <summary>Naming the owner only helps where it could be mistaken: on a branch, or beside other schedules.</summary>
+    private bool ShowOwner => IsBranch || _chatSchedules.Count(view => view.Schedule is not null) > 1;
+
+    private RenderFragment Owner() => @<span class="chat-schedule-owner" title="This schedule belongs to this branch only; other branches keep their own">
+        <AppIcon Name="@(IsBranch ? "git-branch" : "message-circle")" />@BranchName(_loadedBranchId ?? Guid.Empty)</span>;
+
+    private RenderFragment RunOfCard(ChatScheduleView owner, ScheduleRunRecord run) =>
+        @<div class="chat-usage-section chat-schedule-run-of is-@run.Status.ToString().ToLowerInvariant()">
+            <span class="chat-schedule-run-mark" aria-hidden="true"><AppIcon Name="@RunIcon(run.Status)" /></span>
+            <span class="chat-schedule-run-of-body">
+                <span class="chat-schedule-run-of-title">@(run.Number > 0 ? $"Run #{run.Number}" : "A run") of the schedule on <b>@BranchName(owner.BranchId ?? owner.ChatId)</b></span>
+                <span class="chat-schedule-run-meta">
+                    <span class="chat-schedule-run-status">@Descriptions.Outcome(run.Status)</span>
+                    @if (run.Manual) { <span>manual</span> }
+                    else if (run.Attempt > 1) { <span>retry @(run.Attempt - 1)</span> }
+                    @if (owner.Schedule is { } ownerSchedule) { <span>@Presentation.Moment(run.Number > 0 ? run.StartedAt : run.ScheduledFor, ownerSchedule.Settings.TimeZone, _now)</span> }
+                </span>
+                @if (run.Summary is { Length: > 0 } summary) { <span class="chat-schedule-run-summary" title="@summary">@summary</span> }
+            </span>
+            <button class="chat-usage-link" type="button" @onclick="() => OnOpenBranch.InvokeAsync(owner.BranchId ?? owner.ChatId)">Open its schedule</button>
+        </div>;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -362,7 +480,9 @@
 
     private string GetSummary()
     {
-        if (_schedule is not { } schedule) return "Not scheduled";
+        if (_schedule is not { } schedule)
+            return RunOf() is { } runOf ? runOf.Run.Number > 0 ? $"Run #{runOf.Run.Number}" : "A run"
+                : OtherSchedules().Count is > 0 and var others ? $"Not scheduled · {others} in chat" : "Not scheduled";
         var state = Presentation.State(schedule);
         return state.Kind is ChatScheduleStateKind.Active && NextRun(schedule) is { } next
             ? $"in {Presentation.Countdown(next, _now)}"
@@ -371,13 +491,29 @@
 
     private void StartScheduling()
     {
-        // What is in the message box is what the person means now; otherwise the chat's first request.
-        var task = !string.IsNullOrWhiteSpace(ComposerText) ? ComposerText.Trim()
-            : Chat?.Messages.Where(message => message.Role == "User" && message.Content.Length > 0)
-                .OrderBy(message => message.CreatedAt).Select(message => message.Content.Trim()).FirstOrDefault() ?? string.Empty;
+        // What is in the message box is what the person means now; otherwise the branch's own first
+        // request, which for the main branch is the chat's.
+        var task = !string.IsNullOrWhiteSpace(ComposerText) ? ComposerText.Trim() : FirstRequest() ?? string.Empty;
         _draft = Presentation.Draft(task.Length > 4000 ? task[..4000] : task, Calendar.LocalTimeZoneId,
             Calendar.ToLocal(DateTimeOffset.UtcNow, Calendar.LocalTimeZoneId));
         _error = null;
+    }
+
+    private string? FirstRequest()
+    {
+        if (Chat is null) return null;
+        var byId = Chat.Messages.ToDictionary(message => message.Id);
+        var branch = IsBranch ? Chat.Branches?.FirstOrDefault(item => item.Id == BranchId) : null;
+        // A branch's own messages run from its root to its head; the main branch's from the start.
+        var chain = new List<ChatMessageView>();
+        for (var id = branch?.HeadMessageId; id is { } current && byId.TryGetValue(current, out var message); id = message.ParentId)
+        {
+            chain.Add(message);
+            if (current == branch!.RootMessageId) break;
+        }
+        var own = chain.AsEnumerable().Reverse().FirstOrDefault(message => message.Role == "User" && message.Content.Length > 0);
+        return (own ?? Chat.Messages.Where(message => message.Role == "User" && message.Content.Length > 0)
+            .OrderBy(message => message.CreatedAt).FirstOrDefault())?.Content.Trim();
     }
 
     private void StartEditing()

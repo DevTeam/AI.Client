@@ -9,6 +9,9 @@ using AI.Contracts.Schedules;
 public interface IChatScheduleApi
 {
     Task<ChatScheduleView> GetAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken);
+
+    /// <summary>Every schedule of the chat's branches, the main branch first; empty when there is none.</summary>
+    Task<IReadOnlyList<ChatScheduleView>> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken);
     Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, Guid branchId, SetChatScheduleRequest request, CancellationToken cancellationToken);
     Task<ChatScheduleView> PauseAsync(Guid projectId, Guid chatId, bool paused, long? revision, CancellationToken cancellationToken);
@@ -43,6 +46,14 @@ public sealed class ChatScheduleApi(HttpClient httpClient) : IChatScheduleApi
     {
         using var response = await httpClient.GetAsync(Route(projectId, chatId, branchId), cancellationToken);
         return await ReadAsync(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ChatScheduleView>> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync($"api/projects/{projectId}/chats/{chatId}/schedules", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return [];
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ChatScheduleView[]>(Json, cancellationToken) ?? [];
     }
 
     public Task<ChatScheduleView> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request,

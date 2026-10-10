@@ -208,6 +208,34 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldKeepSavedDiffsInCompactTranscriptForReviews()
+    {
+        var userId = new ChatMessageId(Guid.CreateVersion7());
+        var sourceId = new ChatMessageId(Guid.CreateVersion7());
+        var answerId = new ChatMessageId(Guid.CreateVersion7());
+        var changes = new ChatWorkspaceChangeSet(
+            [new ChatFileChange("src/example.cs", ChatFileChangeKind.Modified, 1, 0,
+                Diff: "@@ -1 +1 @@\n-old\n+new")], 1, 0);
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Change the file", _now), _now);
+        chat.AddMessage(new ChatMessage(sourceId, userId, ChatMessageRole.Assistant, "Work in progress",
+            _now.AddSeconds(1), workspaceChanges: changes), _now.AddSeconds(1));
+        chat.AddMessage(new ChatMessage(answerId, sourceId, ChatMessageRole.Assistant, "Done",
+            _now.AddSeconds(2)), _now.AddSeconds(2));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 1));
+
+        var transcript = await CreateInstance().GetTranscriptAsync(_projectId.Value, _chatId.Value,
+            CancellationToken.None);
+
+        transcript.ShouldNotBeNull();
+        var source = transcript.Messages.Single(message => message.Id == sourceId.Value);
+        source.ContentOmitted.ShouldBeTrue();
+        source.WorkspaceChanges!.Files.Single().Diff.ShouldBe("@@ -1 +1 @@\n-old\n+new");
+        transcript.Messages.Count.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task ShouldAnswerEndpointChangeWithoutToolOutput()
     {
         var userId = new ChatMessageId(Guid.CreateVersion7());

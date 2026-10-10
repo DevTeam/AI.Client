@@ -1228,7 +1228,7 @@
     }
     @if (_reviewWorkspaceOpen && _selectedProject is not null && _selectedChat is not null)
     {
-        <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@(_reviewChat ?? _selectedChat)"
+        <ReviewWorkspace @key="_reviewPanelKey" ProjectId="@_selectedProject.Id" Chat="@_selectedChat"
                          Reviews="@_reviews" StartReviewId="@_reviewStartId" StartPath="@_reviewStartPath"
                          OnChanged="OnReviewChangedAsync" OnDelete="@(id => DeleteReviewAsync(_selectedChat.Id, id))" OnClose="CloseReviewAsync" />
     }
@@ -1685,7 +1685,6 @@ else if (_guideInvitation is { } guideInvitation)
     private readonly List<ChatReview> _reviews = [];
     private readonly Dictionary<Guid, IReadOnlyList<ChatReview>> _menuReviews = [];
     private bool _isReviewSubmenuOpen;
-    private ChatDetails? _reviewChat;
     private bool _reviewWorkspaceOpen;
     private Guid? _reviewStartId, _openingReviewSourceId;
 
@@ -2982,7 +2981,6 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
     {
         await CloseReviewAsync();
-        _reviewChat = null;
         _projectSelectionCancellation?.Cancel();
         _projectSelectionCancellation?.Dispose();
         var projectSelection = new CancellationTokenSource();
@@ -3996,7 +3994,6 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (_selectedProject is null) return;
         await CloseReviewAsync();
-        _reviewChat = null;
         _reviews.Clear();
         _reviewVersion++;
         _attachComposer = true;
@@ -4264,8 +4261,6 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task SelectChatAsync(Guid chatId)
     {
         await CloseReviewAsync();
-        if (_reviewChat?.Id != chatId || _reviewChat.ProjectId != _selectedProject?.Id)
-            _reviewChat = null;
         _attachComposer = true;
         ResetBranchOperationState();
         CloseContextMenus();
@@ -5151,7 +5146,6 @@ else if (_guideInvitation is { } guideInvitation)
         if (_branchMenuId == branchId)
         {
             await LoadReviewsAsync();
-            await LoadReviewChatAsync();
         }
     }
 
@@ -6798,8 +6792,8 @@ else if (_guideInvitation is { } guideInvitation)
 
     private IReadOnlyList<ChatReview> ReviewsForBranch(BranchTreeItem branch)
     {
-        if (_reviewChat is null || _selectedChat is null || _reviewChat.Id != _selectedChat.Id) return [];
-        var visibleMessages = Feed.BuildBranch(_reviewChat.Messages, branch.LeafId)
+        if (_selectedChat is null) return [];
+        var visibleMessages = Feed.BuildBranch(_selectedChat.Messages, branch.LeafId)
             .Select(item => item.Id).ToHashSet();
         return _reviews.Where(item => item.Kind == ChatReviewKind.Diff && !IsEmptyReview(item)
             && visibleMessages.Contains(item.SourceMessageId))
@@ -6884,7 +6878,7 @@ else if (_guideInvitation is { } guideInvitation)
                 if (HasReviewReference(_selectedChat, reviewId))
                 {
                     var refreshed = await ChatHistoryApi.GetAsync(ownerProjectId, chatId, CancellationToken.None);
-                    if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+                    if (refreshed is not null) { _selectedChat = refreshed; CacheChatDetails(refreshed); }
                 }
                 if (_reviewStartId == reviewId) CloseReview();
             }
@@ -6966,7 +6960,7 @@ else if (_guideInvitation is { } guideInvitation)
             if (deletedIds.Any(id => HasReviewReference(_selectedChat, id)))
             {
                 var refreshed = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
-                if (refreshed is not null) { _selectedChat = refreshed; _reviewChat = refreshed; CacheChatDetails(refreshed); }
+                if (refreshed is not null) { _selectedChat = refreshed; CacheChatDetails(refreshed); }
             }
         }
         return kept;
@@ -6982,7 +6976,6 @@ else if (_guideInvitation is { } guideInvitation)
         if (!await CloseDrawersExceptAsync(Drawer.Review)) return;
         await LoadReviewsAsync();
         if (!await LoadFullReviewAsync(id)) return;
-        if (!await LoadReviewChatAsync()) return;
         OpenReviewPanel(id);
     }
 
@@ -7024,14 +7017,14 @@ else if (_guideInvitation is { } guideInvitation)
         try
         {
             await LoadReviewsAsync();
-            if (!await LoadReviewChatAsync() || _reviewChat is null || _selectedProject is null) return;
+            if (_selectedChat is null || _selectedProject is null) return;
             var review = _reviews.Where(item => item.Kind == ChatReviewKind.Diff && item.SourceMessageId == sourceMessageId)
                 .OrderByDescending(item => item.UpdatedAt).FirstOrDefault();
             if (review is null)
             {
-                var source = _reviewChat.Messages.FirstOrDefault(item => item.Id == sourceMessageId);
+                var source = _selectedChat.Messages.FirstOrDefault(item => item.Id == sourceMessageId);
                 if (source?.WorkspaceChanges is not { IsEmpty: false } changes) return;
-                review = await ReviewApi.CreateAsync(_selectedProject.Id, _reviewChat.Id,
+                review = await ReviewApi.CreateAsync(_selectedProject.Id, _selectedChat.Id,
                     new CreateReviewRequest(sourceMessageId, $"Review {source.CreatedAt.LocalDateTime:g}",
                         changes.Files.Select(item => item.Path).ToArray()), CancellationToken.None);
                 _reviews.Add(review);
@@ -7045,27 +7038,6 @@ else if (_guideInvitation is { } guideInvitation)
             _chatError = $"Could not open review: {error.Message}";
         }
         finally { _openingReviewSourceId = null; }
-    }
-
-    private async Task<bool> LoadReviewChatAsync()
-    {
-        if (_selectedProject is null || _selectedChat is null) return false;
-        var projectId = _selectedProject.Id;
-        var chatId = _selectedChat.Id;
-        if (_reviewChat is { } cached && cached.ProjectId == projectId && cached.Id == chatId
-            && cached.Revision == _selectedChat.Revision) return true;
-        try
-        {
-            var full = await ChatHistoryApi.GetAsync(projectId, chatId, CancellationToken.None);
-            if (full is null || _selectedProject?.Id != projectId || _selectedChat?.Id != chatId) return false;
-            _reviewChat = full;
-            return true;
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            _chatError = $"Could not open review: {error.Message}";
-            return false;
-        }
     }
 
     private void OpenReviewPanel(Guid reviewId, string? path = null)

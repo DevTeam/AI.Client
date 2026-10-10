@@ -60,7 +60,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
-        var deadline = new TurnDeadline(source, TimeSpan.FromMinutes(60));
+        var deadline = new TurnDeadline(source, TimeSpan.FromHours(24));
         var token = source.Token;
         Task Draft(string? content) => draft?.Invoke(content, token) ?? Task.CompletedTask;
         ContextPlan? lastPlan = null;
@@ -531,7 +531,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             using var wake = joined.Register(timeout.Cancel);
                             // A tool that is waiting on a person is not a tool that has gone quiet.
                             // Both clocks are off while it waits: the silence timer, which would
-                            // kill the question in under a minute, and the turn's own hour, which
+                            // kill the question in under a minute, and the turn's own 24-hour limit, which
                             // must not be spent on time the person took to read it.
                             var asking = AsksTheUser(tool);
                             // Leave a short transport margin for execution tools to report their own timeout.
@@ -875,7 +875,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         tool.ServerId == AppMcpServer.Id && tool.OriginalName is AskUserTool or "app_navigate";
 
     /// <summary>
-    /// The turn's own hour, which time spent waiting on a person does not count against.
+    /// The turn's own 24-hour limit, which time spent waiting on a person does not count against.
     /// </summary>
     /// <remarks>
     /// The ceiling exists to stop a run that has gone wrong, and a run stopped at a confirmation

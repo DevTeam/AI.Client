@@ -2453,23 +2453,13 @@
     private ChatRunSnapshot? GetOptionRun(BranchOption option) =>
         IsOptionActive(option) ? SelectedRun : GetRunForBranch?.Invoke(option.Message.Id);
 
-    // The active option's own content is the transcript rendered right below this picker, so its
-    // status is already visible there — showing it again here too would be the same redundant
-    // echo the sidebar avoids. Generating is kept even for the active option since it's live
-    // progress rather than a state the user has already seen.
-    private string GetOptionStatusClass(BranchOption option)
-    {
-        var run = GetOptionRun(option);
-        return IsOptionActive(option) && run?.Status != ChatRunStatus.Generating
-            ? string.Empty
-            : StatusPresentation.GetStatusClass(run);
-    }
+    // Every option, including the selected one, uses the same status as its sidebar row.
+    private string GetOptionStatusClass(BranchOption option) => StatusPresentation.GetStatusClass(GetOptionRun(option));
 
     private string? GetOptionStatusTooltip(BranchOption option)
     {
         var run = GetOptionRun(option);
         if (run is null) return null;
-        if (IsOptionActive(option) && run.Status != ChatRunStatus.Generating) return null;
         return StatusPresentation.GetStatusTooltip(run);
     }
 

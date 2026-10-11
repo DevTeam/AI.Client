@@ -1529,7 +1529,7 @@ else if (_guideInvitation is { } guideInvitation)
                 }
                 else
                 {
-                    <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><span class="run-status-icon">@if (branch.Run is { } branchRun) { <BranchRunIcon Outcome="@branchRun.Status" /> } else if (_selectedChat?.MemberOf(branch.RootId) is { Swatch: not null } member) { <MemberDot Member="@member" /> } else { <AppIcon Name="git-branch" /> }<span class="status-dot @GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch))" aria-hidden="true"></span></span><span class="nav-item-label">@branch.Title</span></button>
+                    <button @attributes="@(ControlHints.Attributes("branch", nativeTooltip: false))" class="workspace-nav-item chat-link branch-link" type="button" @onclick="() => SelectBranchTreeItemAsync(branch)"><span class="run-status-icon">@if (branch.Run is not null) { <AppIcon Name="branch-run" /> } else if (_selectedChat?.MemberOf(branch.RootId) is { Swatch: not null } member) { <MemberDot Member="@member" /> } else { <AppIcon Name="git-branch" /> }<span class="status-dot @GetRunStatusClass(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)) @(branch.Run is { } runOutcome ? $"is-{runOutcome.Status.ToString().ToLowerInvariant()}" : null)" aria-hidden="true"></span></span><span class="nav-item-label">@branch.Title</span></button>
                 }
                 <button class="icon-action chat-row-action" type="button" title="Rename" aria-label="Rename branch" @onclick="() => BeginBranchRename(branch)"><AppIcon Name="edit" /></button>
                 <button class="icon-action chat-row-action chat-menu-button @(_branchMenuId == branch.RootId ? "menu-open" : string.Empty)" type="button" title="Branch menu" aria-label="Branch menu" @onclick="() => ToggleBranchMenuAsync(branch.RootId)"><AppIcon Name="more" /></button>
@@ -1633,7 +1633,7 @@ else if (_guideInvitation is { } guideInvitation)
 
     /// <summary>
     /// A run whose branch carries a status the person has not seen — an unread answer, a question,
-    /// a failure — the same one the chat row's branch count is coloured by.
+    /// a failure — the same one shown by the branch row's status dot.
     /// </summary>
     private bool IsUnseenRun(Guid chatId, BranchTreeItem item) =>
         item.Run is not null && GetRunStatusClass(chatId, item.RootId, GetBranchRun(chatId, item)) is { Length: > 0 } status
@@ -4622,12 +4622,12 @@ else if (_guideInvitation is { } guideInvitation)
         _ => 4
     };
     private ChatRunSnapshot? GetProjectRun(Guid projectId) => GetProjectRuns(projectId)
-        .Where(run => IsVisibleRun(run) && !ShouldHideCurrentRunStatus(run.ChatId, run.BranchId, run))
+        .Where(IsVisibleRun)
         .OrderBy(GetProjectRunPriority)
         .FirstOrDefault();
     private ChatRunSnapshot? GetChatBranchRun(Guid chatId) => RunState.Runs.Values
         .Where(run => run.ChatId == chatId && run.BranchId != chatId)
-        .Where(run => !ShouldHideCurrentRunStatus(run.ChatId, run.BranchId, run) && IsVisibleRun(run))
+        .Where(IsVisibleRun)
         .OrderBy(GetProjectRunPriority)
         .FirstOrDefault();
     private string GetChatBranchStatusClass(Guid chatId) => GetRunStatusClass(GetChatBranchRun(chatId));
@@ -4656,17 +4656,12 @@ else if (_guideInvitation is { } guideInvitation)
     private string? GetProjectRunTitle(Guid projectId) =>
         GetProjectRun(projectId) is null ? null : GetProjectRunTooltip(projectId);
     private string GetProjectStatusClass(Guid projectId) => GetRunStatusClass(GetProjectRun(projectId));
-    // A completed/unread/attention status for what's currently open in the transcript needs no
-    // separate sidebar signal — the message feed already shows it. Generating is the exception:
-    // it stays visible even for the open chat/branch, since it is live progress rather than a
-    // state the user has already seen.
+    // The selected row keeps its run status, just like the project aggregate and other rows.
     private bool IsCurrentRun(Guid chatId, Guid branchId) => _selectedChat?.Id == chatId && GetSelectedRunBranchId() == branchId;
-    private bool ShouldHideCurrentRunStatus(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
-        IsCurrentRun(chatId, branchId) && run?.Status != ChatRunStatus.Generating;
     private string? GetRunTitle(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
-        ShouldHideCurrentRunStatus(chatId, branchId, run) || run is null || !IsVisibleRun(run) ? null : StatusPresentation.GetStatusTooltip(run);
+        run is null || !IsVisibleRun(run) ? null : StatusPresentation.GetStatusTooltip(run);
     private string GetRunStatusClass(Guid chatId, Guid branchId, ChatRunSnapshot? run) =>
-        ShouldHideCurrentRunStatus(chatId, branchId, run) ? string.Empty : GetRunStatusClass(run);
+        GetRunStatusClass(run);
     private string GetRunStatusClass(ChatRunSnapshot? run) => StatusPresentation.GetStatusClass(run);
 
     private async Task MarkSelectedConversationReadAsync()

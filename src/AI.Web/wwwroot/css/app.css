@@ -1794,13 +1794,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     pointer-events: none;
 }
 
-/* Something new in the chat itself — an answer, a question, a failure — makes its title bold, the
-   way unread mail does: a cue that does not depend on telling the icon's colours apart. */
-.chat-link:has(> .chat-icon-with-branch-count > .status-dot:is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
-    color: var(--color-text-strong);
-    font-weight: 600;
-}
-
 .chat-nav-row .workspace-nav-item {
     grid-column: 1 / -1;
     grid-row: 1;
@@ -2091,25 +2084,6 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     transition: color var(--duration-fast) ease, opacity var(--duration-fast) ease;
 }
 
-.chat-link > .app-icon.run-status-generating,
-.chat-icon-with-branch-count > .app-icon.run-status-generating,
-.branch-option-icon.run-status-generating {
-    color: var(--color-text-strong);
-}
-
-.chat-link > :is(.app-icon, .member-dot).run-status-unread,
-.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-unread,
-.branch-option-icon.run-status-unread { color: var(--color-unread); }
-.chat-link > :is(.app-icon, .member-dot).run-status-attention,
-.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-attention,
-.branch-option-icon.run-status-attention { color: var(--color-warning); }
-.chat-link > :is(.app-icon, .member-dot).run-status-failed,
-.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-failed,
-.branch-option-icon.run-status-failed { color: var(--color-danger); }
-.chat-link > :is(.app-icon, .member-dot).run-status-interrupted,
-.chat-icon-with-branch-count > :is(.app-icon, .member-dot).run-status-interrupted,
-.branch-option-icon.run-status-interrupted { color: var(--color-text-faint); }
-
 /* The chat's icon wrapper; the branch count used to overlay its corner and now follows the title. */
 .chat-icon-with-branch-count {
     position: relative;
@@ -2131,7 +2105,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     box-shadow: 0 0 0 2px var(--color-bg-sunken);
     pointer-events: none;
 }
-.run-status-icon > .status-dot:not([class*="run-status-"]) { display: none; }
+.run-status-icon > .status-dot:not(:is([class*="run-status-"], .is-succeeded, .is-failed, .is-blocked, .is-running)) { display: none; }
 .chat-nav-row:hover .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-fill-hover); }
 .chat-nav-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
 .chat-nav-row.selected:is(:hover, :focus-within, :has(.menu-open)) .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-active); }
@@ -2140,8 +2114,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .branch-picker-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg); }
 .branch-picker-row.selected.is-highlighted .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
 
-/* How many branches the chat has, after its title: a quiet chip with the branch icon, coloured by
-   the most urgent status among the branches, while the chat's own icon keeps the main line's. */
+/* How many branches the chat has, after its title: a chip coloured by the most urgent branch status. */
 .chat-branch-count {
     display: inline-flex;
     flex: none;
@@ -3662,12 +3635,6 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     font-size: var(--font-size-2xs);
 }
 
-.branch-run-outcome { color: var(--color-text-faint); font-size: var(--font-size-xs); white-space: nowrap; }
-.branch-run-outcome.is-succeeded { color: var(--color-success-text); }
-.branch-run-outcome.is-failed { color: var(--color-danger-text); }
-.branch-run-outcome.is-blocked { color: var(--color-warning-text); }
-.branch-run-outcome.is-running { color: var(--color-accent-text); }
-
 .branch-picker-menu .branch-picker-more {
     justify-self: start;
     margin: 0.15rem 0 0.1rem;
@@ -3687,17 +3654,6 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .branch-runs-counts > span { display: inline-flex; align-items: center; gap: 0.2rem; }
 .branch-runs-counts .branch-run-dot { width: 0.4rem; height: 0.4rem; margin: 0; }
 .branch-run-row .branch-link { font-variant-numeric: tabular-nums; }
-.branch-run-row .branch-run-dot { flex: none; }
-/* A run's branch: the play icon takes the run status exactly as a branch icon does (generating,
-   unread, waiting, failed), and a small dot in its corner tells the run's outcome. */
-.branch-run-icon { position: relative; display: inline-flex; flex: none; }
-.branch-run-icon > .app-icon { color: var(--color-text-disabled); transition: color var(--duration-fast) ease; }
-.branch-run-icon > .app-icon.run-status-generating { color: var(--color-text-strong); }
-.branch-run-icon > .app-icon.run-status-unread { color: var(--color-unread); }
-.branch-run-icon > .app-icon.run-status-attention { color: var(--color-warning); }
-.branch-run-icon > .app-icon.run-status-failed { color: var(--color-danger); }
-.branch-run-icon > .app-icon.run-status-interrupted { color: var(--color-text-faint); }
-.branch-run-icon > .branch-run-dot { position: absolute; right: -0.2rem; bottom: -0.15rem; width: 0.4rem; height: 0.4rem; margin: 0; }
 .branch-runs-new { flex: none; color: var(--color-unread); font-size: var(--font-size-xs); font-weight: 600; }
 .branch-runs-new.run-status-attention { color: var(--color-warning-text); }
 .branch-runs-new.run-status-failed { color: var(--color-danger-text); }
@@ -3734,6 +3690,12 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     border-radius: 50%;
     background: transparent;
 }
+
+/* Scheduled outcomes use the same corner dot when a live or unread run status is absent. */
+.status-dot.is-succeeded { border-color: var(--color-success); background: var(--color-success); }
+.status-dot.is-failed { border-color: var(--color-danger); background: var(--color-danger); }
+.status-dot.is-blocked { border-color: var(--color-warning); background: var(--color-warning); }
+.status-dot.is-running { border-color: var(--color-accent); background: var(--color-accent); }
 
 .status-dot.run-status-generating {
     border-color: var(--color-inverse-hover);

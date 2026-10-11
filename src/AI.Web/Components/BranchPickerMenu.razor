@@ -151,13 +151,13 @@
 
     private RenderFragment Row(BranchPickerItem item, bool highlighted) =>
         @<button class="branch-picker-row @(item.Selected ? "selected" : null) @(highlighted && ShowSearch ? "is-highlighted" : null)"
-                 type="button" role="menuitemradio" aria-checked="@(item.Selected ? "true" : "false")" title="@item.Tooltip"
+                 type="button" role="menuitemradio" aria-checked="@(item.Selected ? "true" : "false")" title="@(item.RunStatus is { } result ? $"{item.Tooltip} · {OutcomeLabel(result)}" : item.Tooltip)"
                  @onclick="() => OnSelect.InvokeAsync(item)">
             @if (item.Selected) { <AppIcon Name="check" Class="branch-picker-check" /> } else { <span class="branch-option-spacer"></span> }
             <span class="run-status-icon branch-option-icon">
-                @if (item.RunStatus is { } status)
+                @if (item.RunStatus is not null)
                 {
-                    <BranchRunIcon Outcome="@status" />
+                    <AppIcon Name="branch-run" />
                 }
                 else if (item.Member is { Swatch: not null } member)
                 {
@@ -171,12 +171,12 @@
                 {
                     <AppIcon Name="@item.Icon" />
                 }
-                <span class="status-dot @item.IconClass" aria-hidden="true"></span>
+                <span class="status-dot @item.IconClass @(item.RunStatus is { } runOutcome ? $"is-{runOutcome.ToString().ToLowerInvariant()}" : null)" aria-hidden="true"></span>
             </span>
             <span class="branch-option-label"><span class="branch-option-text">@item.Title</span>@if (item.RunTag is { } tag) { <span class="branch-run-tag">@tag</span> }</span>
             @if (item.RunStatus is { } outcome)
             {
-                <span class="branch-run-outcome is-@outcome.ToString().ToLowerInvariant()">@OutcomeLabel(outcome).ToLowerInvariant()</span>
+                <span class="visually-hidden">, @OutcomeLabel(outcome)</span>
             }
             else if (item.EndsHere)
             {

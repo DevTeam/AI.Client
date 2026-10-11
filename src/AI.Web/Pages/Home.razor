@@ -5504,7 +5504,29 @@ else if (_guideInvitation is { } guideInvitation)
         var schedule = ScheduleApi.Parse(_selectedChat.Kind, _selectedChat.KindState);
         var runs = (schedule?.Runs ?? []).Where(run => run.BranchId is not null)
             .GroupBy(run => run.BranchId!.Value).ToDictionary(group => group.Key, group => group.Last());
-        return branches.Where(branch => branch.Id != _selectedChat.Id && branch.HeadMessageId is not null)
+        // Keep descendants beside their parent even when they were created after other branches.
+        var children = branches.Where(branch => branch.Id != _selectedChat.Id && branch.HeadMessageId is not null)
+            .ToLookup(branch => branch.ParentBranchId ?? _selectedChat.Id);
+        var ordered = new List<ChatBranchView>();
+        var visited = new HashSet<Guid>();
+        void AddChildren(Guid parentId)
+        {
+            foreach (var child in children[parentId])
+            {
+                if (!visited.Add(child.Id)) continue;
+                ordered.Add(child);
+                AddChildren(child.Id);
+            }
+        }
+        AddChildren(_selectedChat.Id);
+        // A branch whose parent was removed or omitted is still visible.
+        foreach (var branch in branches)
+        {
+            if (branch.Id == _selectedChat.Id || branch.HeadMessageId is null || !visited.Add(branch.Id)) continue;
+            ordered.Add(branch);
+            AddChildren(branch.Id);
+        }
+        return ordered
             .Select(branch => runs.TryGetValue(branch.Id, out var run) && schedule is not null
                 // A run reads as in the branch picker: its number and start; the full title is the tooltip.
                 ? new BranchTreeItem(branch.Id, $"#{run.Number} · {RunStart(run, schedule)}", 2, branch.HeadMessageId!.Value, run,

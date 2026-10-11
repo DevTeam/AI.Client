@@ -31,8 +31,10 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
                         ApprovalMode: request.ApprovalMode, ReasoningEffort: request.ReasoningEffort), cancellationToken);
             }
             var parent = mode == ChatSubmitMode.Fork ? request.ForkSourceId ?? request.BranchLeafId : null;
-            var sourceBranchId = request.SelectedBranchId ?? request.SelectedRun?.BranchId
-                ?? BranchLeafHelpers.RunBranchIdFor(request.BranchLeafId, chat);
+            var sourceBranchId = request.ForkSourceId is { } forkSourceId
+                ? BranchLeafHelpers.RunBranchIdForForkSource(forkSourceId, chat)
+                : request.SelectedBranchId ?? request.SelectedRun?.BranchId
+                    ?? BranchLeafHelpers.RunBranchIdFor(request.BranchLeafId, chat);
             var branchRevision = chat.Branches?.SingleOrDefault(branch => branch.Id == sourceBranchId)?.Revision;
             var messageId = Guid.CreateVersion7();
             var snapshot = await chatRuns.SubmitAsync(projectId, chat.Id,
@@ -62,6 +64,30 @@ public sealed class ChatComposerService(IChatHistoryApi chatHistory, IChatRunsAp
 
 internal static class BranchLeafHelpers
 {
+    public static Guid RunBranchIdForForkSource(Guid sourceId, ChatDetails chat)
+    {
+        var messages = chat.Messages.ToDictionary(message => message.Id);
+        var ancestors = new Dictionary<Guid, int>();
+        for (Guid? id = sourceId; id is { } current && messages.TryGetValue(current, out var message)
+            && !ancestors.ContainsKey(current); id = message.ParentId)
+            ancestors.Add(current, ancestors.Count);
+
+        return chat.Branches?
+            .Where(branch => branch.RootMessageId is { } root && ancestors.ContainsKey(root)
+                && IsAncestor(messages, branch.HeadMessageId, sourceId))
+            .OrderBy(branch => ancestors[branch.RootMessageId!.Value])
+            .Select(branch => branch.Id)
+            .FirstOrDefault() is { } branchId && branchId != Guid.Empty ? branchId : chat.Id;
+    }
+
+    private static bool IsAncestor(Dictionary<Guid, ChatMessageView> messages, Guid? headId, Guid sourceId)
+    {
+        var visited = new HashSet<Guid>();
+        for (var id = headId; id is { } current && visited.Add(current) && messages.TryGetValue(current, out var message); id = message.ParentId)
+            if (current == sourceId) return true;
+        return false;
+    }
+
     public static Guid RunBranchIdFor(Guid? leafId, ChatDetails chat)
     {
         if (leafId is null) return chat.Id;

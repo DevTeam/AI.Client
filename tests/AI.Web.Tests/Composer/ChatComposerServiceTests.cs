@@ -130,6 +130,38 @@ public class ChatComposerServiceTests
     }
 
     [Fact]
+    public async Task ForkFromParentBranchTipShouldKeepThatBranchAsParent()
+    {
+        var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);
+        var runs = new Mock<IChatRunsApi>(MockBehavior.Strict);
+        var projectId = Guid.NewGuid();
+        var chatId = Guid.NewGuid();
+        var parentBranchId = Guid.NewGuid();
+        var childBranchId = Guid.NewGuid();
+        var root = new ChatMessageView(Guid.NewGuid(), null, "User", "Root", DateTimeOffset.UnixEpoch);
+        var parentTip = new ChatMessageView(Guid.NewGuid(), root.Id, "User", "Parent tip", DateTimeOffset.UnixEpoch.AddSeconds(1));
+        var childTip = new ChatMessageView(Guid.NewGuid(), parentTip.Id, "User", "Child tip", DateTimeOffset.UnixEpoch.AddSeconds(2));
+        var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            3, null, [root, parentTip, childTip],
+            [new ChatBranchView(chatId, root.Id, "Main"),
+                new ChatBranchView(parentBranchId, parentTip.Id, "Parent", chatId, parentTip.Id, 2),
+                new ChatBranchView(childBranchId, childTip.Id, "Child", parentBranchId, childTip.Id, 1)]);
+        runs.Setup(api => api.SubmitAsync(projectId, chatId,
+                It.Is<SubmitChatMessageRequest>(request => request.Mode == ChatSubmitMode.Fork
+                    && request.BranchId == parentBranchId && request.ParentMessageId == parentTip.Id
+                    && request.ExpectedBranchRevision == 2), CancellationToken.None))
+            .ReturnsAsync(new ChatRunSnapshot(projectId, chatId, Guid.NewGuid(), ChatRunStatus.Idle, "", [], false, null, 3));
+
+        var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(
+            new ComposerSubmitRequest(ComposerSubmitMode.Fork, projectId, chat, childTip.Id, parentTip.Id,
+                null, null, null, null, "Another path", null, childBranchId), CancellationToken.None);
+
+        result.ShouldBeOfType<ComposerSubmitOutcome.Accepted>();
+        runs.VerifyAll();
+        history.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task ForkingAnEditedRootShouldUseRootParentMode()
     {
         var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);

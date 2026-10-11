@@ -60,6 +60,20 @@ public sealed class AppSkillsToolTests
             TestContext.Current.CancellationToken);
         found.IsError.ShouldBeFalse();
         found.StructuredContent!.Value.GetProperty("skills")[0].GetProperty("id").GetString().ShouldBe("chat-rename");
+        found.StructuredContent.Value.GetProperty("skills")[0].GetProperty("parametersSchema").ValueKind
+            .ShouldBe(JsonValueKind.Null);
+
+        var exact = await session.CallAsync(search, """{"query":"chat-rename"}""", null,
+            TestContext.Current.CancellationToken);
+        exact.StructuredContent!.Value.GetProperty("skills").GetArrayLength().ShouldBe(1);
+        exact.StructuredContent.Value.GetProperty("skills")[0].GetProperty("parametersSchema")
+            .GetProperty("required").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe(["chat_id", "mode"]);
+
+        var browse = await session.CallAsync(search, """{"limit":1}""", null,
+            TestContext.Current.CancellationToken);
+        browse.StructuredContent!.Value.GetProperty("skills").GetArrayLength().ShouldBe(1);
+        browse.StructuredContent.Value.GetProperty("guidance").GetString()!.ShouldContain("Showing 1 of");
 
         var arguments = JsonSerializer.Serialize(new
         {
@@ -80,7 +94,7 @@ public sealed class AppSkillsToolTests
     }
 
     [Fact]
-    public async Task ShouldShowAvailableSkillsWhenAQueryHasNoMatches()
+    public async Task ShouldSuggestBroaderSearchWhenAQueryHasNoMatches()
     {
         await using var composition = new SubtaskComposition(
             new ServerOptions("data", null, true), new MemoryFileSystem(),
@@ -93,15 +107,15 @@ public sealed class AppSkillsToolTests
             new ToolRunContext(projectId, chatId, chatId, true), TestContext.Current.CancellationToken);
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
 
-        var result = await session.CallAsync(search, """{"query":"тест запуск скилов"}""", null,
+        var result = await session.CallAsync(search, """{"query":"zzxqv unrelated nonsense"}""", null,
             TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeFalse();
         var content = result.StructuredContent!.Value;
         content.GetProperty("matchedQuery").GetBoolean().ShouldBeFalse();
         content.GetProperty("guidance").GetString()!.ShouldContain("No skill matched");
-        content.GetProperty("skills").EnumerateArray()
-            .ShouldContain(skill => skill.GetProperty("id").GetString() == "chat-branch-cleanup");
+        content.GetProperty("skills").GetArrayLength().ShouldBe(0);
+        content.GetProperty("guidance").GetString()!.ShouldContain("broader");
     }
 
     [Fact]

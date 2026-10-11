@@ -36,7 +36,7 @@ public class SkillRouteSkillTests
 
         route.ShouldNotBeNull();
         // An id the catalog does not have is dropped, and at most two skills survive.
-        route.Skills.Select(skill => skill.Id).ShouldBe(["project-create", "code-feature-implement"]);
+        route.Skills.Select(skill => skill.Id).ShouldBe(["project-create"]);
         route.Tools.ShouldBe(["mcp_built_in__process_run"]);
         route.ContinuesActive.ShouldBeFalse();
         var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
@@ -44,6 +44,7 @@ public class SkillRouteSkillTests
         input.GetProperty("tools")[0].GetString().ShouldBe("mcp_built_in__process_run: Run a program and wait for completion.");
         input.GetProperty("skills").EnumerateArray().Select(item => item.GetString()!)
             .ShouldContain(line => line.StartsWith("project-create: ", StringComparison.Ordinal));
+        input.GetProperty("skills").GetArrayLength().ShouldBeLessThanOrEqualTo(SkillRouteSkill.MaxCandidates);
         _requests.Single().Tools.ShouldBeNull();
     }
 
@@ -138,7 +139,7 @@ public class SkillRouteSkillTests
         var guide = new SkillGuide(catalog);
         var estimator = new ContextTokenEstimator();
         var limits = new ConnectionContextLimitsResolver();
-        var skill = new SkillRouteSkill(catalog, guide, chats.Object, projects.Object, settings.Object, secrets.Object,
+        var skill = new SkillRouteSkill(catalog, guide, new SkillCandidateSelector(), chats.Object, projects.Object, settings.Object, secrets.Object,
             completion.Object, new ChatContextPlanner(estimator, new ChatContextCompactor(estimator, new ContextSummaryWriter(new ContextTokenEstimator(), new ToolResultContextProjector(), new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver())), new ToolResultContextProjector()),
                 limits, new AdaptiveContextPolicy(estimator, limits)), NullLogger<SkillRouteSkill>.Instance);
         return new SkillRouting(new SkillRunner(catalog, null!, skillRouteSkill: skill), guide, settings.Object);

@@ -109,7 +109,7 @@ public sealed class TeamRoutingEvaluationTests(ITestOutputHelper output)
         var planner = new ChatContextPlanner(estimator, new ChatContextCompactor(estimator,
             new ContextSummaryWriter(estimator, new ToolResultContextProjector(), policy), new ToolResultContextProjector()),
             limits, policy);
-        var skill = new SkillRouteSkill(catalog, guide, chats.Object, projects.Object, settings.Object, secrets.Object,
+        var skill = new SkillRouteSkill(catalog, guide, new SkillCandidateSelector(), chats.Object, projects.Object, settings.Object, secrets.Object,
             completion, planner, NullLogger<SkillRouteSkill>.Instance);
         return new SkillRouting(new SkillRunner(catalog, null!, skillRouteSkill: skill), guide, settings.Object);
     }

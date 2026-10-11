@@ -10,13 +10,14 @@ using AI.Contracts.Skills;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// One model call without tools: the user's latest message, the skill catalog and the tool list go
+/// One model call without tools: the user's latest message, a bounded skill shortlist and the tool list go
 /// in, the ids of the fitting skills and the names of the first tools come out. The chat model then
 /// meets its request with the choice already made, instead of a catalog it can overlook.
 /// </summary>
 public sealed class SkillRouteSkill(
     ISkillCatalog catalog,
     ISkillGuide guide,
+    ISkillCandidateSelector selector,
     IChatService chats,
     IProjectService projects,
     IGlobalSettingsRepository settings,
@@ -31,6 +32,8 @@ public sealed class SkillRouteSkill(
 
     public const int MaxSkills = 2;
     public const int MaxTools = 8;
+    public const int MaxCandidates = 12;
+    private const int MaxPurposeChars = 160;
 
     /// <summary>The user is waiting on this before the first step of every turn; past it the turn goes on without a route.</summary>
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(12);
@@ -70,10 +73,12 @@ public sealed class SkillRouteSkill(
         var tools = parameters.TryGetProperty("tools", out var given)
             ? given.EnumerateArray().Select(item => item.GetString() ?? string.Empty).Where(item => item.Length > 0).ToArray()
             : [];
-        var candidates = (await guide.EffectiveAsync(invocation.ProjectId, token))
+        var available = (await guide.EffectiveAsync(invocation.ProjectId, token))
             .Where(item => item.Kind != SkillKinds.Executor || item.Id == "chat-rename")
             .ToArray();
-        if (candidates.Length == 0 && tools.Length == 0)
+        var candidates = selector.FindCandidates(Text(parameters, "message") ?? string.Empty, available, MaxCandidates,
+            Text(parameters, "active_skill"));
+        if (available.Length == 0 && tools.Length == 0)
             return new("Skipped", "There is nothing to route to.", invocation.CurrentChatId);
 
         var connection = await ConnectionAsync(invocation, token);
@@ -86,7 +91,7 @@ public sealed class SkillRouteSkill(
                 message = Text(parameters, "message"),
                 previous = Text(parameters, "previous"),
                 active_skill = Text(parameters, "active_skill"),
-                skills = candidates.Select(item => $"{item.Id}: {item.Description}"),
+                skills = candidates.Select(item => $"{item.Id}: {Purpose(item.Description)}"),
                 tools
             }))
         };
@@ -137,6 +142,12 @@ public sealed class SkillRouteSkill(
 
     /// <summary>A tool is offered as "name: description"; the name is the part the answer repeats.</summary>
     private static string ToolName(string tool) => tool.Split(':', 2)[0].Trim();
+
+    private static string Purpose(string description)
+    {
+        var flat = description.ReplaceLineEndings(" ").Trim();
+        return flat.Length <= MaxPurposeChars ? flat : flat[..MaxPurposeChars] + "...";
+    }
 
     private static string? Text(JsonElement parameters, string property) =>
         parameters.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

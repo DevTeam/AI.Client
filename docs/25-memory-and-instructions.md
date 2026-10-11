@@ -24,7 +24,7 @@ There is no user-wide instruction layer and no chat-level layer. Anything that h
 | 1 | `app.base` | Application boundaries, instruction precedence, rendering and tool-use guidance; authored full/compact variants | Shared adaptive instruction budget |
 | 2 | `project.instructions` | Project description, user rules, then root `AGENTS.md` and `CLAUDE.md` | Retained in full |
 | 3 | `memory.index` | Relevant facts and an index of saved entries, with a discovery pointer | Adaptive; at most 2,048 |
-| 4 | `skills.catalog` | Skill ids and purposes; compact catalogs omit argument lists | Remaining standing share |
+| 4 | `skills.catalog` | Bounded skill discovery and continuation guidance | Remaining standing share |
 | 5 | `run.*` | Required completion protocol and optional step guidance | Adaptive; recommendation at most 2,048 |
 
 `AdaptiveContextPolicy` owns all budgets and priorities; `ModelInstructionComposer` formats the result. The standing projection is chosen once per run, so growing history does not rewrite its prefix. Precedence is spelled out in the base prompt: project instructions win over memory, and a project entry wins over a user entry. Required run-control instructions are never omitted. Exact formulas are documented in [adaptive context selection](21-tool-selection-and-adaptive-compaction.md).

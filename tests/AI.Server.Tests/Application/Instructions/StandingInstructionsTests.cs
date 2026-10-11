@@ -123,27 +123,22 @@ public sealed class StandingInstructionsTests : IDisposable
     }
 
     [Fact]
-    public async Task ShouldListEverySkillTheModelMayRunWithItsParameters()
+    public async Task ShouldKeepSkillDiscoveryGuidanceBoundedAsTheCatalogGrows()
     {
         var preview = await _standing.BuildAsync(_projectId, true, TestContext.Current.CancellationToken);
 
         var skills = preview.Layers.Single(layer => layer.Key == "skills.catalog");
         skills.Truncated.ShouldBeFalse();
         skills.Tokens.ShouldBeLessThanOrEqualTo(skills.BudgetTokens);
-        foreach (var skill in new BuiltInSkillCatalog().List().Where(skill => skill.Kind == AI.Contracts.Skills.SkillKinds.Playbook))
-            skills.Content.ShouldContain($"\n- {skill.Id}: ");
-        // The catalog says when to check it, and how to leave one skill for another.
+        // The standing prefix must not grow with the number of installed skills.
+        skills.Tokens.ShouldBeLessThan(300);
         skills.Content.ShouldContain("before other tools");
         skills.Content.ShouldContain("mcp_app__skill_search");
         skills.Content.ShouldContain("mcp_app__run_skill");
         skills.Content.ShouldNotContain("app_skill_search");
         skills.Content.ShouldNotContain("app_run_skill");
-        skills.Content.ShouldContain("different task");
-        skills.Content.ShouldContain("\n- code-feature-implement: Implement a feature");
-        skills.Content.ShouldContain("(goal, scope)");
-        skills.Content.ShouldContain("\n- chat-rename: ");
-        skills.Content.ShouldContain("chat_id*, mode*");
-        // An executor the application runs on its own schedule is not the model's to pick.
+        skills.Content.ShouldContain("changes task");
+        skills.Content.ShouldNotContain("\n- code-feature-implement:");
         skills.Content.ShouldNotContain("chat-reply-suggest");
     }
 

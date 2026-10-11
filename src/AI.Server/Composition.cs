@@ -127,7 +127,7 @@ internal sealed class Composition
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
-                GenericSkillExecutor, SkillGuide, SkillRouting, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
+                GenericSkillExecutor, SkillGuide, SkillRouting, SkillCandidateSelector, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
             .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo, ScheduledChatQuery>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {

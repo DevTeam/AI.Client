@@ -238,4 +238,31 @@ public class BuiltInSkillCatalogTests
                     skill.AllowedTools.ShouldContain(tool, skill.Id);
         }
     }
+
+    [Fact]
+    public void ShouldKeepTheMcpImportVerificationContract()
+    {
+        var skill = new BuiltInSkillCatalog().GetById("mcp-import").ShouldNotBeNull();
+        var body = SkillMarkdown.Body(skill.Content);
+
+        // A run's tool catalogue is fixed at start, so discovery never proves a call works now.
+        body.ShouldContain("Session availability");
+        body.ShouldContain("not in this run's catalogue");
+        body.ShouldContain("at most two searches, never a loop");
+        // A saved definition is global, so a candidate is proven by a real call before it is saved.
+        body.ShouldContain("prove that its command actually runs and that a call produced a real result");
+        // The registry is name-only, and GitHub repository search is the capability fallback.
+        body.ShouldContain("Search is a substring of server names");
+        body.ShouldContain("is the standard fallback");
+        // The Windows launcher trap and the prerequisite traps stay documented.
+        body.ShouldContain("cmd.exe does not strip single quotes");
+        body.ShouldContain("Keep \"not found\" apart from \"cannot");
+        body.ShouldContain("environmentVariables");
+        // Secrets never travel through arguments, URLs or ordinary environment values.
+        body.ShouldContain("Secrets must never be placed");
+        // Discovery and functional calls stay separate verdicts.
+        body.ShouldContain("Discovery: successful");
+        body.ShouldContain("Functional calls: passed");
+        skill.AllowedTools.ShouldNotBeNull().ShouldContain("process_run");
+    }
 }

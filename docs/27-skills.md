@@ -194,6 +194,7 @@ testing example.
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
 | `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+| `mcp-import` (`/mcp`) | Finds an external MCP server by source, name or capability, configures its dependencies and settings, verifies discovery and reports whether its tools can be called in this run; testing and skill creation need the user's agreement | `app_read`, `tool_search`, `fetch`, `app_security`, `app_navigate`, `ask_user`, `run_skill`, `skill_search`, `app_skills`, `app_chats`, `app_runs`, file readers, `process_run` |
 
 Code skills take their scope from the request or optional `paths`; only ambiguous scope opens
 the file/directory picker. A picked file returns in `other`, several directories in `paths`;
@@ -289,6 +290,21 @@ display names and owner tags. Discovery uses the same resolver and 15-second cei
 it does not create a Connection or prove completion support. Keys needed by new Connections are
 entered in Settings → Connections; the playbooks do not ask for secrets in chat.
 
+`mcp-import` keeps its source catalog in the skill text rather than in application services: the
+Official MCP Registry, the MCP reference implementations and the OpenAI plugin MCP configurations.
+The registry searches a substring of server names only, so a capability discovery falls back to
+public GitHub repository search, and a repository found there is a candidate rather than an
+endorsed server. Two limits shape the playbook. First, a run's tool catalogue is fixed when the run
+starts, so a server saved or enabled during the run is discovered but not callable in it; the
+playbook checks this with at most two `tool_search` calls and offers a new chat or an application
+restart instead of looping. Second, a server definition is global, so a Stdio candidate is proven
+by an actual call before it is saved — the launcher is read, not only the manifest, because a
+launcher that joins arguments into a shell string works on one platform and fails on another.
+Prerequisites include non-runtime binaries, and "not found" stays apart from "cannot be checked"
+when a directory is outside the project grants. Secrets never go into arguments, URLs or ordinary
+environment values; the settings editor collects them. The report keeps discovery and functional
+calls as separate verdicts.
+
 The comparison uses explicit connection ids in `spawn_subtask`, at most eight tasks per batch and
 two small suites per candidate. Its `elapsedMilliseconds` measures the whole delegated run,
 including application overhead and tool calls, on successes and failures. Cost stays unknown
@@ -337,10 +353,11 @@ and skips an automatic request while Settings → Chat switches automatic commen
 
 ## Tools
 
-`mcp_app__skill_search` exposes enabled effective skills, their kinds and schemas to the main model. An
-omitted query lists all enabled skills. If a query has no text matches, the result still lists
-available skills with `matchedQuery=false` and guidance; an empty result means there really are
-no enabled skills in the current scope. `mcp_app__run_skill` validates arguments and runs a skill in
+`mcp_app__skill_search` exposes matching enabled effective skill metadata to the main model. An
+omitted query browses enabled skills up to the requested limit. If a query has no matches, the result
+has `matchedQuery=false`, no arbitrary fallback entries, and guidance to broaden the query or browse.
+An exact-id query returns just that skill with its parameter and result schemas. An empty result
+does not by itself mean the catalog is empty. `mcp_app__run_skill` validates arguments and runs a skill in
 the current project. `app_read resource=Skills` lists the built-in, User and Project skills with
 source, kind and revision, and returns the full SKILL.md when a query names the skill.
 `app_skills` creates, updates, disables or deletes User and current Project skills with revision
@@ -355,14 +372,14 @@ in the project, and the model's copy of the message starts with an instruction t
 
 ## How the model picks skills
 
-When the App tools are available, the standing `skills.catalog` layer lists every enabled skill
-in effect for the project: its id, description and parameter names, with `*` marking required ones.
-Only executors the application runs on its own (`chat-reply-suggest`, `chat-tool-risk-assess`) are left out. It follows
-memory and shares the adaptive standing-instruction budget through `IAdaptiveContextPolicy`. Small
-windows use short purposes without parameter lists; the index points to `mcp_app__skill_search`
-for the rest. Its lead tells the model to check the list before acting and when the user changes task, to
-run a fitting skill before other tools even for requests that look simple, and to run only listed
-or user-named ids. `skill_search` and `run_skill` compete for the schema budget like other task
+When the App tools are available, the standing `skills.catalog` layer contains a bounded discovery
+rule rather than the full catalog. The application selects at most 12 metadata candidates for the
+turn's router, including the active playbook. The selector ranks exact ids and aliases before
+matching names and descriptions; a few common Russian task words are normalized for routing.
+The full schemas are retrieved only by exact-id search. If selection finds no candidates, the
+main chat can search with broader or alternate terms. The standing rule tells the model to
+check before acting and when the user changes task, and to run a fitting skill before other tools.
+`skill_search` and `run_skill` compete for the schema budget like other task
 capabilities; omitted ones can be discovered through `tool_search`.
 
 A playbook's instructions stay in the conversation as the `mcp_app__run_skill` result. Before every model
@@ -383,7 +400,7 @@ The catalog alone was not enough: a model read it and still did by hand what a p
 So before the first model step of every interactive turn that starts with a new user message,
 `ChatAgent` asks `ISkillRouting`, which runs the `skill-route` executor: one model call without
 tools on the chat's own connection, 12 seconds at most. It gets the message, the end of the
-previous answer, the active playbook, the catalog lines and the permitted tools by their first
+previous answer, the active playbook, the selected skill metadata and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
 tools, and those the chosen skills declare, receive pending discovery priority before the tool
 selector cuts the list. Their admission still depends on the schema budget. The optional routing

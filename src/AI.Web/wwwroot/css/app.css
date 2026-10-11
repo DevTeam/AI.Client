@@ -1796,7 +1796,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 /* Something new in the chat itself — an answer, a question, a failure — makes its title bold, the
    way unread mail does: a cue that does not depend on telling the icon's colours apart. */
-.chat-link:has(> .chat-icon-with-branch-count > :is(.app-icon, .member-dot):is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
+.chat-link:has(> .chat-icon-with-branch-count > .status-dot:is(.run-status-unread, .run-status-attention, .run-status-failed)) .nav-item-label {
     color: var(--color-text-strong);
     font-weight: 600;
 }
@@ -2116,6 +2116,29 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     display: inline-flex;
     flex: 0 0 auto;
 }
+
+/* The project tile, chat, teammate and branch keep their own mark while a run's state sits
+   above its top corner. The ring separates the dot from the mark in every theme. */
+.run-status-icon { position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1rem; height: 1rem; }
+.run-status-icon > .app-icon { color: var(--color-text-disabled); }
+.run-status-icon > .status-dot {
+    position: absolute;
+    top: -0.2rem;
+    right: -0.2rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-width: 0;
+    box-shadow: 0 0 0 2px var(--color-bg-sunken);
+    pointer-events: none;
+}
+.run-status-icon > .status-dot:not([class*="run-status-"]) { display: none; }
+.chat-nav-row:hover .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-fill-hover); }
+.chat-nav-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
+.chat-nav-row.selected:is(:hover, :focus-within, :has(.menu-open)) .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-active); }
+.branch-picker-row .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-surface-raised); }
+.branch-picker-row:is(:hover, .is-highlighted) .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-fill-hover); }
+.branch-picker-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg); }
+.branch-picker-row.selected.is-highlighted .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
 
 /* How many branches the chat has, after its title: a quiet chip with the branch icon, coloured by
    the most urgent status among the branches, while the chat's own icon keeps the main line's. */
@@ -3212,8 +3235,7 @@ div.chat-tip-head { cursor: default; }
 .workspace-message.user.from-branch[style*="--member-color"] .message-body {
     border-left: 3px solid var(--member-color);
 }
-/* A teammate's mark: an executor is a person in its own colour; a run status that needs attention
-   recolours it in the sidebar, like any other row icon. */
+/* A teammate's mark keeps its own colour; a separate dot carries run status in navigation. */
 .member-dot {
     display: inline-flex;
     flex: none;
@@ -3701,10 +3723,8 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     white-space: nowrap;
 }
 
-/* Single status-dot language used everywhere a run's state shows up: project/chat/branch-tree
-   rows and the branch picker menu. A run in a given state always reads the same wherever it
-   appears. Hollow (border only, transparent center) is the explicit "nothing to report" state —
-   every row always shows a dot, never an absence of one. */
+/* A run in a given state has the same dot on project, chat and branch marks. The hollow default
+   is available to stand alone; marks with no reportable status hide their dot. */
 .status-dot {
     display: inline-block;
     width: 0.35rem;

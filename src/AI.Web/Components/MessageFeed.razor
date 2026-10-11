@@ -2433,7 +2433,8 @@
             return new BranchPickerItem(option, title, GetBranchOptionIcon(option), GetOptionStatusClass(option), tooltip,
                 IsOptionActive(option), option.EndsHere,
                 Member: lineBranch is null ? null : SelectedChat?.MemberOf(lineBranch.Id),
-                IsMain: lineBranch is not null && lineBranch.Id == SelectedChat?.Id);
+                IsMain: lineBranch is not null && lineBranch.Id == SelectedChat?.Id,
+                IsTeamLead: lineBranch is not null && SelectedChat?.IsTeamLead(lineBranch.Id) == true);
         }).ToArray();
     }
 

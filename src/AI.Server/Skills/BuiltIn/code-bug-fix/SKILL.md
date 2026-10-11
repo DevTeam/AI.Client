@@ -41,6 +41,8 @@ The project instructions and instruction files win over these steps where they d
 7. Clean up as in `code-feature-implement`: compare the status with the baseline, delete scratch
    files and debug output you created, remove temporary logging. Never stage, commit, stash, reset
    or push.
-8. The final answer contains, in full: the root cause in one or two sentences, the fix, each
-   changed file as a link, the commands run with their results, and anything you could not verify.
-   Link verified source locations with absolute file URIs ending in `#L42` or `#L42-L48`.
+8. Lead the final answer with the root cause and fix in one or two sentences. Add only the material
+   verification result, any remaining risk or blocker, and links to the relevant changed files or
+   verified source locations. Group related files; give exact commands and a file-by-file account
+   when the user requests them or they are needed to explain a failure. Use absolute file URIs with
+   `#L42` or `#L42-L48` for verified source locations.

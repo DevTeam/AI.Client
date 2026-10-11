@@ -51,13 +51,12 @@ steps where they differ: their build, test and style rules are the ones to follo
    stay. Never run `git add`, `commit`, `stash`, `reset`, `checkout`, `clean` or `push`; committing
    is the `git-commit` skill, and only on the user's request. Without git, list every file you
    touched instead.
-8. The final answer contains, in full, in the user's language:
-   - what changed and why, in one or two sentences;
-   - each changed file as a link with one line about it, new files marked, and untracked new files
-     named as ones the user has to add to git;
-   - the build and test commands run and their results (passed, failed, skipped counts), or what
-     was not run and why;
-   - assumptions and decisions you made, and anything left for the user.
+8. Lead the final answer, in the user's language, with the result and why it matters in one or two
+   sentences. Follow with only the material implementation choices, a compact verification result
+   and anything the user must act on or could not verify. Group related changed files behind links
+   instead of giving every file its own explanation; call out new untracked files that must be added
+   to git. Give exact commands, counts and a file-by-file account when the user requests that detail
+   or it is needed to explain a failure.
 
 A follow-up on this task (a correction, "also do X", a failing case) continues from step 5 and
 repeats steps 6 to 8 for the new edits. A failure unrelated to the change goes to `code-bug-fix`

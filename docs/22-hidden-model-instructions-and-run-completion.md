@@ -47,7 +47,11 @@ are trained to work and as other agents do. Text that comes with tool calls is t
 preamble and is published with them. The run-wide `run.finishing` instruction tells the model to
 keep working until the request is done, not to stop to announce a next step or to ask permission
 to take it ("Shall I…?"), to put a decision that is genuinely the user's through `ask_user` rather
-than into the reply, and, when blocked, to say what it did, what is left and what blocks it.
+than into the reply, and, when blocked, to say what remains and what blocks it. Progress notes
+accompany tool calls only when a finding, decision, blocker or substantial progress helps the user
+follow the work; routine tool calls do not require narration. The final answer starts with the
+outcome and includes only material evidence and limits unless the user requests a full report or
+the deliverable needs one.
 
 What remains of the earlier machinery:
 

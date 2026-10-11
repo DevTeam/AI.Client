@@ -827,24 +827,28 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// model that stops to announce its next step has ended the turn there; this says not to.
     /// </summary>
     private const string FinishingInstruction =
-        "Keep working with tools until the request is done. Before your first tool calls, write a brief "
-        + "user-facing progress note in the assistant message's content explaining what you will do. During longer "
-        + "work, include another short note with your next tool calls when you have a meaningful finding, change "
-        + "of approach or have worked for about a minute since the last update. Use the user's language and describe "
-        + "concrete progress; do not repeat tool output or narrate every call. These notes must be in content, "
-        + "not just reasoning, and must accompany the tool calls in the same response. "
+        "Keep working with tools until the request is done. For a substantial task, you may briefly orient the user "
+        + "with your first tool calls. During work, write a short user-facing note only for a meaningful finding, "
+        + "a consequential decision or change of approach, a blocker, or material progress in a long run. Explain "
+        + "why it matters to the user's goal. Do not narrate routine searches, edits, checks or every tool call; "
+        + "do not repeat tool output. Put any progress note in assistant content, in the user's language, alongside "
+        + "the next tool calls, not in reasoning or a separate reply. "
         + "A reply without a tool call ends your turn and is shown to the user as your final answer, so a progress "
         + "note must not be sent as a standalone reply: include the tool calls and take the next step. Do not end by asking "
         + "permission to continue (\"Shall I…?\", \"Want me to…?\"): if the request already covers that step, do it. When a "
         + "decision is genuinely the user's, call ask_user; a question written in the reply ends your turn unanswered. "
-        + "End with the complete answer. If information or tools are missing, say what you did, what is left and what "
-        + "blocks it.";
+        + "In the final answer, lead with the outcome in one or two plain sentences. Add only the few findings, "
+        + "verification results and limitations needed to understand or use it; group related details and link to "
+        + "sources instead of listing every step, file or command. Give a full report when the user asks for one or "
+        + "the task's deliverable requires it. If blocked, state the remaining work and the specific blocker.";
 
     private const string CompactFinishingInstruction =
-        "Complete the authorized request with tools. Before the first calls and about every minute of longer work, "
-        + "include a brief progress note in assistant content with the next tool calls, in the user's language. "
+        "Complete the authorized request with tools. In assistant content alongside calls, briefly note only "
+        + "meaningful findings, decisions, blockers or material progress in a long run, in the user's language. "
+        + "Do not narrate routine calls. "
         + "A reply without calls is final: never use it to announce another step or ask permission to continue authorized work. "
-        + "Use ask_user for decisions that need the user. Finish with the complete result, or verified progress and the remaining blocker.";
+        + "Use ask_user for decisions that need the user. Lead the final answer with the outcome, then only essential "
+        + "evidence and limitations; give full detail when requested or required by the deliverable.";
 
     /// <summary>
     /// OpenAI-compatible endpoints report the ceiling as "length"; several report the Anthropic

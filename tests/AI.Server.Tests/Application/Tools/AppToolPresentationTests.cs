@@ -183,6 +183,25 @@ public sealed class AppToolPresentationTests
         presentation.Severity.ShouldBe(ToolResultSeverity.Ok);
     }
 
+    [Fact]
+    public void ShouldKeepEveryAskedQuestionReadableAfterThePromptCloses()
+    {
+        var result = Structured("""
+            {"answers":[{"id":"install","selected":["Portable binary"],"other":null}],
+             "outcome":"answered","guidance":"Proceed on these answers."}
+            """);
+        var presentation = _tools.Presentations.DescribeResult("mcp_app__ask_user", """
+            {"questions":[
+                {"id":"install","label":"Install","text":"How should the server be installed?"},
+                {"id":"location","label":"Location","text":"Where should its files go?"}]}
+            """, result);
+
+        presentation.Facts.ShouldContain(fact => fact.Label == "How should the server be installed?"
+            && fact.Value == "Portable binary");
+        presentation.Facts.ShouldContain(fact => fact.Label == "Where should its files go?"
+            && fact.Value == "No answer");
+    }
+
     private static ToolCallResult Structured(string json, bool isError = false)
     {
         var content = JsonDocument.Parse(json).RootElement.Clone();

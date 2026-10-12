@@ -4,8 +4,7 @@ using System.Text.Json;
 
 /// <summary>
 /// Describes a question put to the person. The row has to read as a decision rather than as a call:
-/// what was chosen is the only part worth a collapsed line, because the question itself was already
-/// on screen when it mattered and the answer is what the rest of the run was built on.
+/// the question and answer remain readable after the interactive card closes.
 /// </summary>
 public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
 {
@@ -36,19 +35,30 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
             ? found.EnumerateArray().ToArray()
             : [];
 
-        var facts = new List<ToolFact>();
+        var answerFacts = new List<ToolFact>();
         foreach (var answer in answers)
         {
             var id = Text(answer, "id");
             var question = Question(questions, id);
             var chosen = Chosen(answer);
             if (chosen is { Length: > 0 })
-                facts.Add(new ToolFact(Clip(Label(question) ?? id, 40) ?? "Answer", chosen));
+                answerFacts.Add(new ToolFact(Clip(Label(question) ?? id, 40) ?? "Answer", chosen));
         }
+
+        var facts = questions is { ValueKind: JsonValueKind.Array } list
+            ? list.EnumerateArray().Select(question =>
+            {
+                var id = Text(question, "id");
+                var answer = answers.FirstOrDefault(item => Text(item, "id") == id);
+                var chosen = answer.ValueKind == JsonValueKind.Object ? Chosen(answer) : string.Empty;
+                return new ToolFact(Text(question, "text") ?? Label(question) ?? "Question",
+                    chosen.Length > 0 ? chosen : "No answer");
+            }).ToList()
+            : answerFacts;
 
         // Nothing chosen is a real answer with a real consequence — the model decided by itself
         // from here on — so it is a warning the person can find later, not a silent Ok row.
-        if (facts.Count == 0)
+        if (answerFacts.Count == 0)
             return new ToolResultPresentation(
                 outcome switch
                 {
@@ -59,11 +69,11 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
                     _ => "Left to the model"
                 },
                 outcome == "invalid" ? ToolResultSeverity.Error : ToolResultSeverity.Warning,
-                [],
+                facts,
                 Text(structured, "guidance"));
 
         return new ToolResultPresentation(
-            facts.Count == 1 ? $"{facts[0].Label}: {facts[0].Value}" : Plural(facts.Count, "answer", "answers"),
+            answerFacts.Count == 1 ? $"{answerFacts[0].Label}: {answerFacts[0].Value}" : Plural(answerFacts.Count, "answer", "answers"),
             // Answered in part is still answered: the questions left open are named in the guidance
             // the model was given, and the person meant to leave them open.
             ToolResultSeverity.Ok,

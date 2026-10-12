@@ -98,6 +98,7 @@
     private bool _allResultsDescribed;
     private List<ToolInvocation> _invocations = [];
     private readonly Dictionary<string, ActiveToolInvocation> _activeByCallId = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _revealedQuestionCalls = new(StringComparer.Ordinal);
     private GroupVersion _groupVersion;
 
     private readonly record struct GroupVersion(int Count, Guid FirstId, Guid LastId);
@@ -131,6 +132,15 @@
                 null));
         }
         _invocations = invocations;
+
+        foreach (var invocation in invocations)
+        {
+            if (invocation.Call.Name != ToolRef.AppPrefix + "ask_user" || invocation.Result is null
+                || !_revealedQuestionCalls.Add(invocation.Call.Id)) continue;
+            _batchExpanded = true;
+            _expanded.Add(invocation.Call.Id);
+            _visibleRowCount = invocations.Count;
+        }
 
         if (version != _groupVersion)
         {

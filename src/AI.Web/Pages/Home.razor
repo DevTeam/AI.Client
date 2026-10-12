@@ -2319,6 +2319,13 @@ else if (_guideInvitation is { } guideInvitation)
             _pendingScrollRestoreKey = null;
             await _messageFeed.ScrollToBottomAsync();
         }
+        else if (_pendingScrollRestoreKey is not null && GetSelectedRun()?.PendingPrompt is { Presentation: "chat" }
+                 && _messageFeed is not null)
+        {
+            _pendingScrollRestoreKey = null;
+            _followNewMessages = false;
+            await _messageFeed.ScrollToBottomAsync();
+        }
         else if (_pendingScrollRestoreKey is { } restoreKey && _messageFeed is not null)
         {
             // Restoring where the user left this chat is itself a position decision, so a
@@ -2768,7 +2775,14 @@ else if (_guideInvitation is { } guideInvitation)
             {
                 // Not a scroll-to-bottom: the run producing output is not a reason to yank the
                 // user away from whatever they scrolled up to read.
-                if (IsCurrentRun(snapshot.ChatId, snapshot.BranchId)) _followNewMessages = true;
+                if (IsCurrentRun(snapshot.ChatId, snapshot.BranchId))
+                {
+                    if (snapshot.PendingPrompt is { Presentation: "chat" } prompt
+                        && previous?.PendingPrompt?.Id != prompt.Id)
+                        _scrollMessagesToBottom = true;
+                    else
+                        _followNewMessages = true;
+                }
                 if (snapshot.ChatRevision > _selectedChat.Revision && _selectedProject is not null)
                 {
                     if (ChatMessageDeltaMerger.TryApply(_selectedChat, snapshot, out var updatedChat))

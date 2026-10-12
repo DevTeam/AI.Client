@@ -1,10 +1,20 @@
 # Pure.DI observations and issues
 
-This file collects complaints, generator failures, and configuration limitations separately from the project's DI conventions. Observations are from the refactoring on 2026-10-03 with the project's pinned Pure.DI / Pure.DI.MS 2.5.4. The local Pure.DI reference documentation may describe a newer source revision; no claim here applies automatically to that revision.
+This file collects complaints, generator failures, and configuration limitations separately from the project's DI conventions. The original observations below were made with Pure.DI / Pure.DI.MS 2.5.4. The project now pins 2.5.5; because those packages are not yet available for restore, the changes were verified on 2026-10-13 against local Pure.DI generator source at `ea3452cf0`. The older observations remain as history; their current status is summarized here.
+
+| Observation | Current status with local Pure.DI source |
+| --- | --- |
+| Enumerable escapes its scope | Fixed in Pure.DI; `CompositeToolSessionFactory` is transient. |
+| Simplified bindings expose `IAsyncDisposable` | Fixed in Pure.DI; `ChatReplySuggestions` and `DesktopUnreadCountPublisher` use lifetime-specific bindings. |
+| Constructor selection | Fixed in Pure.DI; `JsonLineFileLoggerProvider` uses a lifetime-specific binding. |
+| `DependsOn` with multiple names | Fixed in Pure.DI; Host, Desktop, and startup tests use one call. |
+| Shared singleton initialized inside deferred policy collection | Fixed in Pure.DI; `GuideChatKindPolicy` injects `IProjectService` directly. |
+| Lightweight anonymous roots | Still fails in the production graph with `CS0103` for `perBlockFuncIChatKindPolicyRegistry`; keep the hint disabled. |
+| Contract inference, inherited adapters, duplicate roots | Configuration limits; retain the explicit bindings and separate root setup. |
 
 ## Generated enumerable escapes its declaration scope
 
-Status: Reproduced during this refactoring. Generator defect; a valid service graph produced invalid C#.
+Status: Reproduced with 2.5.4; fixed in the local generator source.
 
 After stateless server services and MCP connection factories were changed to transient, Host and Desktop compilation failed in generated `ServerComposition.g.cs`:
 
@@ -26,11 +36,11 @@ This second diagnostic occurred in Host, Desktop, `StartupComposition`, and `App
 error CS0103: The name 'perBlockFuncIToolSessionFactory2' does not exist in the current context
 ```
 
-Final workaround: retain `.Singleton<CompositeToolSessionFactory>()` and the original enumerable constructor contracts. Its connections and their stateless dependencies remain transient and are retained by this owner. This singleton is a generator compatibility exception, not a need for shared mutable state. Revisit it after upgrading Pure.DI. These observations describe the production graph, not an independently minimized reproduction.
+The 2.5.4 workaround was `.Singleton<CompositeToolSessionFactory>()` with the original enumerable constructor contracts. It is no longer used: the current graph registers this stateless factory as transient. These observations describe the production graph, not an independently minimized reproduction.
 
 ## Simplified bindings expose disposal interfaces
 
-Status: Reproduced during this refactoring. API usability issue in the installed version; explicit bindings remain supported.
+Status: Reproduced with 2.5.4; fixed in the local generator source.
 
 Moving `DesktopUnreadCountPublisher` out of the shared singleton binding group into `.Transient<DesktopUnreadCountPublisher>()` caused:
 
@@ -38,7 +48,7 @@ Moving `DesktopUnreadCountPublisher` out of the shared singleton binding group i
 error DIW000: The binding for System.IAsyncDisposable has been overridden.
 ```
 
-Using `.Singleton<ChatReplySuggestions>()` separately from other server services produced the same warning. The project treats warnings as errors. Registering unrelated services by their disposal interface is not useful in this graph and makes the simplified API less predictable. Workaround: bind only `IUnreadCountPublisher` and `IChatReplySuggestions` explicitly. Disposal is still tracked by Pure.DI.
+Using `.Singleton<ChatReplySuggestions>()` separately from other server services produced the same warning. The project treats warnings as errors. Pure.DI now excludes `IAsyncDisposable` from inferred contracts, so both services can use lifetime-specific bindings. Disposal is still tracked by Pure.DI.
 
 ## Automatic contract inference can override a composite service
 
@@ -62,7 +72,7 @@ Workaround: retain explicit interface bindings for these adapters. A successful 
 
 ## Constructor selection needs an explicit factory
 
-Status: Reproduced during this refactoring. Constructor-selection limitation, not established as a generator defect.
+Status: Reproduced with 2.5.4; fixed in the local generator source.
 
 With simplified bindings, the generator selected the string constructor of `JsonLineFileLoggerProvider` even though this graph supplies `IProjectStorageLocation`:
 
@@ -70,7 +80,7 @@ With simplified bindings, the generator selected the string constructor of `Json
 error DIE000: Unable to resolve "string" in JsonLineFileLoggerProvider(string rootDirectory<--string).
 ```
 
-The type also has a production constructor `(IProjectStorageLocation location, int retentionDays = 14)`. Workaround: `.Singleton((IProjectStorageLocation location) => new JsonLineFileLoggerProvider(location))` makes the intended constructor explicit without a class-to-class dependency.
+The type also has a production constructor `(IProjectStorageLocation location, int retentionDays = 14)`. The current generator selects the resolvable production constructor, so `.Singleton<JsonLineFileLoggerProvider>()` is used.
 
 ## Anonymous and named roots cannot duplicate one contract
 
@@ -86,17 +96,17 @@ The limitation makes shared setups containing MS DI roots inconvenient for direc
 
 ## Lightweight anonymous roots and shared deferred dependencies
 
-Status: Existing project workaround, preserved; not independently reproduced during this refactoring.
+Status: Reproduced on 2026-10-12 with local Pure.DI master after the other graph changes.
 
-The original server setup records that Pure.DI 2.5.4 could use the shared `AppDataChangeSignal` before initialization when building deferred `AppWrites` factories, giving `AppWrites` a null dependency. Keep `.Hint(Hint.LightweightAnonymousRoot, "Off")` until a supported version is verified with the production graph.
+The original server setup records that Pure.DI 2.5.4 could use the shared `AppDataChangeSignal` before initialization when building deferred `AppWrites` factories, giving `AppWrites` a null dependency. Removing `.Hint(Hint.LightweightAnonymousRoot, "Off")` with the current local generator instead fails to compile `StartupComposition.g.cs`: `perBlockFuncIChatKindPolicyRegistry` is declared inside a nested factory and referenced by the outer lightweight root initializer. Keep the hint until both generation and runtime behavior are verified.
 
 ## Several DependsOn names in one call
 
-Status: Existing project workaround, preserved; not independently reproduced during this refactoring.
+Status: Fixed in local Pure.DI source and removed in AI.Client.
 
-The original Host/Desktop setups record DIE043 for `.DependsOn("a", "b")` in Pure.DI 2.5.4. The project keeps one call per setup. Recheck this restriction when updating the package rather than assuming the newer local reference documentation describes the pinned binary exactly.
+The original Host/Desktop setups record DIE043 for `.DependsOn("a", "b")` in Pure.DI 2.5.4. Host, Desktop, and startup tests now use one call with both setup names.
 
-## Verification after applying the workarounds
+## Historical verification with 2.5.4
 
 The final graph builds with `dotnet build AI.slnx --no-restore -m:1 /nodeReuse:false`: zero errors and zero warnings. Host, Desktop and Build command-line roots also handle `--help` successfully.
 

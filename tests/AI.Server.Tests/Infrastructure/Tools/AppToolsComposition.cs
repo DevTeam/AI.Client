@@ -32,11 +32,14 @@ internal sealed partial class AppToolsComposition
             .Root<IGlobalSecretStore>(nameof(Secrets))
             .Root<IProjectService>(nameof(Projects))
             .Root<IChatService>(nameof(Chats))
+            .Root<IChatKindPolicyRegistry>(nameof(Kinds))
             .Root<IStandingInstructions>(nameof(Standing))
             .Root<IGlobalSettingsService>(nameof(GlobalSettings))
             .Root<IToolSessionFactory>(nameof(Sessions))
             .Root<IAppDataChangeSignal>(nameof(Changes))
             .Root<IAppNavigationSignal>(nameof(Navigation))
+#pragma warning disable DIW000 // These arguments intentionally replace production edge bindings.
             .Arg<IUserPromptBroker>("broker")
             .Arg<IConnectionModelsResolver>("modelsResolver");
+#pragma warning restore DIW000
 }

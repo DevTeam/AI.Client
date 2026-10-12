@@ -27,11 +27,13 @@ internal sealed class TestServer
         DI.Setup(kind: CompositionKind.Internal)
             .Hint(Hint.Comments, "Off")
             .Arg<MemoryFileSystem>("fileSystem")
+#pragma warning disable DIW000 // These registrations intentionally replace production edge bindings.
             .Arg<IChatCompletionClient>("completion")
             .Singleton(() => Mock.Of<IGlobalSecretStore>())
             // The whole server performs its IO through the one file-system contract, so this single
             // binding puts every repository, the logger and the secret store onto the shared fake.
             .Bind<IFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
+#pragma warning restore DIW000
             // Outside ASP.NET nothing supplies Microsoft's loggers.
             .Bind<ILogger<TT>>().To(_ => NullLogger<TT>.Instance);
 }

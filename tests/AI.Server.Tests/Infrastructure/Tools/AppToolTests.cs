@@ -44,6 +44,20 @@ using ModelChatToolCall = AI.Contracts.Chat.ChatToolCall;
 public sealed partial class AppToolTests
 {
     [Fact]
+    public async Task GuidePolicyUsesTheProductionProjectRepository()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        (await fixture.Projects.ListAsync(CancellationToken.None))
+            .ShouldContain(project => project.Id == fixture.ProjectId);
+        var guide = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest("Guide", Kind: ChatKind.Guide.Value), CancellationToken.None);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, guide.Id, CancellationToken.None)).ShouldNotBeNull();
+
+        await fixture.Kinds.Resolve(ChatKind.Guide).OnHostStartedAsync(CancellationToken.None);
+        (await fixture.Chats.GetAsync(fixture.ProjectId, guide.Id, CancellationToken.None)).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task UpsertingOneMcpServerThroughAppSecurityPreservesOtherGlobalSettings()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -1517,6 +1531,7 @@ public sealed partial class AppToolTests
 
         public IProjectService Projects => _composition.Projects;
         public IChatService Chats => _composition.Chats;
+        public IChatKindPolicyRegistry Kinds => _composition.Kinds;
         public IStandingInstructions Standing => _composition.Standing;
         public IGlobalSettingsService GlobalSettings => _composition.GlobalSettings;
         private IGlobalSettingsRepository Settings => _composition.Settings;

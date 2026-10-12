@@ -38,10 +38,7 @@ public sealed class ConversationChatKindPolicy : IChatKindPolicy
     }
 }
 
-// Projects arrive as a factory: Pure.DI 2.5.4 otherwise creates the project repository singleton
-// only inside the lazy enumeration of kind policies and hands the run dispatcher a ProjectService
-// over a null repository.
-public sealed class GuideChatKindPolicy(Func<IProjectService> projects, Func<IGuideChats> guideChats) : IChatKindPolicy
+public sealed class GuideChatKindPolicy(IProjectService projects, Func<IGuideChats> guideChats) : IChatKindPolicy
 {
     public ChatKind Kind => ChatKind.Guide;
     public ChatKindBehavior Behavior { get; } = new(
@@ -76,7 +73,7 @@ public sealed class GuideChatKindPolicy(Func<IProjectService> projects, Func<IGu
 
     public async Task OnHostStartedAsync(CancellationToken token)
     {
-        foreach (var project in await projects().ListAsync(token))
+        foreach (var project in await projects.ListAsync(token))
             await guideChats().CleanUpAsync(project.Id, null, token);
     }
 

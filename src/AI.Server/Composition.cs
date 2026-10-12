@@ -51,17 +51,11 @@ internal sealed class Composition
             // executable that happens to add that setup for it.
             .DependsOn("AI.Contracts.Composition")
             .Hint(Hint.Comments, "Off")
-            // Pure.DI 2.5.4 miscompiles lightweight anonymous roots for this graph: a singleton
-            // shared by several deferred factories (AppDataChangeSignal, via AppWrites) is used
-            // before it is created, so AppWrites gets null. Off until that is fixed upstream.
-            .Hint(Hint.LightweightAnonymousRoot, "Off")
             // What the entry point decided before starting the server: its command line, parsed.
             .Arg<ServerOptions>("options")
             // Shared state that must keep its identity across requests: storage repositories with their
             // write gates, chat synchronization, change and navigation signals, the run dispatcher,
             // usage accounting, preview tickets, parsed caches and the running update service.
-            // CompositeToolSessionFactory is cached here only because Pure.DI 2.5.4 emits out-of-scope
-            // factory locals for it when transient — see docs/pure-di-issues.md.
             .Singleton<FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
                 JsonProjectRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
@@ -70,7 +64,8 @@ internal sealed class Composition
                 WorkspaceUndoService,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
-                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, CompositeToolSessionFactory, ContextTextTokenizer>()
+                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, ContextTextTokenizer>()
+            .Transient<CompositeToolSessionFactory>()
             // The dispatcher of scheduled chats owns one loop and the schedules it last read.
             .Singleton<ChatScheduler>()
             .Singleton<ChatKindPolicyRegistry>()
@@ -80,12 +75,12 @@ internal sealed class Composition
             .Bind<IHostLifetimeChatRunRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRunRepository>()
             .Bind<IChatRepository>().As(Lifetime.Singleton).To<ChatRepositoryRouter>()
             .Bind<IChatRunRepository>().As(Lifetime.Singleton).To<ChatRunRepositoryRouter>()
-            .Singleton((IProjectStorageLocation location, IFileSystem files) =>
-                new JsonLineFileLoggerProvider(location, files))
+            .Singleton<JsonLineFileLoggerProvider>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
             .Singleton<IUserDataProtector>(ctx =>
             {
+
                 if (OperatingSystem.IsWindows())
                 {
                     ctx.Inject<ProtectedDataUserDataProtector>(out var windows);
@@ -99,7 +94,7 @@ internal sealed class Composition
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Bind<IChatReplySuggestions>().As(Lifetime.Singleton).To<ChatReplySuggestions>()
+            .Singleton<ChatReplySuggestions>()
             // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call
             // carries at most the number of type parameters Pure.DI declares for one binding method.
             // Request handling, storage layout and workspace access.

@@ -41,11 +41,10 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .DependsOn("AI.TextCorrection.Configuration.TextCorrectionComposition")
             .Hint(Hint.Comments, "Off")
             .Hint(Hint.ThreadSafe, "Off")
-            .Hint(Hint.OnCannotResolveContractTypeNameWildcard, "Microsoft.JSInterop.*")
             .Root<ITextCorrectionLanguages>()
-            .Root<AI.TextCorrection.ITextAutoCorrectionAnalyzer>()
-            .Root<AI.TextCorrection.IWordBoundaries>()
-            .Root<AI.TextCorrection.ITextCorrectionPreparation>()
+            .Root<TextCorrection.ITextAutoCorrectionAnalyzer>()
+            .Root<TextCorrection.IWordBoundaries>()
+            .Root<TextCorrection.ITextCorrectionPreparation>()
             .Root<HttpClient>()
             .Root<IApiBaseUrl>()
             .Root<IClientMode>()
@@ -153,7 +152,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
-            .Bind<IUnreadCountPublisher>().To<DesktopUnreadCountPublisher>()
+            .Transient<DesktopUnreadCountPublisher>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

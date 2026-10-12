@@ -11,8 +11,7 @@ internal sealed partial class StartupComposition : ServiceProviderFactory<Startu
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            .DependsOn("AI.Contracts.Composition")
-            .DependsOn("AI.Server.AspNetComposition")
+            .DependsOn("AI.Contracts.Composition", "AI.Server.AspNetComposition")
             .Hint(Hint.Comments, "Off")
             .Root<AI.Server.Hosting.IAiClientServer>(nameof(Server));
 }

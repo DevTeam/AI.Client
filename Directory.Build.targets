@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <PureDISourceRoot Condition="'$(PureDISourceRoot)' == ''">$(MSBuildThisFileDirectory)..\Pure.DI</PureDISourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalPureDI)' == 'true'">
+    <PackageReference Remove="Pure.DI" />
+    <PackageReference Remove="Pure.DI.MS" />
+    <ProjectReference Include="$(PureDISourceRoot)\src\Pure.DI.Core\Pure.DI.Core.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="$(PureDISourceRoot)\src\Pure.DI\Pure.DI.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Compile Include="$(PureDISourceRoot)\src\Pure.DI.MS\any\Pure.DI\MS\*.g.cs"
+             Condition="'$(MSBuildProjectName)' == 'AI.Web' Or '$(MSBuildProjectName)' == 'AI.Host' Or '$(MSBuildProjectName)' == 'AI.Desktop' Or '$(MSBuildProjectName)' == 'AI.Server.Tests'" />
+  </ItemGroup>
+</Project>

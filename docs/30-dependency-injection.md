@@ -48,7 +48,7 @@ Anonymous roots are used for the `Pure.DI.MS` service-provider bridge, including
 
 ## Package-specific workarounds
 
-The project pins Pure.DI 2.5.4. Current limitations, diagnostics and evidence are recorded separately in [Pure.DI observations and issues](pure-di-issues.md). Preserve the documented workarounds until their removal is verified against every linked consumer. Do not suppress binding diagnostics to conceal unintended contract overrides.
+The project pins Pure.DI 2.5.5. Until that package is available, use the current generator source from a sibling `Pure.DI` checkout for local verification with `dotnet build AI.slnx -p:UseLocalPureDI=true -m:1`. Override `PureDISourceRoot` if the checkout is elsewhere. This switch leaves normal package-based builds unchanged. Current limitations, diagnostics and evidence are recorded separately in [Pure.DI observations and issues](pure-di-issues.md). Preserve the remaining documented workaround until its removal is verified against every linked consumer. Do not suppress binding diagnostics to conceal unintended contract overrides.
 
 ## Verification
 

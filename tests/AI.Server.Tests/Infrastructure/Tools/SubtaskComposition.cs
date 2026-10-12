@@ -34,5 +34,7 @@ internal sealed partial class SubtaskComposition
             .Root<IChatService>(nameof(Chats))
             .Root<ISkillCatalog>(nameof(Skills))
             .Root<IMcpServerConnection>(nameof(Sessions), typeof(AppToolSessionFactory))
+#pragma warning disable DIW000 // This argument intentionally replaces a production edge binding.
             .Arg<IToolSessionFactory>("tools");
+#pragma warning restore DIW000
 }

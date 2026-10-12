@@ -44,7 +44,9 @@ internal sealed partial class ChatExecutionComposition
             .Root<IChatScheduleService>(nameof(Schedules))
             .Root<IScheduledChatPass>(nameof(SchedulePass))
             .Root<IGuideChats>(nameof(Guides))
+#pragma warning disable DIW000 // These arguments intentionally replace production edge bindings.
             .Arg<IToolSessionFactory>("tools")
             .Arg<IWorkspaceChangeTracker>("workspace")
+#pragma warning restore DIW000
             .Transient<ExtensionChatKindPolicy>(Tag.Unique);
 }

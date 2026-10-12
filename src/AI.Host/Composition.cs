@@ -28,9 +28,7 @@ internal sealed partial class ServerComposition : ServiceProviderFactory<ServerC
     [Conditional("DI")]
     private static void Setup() =>
         DI.Setup()
-            // Two calls on purpose: Pure.DI 2.5.4 crashes (DIE043) on DependsOn("a", "b").
-            .DependsOn("AI.Contracts.Composition")
-            .DependsOn("AI.Server.AspNetComposition")
+            .DependsOn("AI.Contracts.Composition", "AI.Server.AspNetComposition")
             .Hint(Hint.Comments, "Off")
             .Root<Server.Hosting.IAiClientServer>(nameof(Server));
 }

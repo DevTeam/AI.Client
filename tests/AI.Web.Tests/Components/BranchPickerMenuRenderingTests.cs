@@ -1,6 +1,7 @@
 namespace AI.Web.Tests.Components;
 
 using System.Net;
+using System.Text.RegularExpressions;
 using AI.Contracts.Schedules;
 using AI.Web.Components;
 using Microsoft.AspNetCore.Components;
@@ -70,7 +71,7 @@ public sealed class BranchPickerMenuRenderingTests
         text.ShouldNotContain("#14 · ");
         text.ShouldContain("#2 · ");
         text.ShouldContain("Show all 20 runs");
-        text.ShouldContain("branch-run-dot is-failed");
+        Regex.IsMatch(text, "class=\"status-dot[^\"]*is-failed").ShouldBeTrue();
     }
 
     [Fact]
@@ -86,7 +87,7 @@ public sealed class BranchPickerMenuRenderingTests
         text.ShouldContain("#1 · ");
         text.ShouldNotContain("#2 · ");
         text.ShouldContain("run-status-unread");
-        text.ShouldContain("branch-run-dot is-succeeded");
+        Regex.IsMatch(text, "class=\"status-dot[^\"]*is-succeeded").ShouldBeTrue();
     }
 
     private static async Task<string> RenderAsync(IReadOnlyList<BranchPickerItem> items)

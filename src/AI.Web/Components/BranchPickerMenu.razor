@@ -161,7 +161,7 @@
                 }
                 else if (item.Member is { Swatch: not null } member)
                 {
-                    <MemberDot Member="@member" />
+                    <MemberDot Member="@member" Working="@(item.IconClass == "run-status-generating")" />
                 }
                 else if (item.IsMain && item.IsTeamLead)
                 {

@@ -65,3 +65,4 @@ nunit-*.xml
 /reports/DependencyInjection/raw/
 /.vs
 *.user
+/.data

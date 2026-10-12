@@ -78,6 +78,11 @@ chat, and `chat-schedule-delete` already offers deletion as one of its own choic
 says in its steps that it never offers it, because its answer is the deliverable and the safe
 testing example.
 
+`mcp-import` is the exception among the data-changing playbooks, and its steps say nothing about it.
+A run cannot delete the chat it is running in — the messages that turn persists, before and after
+every tool call, move that chat's revision past any value a delete could send, so the revision check
+in `ChatRunDispatcher.DeleteChatAsync` refuses the write as a conflict no retry can converge.
+
 ## Built-in skills
 
 | id | What it does | Tools |

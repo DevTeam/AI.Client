@@ -289,13 +289,3 @@ search snippets.
     Include any verified removal/restoration and the alternative's separate installation/test result.
     Include the created/reused skills and their purposes, or report that skill creation was
     skipped, blocked or failed; never claim unsaved proposals were created.
-15. When the verification was moved to a chat created for it, and this chat has done nothing but
-    the import, offer to delete this chat. Ask with `ask_user` one question saying that deletion
-    permanently removes this chat together with all its branches and its whole history, with the
-    options "Keep this chat (Recommended)" and "Delete this chat", in the user's language.
-    Anything but a clear yes keeps the chat, as does a dismissed, expired or interrupted answer.
-    On a clear yes, read `app_read` resource=Chat for this chat's current revision, then call
-    `app_chats` Delete with the project id, this chat id, that revision, a fresh operationId and
-    dryRun false, and report the result. Do not offer the deletion while the import is unfinished
-    or while a skill creation is still running, and never delete a chat whose answer the user
-    still needs.

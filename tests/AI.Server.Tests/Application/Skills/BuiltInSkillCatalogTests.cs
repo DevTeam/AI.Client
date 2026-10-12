@@ -263,6 +263,11 @@ public class BuiltInSkillCatalogTests
         // Discovery and functional calls stay separate verdicts.
         body.ShouldContain("Discovery: successful");
         body.ShouldContain("Functional calls: passed");
+        // The playbook says nothing about removing a chat: a run cannot delete the one it runs in,
+        // because the turn's own messages move the revision past any value a delete could send.
+        body.ShouldNotContain("delete this chat");
         skill.AllowedTools.ShouldNotBeNull().ShouldContain("process_run");
+        // Creating the chat for a moved verification still needs app_chats, the removal does not.
+        skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats");
     }
 }

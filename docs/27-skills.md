@@ -62,26 +62,20 @@ application permissions, and every write still goes through tool approval.
 
 `BuiltInSkillCatalogTests` checks the naming of every bundled skill.
 
-A playbook that changes application data and ends with a one-line report offers, as its last step,
-to delete the chat when the chat did nothing but that work: one `ask_user` question saying that
-deletion removes the chat with all its branches and its whole history, "Keep this chat
-(Recommended)" and "Delete this chat", the chat kept by anything but a clear yes, and on deletion
-`app_read resource=Chat` for the revision followed by `app_chats` Delete with the project id, the
-chat id, that revision, a fresh `operationId` and `dryRun` false. `chat-archive`,
-`chat-branch-cleanup`, `project-rename`, `project-describe`, `project-directory-add`,
-`project-directory-remove`, `instructions-edit`, `memory-save`, `memory-review`, `memory-forget`,
-`settings-select-connection`, `settings-tools-configure`, `project-tools-configure`,
-`chat-tools-configure` and `settings-tools-reset` follow it, and the tool-policy ones say in the
-question that the report above goes with the chat. A skill whose answer is the deliverable
-(`chat-summary`, a review, a draft) does not offer it, `chat-compact` deliberately keeps the old
-chat, and `chat-schedule-delete` already offers deletion as one of its own choices. `chat-summary`
-says in its steps that it never offers it, because its answer is the deliverable and the safe
-testing example.
+No bundled playbook offers to delete the chat it ran in. The application deletes a chat only when
+the user asked for it. `chat-schedule-delete` is the one skill that can delete a chat, because the
+user asks for that by name there, and it keeps the chat unless the answer is a clear yes. A skill
+whose answer is the deliverable (`chat-summary`, a review, a draft) obviously does not offer it,
+and `chat-compact` deliberately keeps the old chat. `chat-summary` still says in its steps that it
+never offers it, because its answer is the deliverable and it is the safe testing example.
 
-`mcp-import` is the exception among the data-changing playbooks, and its steps say nothing about it.
-A run cannot delete the chat it is running in — the messages that turn persists, before and after
-every tool call, move that chat's revision past any value a delete could send, so the revision check
-in `ChatRunDispatcher.DeleteChatAsync` refuses the write as a conflict no retry can converge.
+Every data-changing playbook is silent about removing the chat it ran in, for the same reason: a
+run cannot delete that chat. The messages the turn persists before and after every tool call move
+the chat's revision past any value a delete could send, so the revision check in
+`ChatRunDispatcher.DeleteChatAsync` refuses the write as a conflict no retry can converge.
+Deleting a different, explicitly named chat is unaffected: `chat-archive` and
+`chat-branch-cleanup` keep working on chats they did not start in, and `chat-schedule-delete`
+deletes a chat the user asked for by name.
 
 ## Built-in skills
 

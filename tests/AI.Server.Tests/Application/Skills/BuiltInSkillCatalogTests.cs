@@ -128,30 +128,22 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
-    public void ShouldOfferToDeleteTheChatOnlyFromPlaybooksThatCanDeleteIt()
+    public void ShouldNeverOfferToDeleteTheChatFromAPlaybookThatRunsInIt()
     {
         var skills = new BuiltInSkillCatalog().List();
 
-        // Offering the deletion is the last step of a playbook that changed data and reported one line.
-        string[] offering =
-        [
-            "chat-archive", "chat-branch-cleanup", "project-rename", "project-describe", "project-directory-add",
-            "project-directory-remove", "instructions-edit", "memory-save", "memory-review", "memory-forget",
-            "settings-select-connection", "settings-tools-configure", "project-tools-configure",
-            "chat-tools-configure", "settings-tools-reset",
-        ];
-        foreach (var id in offering)
-        {
-            var skill = skills.Single(item => item.Id == id);
-            SkillMarkdown.Body(skill.Content).Contains("delete this chat", StringComparison.Ordinal).ShouldBeTrue(id);
-            skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats", id);
-        }
-
-        // Every playbook that mentions the offer declares the tool, and the safe testing example never
-        // offers it: its answer is the deliverable.
+        // A run cannot delete the chat it runs in: the messages the turn persists before and after
+        // every tool call move that chat's revision past any value a delete could send. No bundled
+        // playbook may therefore offer that deletion.
         foreach (var skill in skills.Where(item => item.Kind == SkillKinds.Playbook))
-            if (SkillMarkdown.Body(skill.Content).Contains("delete this chat", StringComparison.Ordinal))
-                skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats", skill.Id);
+            SkillMarkdown.Body(skill.Content).Contains("delete this chat", StringComparison.Ordinal).ShouldBeFalse(skill.Id);
+
+        // chat-schedule-delete is the one skill that deletes a chat, and only when asked by name.
+        var scheduleDelete = skills.Single(item => item.Id == "chat-schedule-delete");
+        scheduleDelete.Description.ShouldContain("delete the whole chat if explicitly requested");
+        scheduleDelete.AllowedTools.ShouldNotBeNull().ShouldContain("app_chats");
+
+        // chat-summary stays the read-only safe testing example.
         skills.Single(item => item.Id == "chat-summary").Content.ShouldContain("never offers to delete the chat");
     }
 

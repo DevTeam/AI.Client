@@ -6,7 +6,7 @@ aliases: ["new-skill"]
 kind: playbook
 description: Create a User or Project skill from the user's description: interview, draft SKILL.md and save it after review.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What the skill should do, in the user's words"},"scope":{"type":"string","enum":["User","Project"],"description":"Only when the user said"}},"additionalProperties":false}
-tools: ["app_read","ask_user","app_skills","skill_search","app_chats"]
+tools: ["app_read","ask_user","app_skills","skill_search"]
 ---
 
 Skill conventions:
@@ -64,15 +64,12 @@ Skill conventions:
   full; one that only changes something finishes with a one-line report without ids or revisions.
   Never write "finish with one line" after a step that renders output: models then answer with the
   line and drop the output.
-- A playbook that changes application data and ends with a one-line report offers, as its last step,
-  to delete the chat when it did nothing but that work: one `ask_user` question saying that deletion
-  removes the chat with all its branches and its whole history, the options "Keep this chat
-  (Recommended)" and "Delete this chat", anything but a clear yes keeping the chat, and on deletion
-  `app_read` resource=Chat for the revision followed by `app_chats` Delete with the project id, the
-  chat id, that revision, a fresh `operationId` and `dryRun` false. Such a playbook declares
-  app_chats among its `tools`. Do not offer it when the answer is the deliverable (a summary, a
-  review, a draft) or when the skill deliberately keeps the chat for later (`chat-compact`,
-  `chat-schedule-delete`).
+- A playbook that changes application data and ends with a one-line report never offers to delete
+the chat it ran in. The application deletes a chat only when the user asked for it (or, for a chat
+that did nothing but the work of one playbook, when the user answers the one-line offer that
+playbook makes itself). Aligning the report and the deletion offer is no longer among these
+conventions: `chat-schedule-delete` remains the one skill that can delete a chat, because the user
+asks for it there by name.
 - For a skill that runs tests, specify narrow filters first, a relevant final suite when needed,
   runner-supported concise output, an explicit timeout, and reporting of exit status and counts.
   For a skill that waits on an already running local process or read-granted file, use a bounded

@@ -18,9 +18,10 @@ internal sealed partial class Composition
             .Hint(Hint.Resolve, "Off")
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
+            .Root<ScriptRunner>(nameof(Worker))
             // Tools
             .Transient<ScriptRunTool>(Tag.Unique)
-            .Transient<ScriptRunner, ToolReply>()
+            .Transient<ProcessScriptRunner, ToolReply>()
             // File system: the platform is one implementation of the contract, a fake in tests is another.
             .Singleton<SystemFileSystem, SystemPath>()
             .Transient((IEnumerable<IToolFactory> toolFactories) =>

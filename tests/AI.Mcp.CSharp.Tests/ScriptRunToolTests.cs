@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using ModelContextProtocol.Client;
 using Shouldly;
 using Xunit;
@@ -154,10 +155,34 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     [Fact]
     public async Task ReportsTimeoutInsteadOfHanging()
     {
+        var stopwatch = Stopwatch.StartNew();
         var result = await CallAsync(new { code = "System.Threading.Thread.Sleep(10000); 1", timeoutMs = 500 });
 
         result.GetProperty("timedOut").GetBoolean().ShouldBeTrue();
         result.GetProperty("success").GetBoolean().ShouldBeFalse();
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task TimesOutWhileAScriptWaitsForAChildProcess()
+    {
+        var result = await CallAsync(new
+        {
+            code = """
+                using System.Diagnostics;
+                var executable = Environment.ProcessPath!;
+                var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true };
+                if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                    start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "AI.Mcp.CSharp.dll"));
+                start.ArgumentList.Add("--script-worker");
+                var child = Process.Start(start)!;
+                child.WaitForExit();
+                """,
+            timeoutMs = 3000
+        });
+
+        result.GetProperty("timedOut").GetBoolean().ShouldBeTrue(result.ToString());
+        (await CallAsync(new { code = "42" })).GetProperty("returnValue").GetString().ShouldBe("42");
     }
 
     [Theory]

@@ -15,11 +15,11 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
         RunAsync,
         new McpServerToolCreateOptions
         {
-            Description = "Compile and run a C# script in this server's own process with Microsoft.CodeAnalysis.Scripting (Roslyn). "
+            Description = "Compile and run a C# script in a child process with Microsoft.CodeAnalysis.Scripting (Roslyn). "
                           + "The code is the body of a script, so top-level statements, `using` directives, and the last expression as the result are allowed. "
                           + "Everything the script writes to the console comes back in `stdout`/`stderr`, and the values of its variables come back in `variables`. "
-                          + "This is not a sandbox: `workingDirectory` and `environment` are set for the duration of the run and restored afterwards, but the script can "
-                          + $"otherwise reach whatever this process can, exactly like process_run. Output is limited to {ScriptLimits.OutputCharacters} characters per stream "
+                          + "This is not a sandbox: `workingDirectory` and `environment` apply to the child process, and the script can "
+                          + $"otherwise reach whatever the server process can, exactly like process_run. Output is limited to {ScriptLimits.OutputCharacters} characters per stream "
                           + $"and the run to {ScriptLimits.MaxTimeoutMs} ms, after which the result is reported as timed out. "
                           + $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})."
         });

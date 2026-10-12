@@ -36,7 +36,7 @@ tool for simple operations. A normal C# development request does not require exe
    simulations. Additional `imports` are namespaces; `references` are resolvable assembly names or
    DLL paths, not NuGet package names. Never assume automatic package installation.
 3. Assess real risks before execution: deletion, overwrite, moves, database/network mutations,
-   resource exhaustion and side effects of invoked programs. `cs_run` runs in the server process,
+   resource exhaustion and side effects of invoked programs. `cs_run` runs in a disposable child process,
    not a sandbox; its working directory does not restrict access. Client files may not exist on
    the server. Resolve and verify full source/destination paths, empty inputs, existing outputs,
    symlinks/junctions and source/destination overlap. Before recursive deletion or moves verify
@@ -55,9 +55,9 @@ tool for simple operations. A normal C# development request does not require exe
    does not remove its timeout. If no suitable mechanism exists, explain the limit and prepare a
    reproducible script without claiming it ran. Do not leave background Tasks in the server or
    bypass timeouts. Bound loops with a local deadline (for example `Stopwatch`) and pass local
-   cancellation tokens to cooperative I/O. Arbitrary C# is not guaranteed to stop on timeout;
-   use a controlled separate process, one this script starts itself, if hard termination or
-   isolation is required. Never stop, kill or restart a process this run did not start — another
+   cancellation tokens to cooperative I/O. The server terminates the disposable worker and its
+   child processes at the deadline; partial side effects may remain. This automatic cleanup needs
+   no separate approval. Never stop, kill or restart a process this run did not start — another
    chat's tests or build, an IDE, a server; when such a process blocks a file or a build, report
    it and name the holder, because freeing it is the user's decision. For a process this run
    started, call `ask_user` naming it or its PID and act only on an explicit affirmative answer;

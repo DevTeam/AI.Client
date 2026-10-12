@@ -4,9 +4,8 @@ using System.Text.Json;
 
 /// <summary>
 /// Everything one script run needs. The working directory and the environment are applied to the
-/// server process for the duration of the run and then restored, so they are a convenience for the
-/// script rather than a sandbox: like <c>process_run</c>, a script has whatever access the server
-/// process itself has.
+/// child process for the duration of the run, so they are a convenience for the script rather than
+/// a sandbox: like <c>process_run</c>, a script has whatever access the server process has.
 /// </summary>
 public sealed record ScriptRequest(
     string Code,

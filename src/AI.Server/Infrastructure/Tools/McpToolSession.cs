@@ -25,6 +25,12 @@ public sealed class McpToolSession : IToolSession
     /// something applied to every server's arguments.
     /// </summary>
     private static readonly string[] PathProperties = ["workingDirectory", "path", "paths", "source", "destination"];
+    // MCP schemas may include extension annotations such as x-mcp-header. They do not change
+    // argument validation, but must remain in the schema passed to the model and MCP client.
+    private static readonly BuildOptions McpSchemaBuildOptions = new()
+    {
+        Dialect = Dialect.Draft202012.With([], allowUnknownKeywords: true)
+    };
 
     private readonly McpClient _client;
     private readonly Dictionary<string, ModelContextProtocol.Protocol.Tool> _descriptors;
@@ -49,8 +55,8 @@ public sealed class McpToolSession : IToolSession
         _descriptors = descriptors.ToDictionary(tool => tool.Name);
         Tools = descriptors.Select(tool =>
         {
-            _ = JsonSchema.Build(tool.InputSchema);
-            if (tool.OutputSchema is { } outputSchema) _ = JsonSchema.Build(outputSchema);
+            _ = BuildSchema(tool.InputSchema);
+            if (tool.OutputSchema is { } outputSchema) _ = BuildSchema(outputSchema);
             var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
                 tool.InputSchema.GetRawText() + tool.OutputSchema?.GetRawText())));
             var name = ModelName(namePrefix, tool.Name);
@@ -100,7 +106,7 @@ public sealed class McpToolSession : IToolSession
         var input = canonical is null
             ? JsonSerializer.Deserialize<JsonElement>(arguments)
             : JsonSerializer.SerializeToElement(canonical);
-        var evaluation = JsonSchema.Build(schema)
+        var evaluation = BuildSchema(schema)
             .Evaluate(input, new EvaluationOptions { OutputFormat = OutputFormat.List });
         if (!evaluation.IsValid || canonical is null)
             throw new ArgumentException("Tool arguments do not match the input schema. " + Explain(evaluation), nameof(arguments));
@@ -220,6 +226,8 @@ public sealed class McpToolSession : IToolSession
         return Path.GetFullPath(path);
     }
 
+    private static JsonSchema BuildSchema(JsonElement schema) => JsonSchema.Build(schema, McpSchemaBuildOptions);
+
     public async Task<ToolCallResult> CallAsync(
         AgentTool tool,
         string arguments,
@@ -235,7 +243,7 @@ public sealed class McpToolSession : IToolSession
         var result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
         // MCP tool errors may contain only text; the output schema describes successful results.
         if (result.IsError != true && _descriptors[tool.OriginalName].OutputSchema is { } outputSchema
-            && (result.StructuredContent is not { } content || !JsonSchema.Build(outputSchema).Evaluate(content).IsValid))
+            && (result.StructuredContent is not { } content || !BuildSchema(outputSchema).Evaluate(content).IsValid))
             throw new InvalidOperationException("Tool result does not match the output schema.");
         var blocks = (result.Content ?? []).Select(Describe).ToArray();
         return new ToolCallResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,

@@ -130,7 +130,9 @@ public sealed class ExternalToolSessionTests
                 "initialize" => new { protocolVersion = "2025-11-25", capabilities = new { tools = new { } },
                     serverInfo = new { name = "Http probe", version = "1.0" } },
                 "tools/list" => new { tools = new[] { new { name = originalName, description = "HTTP probe",
-                    inputSchema = new { type = "object", properties = new { } } } } },
+                    inputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                        {"type":"object","properties":{"query":{"type":"string","x-mcp-header":"Query"}},"required":["query"]}
+                        """) } } },
                 "tools/call" => new { content = new[] { new { type = "text", text = "HTTP works" } } },
                 _ => throw new InvalidOperationException("Unexpected MCP request")
             };
@@ -152,7 +154,10 @@ public sealed class ExternalToolSessionTests
             tool.OriginalName.ShouldBe(originalName);
             tool.ModelDefinition.Name.Length.ShouldBeLessThanOrEqualTo(64);
             tool.ModelDefinition.Name.ShouldNotContain('.');
-            var result = await session.CallAsync(tool, "{}", null, Token);
+            tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("query")
+                .GetProperty("x-mcp-header").GetString().ShouldBe("Query");
+            Should.Throw<ArgumentException>(() => session.ValidateArguments(tool, "{}"));
+            var result = await session.CallAsync(tool, "{\"query\":\"test\"}", null, Token);
             result.ModelContent.ShouldContain("HTTP works");
         }
         headers.ShouldNotBeEmpty();

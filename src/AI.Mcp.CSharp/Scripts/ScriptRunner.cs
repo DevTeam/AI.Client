@@ -11,12 +11,12 @@ using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 
 /// <summary>
-/// Runs one C# script in this process with Roslyn scripting. Everything the run needs — code,
+/// Runs one C# script in the disposable worker process with Roslyn scripting. Everything the run needs — code,
 /// imports, assembly references, arguments, globals, working directory, environment and a timeout —
 /// arrives in a single <see cref="ScriptRequest"/>, and everything it produced comes back in a
 /// single <see cref="ScriptResult"/>.
 ///
-/// This is not a sandbox. Like <c>process_run</c>, a script can reach whatever the server process
+/// This is not a sandbox. Like <c>process_run</c>, a script can reach whatever the worker process
 /// can: the file system, the network, the environment. The working directory and the environment
 /// handed to the script are a convenience for the code being written, not a boundary.
 /// </summary>
@@ -113,9 +113,8 @@ public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
 
         if (timedOut)
         {
-            // A script that never awaits cannot observe the token, so the task may still be running
-            // on a thread pool thread after this returns. Cancellation is reported to the caller
-            // nonetheless; the process ends the run when the session closes.
+            // Cooperative cancellation can miss blocking script code. The parent process enforces
+            // the deadline by terminating this disposable worker when necessary.
             diagnostics.Add(new ScriptDiagnostic("Error", "CSX0001", $"Script exceeded the {request.TimeoutMs} ms timeout.", 0, 0));
         }
 

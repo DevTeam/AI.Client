@@ -13,7 +13,10 @@ tools: ["app_schedule","app_read","app_chats","ask_user"]
    Call `app_schedule` operation `Get` for that branch. Without a schedule, say the branch is not scheduled and stop.
 2. Decide what the user asked for: removing only the schedule (the default meaning of "stop",
    "unschedule", "turn off the schedule"), or deleting the chat with its history (`deleteChat` or an
-   explicit request). When that is ambiguous, ask in the confirmation below.
+   explicit request). When that is ambiguous, ask in the confirmation below. If they asked to
+   archive the chat, follow chat-archive: archiving skips a chat with any branch schedule unless
+   the user explicitly asks to remove every schedule first. A schedule removed for archiving is
+   not restored by UndoArchive.
 3. Confirm with one `ask_user` question that names the schedule in words, the next run and what
    stays: "Remove the schedule (Recommended)" keeps every message and branch and stops future runs;
    "Delete the chat" removes it with its history; "Pause instead" keeps the schedule for later.

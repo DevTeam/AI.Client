@@ -2,6 +2,7 @@ namespace AI.Application.Chats;
 
 using AI.Application.Runs;
 using AI.Application.Projects;
+using AI.Application.Schedules;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
 using AI.Domain.Chats;
@@ -17,7 +18,8 @@ public interface IChatArchiveService
 
 /// <summary>Applies only reviewed revisions. Archive operation ids survive restart and identify exactly what Undo restores.</summary>
 public sealed class ChatArchiveService(IChatService chats, IChatRepository repository,
-    IChatSynchronization synchronization, IClock clock, Func<IChatRunDispatcher> runs) : IChatArchiveService
+    IChatSynchronization synchronization, IClock clock, IChatScheduleStore schedules,
+    Func<IChatScheduler> scheduler, Func<IChatRunDispatcher> runs) : IChatArchiveService
 {
     public async Task<ChatArchivePreview> PreviewAsync(Guid projectId, ChatArchivePreviewRequest request, CancellationToken token)
     {
@@ -25,7 +27,9 @@ public sealed class ChatArchiveService(IChatService chats, IChatRepository repos
             .Where(chat => chat.ArchivedAt is null && chat.LastActivityAt < request.Before
                 && (request.IncludePinned || !chat.IsPinned)).ToArray();
         var snapshots = await runs().GetSnapshotAsync(token);
-        var eligible = candidates.Where(chat => !Busy(snapshots, chat.Id)).ToArray();
+        var scheduled = request.IncludeScheduled ? [] : (await schedules.ListAsync(projectId, token))
+            .Select(owner => owner.ChatId).ToHashSet();
+        var eligible = candidates.Where(chat => !Busy(snapshots, chat.Id) && !scheduled.Contains(chat.Id)).ToArray();
         return new ChatArchivePreview(eligible, candidates.Length - eligible.Length, request.Before);
     }
 
@@ -51,6 +55,13 @@ public sealed class ChatArchiveService(IChatService chats, IChatRepository repos
             if ((stored.Chat.ArchivedAt is not null) == request.IsArchived) continue;
             if (request.IsArchived && request.SkipBusy && Busy(await runs().GetSnapshotAsync(token), target.ChatId))
             { skipped.Add(new(target.ChatId, "Chat is running or needs attention.")); continue; }
+            if (request.IsArchived && await HasScheduleAsync(projectId, stored.Chat, token))
+            {
+                if (!request.RemoveSchedules)
+                { skipped.Add(new(target.ChatId, "Chat has a schedule. Remove its schedules before archiving.")); continue; }
+                await schedules.DeleteExceptAsync(projectId, target.ChatId, null, token);
+                scheduler().Nudge();
+            }
             stored.Chat.SetArchived(request.IsArchived, request.OperationId, clock.UtcNow);
             var saved = await repository.SaveAsync(stored.Chat, target.Revision, token);
             if (saved.IsSaved) changed.Add(new(target.ChatId, saved.Revision));
@@ -102,4 +113,12 @@ public sealed class ChatArchiveService(IChatService chats, IChatRepository repos
     private static bool Busy(IEnumerable<ChatRunSnapshot> snapshots, Guid chatId) => snapshots.Any(run => run.ChatId == chatId
         && (run.Status is ChatRunStatus.Generating or ChatRunStatus.Paused or ChatRunStatus.Interrupted or ChatRunStatus.Failed
             || run.PendingApproval is not null || run.PendingPrompt is not null || run.Wait is not null || run.Queue.Count > 0));
+
+    private async Task<bool> HasScheduleAsync(Guid projectId, ChatThread chat, CancellationToken token)
+    {
+        foreach (var branch in chat.Branches)
+            if ((await schedules.ReadAsync(projectId, chat.Id.Value, branch.Id, token))?.Schedule is not null)
+                return true;
+        return false;
+    }
 }

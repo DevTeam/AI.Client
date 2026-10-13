@@ -78,6 +78,40 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task AppChatsShouldRequireExplicitScheduleRemovalBeforeArchiving()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var settings = new
+        {
+            task = "Summarize yesterday's commits",
+            recurrence = JsonDocument.Parse(WeekdaysAtNine).RootElement,
+            timeZone = "UTC"
+        };
+        await AppFixture.CallAsync(session, "app_schedule", new { operation = "Set", operationId = Guid.NewGuid(), settings });
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        var cutoff = DateTimeOffset.UtcNow.AddDays(1);
+        var preview = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch",
+            projectId = fixture.ProjectId, operationId = Guid.NewGuid(), activityBefore = cutoff });
+        preview.GetProperty("current").GetProperty("chats").GetArrayLength().ShouldBe(0);
+        var included = await AppFixture.CallAsync(session, "app_chats", new { operation = "ArchiveBatch",
+            projectId = fixture.ProjectId, operationId = Guid.NewGuid(), activityBefore = cutoff, removeSchedules = true });
+        included.GetProperty("current").GetProperty("chats").GetArrayLength().ShouldBe(1);
+        var skipped = await AppFixture.CallAsync(session, "app_chats", new { operation = "Archive",
+            projectId = fixture.ProjectId, operationId = Guid.NewGuid(), chatId = fixture.ChatId,
+            revision = chat!.Revision }, expectError: true);
+        skipped.GetProperty("current").GetProperty("skipped")[0].GetProperty("reason").GetString()!.ShouldContain("schedule");
+
+        var archived = await AppFixture.CallAsync(session, "app_chats", new { operation = "Archive",
+            projectId = fixture.ProjectId, operationId = Guid.NewGuid(), chatId = fixture.ChatId,
+            revision = chat.Revision, removeSchedules = true });
+        archived.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))!.ArchivedAt.ShouldNotBeNull();
+        var schedule = await AppFixture.CallAsync(session, "app_schedule", new { operation = "Get" });
+        schedule.GetProperty("current").GetProperty("schedule").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task AppScheduleShouldTurnTheChatIntoAScheduledChatAndReadItBack()
     {
         await using var fixture = await AppFixture.CreateAsync();

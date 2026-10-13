@@ -14,7 +14,7 @@ public enum ChatOperation
     /// <summary>Start a new chat in a project. Needs 'title'; 'revision' is ignored.</summary>
     Create,
 
-    /// <summary>Archive one chat, preserving history and pin order.</summary>
+    /// <summary>Archive one chat, preserving history and pin order. Scheduled chats require removeSchedules.</summary>
     Archive,
     /// <summary>Restore one chat from the archive.</summary>
     Restore,
@@ -68,8 +68,10 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
                 Description = "Create and change this application's chats and branches. Read the chat with 'app_read' first and pass the "
                               + "'revision' you saw: a stale revision changes nothing and reports the current one back. 'operationId' must "
                               + "be a fresh UUID per distinct change, and the same UUID when repeating one that may already have landed. "
-                              + "Archive and Restore change one explicitly named chat using its revision, even while running; archiving does not stop it. ArchiveBatch previews chats before activityBefore "
-                              + "(an ISO timestamp with time zone offset), excluding pinned unless includePinned is true. If the project or "
+                              + "Archive and Restore change one explicitly named chat using its revision, even while running; archiving does not stop it. "
+                              + "Archiving skips a chat with any branch schedule unless removeSchedules is true, which removes all its schedules before archiving. "
+                              + "Use that option only when the user explicitly asks to stop those schedules. ArchiveBatch previews chats before activityBefore "
+                              + "(an ISO timestamp with time zone offset). It excludes pinned chats unless includePinned is true, and scheduled chats unless removeSchedules is true. If the project or "
                               + "cutoff is ambiguous, ask_user first. Apply the preview's explicit targets with dryRun false; the tool asks "
                               + "the user to confirm and does nothing without an affirmative answer. Supply confirmationText, confirmLabel and cancelLabel in the user's language.  UndoArchive restores exactly the "
                               + "chats still marked with archiveOperationId, including after restart. "
@@ -96,13 +98,13 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             ChatOperation operation, Guid projectId, Guid operationId,
             Guid? chatId = null, Guid? branchId = null, string? title = null,
             bool isPinned = false, Guid? connectionId = null, long revision = 0, bool? dryRun = null,
-            DateTimeOffset? activityBefore = null, bool includePinned = false,
+            DateTimeOffset? activityBefore = null, bool includePinned = false, bool removeSchedules = false,
             ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
             string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
             BranchSettingsPayload? branchSettings = null,
             CancellationToken cancellationToken = default) =>
             tool.ChatsAsync(run, operation, projectId, operationId, chatId, branchId, title, isPinned, connectionId,
-                revision, dryRun, activityBefore, includePinned, targets, archiveOperationId, confirmationText, confirmLabel, cancelLabel,
+                revision, dryRun, activityBefore, includePinned, removeSchedules, targets, archiveOperationId, confirmationText, confirmLabel, cancelLabel,
                 branchSettings, cancellationToken);
     }
 
@@ -118,7 +120,7 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         Guid? connectionId = null,
         long revision = 0,
         bool? dryRun = null,
-        DateTimeOffset? activityBefore = null, bool includePinned = false,
+        DateTimeOffset? activityBefore = null, bool includePinned = false, bool removeSchedules = false,
         ChatArchiveTarget[]? targets = null, Guid? archiveOperationId = null,
         string? confirmationText = null, string? confirmLabel = null, string? cancelLabel = null,
         BranchSettingsPayload? branchSettings = null,
@@ -132,9 +134,9 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             _ when dryRun == true && operation is not (ChatOperation.Delete or ChatOperation.DeleteBranch or ChatOperation.ArchiveBatch) =>
                 throw new ArgumentException(
                     $"'{operation}' cannot be rehearsed; only Delete, DeleteBranch and ArchiveBatch honour 'dryRun'.", nameof(dryRun)),
-            ChatOperation.Archive => ArchiveAsync(builder, projectId, operationId, chatId, revision, true, cancellationToken),
-            ChatOperation.Restore => ArchiveAsync(builder, projectId, operationId, chatId, revision, false, cancellationToken),
-            ChatOperation.ArchiveBatch => ArchiveBatchAsync(builder, run, projectId, operationId, activityBefore, includePinned, targets, dryRun ?? true, confirmationText, confirmLabel, cancelLabel, cancellationToken),
+            ChatOperation.Archive => ArchiveAsync(builder, projectId, operationId, chatId, revision, true, removeSchedules, cancellationToken),
+            ChatOperation.Restore => ArchiveAsync(builder, projectId, operationId, chatId, revision, false, false, cancellationToken),
+            ChatOperation.ArchiveBatch => ArchiveBatchAsync(builder, run, projectId, operationId, activityBefore, includePinned, removeSchedules, targets, dryRun ?? true, confirmationText, confirmLabel, cancelLabel, cancellationToken),
             ChatOperation.UndoArchive => UndoArchiveAsync(builder, projectId, archiveOperationId, cancellationToken),
             ChatOperation.Create => CreateAsync(builder, projectId, title, connectionId, cancellationToken),
             ChatOperation.Rename => RenameAsync(builder, projectId, chatId, title, revision, cancellationToken),
@@ -149,22 +151,24 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         });
 
     private async Task<AppWriteResult> ArchiveAsync(AppWriteBuilder builder, Guid projectId, Guid operationId,
-        Guid? chatId, long revision, bool archived, CancellationToken token)
+        Guid? chatId, long revision, bool archived, bool removeSchedules, CancellationToken token)
     {
         var result = await archive.ApplyAsync(projectId,
-            new ChatArchiveRequest(archived, operationId, [new(Required(chatId, nameof(chatId)), revision)], SkipBusy: false), token);
+            new ChatArchiveRequest(archived, operationId, [new(Required(chatId, nameof(chatId)), revision)],
+                SkipBusy: false, RemoveSchedules: removeSchedules), token);
         return ArchiveReply(builder, projectId, result);
     }
 
     private async Task<AppWriteResult> ArchiveBatchAsync(AppWriteBuilder builder, ToolRunContext run,
-        Guid projectId, Guid operationId, DateTimeOffset? before, bool includePinned,
+        Guid projectId, Guid operationId, DateTimeOffset? before, bool includePinned, bool removeSchedules,
         ChatArchiveTarget[]? targets, bool dryRun, string? confirmationText, string? confirmLabel, string? cancelLabel, CancellationToken token)
     {
         if (dryRun)
         {
             var preview = await archive.PreviewAsync(projectId,
-                new ChatArchivePreviewRequest(before ?? throw new ArgumentException("Specify activityBefore, including its time zone offset."), includePinned), token);
-            return builder.Planned($"Found {preview.Chats.Count} eligible chats; {preview.Skipped} need attention. "
+                new ChatArchivePreviewRequest(before ?? throw new ArgumentException("Specify activityBefore, including its time zone offset."),
+                    includePinned, IncludeScheduled: removeSchedules), token);
+            return builder.Planned($"Found {preview.Chats.Count} eligible chats; {preview.Skipped} are busy or scheduled. "
                 + "Pass the selected chat ids and revisions as targets to apply this preview.", projectId,
                 current: Element(preview, reply.Json));
         }
@@ -175,6 +179,7 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
         var names = string.Join(", ", listed.Take(6).Select(chat => chat.Title));
         var answer = await prompts().AskAsync(run, new UserPromptRequest([
             new UserPromptQuestion("archive", (confirmationText is { Length: > 0 and <= 400 } ? confirmationText : "Archive selected chats?")
+                + (removeSchedules ? "\nAll schedules on selected chats will be removed before archiving." : "")
                 + $"\n{targets.DistinctBy(target => target.ChatId).Count()} · {names}",
                 "Archive", [new UserPromptOption(confirmLabel is { Length: > 0 and <= 80 } ? confirmLabel : "Archive selected", null), new UserPromptOption(cancelLabel is { Length: > 0 and <= 80 } ? cancelLabel : "Cancel", null)], false, false)
         ]), TimeSpan.FromMinutes(15), token);
@@ -182,7 +187,8 @@ public sealed class AppChatsTool(IChatService chats, Func<IChatRunDispatcher> ru
             || !answer.Answers.Any(answer => answer.QuestionId == "archive" && answer.Selected.SequenceEqual([0])))
             return builder.Failed("Archiving was not confirmed. Nothing was changed.", projectId);
         return ArchiveReply(builder, projectId,
-            await archive.ApplyAsync(projectId, new ChatArchiveRequest(true, operationId, targets), token));
+            await archive.ApplyAsync(projectId, new ChatArchiveRequest(true, operationId, targets,
+                RemoveSchedules: removeSchedules), token));
     }
 
     private async Task<AppWriteResult> UndoArchiveAsync(AppWriteBuilder builder, Guid projectId, Guid? operationId, CancellationToken token) =>

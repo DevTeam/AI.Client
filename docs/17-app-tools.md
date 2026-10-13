@@ -34,7 +34,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | Tool | Operations |
 |---|---|
 | `app_read` | read any application resource and search messages |
-| `app_chats` | `Create`, `Rename`, `Pin`, `SetEndpoint`, `RenameBranch`, `Delete`, `DeleteBranch` |
+| `app_chats` | `Create`, `Rename`, `Pin`, `SetEndpoint`, `RenameBranch`, `Archive`, `Restore`, `ArchiveBatch`, `UndoArchive`, `Delete`, `DeleteBranch`; archiving skips scheduled chats unless `removeSchedules=true` removes all branch schedules first |
 | `app_runs` | `Submit`, `Stop`, `UpdateQueued`, `RemoveQueued`, `ClearQueue`, `Resume`, `SkipFailed`, `Rebase`, `MarkRead` |
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |

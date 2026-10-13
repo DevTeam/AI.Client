@@ -9,6 +9,10 @@ out the task with the `chat-schedule-run` skill and reports how it went.
 
 Any branch can have its own schedule without changing the chat kind or other branches' schedules.
 The Schedule widget and `app_schedule` tool edit the selected branch's schedule.
+Archiving skips a chat with a schedule on any branch, including paused schedules. The archive
+preview excludes these chats. `app_chats` can include them in an `ArchiveBatch` preview and remove
+all their schedules before archiving when `removeSchedules=true` is explicitly requested. Restoring
+or undoing the archive does not recreate removed schedules.
 
 ## Terms
 

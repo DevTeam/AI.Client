@@ -25,4 +25,7 @@ public interface IProjectPathAccess
     /// space, which every run of the project may read and write.
     /// </summary>
     PathAccess AccessOf(ProjectDetails project, string path);
+
+    /// <summary>True when the already link-resolved <paramref name="path"/> lies in the project's chat scratch space.</summary>
+    bool IsTemporary(ProjectDetails project, string path);
 }

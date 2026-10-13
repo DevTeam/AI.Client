@@ -24,7 +24,7 @@ public sealed class ProjectPathAccess(IFileSystem files, IPath paths, IChatTempo
     public PathAccess AccessOf(ProjectDetails project, string path)
     {
         ArgumentNullException.ThrowIfNull(project);
-        if (InTemporaryDirectory(project.Id, path)) return PathAccess.ReadWrite;
+        if (IsTemporary(project, path)) return PathAccess.ReadWrite;
         var access = PathAccess.None;
         foreach (var grant in project.DirectoryGrants)
         {
@@ -42,10 +42,11 @@ public sealed class ProjectPathAccess(IFileSystem files, IPath paths, IChatTempo
     /// own temporary directory) are followed, but the two levels the application creates count only
     /// while neither is a link, so one replaced by a junction never opens the place it points at.
     /// </summary>
-    private bool InTemporaryDirectory(Guid projectId, string path)
+    public bool IsTemporary(ProjectDetails project, string path)
     {
-        if (projectId == Guid.Empty) return false;
-        var root = paths.TrimEndingDirectorySeparator(paths.GetFullPath(temporary.ProjectRoot(projectId)));
+        ArgumentNullException.ThrowIfNull(project);
+        if (project.Id == Guid.Empty) return false;
+        var root = paths.TrimEndingDirectorySeparator(paths.GetFullPath(temporary.ProjectRoot(project.Id)));
         if (paths.GetDirectoryName(root) is not { } userRoot || paths.GetDirectoryName(userRoot) is not { } systemRoot)
             return false;
         var expected = paths.Combine(paths.Combine(ResolveLinks(systemRoot), paths.GetFileName(userRoot)),

@@ -3,6 +3,7 @@ namespace AI.Server.Hosting.Endpoints;
 using Application.Chats;
 using Application.Projects;
 using Application.Runs;
+using Application.Tools;
 using Contracts.Chats;
 using Contracts.Projects;
 using Contracts.Schedules;
@@ -67,6 +68,12 @@ public sealed class ChatEndpoints : IEndpointModule
         routes.MapPost("/api/projects/{projectId:guid}/resources/resolve",
             async (Guid projectId, ResolvePathsRequest request, IWorkspacePathResolver resolver, CancellationToken token) =>
                 Results.Ok(await resolver.ResolveAsync(projectId, request.Paths ?? [], token)));
+        routes.MapPost("/api/projects/{projectId:guid}/chats/{chatId:guid}/temporary-directory",
+            async (Guid projectId, Guid chatId, IChatService chats, IChatTemporaryDirectory temporary,
+                CancellationToken token) =>
+                await chats.GetAsync(projectId, chatId, token) is null
+                    ? Results.NotFound()
+                    : Results.Ok(new ChatTemporaryDirectoryInfo(temporary.GetOrCreate(projectId, chatId))));
         routes.MapGet("/api/projects/{projectId:guid}/resources/search",
             async (Guid projectId, string? query, int? limit, IWorkspaceFileSearch search, CancellationToken token) =>
                 Results.Ok(await search.SearchAsync(projectId, query ?? string.Empty, limit ?? 30, token)));

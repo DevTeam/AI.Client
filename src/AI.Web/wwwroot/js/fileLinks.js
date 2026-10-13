@@ -118,6 +118,7 @@ const ACCESS_TITLES = {
     none: 'The project cannot read this yet; right-click to allow access',
     missing: 'Not found: it was moved or deleted'
 };
+const TEMPORARY_TITLE = 'Chat files: deleted with the chat';
 
 export function attach(container, dotnet) {
     let scope = null;
@@ -147,9 +148,13 @@ export function attach(container, dotnet) {
         // shows it as a badge on its own icon instead.
         if (resolved.access) element.dataset.fileAccess = resolved.access;
         else delete element.dataset.fileAccess;
+        // A file in the chat's scratch space trades the file icon for a clock (app.css).
+        if (resolved.temporary) element.dataset.fileTemporary = 'true';
+        else delete element.dataset.fileTemporary;
         // A link written as a local path stays one when the Host did not find it (see undecorate).
         const state = resolved.access ?? (element.dataset.pathState === 'no' ? 'missing' : null);
-        element.title = `${ownHintOf(element) ?? resolved.path}\n${ACCESS_TITLES[state] ?? 'Right-click to add it to the message'}`;
+        const temporary = resolved.temporary ? `\n${TEMPORARY_TITLE}` : '';
+        element.title = `${ownHintOf(element) ?? resolved.path}${temporary}\n${ACCESS_TITLES[state] ?? 'Right-click to add it to the message'}`;
     };
 
     // An "@" link comes with its own hint — the token as written and the path — which the access
@@ -178,6 +183,7 @@ export function attach(container, dotnet) {
         delete element.dataset.filePath;
         delete element.dataset.fileKind;
         delete element.dataset.fileAccess;
+        delete element.dataset.fileTemporary;
         element.removeAttribute('title');
         // tooltips.js may already have moved the title here.
         delete element.dataset.tooltip;
@@ -351,7 +357,7 @@ export function attach(container, dotnet) {
             for (const input of batch) {
                 const item = byInput.get(input);
                 cache.set(input, item?.path
-                    ? { path: item.path, kind: kindName(item.kind), access: accessName(item.access) }
+                    ? { path: item.path, kind: kindName(item.kind), access: accessName(item.access), temporary: item.temporary === true }
                     : null);
             }
             applyResolved();

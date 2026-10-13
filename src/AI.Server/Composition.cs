@@ -204,6 +204,7 @@ internal sealed class AspNetComposition
             .Root<IChatReplySuggestions>()
             .Root<IResourceService>()
             .Root<IWorkspacePathResolver>()
+            .Root<IChatTemporaryDirectory>()
             .Root<IWorkspaceFileSearch>()
             .Root<IReviewService>()
             .Root<IWorkspaceUndoService>()

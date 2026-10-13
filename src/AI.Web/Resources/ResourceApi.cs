@@ -52,6 +52,15 @@ public sealed class ResourceApi(HttpClient http) : IResourceApi
         return await response.Content.ReadFromJsonAsync<ResolvedPath[]>(cancellationToken) ?? [];
     }
 
+    public async Task<string> GetChatTemporaryDirectoryAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"api/projects/{projectId}/chats/{chatId}/temporary-directory", null,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ChatTemporaryDirectoryInfo>(cancellationToken))?.Path
+            ?? throw new InvalidOperationException("The resource service returned no directory.");
+    }
+
     public async Task<ResourceSearchResult> SearchAsync(Guid projectId, string query, int limit,
         CancellationToken cancellationToken)
     {

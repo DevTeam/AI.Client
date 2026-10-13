@@ -2030,6 +2030,53 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     background: var(--color-fill-strong);
 }
 
+/* The chat's scratch space sits under the stored grants but is none of them: a clock instead of a
+   lock, no mode or edit action, and a dashed "temporary" tag. Shape, not colour, sets it apart, so
+   it reads the same under every theme and accent. The whole label opens it in the preview. */
+.directory-chat-files-open {
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.directory-chat-files-open:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+}
+
+.directory-chat-files-open > .app-icon {
+    flex: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+.directory-chat-files-row > .directory-row-main {
+    padding-right: 1.9rem;
+}
+
+.directory-temporary-tag {
+    flex: none;
+    padding: 0 0.35rem;
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-xs);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-2xs);
+    line-height: 1.5;
+}
+
+.directory-menu-note {
+    margin: 0;
+    padding: 0.35rem 0.9rem 0.45rem;
+    border-top: 1px solid var(--color-border-subtle);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-md);
+}
+
 @media (hover: none), (pointer: coarse) {
     .project-nav-row.selected > .project-action-button,
     .chat-nav-row.selected > .chat-row-action,
@@ -7922,6 +7969,11 @@ a.resource-pill-target.file-link { cursor: context-menu; }
 .resource-pill-target::before { width: 1em; height: 1em; margin-right: .3em; }
 .markdown-content .file-link:not(.mention-link) { --mention-icon: var(--file-icon); }
 .markdown-content .file-link:not(.mention-link)[data-file-kind="Directory"] { --mention-icon: var(--directory-icon); }
+/* A file in the chat's scratch space shows a clock instead of the page: it is deleted with the chat. */
+.markdown-content .file-link[data-file-temporary]:not([data-file-kind="Directory"]),
+.resource-pill-target.file-link[data-file-temporary]:not([data-file-kind="Directory"]) {
+    --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+}
 .file-link[data-file-access="write"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.6 23.4l.9-3.7 5.4-5.4a1.9 1.9 0 0 1 2.7 2.7l-5.4 5.4Z' fill='black'/%3E%3C/svg%3E"); }
 .file-link[data-file-access="none"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='18.5' cy='18.5' r='4.2'/%3E%3Cpath d='M15.5 15.5l6 6'/%3E%3C/svg%3E"); }
 .file-link[data-path-state="no"] { --mention-badge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M15.5 15.5l6 6M21.5 15.5l-6 6'/%3E%3C/svg%3E"); }

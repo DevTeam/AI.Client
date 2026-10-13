@@ -50,7 +50,8 @@ public sealed partial class WorkspacePathResolver(IProjectService projects, IDir
                 var path = access.ResolveLinks(probe.CanonicalPath);
                 var kind = probe.FileExists ? ChatResourceKind.File : ChatResourceKind.Directory;
                 var allowed = access.AccessOf(project, path);
-                if (allowed != PathAccess.None || absolute) return new ResolvedPath(written, path, kind, allowed);
+                if (allowed != PathAccess.None || absolute)
+                    return new ResolvedPath(written, path, kind, allowed, access.IsTemporary(project, path));
             }
             catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException
                                               or NotSupportedException)

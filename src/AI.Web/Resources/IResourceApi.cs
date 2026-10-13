@@ -13,6 +13,9 @@ public interface IResourceApi
     /// <summary>What each path names and whether the project may read it; see <see cref="ResolvedPath"/>.</summary>
     Task<IReadOnlyList<ResolvedPath>> ResolveAsync(Guid projectId, IReadOnlyList<string> paths, CancellationToken cancellationToken);
 
+    /// <summary>The scratch directory of the chat, created when it does not exist yet.</summary>
+    Task<string> GetChatTemporaryDirectoryAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+
     /// <summary>Files and directories of the project whose name or relative path matches <paramref name="query"/>.</summary>
     Task<ResourceSearchResult> SearchAsync(Guid projectId, string query, int limit, CancellationToken cancellationToken);
 

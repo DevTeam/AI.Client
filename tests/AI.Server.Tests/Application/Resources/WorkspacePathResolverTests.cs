@@ -97,6 +97,7 @@ public sealed class WorkspacePathResolverTests : IDisposable
 
             // Every chat of the project shares its scratch space; another project's stays closed.
             result.Select(item => item.Access).ShouldBe([PathAccess.ReadWrite, PathAccess.None]);
+            result.Select(item => item.Temporary).ShouldBe([true, false]);
         }
         finally
         {

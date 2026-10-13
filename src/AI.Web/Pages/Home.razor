@@ -194,7 +194,7 @@
                                 <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" title="@(_directoriesExpanded ? "Collapse project directory grants" : "Show project directory grants")" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
                                 <AppIcon Name="folder" />
                                 <span class="nav-item-label directory-label">Directories</span>
-                                <span class="directory-count" title="Directories the assistant's file tools are allowed to access for this project">@_security.DirectoryGrants.Count</span>
+                                <span class="directory-count" title="@($"{_security.DirectoryGrants.Count} project directories the assistant's file tools may access, plus the chat files")">@_security.DirectoryGrants.Count + 1</span>
                             </span>
                             <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
                         </div>
@@ -225,6 +225,27 @@
                                 </div>
                             }
                         }
+                    }
+                    @if (_security.DirectoryGrants.Count == 0 || _directoriesExpanded)
+                    {
+                        @* The chat's scratch space: always readable and writable, never stored as a
+                           grant, deleted with the chat. Dashed and marked so it never reads as one. *@
+                        <div class="directory-nav-row directory-chat-files-row @(_security.DirectoryGrants.Count > 0 ? "directory-nav-row-child" : string.Empty)">
+                            <button class="directory-row-main directory-chat-files-open" type="button" title="Files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
+                                <AppIcon Name="clock" />
+                                <span class="nav-item-label directory-name">Chat files</span>
+                                <span class="directory-temporary-tag">temporary</span>
+                            </button>
+                            <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == ChatFilesMenuId ? "menu-open" : string.Empty)" type="button" title="Chat files menu" aria-label="Chat files menu" @onclick="() => ToggleDirectoryMenu(ChatFilesMenuId)"><AppIcon Name="more" /></button>
+                            @if (_directoryMenuId == ChatFilesMenuId)
+                            {
+                                <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                    <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="folder" />Open this chat's files</button>
+                                    <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
+                                    <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
+                                </div>
+                            }
+                        </div>
                     }
                 </div>
                 </div>

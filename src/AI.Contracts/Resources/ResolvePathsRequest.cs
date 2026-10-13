@@ -8,9 +8,14 @@ public sealed record ResolvePathsRequest(IReadOnlyList<string> Paths);
 /// otherwise <c>Path</c> is the canonical absolute form a reference would store. <c>Access</c> is
 /// what the project's tools may do there: <c>None</c> for an absolute path outside every directory
 /// the project may read — the person can then grant access to it; a relative path is only ever
-/// found inside those directories.
+/// found inside those directories. <c>Temporary</c> is true for a path in the project's chat scratch
+/// space, which is deleted with its chat.
 /// </summary>
-public sealed record ResolvedPath(string Input, string? Path, ChatResourceKind? Kind, PathAccess Access = PathAccess.None);
+public sealed record ResolvedPath(string Input, string? Path, ChatResourceKind? Kind, PathAccess Access = PathAccess.None,
+    bool Temporary = false);
+
+/// <summary>The private scratch directory of one chat, shared by its branches and deleted with it.</summary>
+public sealed record ChatTemporaryDirectoryInfo(string Path);
 
 /// <summary>What a project's directory grants allow at a path.</summary>
 public enum PathAccess { None, Read, ReadWrite }

@@ -483,3 +483,9 @@ This replaces the parts of the 2026-10-08 Recents, Scheduled and labelled-groups
 - The action row under a message (`.message-actions`) keeps its height but is hidden at rest, so the feed reads as text rather than as rows of icons. It appears on the message under the pointer or holding keyboard focus (`:focus-visible`, so a mouse click does not pin it), on the newest answer (`.branch-leaf` that is not a question), and while Copy shows its check.
 - It appears at once and hides after `--duration-fast`, so a pointer crossing between messages does not make it blink. The buttons rise one after another from the message's own edge: left to right under an answer, right to left under a question.
 - Without hover (touch) the row is always shown; under reduced motion it only fades.
+
+## A glint, not a line, when a reply lands (2026-10-14)
+
+- The 1px full-width blue line drawn under a reply that had just landed, held for 5 s and faded, read as a rule between sections rather than as a signal, and sat as a second horizontal stroke under the now-visible action row. It is replaced by a faint accent hairline along which a glint runs once from left to right; both dissolve where they are, about 1.7 s in all (`--branch-leaf-draw`, `-hold`, `-fade`; `BranchLeafLineLifetime` in `Home.razor` is 2 s).
+- It takes the accent, not `--color-unread`: the user is looking at the chat when it plays, so it marks completion, not something left unseen. The unread blue stays with the dots, counts and history markers. The answer and the folded turn summary now share one rule; before, one was blue and the other accent.
+- Under reduced motion the glint is dropped; the hairline still appears and dissolves.

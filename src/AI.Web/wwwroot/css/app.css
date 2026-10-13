@@ -42,12 +42,12 @@
     font-family: var(--font-sans);
     background: var(--color-bg);
     color: var(--color-text);
-    /* Lifetime of the transient accent line under a just-arrived assistant message.
-       Home.razor's BranchLeafLineLifetime must stay >= the sum of these three, or the
-       class is dropped mid-animation and the line vanishes with a jump. */
-    --branch-leaf-draw: 0.6s;
-    --branch-leaf-hold: 5s;
-    --branch-leaf-fade: 0.8s;
+    /* Lifetime of the transient accent glint under a just-arrived reply: the sweep, a beat,
+       then the fade. Home.razor's BranchLeafLineLifetime must stay >= the sum of these three,
+       or the class is dropped mid-animation and the line vanishes with a jump. */
+    --branch-leaf-draw: 1.1s;
+    --branch-leaf-hold: 0.1s;
+    --branch-leaf-fade: 0.5s;
     /* Native checkboxes, radios, ranges and progress bars take the accent the user picked. */
     accent-color: var(--color-accent-strong);
 }
@@ -3377,32 +3377,54 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     padding-bottom: 0.3rem;
 }
 
-/* Drawn left-to-right, held, then faded out in place, on the instant the leaf becomes
-   a new assistant message. --color-unread keeps it consistent with the unread history
-   marker and the sidebar's unread dot; a pseudo-element (not a border)
-   keeps the animation on transform/opacity, off the layout path, so it never
-   causes a reflow. Draw and fade are two animations rather than one set of keyframes:
-   a single timeline has to scale the line back to zero to end, which reads as the line
-   rewinding itself instead of dissolving where it was drawn. */
-.workspace-message.branch-leaf-arrived::after {
+/* The moment a reply lands, a faint accent hairline shows under it, a glint runs along it once
+   from left to right, and both dissolve where they are. It is a gesture of completion, not a mark
+   to clear later, so it takes the accent (see the regulation's colour table), and it is gone in
+   under two seconds, before it can be read as a rule between sections. Pseudo-elements keep the
+   motion on transform and opacity, off the layout path: ::after is the hairline and fades,
+   ::before is the glint, 30% of the width, travelling its own width more than three times over
+   to cross. The answer and the folded turn share the rule. */
+.turn-summary.branch-leaf-arrived {
+    position: relative;
+    padding-bottom: 0.3rem;
+    overflow-x: clip;
+}
+
+:is(.workspace-message, .turn-summary).branch-leaf-arrived::after,
+:is(.workspace-message, .turn-summary).branch-leaf-arrived::before {
     content: "";
     position: absolute;
-    left: 0;
-    right: 0;
     bottom: 0;
     height: 1px;
-    border-radius: var(--radius-pill);
-    background: var(--color-unread);
-    transform-origin: left center;
-    animation:
-        branch-leaf-draw var(--branch-leaf-draw) cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards,
-        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
     pointer-events: none;
 }
 
-@keyframes branch-leaf-draw {
-    from { transform: scaleX(0); }
-    to { transform: scaleX(1); }
+:is(.workspace-message, .turn-summary).branch-leaf-arrived::after {
+    left: 0;
+    right: 0;
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+    animation:
+        branch-leaf-show var(--duration-fast) ease both,
+        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
+}
+
+:is(.workspace-message, .turn-summary).branch-leaf-arrived::before {
+    z-index: 1;
+    left: 0;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, var(--color-accent) 70%, transparent);
+    transform: translateX(-100%);
+    animation:
+        branch-leaf-sweep var(--branch-leaf-draw) cubic-bezier(0.4, 0, 0.2, 1) 1 forwards,
+        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
+}
+
+@keyframes branch-leaf-show {
+    from { opacity: 0; }
+}
+
+@keyframes branch-leaf-sweep {
+    to { transform: translateX(calc(100% / 0.3)); }
 }
 
 @keyframes branch-leaf-fade {
@@ -3410,16 +3432,10 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     to { opacity: 0; }
 }
 
-/* Reduced-motion users get the same marker without the movement: it appears at full width
-   instead of being drawn, then still fades on the same schedule. The setting is about motion,
-   not about things changing, so dropping only the transform keeps the line from sitting there
-   as a permanent rule on the transcript. */
+/* Reduced motion keeps the hairline, which still appears and dissolves on the same schedule,
+   and drops the travelling glint. */
 @media (prefers-reduced-motion: reduce) {
-    .workspace-message.branch-leaf-arrived::after {
-        transform: scaleX(1);
-        animation: branch-leaf-fade var(--branch-leaf-fade) ease-out
-            calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
-    }
+    :is(.workspace-message, .turn-summary).branch-leaf-arrived::before { content: none; }
 }
 
 .workspace-message.fork-source {
@@ -6115,26 +6131,6 @@ textarea {
     outline-offset: 0.3rem;
 }
 
-.turn-summary.branch-leaf-arrived {
-    position: relative;
-    padding-bottom: 0.3rem;
-}
-
-.turn-summary.branch-leaf-arrived::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 1px;
-    background: var(--color-accent);
-    transform-origin: left center;
-    animation:
-        branch-leaf-draw var(--branch-leaf-draw) cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards,
-        branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
-    pointer-events: none;
-}
-
 /* Intermediate blocks are mounted progressively when a turn opens. Fade each newly mounted
    block into its final position; no height animation, so scroll anchoring has a stable box from
    the first frame. */
@@ -6333,11 +6329,6 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
     .turn-summary-chevron { transition: none; }
-    .turn-summary.branch-leaf-arrived::after {
-        transform: scaleX(1);
-        animation: branch-leaf-fade var(--branch-leaf-fade) ease-out
-            calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
-    }
     .workspace-message.turn-message-arriving { animation: none; }
     .tool-row-arriving,
     .tool-row-resolved > .tool-row > .tool-row-glyph,

@@ -103,7 +103,8 @@ The browser chrome colour in `js/theme.js` and the window background in `AI.Desk
 | Accent fills, rings, progress | `--color-accent-strong` |
 | Softer accent text, words on accent tints | `--color-accent-text` on `--color-accent-bg*` |
 | Solid accent block | `--color-accent-fill` under `--color-on-accent` |
-| Unseen results: unread dots, counts, history markers, the arrival line of a new reply | `--color-unread` (always blue, independent of the accent) |
+| The glint under a reply that has just landed: a gesture of completion, not a mark to clear | `--color-accent` (its hairline: a 30% `color-mix` of it) |
+| Unseen results: unread dots, counts, history markers | `--color-unread` (always blue, independent of the accent) |
 | The application's own blue: the startup progress bar | `--color-brand` (always blue, independent of the accent) |
 | A run in progress: the ring dot, the outlined branch count, the dashed history marker | `--color-generating` (neutral grey in every theme; the shape, not the colour, sets it apart) |
 | Status icons and dots | `--color-danger`, `--color-warning`, `--color-success` |

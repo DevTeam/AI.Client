@@ -1847,9 +1847,9 @@ else if (_guideInvitation is { } guideInvitation)
     // Cancels the pending clear. Without it, a second arrival on the same leaf leaves the first timer
     // running, and it wipes the marker mid-animation of the second one.
     private CancellationTokenSource? _justArrivedLeafCancellation;
-    // Must stay >= --branch-leaf-draw + --branch-leaf-hold + --branch-leaf-fade in app.css (0.6 + 5 + 0.8s):
+    // Must stay >= --branch-leaf-draw + --branch-leaf-hold + --branch-leaf-fade in app.css (1.1 + 0.1 + 0.5s):
     // dropping the class earlier cuts the fade off and the line disappears with a jump.
-    private static readonly TimeSpan BranchLeafLineLifetime = TimeSpan.FromMilliseconds(6700);
+    private static readonly TimeSpan BranchLeafLineLifetime = TimeSpan.FromMilliseconds(2000);
     // Per-branch memory of whether the last seen run was Generating — used to detect the transition that
     // produced the new leaf. Cleared on chat/project switch.
     private readonly Dictionary<Guid, bool> _wasGeneratingByBranch = [];

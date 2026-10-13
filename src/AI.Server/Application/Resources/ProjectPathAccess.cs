@@ -1,10 +1,12 @@
 namespace AI.Application.Resources;
 
+using AI.Application.Tools;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 
-public sealed class ProjectPathAccess(IFileSystem files, IPath paths) : IProjectPathAccess
+public sealed class ProjectPathAccess(IFileSystem files, IPath paths, IChatTemporaryDirectory temporary)
+    : IProjectPathAccess
 {
     /// <summary>
     /// Resolves the path the way the contract's link resolver does: the canonical path with every
@@ -22,6 +24,7 @@ public sealed class ProjectPathAccess(IFileSystem files, IPath paths) : IProject
     public PathAccess AccessOf(ProjectDetails project, string path)
     {
         ArgumentNullException.ThrowIfNull(project);
+        if (InTemporaryDirectory(project.Id, path)) return PathAccess.ReadWrite;
         var access = PathAccess.None;
         foreach (var grant in project.DirectoryGrants)
         {
@@ -31,6 +34,25 @@ public sealed class ProjectPathAccess(IFileSystem files, IPath paths) : IProject
             access = PathAccess.Read;
         }
         return access;
+    }
+
+    /// <summary>
+    /// Whether the path lies in the project's chat scratch space, which every run of the project is
+    /// granted read and write to without a stored grant. Links above the scratch space (the user's
+    /// own temporary directory) are followed, but the two levels the application creates count only
+    /// while neither is a link, so one replaced by a junction never opens the place it points at.
+    /// </summary>
+    private bool InTemporaryDirectory(Guid projectId, string path)
+    {
+        if (projectId == Guid.Empty) return false;
+        var root = paths.TrimEndingDirectorySeparator(paths.GetFullPath(temporary.ProjectRoot(projectId)));
+        if (paths.GetDirectoryName(root) is not { } userRoot || paths.GetDirectoryName(userRoot) is not { } systemRoot)
+            return false;
+        var expected = paths.Combine(paths.Combine(ResolveLinks(systemRoot), paths.GetFileName(userRoot)),
+            paths.GetFileName(root));
+        var resolved = paths.TrimEndingDirectorySeparator(ResolveLinks(root));
+        return string.Equals(resolved, paths.TrimEndingDirectorySeparator(expected), paths.Comparison)
+               && InGrant(path, resolved, recursive: true);
     }
 
     private bool InGrant(string path, string root, bool recursive) => paths.IsInside(path, root, recursive);

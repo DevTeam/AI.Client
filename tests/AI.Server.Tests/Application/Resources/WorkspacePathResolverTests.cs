@@ -6,6 +6,8 @@ using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Infrastructure.Storage;
+using AI.Infrastructure.Tools;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -46,7 +48,7 @@ public sealed class WorkspacePathResolverTests : IDisposable
         var files = new SystemFileSystem();
         var paths = new SystemPath();
         var resolver = new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(files, paths),
-            new ProjectPathAccess(files, paths));
+            new ProjectPathAccess(files, paths, new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, files, paths)));
 
         var result = await resolver.ResolveAsync(projectId,
             ["src/Program.cs:12", "./src", program, "docs", secret, "missing.cs", "../outside/secret.txt",
@@ -67,5 +69,39 @@ public sealed class WorkspacePathResolverTests : IDisposable
         result[4].Path.ShouldBe(secret, StringCompareShould.IgnoreCase);
         result[6].Path.ShouldBeNull();
         foreach (var item in result.Skip(7)) item.Path.ShouldBe(program, StringCompareShould.IgnoreCase);
+    }
+
+    [Fact]
+    public async Task ShouldOpenTheProjectChatScratchSpaceWithoutAStoredGrant()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var files = new SystemFileSystem();
+        var paths = new SystemPath();
+        var temporary = new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, files, paths);
+        var projectId = Guid.CreateVersion7();
+        var otherId = Guid.CreateVersion7();
+        try
+        {
+            var own = Path.Combine(temporary.GetOrCreate(projectId, Guid.CreateVersion7()), "test.md");
+            var foreign = Path.Combine(temporary.GetOrCreate(otherId, Guid.CreateVersion7()), "test.md");
+            await File.WriteAllTextAsync(own, "# Own", token);
+            await File.WriteAllTextAsync(foreign, "# Foreign", token);
+            var project = new ProjectDetails(projectId, "Project", "", DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch, 1, [], [], []);
+            var projects = new Mock<IProjectService>();
+            projects.Setup(item => item.GetAsync(projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
+            var resolver = new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(files, paths),
+                new ProjectPathAccess(files, paths, temporary));
+
+            var result = await resolver.ResolveAsync(projectId, [own, foreign], token);
+
+            // Every chat of the project shares its scratch space; another project's stays closed.
+            result.Select(item => item.Access).ShouldBe([PathAccess.ReadWrite, PathAccess.None]);
+        }
+        finally
+        {
+            temporary.DeleteProject(projectId);
+            temporary.DeleteProject(otherId);
+        }
     }
 }

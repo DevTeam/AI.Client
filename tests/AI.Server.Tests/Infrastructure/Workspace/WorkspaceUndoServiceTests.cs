@@ -11,6 +11,8 @@ using AI.Contracts.Workspace;
 using AI.Infrastructure.Storage;
 using AI.Infrastructure.Workspace;
 using AI.Application.Resources;
+using AI.Infrastructure.Tools;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -38,7 +40,7 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
         var assets = new ResourceAssetService(location.Object, projects.Object, files, paths,
             new AtomicFileWriter(files));
         var undo = new WorkspaceUndoService(location.Object, files, assets, projects.Object,
-            new ProjectPathAccess(files, paths));
+            new ProjectPathAccess(files, paths, new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, files, paths)));
         return (undo, new WorkspaceChangeTracker(new LineDiff(), undo, files, paths));
     }
 

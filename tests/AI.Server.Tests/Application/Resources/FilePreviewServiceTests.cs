@@ -6,6 +6,8 @@ using AI.Application.Resources;
 using AI.Contracts.Projects;
 using AI.Infrastructure.Storage;
 using System.IO.Compression;
+using AI.Infrastructure.Tools;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -143,7 +145,7 @@ public sealed class FilePreviewServiceTests
                 [new DirectoryGrantSettings(Guid.NewGuid(), "Files", Root, true, ["read"])], [], []);
             var projects = new Mock<IProjectService>();
             projects.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => Project);
-            var access = new ProjectPathAccess(new SystemFileSystem(), new SystemPath());
+            var access = new ProjectPathAccess(new SystemFileSystem(), new SystemPath(), new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, new SystemFileSystem(), new SystemPath()));
             var text = new FilePreviewTextReader(new SystemFileSystem());
             var formats = new FilePreviewFormats([new DirectoryFilePreviewFormat(access, new SystemFileSystem()), new ArchiveFilePreviewFormat(),
                 new MediaFilePreviewFormat(), new MarkupFilePreviewFormat(text)], new TextFilePreviewFormat(text));

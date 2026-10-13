@@ -41,6 +41,12 @@ public sealed partial class ChatTemporaryDirectory(
         TryDelete(ProjectPath(projectId));
     }
 
+    public string ProjectRoot(Guid projectId)
+    {
+        if (projectId == Guid.Empty) throw new ArgumentException("A project is required for temporary storage.");
+        return ProjectPath(projectId);
+    }
+
     private string ProjectPath(Guid projectId) => Path.Combine(_root, projectId.ToString("N"));
 
     private static string UserKey()

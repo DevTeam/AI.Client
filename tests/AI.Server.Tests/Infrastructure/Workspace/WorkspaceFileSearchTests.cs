@@ -6,6 +6,8 @@ using AI.Contracts.FileSystem;
 using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 using AI.Infrastructure.Workspace;
+using AI.Infrastructure.Tools;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -31,7 +33,7 @@ public sealed class WorkspaceFileSearchTests : IDisposable
         clock.SetupGet(item => item.UtcNow).Returns(DateTimeOffset.UnixEpoch);
         var files = new SystemFileSystem();
         var paths = new SystemPath();
-        _search = new WorkspaceFileSearch(projects.Object, new ProjectPathAccess(files, paths), clock.Object,
+        _search = new WorkspaceFileSearch(projects.Object, new ProjectPathAccess(files, paths, new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, files, paths)), clock.Object,
             files, paths);
     }
 

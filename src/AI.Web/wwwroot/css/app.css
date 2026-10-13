@@ -186,6 +186,9 @@
     /* An unread response is always the blue accent's -strong, whatever accent the user picked, so
        its meaning does not change with the accent; attention and failure retain status colours. */
     --color-unread: #4f91dc;
+    /* The application's own blue, as on its icon: the blue accent's -strong under every accent, for
+       the startup screen, which shows the product rather than the user's choice. */
+    --color-brand: #4f91dc;
     /* A run in progress: a neutral grey, the same in every theme family and accent; the mark's
        shape (a ring, an outline, a dashed line) tells it apart from the solid status dots. */
     --color-generating: var(--color-text-muted);
@@ -325,6 +328,7 @@
     --color-accent-fill: #2a78d0;
     --color-on-accent: #ffffff;
     --color-unread: #2a78d0;
+    --color-brand: #2a78d0;
     --color-danger: #d0392f;
     --color-danger-text: #b3261e;
     --color-danger-text-strong: #8f1a13;
@@ -485,7 +489,7 @@
 .app-loading-copy strong { font-size: var(--font-size-xl); font-weight: 500; letter-spacing: 0.01em; }
 .app-loading-copy span { color: var(--color-text-subtle); font-size: var(--font-size-base); }
 .app-loading-track { width: min(15rem, 58vw); height: 0.2rem; overflow: hidden; border-radius: var(--radius-2xl); background: var(--color-fill-active); }
-.app-loading-track span { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--color-accent-strong); animation: app-loading-progress 1.4s ease-in-out infinite; }
+.app-loading-track span { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--color-brand); animation: app-loading-progress 1.4s ease-in-out infinite; }
 
 @keyframes app-loading-progress { 0% { transform: translateX(-110%); } 55% { transform: translateX(95%); } 100% { transform: translateX(245%); } }
 

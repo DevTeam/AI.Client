@@ -85,7 +85,7 @@ A selector that means "a light theme" names both light themes: `:root:is([data-t
 
 Accent and status colours belong to the accent the user picked. They are written once per family, so switching between themes of one family never recolours them. Blue is hand-tuned in the theme blocks; every other accent derives all `--color-accent-*` tokens from its swatch, once for the dark family and once for the light family.
 
-`--color-unread` is the exception: it keeps the blue accent's `-strong` value under every accent, so an unseen result looks the same whatever accent the user picked.
+`--color-unread` and `--color-brand` are the exceptions: they keep the blue accent's `-strong` value under every accent, so an unseen result and the startup screen look the same whatever accent the user picked.
 
 The browser chrome colour in `js/theme.js` and the window background in `AI.Desktop/App.axaml` mirror `--color-bg` of each theme and change together with it.
 
@@ -104,6 +104,7 @@ The browser chrome colour in `js/theme.js` and the window background in `AI.Desk
 | Softer accent text, words on accent tints | `--color-accent-text` on `--color-accent-bg*` |
 | Solid accent block | `--color-accent-fill` under `--color-on-accent` |
 | Unseen results: unread dots, counts, history markers, the arrival line of a new reply | `--color-unread` (always blue, independent of the accent) |
+| The application's own blue: the startup progress bar | `--color-brand` (always blue, independent of the accent) |
 | A run in progress: the ring dot, the outlined branch count, the dashed history marker | `--color-generating` (neutral grey in every theme; the shape, not the colour, sets it apart) |
 | Status icons and dots | `--color-danger`, `--color-warning`, `--color-success` |
 | Status words | `--color-danger-text`, `--color-warning-text`, `--color-success-text` |

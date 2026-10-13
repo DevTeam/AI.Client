@@ -477,3 +477,9 @@ This replaces the parts of the 2026-10-08 Recents, Scheduled and labelled-groups
 
 - The order of the projects is kept by the Host (`project-order.json`, `PUT /api/projects/order`) instead of the browser, so it is the same in the desktop app, the browser and on every device, like the order of pinned chats. Dragging a project or Alt+Up/Down sends the whole order; a project the order does not name yet, such as a new one, comes after the others by name. An order a browser still held under `ai-client.project-order.v1` is handed to the Host once and then removed.
 - The desktop app's page lost everything it kept in `localStorage` on every start, because the embedded server's port, and with it the origin, changes each time: the project order, the sidebar's width and folds, Recents and Scheduled folds, the unfolded projects, drafts. The desktop now keeps a copy of those entries (`ui-state.json`) and restores it before the page starts, as it already did for the settings (see [Desktop](23-desktop.md)).
+
+## Message actions surface on hover (2026-10-14)
+
+- The action row under a message (`.message-actions`) keeps its height but is hidden at rest, so the feed reads as text rather than as rows of icons. It appears on the message under the pointer or holding keyboard focus (`:focus-visible`, so a mouse click does not pin it), on the newest answer (`.branch-leaf` that is not a question), and while Copy shows its check.
+- It appears at once and hides after `--duration-fast`, so a pointer crossing between messages does not make it blink. The buttons rise one after another from the message's own edge: left to right under an answer, right to left under a question.
+- Without hover (touch) the row is always shown; under reduced motion it only fades.

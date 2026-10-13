@@ -3542,6 +3542,61 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     color: var(--color-text);
 }
 
+/* The row keeps its height but rests hidden: it surfaces on the message under the pointer or
+   keyboard focus, on the newest answer, and while Copy shows its check. It arrives at once and
+   leaves after a beat, so a pointer crossing to the next message does not make it blink. The
+   buttons rise one after another from the message's own edge; `translate` carries that so the
+   press `transform` keeps its own timing. Opacity sits on the row, as a disabled button already
+   has its own. */
+.message-actions {
+    opacity: 0;
+    transition: opacity var(--duration-fast) ease var(--duration-fast);
+}
+
+.message-actions .icon-action {
+    translate: 0 0.2rem;
+    transition: translate var(--duration-base) ease var(--duration-fast),
+                background-color var(--duration-fast) ease,
+                color var(--duration-fast) ease,
+                transform var(--duration-fast) ease;
+}
+
+.workspace-message:is(:hover, :has(:focus-visible), .branch-leaf:not(.user)) .message-actions,
+.message-actions:has(.is-copied) {
+    opacity: 1;
+    transition: opacity var(--duration-fast) ease;
+}
+
+.workspace-message:is(:hover, :has(:focus-visible), .branch-leaf:not(.user)) .message-actions .icon-action,
+.message-actions:has(.is-copied) .icon-action {
+    translate: none;
+    transition: translate var(--duration-base) var(--ease-emphasized) var(--message-action-stagger, 0s),
+                background-color var(--duration-fast) ease,
+                color var(--duration-fast) ease,
+                transform var(--duration-fast) ease;
+}
+
+.message-actions .icon-action:nth-child(2) { --message-action-stagger: calc(var(--duration-fast) / 4); }
+.message-actions .icon-action:nth-child(3) { --message-action-stagger: calc(var(--duration-fast) / 2); }
+.message-actions .icon-action:nth-child(4) { --message-action-stagger: calc(var(--duration-fast) * 3 / 4); }
+
+/* A question's row is right-aligned, so it unfolds from the right. */
+.workspace-message.user .message-actions .icon-action:nth-child(n) { --message-action-stagger: 0s; }
+.workspace-message.user .message-actions .icon-action:nth-last-child(2) { --message-action-stagger: calc(var(--duration-fast) / 4); }
+.workspace-message.user .message-actions .icon-action:nth-last-child(3) { --message-action-stagger: calc(var(--duration-fast) / 2); }
+.workspace-message.user .message-actions .icon-action:nth-last-child(4) { --message-action-stagger: calc(var(--duration-fast) * 3 / 4); }
+
+/* No pointer to hover with: the actions stay. */
+@media (hover: none) {
+    .message-actions { opacity: 1; }
+    .message-actions .icon-action { translate: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-actions .icon-action:nth-child(n) { translate: none; --message-action-stagger: 0s; }
+    .workspace-message.user .message-actions .icon-action:nth-child(n) { --message-action-stagger: 0s; }
+}
+
 .message-copy-action .copied-icon,
 .message-copy-action.is-copied .app-icon:not(.copied-icon) { display: none; }
 .message-copy-action.is-copied .copied-icon { display: block; color: var(--color-success); }

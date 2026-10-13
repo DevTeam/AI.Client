@@ -419,7 +419,7 @@
                             else { <div class="markdown-content">@((MarkupString)RenderMarkdownCached(message.Id, message.Content))</div> }
                         }
                         </div>
-                        @* Keep every action visible beneath the content. *@
+                        @* Actions sit beneath the content and surface on hover or focus; app.css says when. *@
                         <div class="message-actions">
                             @if (!string.IsNullOrWhiteSpace(message.Content))
                             {

@@ -5728,7 +5728,7 @@ else if (_guideInvitation is { } guideInvitation)
         }
 
         var direction = args.Key == "ArrowUp" ? -1 : 1;
-        if (await MoveItemAsync(_projects, project.Id, direction, ProjectOrderKey, item => item.Id))
+        if (await MoveProjectAsync(project.Id, direction))
         {
             _sidebarAnnouncement = $"Moved project {project.Name} {GetMoveDirection(direction)}.";
         }
@@ -5753,7 +5753,7 @@ else if (_guideInvitation is { } guideInvitation)
         var item = _projects[draggedIndex];
         _projects.RemoveAt(draggedIndex);
         _projects.Insert(targetIndex, item);
-        await SaveOrderAsync(ProjectOrderKey, _projects.Select(p => p.Id));
+        await SaveProjectOrderAsync();
     }
 
     // The Host already sends pinned chats first in their manual order and the rest by activity.
@@ -5992,54 +5992,71 @@ else if (_guideInvitation is { } guideInvitation)
         return true;
     }
 
-    private async Task<bool> MoveItemAsync<T>(List<T> items, Guid id, int direction, string orderKey, Func<T, Guid> idSelector)
+    private async Task<bool> MoveProjectAsync(Guid id, int direction)
     {
-        var currentIndex = items.FindIndex(item => idSelector(item) == id);
+        var currentIndex = _projects.FindIndex(item => item.Id == id);
         var targetIndex = currentIndex + direction;
-        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= items.Count)
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= _projects.Count)
         {
             return false;
         }
 
-        var item = items[currentIndex];
-        items.RemoveAt(currentIndex);
-        items.Insert(targetIndex, item);
-        await SaveOrderAsync(orderKey, items.Select(idSelector));
+        var item = _projects[currentIndex];
+        _projects.RemoveAt(currentIndex);
+        _projects.Insert(targetIndex, item);
+        await SaveProjectOrderAsync();
         return true;
     }
 
     private static string GetMoveDirection(int direction) => direction < 0 ? "up" : "down";
 
-    private const string ProjectOrderKey = "ai-client.project-order.v1";
+    // Where the project order was kept before the Host kept it. The desktop app's origin changes
+    // with its port on every start, so an order kept by the browser was lost on every restart.
+    private const string LegacyProjectOrderKey = "ai-client.project-order.v1";
 
+    /// <summary>
+    /// The Host lists the projects in their order. An order this browser still holds from before
+    /// is handed to the Host once, then forgotten here.
+    /// </summary>
     private async Task ApplyProjectOrderAsync()
     {
-        var order = await LoadOrderAsync(ProjectOrderKey);
-        if (order.Count == 0)
-        {
-            return;
-        }
-
-        var ordered = ApplyOrder(_projects, order, p => p.Id);
-        _projects.Clear();
-        _projects.AddRange(ordered);
-    }
-
-    private async Task<List<Guid>> LoadOrderAsync(string key)
-    {
+        List<Guid> order;
         try
         {
-            var json = await JsRuntime.InvokeAsync<string?>("localStorage.getItem", key);
-            return string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
+            var json = await JsRuntime.InvokeAsync<string?>("localStorage.getItem", LegacyProjectOrderKey);
+            if (string.IsNullOrEmpty(json)) return;
+            order = JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
         }
         catch (JsonException)
         {
-            return [];
+            order = [];
         }
+
+        if (order.Count > 0)
+        {
+            var ordered = ApplyOrder(_projects, order, p => p.Id);
+            _projects.Clear();
+            _projects.AddRange(ordered);
+            if (!await SaveProjectOrderAsync()) return;
+        }
+
+        await JsRuntime.InvokeVoidAsync("localStorage.removeItem", LegacyProjectOrderKey);
     }
 
-    private Task SaveOrderAsync(string key, IEnumerable<Guid> ids) =>
-        JsRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(ids)).AsTask();
+    /// <summary>Hands the order on screen to the Host; returns whether it was kept.</summary>
+    private async Task<bool> SaveProjectOrderAsync()
+    {
+        try
+        {
+            await ProjectApi.ReorderAsync([.. _projects.Select(project => project.Id)], CancellationToken.None);
+            return true;
+        }
+        catch (HttpRequestException)
+        {
+            Notifications.ShowError("Could not save the project order. Try again.");
+            return false;
+        }
+    }
 
     private static List<T> ApplyOrder<T>(IReadOnlyList<T> items, List<Guid> order, Func<T, Guid> idSelector)
     {

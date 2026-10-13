@@ -10,6 +10,12 @@ public sealed class ProjectApi(HttpClient httpClient) : IProjectApi
         await httpClient.GetFromJsonAsync<IReadOnlyList<ProjectSummary>>("api/projects", cancellationToken)
         ?? [];
 
+    public async Task ReorderAsync(IReadOnlyList<Guid> projectIds, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync("api/projects/order", new ReorderProjectsRequest(projectIds), cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         using var response = await httpClient.GetAsync($"api/projects/{id}", cancellationToken);

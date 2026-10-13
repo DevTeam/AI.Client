@@ -49,5 +49,5 @@ internal sealed partial class UiComposition
             .Singleton<App>()
             .Transient<UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller, UpdateInstallationProvider,
                 MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore,
-                JsonThemePreferenceStore, JsonClientSettingsStore, WindowsTaskbarBadge, WindowsFrameTheme, WebView2FileDropBridge>();
+                JsonThemePreferenceStore, JsonClientSettingsStore, JsonUiStateStore, WindowsTaskbarBadge, WindowsFrameTheme, WebView2FileDropBridge>();
 }

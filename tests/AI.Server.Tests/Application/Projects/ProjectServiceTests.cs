@@ -16,6 +16,7 @@ public class ProjectServiceTests
     private readonly Mock<IIdGenerator> _idGenerator = new(MockBehavior.Strict);
     private readonly Mock<IClock> _clock = new(MockBehavior.Strict);
     private readonly Mock<IGlobalSettingsRepository> _globalSettingsRepository = new(MockBehavior.Strict);
+    private readonly Mock<IProjectOrderRepository> _orderRepository = new(MockBehavior.Strict);
     private readonly DateTimeOffset _now = new(2026, 8, 12, 10, 0, 0, TimeSpan.Zero);
     private readonly ProjectId _projectId = new(Guid.Parse("019f0000-0000-7000-8000-000000000001"));
 
@@ -77,6 +78,7 @@ public class ProjectServiceTests
     {
         // Given
         var service = CreateInstance();
+        _orderRepository.Setup(i => i.LoadAsync(CancellationToken.None)).ReturnsAsync([]);
         _repository
             .Setup(i => i.ListAsync(CancellationToken.None))
             .ReturnsAsync([
@@ -90,6 +92,26 @@ public class ProjectServiceTests
         // Then
         projects.Select(i => i.Name).ShouldBe(["Alpha", "zulu"]);
         projects.Select(i => i.Revision).ShouldBe([2L, 1L]);
+    }
+
+    [Fact]
+    public async Task ShouldListProjectsInTheGivenOrderAndNewOnesAfterThemByName()
+    {
+        // Given — the order names two projects; a third, created later, is not in it yet.
+        var service = CreateInstance();
+        var zulu = new Project(new ProjectId(Guid.NewGuid()), "zulu", string.Empty, _now);
+        var alpha = new Project(new ProjectId(Guid.NewGuid()), "Alpha", string.Empty, _now);
+        var created = new Project(new ProjectId(Guid.NewGuid()), "Beta", string.Empty, _now);
+        _repository
+            .Setup(i => i.ListAsync(CancellationToken.None))
+            .ReturnsAsync([new StoredProject(alpha, 1), new StoredProject(created, 1), new StoredProject(zulu, 1)]);
+        _orderRepository.Setup(i => i.LoadAsync(CancellationToken.None)).ReturnsAsync([zulu.Id.Value, alpha.Id.Value]);
+
+        // When
+        var projects = await service.ListAsync(CancellationToken.None);
+
+        // Then
+        projects.Select(i => i.Name).ShouldBe(["zulu", "Alpha", "Beta"]);
     }
 
     [Fact]
@@ -229,7 +251,8 @@ public class ProjectServiceTests
         _repository.Object,
         _idGenerator.Object,
         _clock.Object,
-        _globalSettingsRepository.Object);
+        _globalSettingsRepository.Object,
+        _orderRepository.Object);
 
     private Project CreateProject(string name) => new(_projectId, name, string.Empty, _now);
 }

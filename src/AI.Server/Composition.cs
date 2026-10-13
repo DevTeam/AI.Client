@@ -57,7 +57,7 @@ internal sealed class Composition
             // write gates, chat synchronization, change and navigation signals, the run dispatcher,
             // usage accounting, preview tickets, parsed caches and the running update service.
             .Singleton<FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
-                JsonProjectRepository, ChatSynchronization, ChatTransportActivity,
+                JsonProjectRepository, JsonProjectOrderRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,
                 ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker,

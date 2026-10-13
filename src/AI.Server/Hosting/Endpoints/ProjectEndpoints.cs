@@ -16,6 +16,14 @@ public sealed class ProjectEndpoints : IEndpointModule
             (IProjectService service, CancellationToken cancellationToken) =>
                 service.ListAsync(cancellationToken));
 
+        routes.MapPut(
+            "/api/projects/order",
+            async (ReorderProjectsRequest request, IProjectService service, CancellationToken cancellationToken) =>
+            {
+                await service.ReorderAsync(request, cancellationToken);
+                return Results.NoContent();
+            });
+
         routes.MapGet(
             "/api/projects/{id:guid}",
             async (Guid id, IProjectService service, CancellationToken cancellationToken) =>

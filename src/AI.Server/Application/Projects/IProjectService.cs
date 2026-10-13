@@ -6,6 +6,9 @@ public interface IProjectService
 {
     Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken);
 
+    /// <summary>Remembers the order the person gave the projects; <see cref="ListAsync"/> follows it.</summary>
+    Task ReorderAsync(ReorderProjectsRequest request, CancellationToken cancellationToken);
+
     Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken);
 
     Task<ProjectDetails> CreateAsync(CreateProjectRequest request, CancellationToken cancellationToken);

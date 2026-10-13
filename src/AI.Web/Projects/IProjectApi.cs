@@ -6,6 +6,9 @@ public interface IProjectApi
 {
     Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken);
 
+    /// <summary>Remembers the order of the projects on the Host, for every client.</summary>
+    Task ReorderAsync(IReadOnlyList<Guid> projectIds, CancellationToken cancellationToken);
+
     Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken);
 
     Task<ProjectDetails> CreateAsync(CreateProjectRequest request, CancellationToken cancellationToken);

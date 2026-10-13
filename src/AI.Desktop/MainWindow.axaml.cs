@@ -18,6 +18,7 @@ internal sealed partial class MainWindow : Window
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
     private readonly IClientSettingsStore _clientSettings;
+    private readonly IUiStateStore _uiState;
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly IFileDropBridge _fileDrop;
     private readonly IWindowFrameTheme _frameTheme;
@@ -31,13 +32,14 @@ internal sealed partial class MainWindow : Window
     public event Action<string>? ThemeRequested;
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
-        IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings,
+        IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings, IUiStateStore uiState,
         ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IWindowFrameTheme frameTheme, IDesktopUpdates updates)
     {
         _start = start;
         _placements = placements;
         _workspaceLocation = workspaceLocation;
         _clientSettings = clientSettings;
+        _uiState = uiState;
         _taskbarBadge = taskbarBadge;
         _fileDrop = fileDrop;
         _frameTheme = frameTheme;
@@ -260,7 +262,8 @@ internal sealed partial class MainWindow : Window
             else if (type.GetString() == "client-settings-request")
             {
                 var saved = _clientSettings.Load();
-                WebView.InvokeScript($"window.aiClientTheme.restoreClientSettings({JsonSerializer.Serialize(saved)});");
+                var state = _uiState.Load();
+                WebView.InvokeScript($"window.aiClientTheme.restoreClientSettings({JsonSerializer.Serialize(saved)}, {JsonSerializer.Serialize(state)});");
             }
             else if (type.GetString() == "client-settings-save"
                      && root.TryGetProperty("settings", out var settings)
@@ -268,6 +271,13 @@ internal sealed partial class MainWindow : Window
                      && settings.GetString() is { } json)
             {
                 _clientSettings.Save(json);
+            }
+            else if (type.GetString() == "ui-state-save"
+                     && root.TryGetProperty("state", out var uiState)
+                     && uiState.ValueKind == JsonValueKind.String
+                     && uiState.GetString() is { } stateJson)
+            {
+                _uiState.Save(stateJson);
             }
             else if (OperatingSystem.IsWindows() && type.GetString() == "unread-count"
                      && root.TryGetProperty("count", out var value) && value.ValueKind == JsonValueKind.Number

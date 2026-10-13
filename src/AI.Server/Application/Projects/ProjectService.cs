@@ -9,13 +9,26 @@ public sealed class ProjectService(
     IProjectRepository repository,
     IIdGenerator idGenerator,
     IClock clock,
-    IGlobalSettingsRepository globalSettingsRepository) : IProjectService
+    IGlobalSettingsRepository globalSettingsRepository,
+    IProjectOrderRepository orderRepository) : IProjectService
 {
-    public async Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken) =>
-        (await repository.ListAsync(cancellationToken))
-        .OrderBy(item => item.Project.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(item => ToSummary(item.Project, item.Revision))
-        .ToArray();
+    /// <summary>
+    /// The projects in the order the person gave them; a project the order does not name yet (a
+    /// new one) follows them, by name.
+    /// </summary>
+    public async Task<IReadOnlyList<ProjectSummary>> ListAsync(CancellationToken cancellationToken)
+    {
+        var positions = (await orderRepository.LoadAsync(cancellationToken)).Distinct()
+            .Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
+        return (await repository.ListAsync(cancellationToken))
+            .OrderBy(item => positions.GetValueOrDefault(item.Project.Id.Value, int.MaxValue))
+            .ThenBy(item => item.Project.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => ToSummary(item.Project, item.Revision))
+            .ToArray();
+    }
+
+    public Task ReorderAsync(ReorderProjectsRequest request, CancellationToken cancellationToken) =>
+        orderRepository.SaveAsync(request.ProjectIds, cancellationToken);
 
     public async Task<ProjectDetails?> GetAsync(Guid id, CancellationToken cancellationToken)
     {

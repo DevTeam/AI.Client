@@ -42,4 +42,6 @@ creation time a single tool reports — is listed with its exact sites in
 
 Connections and MCP settings are written to a single `settings.json`. Secrets are protected by the user account.
 
+The order the person gave the projects is `project-order.json` beside the `projects` directory (whose every `*.json` is read as a project): a JSON array of project ids, first to last. It is not part of a project, so moving one does not change its revision. `GET /api/projects` lists the projects in that order and the ones it does not name after them, by name; `PUT /api/projects/order` replaces it. A missing or damaged file reads as no order.
+
 A command remains in the queue until the response is committed. Retries reuse the original message ID and a deterministic response ID. This prevents duplication of saved history but does not guarantee a single external HTTP request in case of failure.

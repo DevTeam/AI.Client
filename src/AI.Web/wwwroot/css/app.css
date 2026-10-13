@@ -183,8 +183,9 @@
     --color-success: #5dc97c;
     --color-success-text: #a6dcb1;
     --color-success-border: #39744b;
-    /* An unread response uses the user's accent; attention and failure retain status colours. */
-    --color-unread: var(--color-accent-strong);
+    /* An unread response is always the blue accent's -strong, whatever accent the user picked, so
+       its meaning does not change with the accent; attention and failure retain status colours. */
+    --color-unread: #4f91dc;
     /* The user's own messages: a tint of the accent the user picked, with a hairline of it, so a
        question stands apart from the answers without shouting. -inset is for what sits inside
        the bubble (code blocks, reference chips) and has to read on any accent. */
@@ -320,6 +321,7 @@
     --color-accent-bg-active: #cddff6;
     --color-accent-fill: #2a78d0;
     --color-on-accent: #ffffff;
+    --color-unread: #2a78d0;
     --color-danger: #d0392f;
     --color-danger-text: #b3261e;
     --color-danger-text-strong: #8f1a13;
@@ -2451,7 +2453,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 /* Doubled class so state beats .active and :hover — a failed message must not read as
    "just the current one" simply because the user scrolled to it. */
 .history-marker.history-marker-generating { color: var(--color-text-strong); }
-.history-marker.history-marker-unread { color: var(--color-accent); }
+.history-marker.history-marker-unread { color: var(--color-unread); }
 .history-marker.history-marker-incomplete { color: var(--color-warning); }
 .history-marker.history-marker-failed { color: var(--color-danger); }
 
@@ -3278,8 +3280,8 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 }
 
 /* Drawn left-to-right, held, then faded out in place, on the instant the leaf becomes
-   a new assistant message. --accent-color keeps it consistent with the unread history
-   marker and the scroll-hint's "scrolling" state; a pseudo-element (not a border)
+   a new assistant message. --color-unread keeps it consistent with the unread history
+   marker and the sidebar's unread dot; a pseudo-element (not a border)
    keeps the animation on transform/opacity, off the layout path, so it never
    causes a reflow. Draw and fade are two animations rather than one set of keyframes:
    a single timeline has to scale the line back to zero to end, which reads as the line
@@ -3292,7 +3294,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     bottom: 0;
     height: 1px;
     border-radius: var(--radius-pill);
-    background: var(--color-accent);
+    background: var(--color-unread);
     transform-origin: left center;
     animation:
         branch-leaf-draw var(--branch-leaf-draw) cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards,

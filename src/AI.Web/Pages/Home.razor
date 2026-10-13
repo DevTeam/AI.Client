@@ -268,7 +268,7 @@
             }
         }
         </div>
-        @if (GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
+        @if (RecentChatsShown > 0 && GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
         {
             @* The latest chats of the folded projects, a click away without unfolding their project.
                Rows look and behave like the project's own chat rows. A chat opened from here keeps
@@ -325,7 +325,7 @@
                 }
             </section>
         }
-        @if (GetSoonChats() is { Count: > 0 } allSoonChats)
+        @if (SoonChatsShown > 0 && GetSoonChats() is { Count: > 0 } allSoonChats)
         {
             @* The scheduled chats that come due within the next day, across projects, and under them
                the chats whose schedule has finished its work: how long is left before a run starts,

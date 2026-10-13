@@ -33,18 +33,20 @@ public sealed record ClientSettings
     /// <summary>How many of a running turn's latest notes stand under its row, newest at the bottom.</summary>
     public int LiveNoteCount { get; init; } = DefaultLiveNoteCount;
 
-    public const int MinRecentChatCount = 1;
+    // Zero hides the section.
+    public const int MinRecentChatCount = 0;
     public const int MaxRecentChatCount = 10;
     public const int DefaultRecentChatCount = 3;
 
-    /// <summary>How many chats the sidebar's Recents shows before "Show more".</summary>
+    /// <summary>How many chats the sidebar's Recents shows before "Show more"; zero hides the section.</summary>
     public int RecentChatCount { get; init; } = DefaultRecentChatCount;
 
-    public const int MinSoonChatCount = 1;
+    // Zero hides the section.
+    public const int MinSoonChatCount = 0;
     public const int MaxSoonChatCount = 10;
     public const int DefaultSoonChatCount = 3;
 
-    /// <summary>How many scheduled chats the sidebar's Scheduled shows before "Show more".</summary>
+    /// <summary>How many scheduled chats the sidebar's Scheduled shows before "Show more"; zero hides the section.</summary>
     public int SoonChatCount { get; init; } = DefaultSoonChatCount;
 
     /// <summary>Whether the column of chat widgets is open beside the conversation.</summary>

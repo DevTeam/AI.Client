@@ -6151,14 +6151,13 @@ textarea {
     }
 }
 
-/* The running turn's latest notes under its row, newest at the bottom. Each is written like an
-   answer, because the newest may turn out to be one; a new note rises out of the row instead of
-   snapping in. The fill mode is `backwards` so that, once arrived, the note's own opacity and
-   transform are free to carry it away again. */
+/* The running turn's latest notes under its row, newest at the bottom. A new note surfaces out
+   of a soft blur as it rises from the row instead of snapping in. The fill mode is `backwards` so
+   that, once arrived, the note's own opacity and transform are free to carry it away again. */
 .workspace-message.live-text {
     display: grid;
     grid-template-rows: 1fr;
-    animation: turn-message-arrive 300ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation: live-note-arrive calc(var(--duration-slow) * 1.5) var(--ease-emphasized) backwards;
     transition: grid-template-rows var(--duration-slow) var(--ease-emphasized),
         margin-bottom var(--duration-slow) var(--ease-emphasized),
         transform var(--duration-slow) var(--ease-emphasized),
@@ -6167,19 +6166,50 @@ textarea {
 
 .live-text-body { min-height: 0; }
 
-.workspace-message.live-text .markdown-content { transition: color var(--duration-slow) ease; }
-
-/* Text known to lead into tool calls is a remark, not the answer: it steps back once the model
-   starts the call it announced, so the eye moves on to the activity line below it. */
-.workspace-message.live-text.is-preamble .markdown-content {
+/* Every note is a remark on the way to the answer, so all of them, the newest included, read in
+   one muted voice and one size. Shading them by age or by whether they led into a call gave the
+   stack three or four greys, and a note changed colour and size under the reader as it aged. */
+.workspace-message.live-text .markdown-content {
     color: var(--color-text-muted);
     font-size: 0.92em;
 }
 
-/* Notes behind the newest step back by age, so the newest reads first with motion off too. Most
-   notes are preambles, already muted, so age starts one step below that. */
-.workspace-message.live-text.is-previous .markdown-content { color: var(--color-text-subtle); }
-.workspace-message.live-text.is-older .markdown-content { color: var(--color-text-faint); }
+@keyframes live-note-arrive {
+    from {
+        opacity: 0;
+        filter: blur(4px);
+        transform: translateY(-0.35rem);
+    }
+}
+
+/* Age is told by shape, not colour: the newest note is shown whole, the ones behind it settle to
+   two lines whose second line dissolves, and the oldest also fades in from the row above, so the
+   stack reads as text flowing out of the row. Pointing at a settled note opens it again (the
+   pointer also holds the stack still). The mask's opaque stops are currentColor, an opaque text
+   token; only their alpha counts. Browsers without calc-size() clip at once, without motion. */
+.workspace-message.live-text.is-settled:not(:hover) .markdown-content {
+    max-height: 2lh;
+    overflow: clip;
+    mask-image: linear-gradient(to bottom, currentColor 1.1lh, transparent 2lh);
+}
+
+.workspace-message.live-text.is-oldest:not(:hover) .markdown-content {
+    mask-image: linear-gradient(to bottom, color-mix(in srgb, currentColor 35%, transparent), currentColor 1.1lh, transparent 2lh);
+}
+
+@supports (height: calc-size(auto, size)) {
+    .workspace-message.live-text .markdown-content {
+        interpolate-size: allow-keywords;
+        height: auto;
+        overflow: clip;
+        transition: height var(--duration-slow) var(--ease-emphasized);
+    }
+
+    .workspace-message.live-text.is-settled:not(:hover) .markdown-content {
+        max-height: none;
+        height: calc-size(auto, min(size, 2lh));
+    }
+}
 
 /* The note pushed out of the stack, and every note once the answer streams under them: it folds
    away upwards and the notes below rise into its place. It stays mounted only for that. */

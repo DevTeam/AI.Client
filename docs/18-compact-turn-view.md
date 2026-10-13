@@ -46,7 +46,7 @@ The row no longer carries the model's text: a single truncated line of it was un
 
 ### Live text
 
-While the turn runs, the model's current text is shown under the row as an ordinary assistant message, streamed as it is written. It may turn out to be the final answer, so it is written like one: when the turn ends that way, the answer is already in place and nothing jumps.
+While the turn runs, the model's current text is shown under the row, streamed as it is written, in the muted voice of every note (see [Stack of notes](#stack-of-notes)). The final answer is not one of them: it streams in as its own message while the notes fold away.
 
 Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.DraftContent`, published by the server as the model streams, never persisted), else the text of the turn's latest intermediate assistant message.
 
@@ -57,22 +57,19 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
-- A new text fades in from the row (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation off.
+- A new text surfaces from the row out of a soft blur (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation and the settling motion off; the two-line shape stays.
 
 #### Stack of notes
 
 The texts the turn has moved past stay under the row as a stack, newest at the bottom: **Settings → Chat → Notes while working** sets how many, 1 to 5, 3 by default (`ClientSettings.LiveNoteCount`, one value for every chat on this client). With 1 the row behaves as a single live text.
 
 - **Conveyor.** A new text enters at the bottom; the oldest one, pushed out, folds away upwards (its height, gap and opacity go to zero while it rises by half a line) and the notes below it rise into its place. It stays mounted only for that and is hidden from assistive technology meanwhile. Durations are `--duration-slow` with `--ease-emphasized`.
-- **Age.** The notes behind the newest step back: the previous one in `--color-text-subtle`, older ones in `--color-text-faint`. Most notes are preambles, already muted, so age starts a step below that. With motion off this is what tells the newest apart.
+- **One voice.** Every note, the newest included, is drawn in `--color-text-muted` at a slightly smaller size. They used to step back by age (`--color-text-subtle`, then `--color-text-faint`) and by whether they had led into a call, which gave the stack three or four greys and changed a note's colour and size under the reader as it aged. The newest is the one at the bottom, next to the activity line.
+- **Settling.** Age is told by shape instead: the newest note is shown whole; the ones behind it settle to two lines (`.live-text.is-settled`), the second line dissolving to say there is more; the oldest also fades in from the row above (`.is-oldest`), so the stack reads as text flowing out of the row. The settle animates its height where `calc-size()` is supported and clips at once elsewhere. Pointing at a settled note opens it whole, and the pointer also holds the stack still (see Hold).
 - **The answer.** When the final answer starts streaming, every note folds away the same way and the activity line goes, so the end of the turn is the last step of the conveyor rather than a drop.
 - **Opened mid-run.** A turn presented for the first time (the chat or branch opened while it runs) fills the stack from its earlier notes at once, without waiting for reading time. The transcript keeps the text of a branch's notes while its last turn has no answer, for this; the notes of answered turns are folded as before.
 
 The logic lives in `TurnLiveText` (one instance per transcript) and is covered by `TurnLiveTextTests`.
-
-#### Preamble
-
-A text known to lead into tool calls is a remark, not the answer, and is drawn muted and slightly smaller (`.live-text.is-preamble`). It is known once the model step in flight has started a call (`ChatRunSnapshot.DraftToolCall`, see below) or once the text has landed as a note with tool calls attached. Until then it is drawn as a possible answer: most answers are not preceded by anything that would say otherwise.
 
 ### Activity line
 

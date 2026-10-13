@@ -247,7 +247,7 @@
                     var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
                     var current = entry.LiveAge == 0 && !entry.LiveLeaving;
                     <article @key="liveKey" id="@(current ? "message-live" : null)"
-                             class="workspace-message assistant live-text streaming @(entry.LivePreamble ? "is-preamble" : string.Empty) @(entry.LiveAge switch { 0 => string.Empty, 1 => "is-previous", _ => "is-older" }) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
+                             class="workspace-message assistant live-text streaming @(entry.LiveAge > 0 ? "is-settled" : string.Empty) @(entry.LiveOldest ? "is-oldest" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
                              aria-hidden="@(entry.LiveLeaving ? "true" : null)"
                              @onmouseenter="() => SetLiveTextHeld(true)"
                              @onmouseleave="() => SetLiveTextHeld(false)">
@@ -1447,8 +1447,8 @@
         ChatRunSnapshot? StreamingRun = null,
         string? LiveText = null,
         int LiveVersion = 0,
-        bool LivePreamble = false,
         int LiveAge = 0,
+        bool LiveOldest = false,
         bool LiveLeaving = false,
         TurnActivity? Activity = null);
 
@@ -1557,8 +1557,7 @@
                     // flight has nowhere else to appear.
                     else if (!answerStreaming && SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
                     {
-                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
-                            LivePreamble: SelectedRun.DraftToolCall is not null));
+                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id));
                     }
                 }
 
@@ -1661,8 +1660,9 @@
 
     /// <summary>
     /// The newest notes as a stack: up to <see cref="LiveNoteCount"/> of them, plus the one that
-    /// has just been pushed out, kept mounted so it can fold away instead of vanishing. Older ones
-    /// fade by age; while the answer streams, every note folds away under it.
+    /// has just been pushed out, kept mounted so it can fold away instead of vanishing. Notes behind
+    /// the newest settle to two lines, and the oldest of them dissolves into the row above. While
+    /// the answer streams, every note folds away under it.
     /// </summary>
     private void AddLiveNotes(List<RenderedFeedEntry> entries, FeedTurn turn, bool answerStreaming)
     {
@@ -1673,22 +1673,9 @@
             var note = notes[index];
             var age = notes.Count - 1 - index;
             entries.Add(new RenderedFeedEntry(LiveText: note.Text, LiveVersion: note.Id, TurnId: turn.Id,
-                LivePreamble: IsPreamble(turn, note.Text), LiveAge: age,
+                LiveAge: age, LiveOldest: age > 0 && age == Math.Min(count, notes.Count) - 1,
                 LiveLeaving: answerStreaming || age >= count));
         }
-    }
-
-    /// <summary>
-    /// Whether the shown text is known to lead into tool calls rather than being a possible answer:
-    /// the step in flight has started a call, or the text landed as a note with calls attached.
-    /// </summary>
-    private bool IsPreamble(FeedTurn turn, string shown)
-    {
-        if (SelectedRun?.DraftContent is { } draft && draft.Trim().StartsWith(shown, StringComparison.Ordinal))
-            return SelectedRun.DraftToolCall is not null;
-        return turn.IntermediateMessages.Any(message => message.Role == "Assistant"
-            && message.ToolCalls is { Count: > 0 }
-            && message.Content?.Trim().StartsWith(shown, StringComparison.Ordinal) == true);
     }
 
     /// <summary>

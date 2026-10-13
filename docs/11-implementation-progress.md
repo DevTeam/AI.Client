@@ -494,7 +494,7 @@ an idle branch, or waits in the queue while a command is in flight: the agent ta
 next tool batch's results and the model reads it with a header before its next request; whatever
 arrives after the last step boundary follows the reply. A retried turn puts the asides it had
 taken back into the queue. Messages carry `Delivery` (`Turn`, `Aside`, `InTurn`) and, when a model
-run submitted them through `app_runs`, a server-filled `Sender` (chat, branch, intent); the HTTP
+run submitted them through `app_runs`, a server-filled `Sender` (project, chat, branch, intent); the HTTP
 append endpoint drops both. Every user message except an in-turn one bounds a turn in the feed,
 the turn lookups and resume. The transcript labels asides and in-turn messages, keeps an in-turn
 message visible in a folded turn, and draws a message from another branch as a card with the

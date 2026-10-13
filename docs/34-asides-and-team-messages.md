@@ -82,7 +82,7 @@ turn" label, and an `Aside` message with an "Aside" label and no answer under it
 
 ## Team messages
 
-A message a model submits through `app_runs` carries its **sender**: the chat and branch of the run
+A message a model submits through `app_runs` carries its **sender**: the project, chat and branch of the run
 that submitted it, filled in by the server from the tool run context. A model cannot set or forge it,
 and the HTTP API never accepts one from a client. An optional **intent** says what the message is:
 
@@ -110,7 +110,10 @@ their order in the queue.
 The model reads a message with a sender under a header naming the sending branch by its current
 title and the intent, for example `[From branch "Backend — orders API" · question]`. The transcript
 shows such a message as a card of that branch instead of a bubble of the person: the branch title,
-the intent and a link that opens the branch.
+the intent and a link that opens the branch. A message from another chat names its sender as
+"Project / Chat / Branch" (the transcript reads the names from the Host, the queue row from what the
+page has already loaded) and links to that branch; a sender stored before its project was recorded is
+taken to be in the receiving chat's project.
 
 ## Team work
 
@@ -294,7 +297,8 @@ nor wait for someone to press Retry:
 `ChatMessage` gains two optional fields, written only when set:
 
 - `Delivery`: `Turn` (default, omitted), `Aside` or `InTurn`.
-- `Sender`: `{ ChatId, BranchId, Intent }`.
+- `Sender`: `{ ChatId, BranchId, Intent, ProjectId }`; `ProjectId` is absent from senders stored before it
+  was recorded.
 
 A queued run message gains `IsAside` and `Sender`. Documents written before this change read as
 ordinary turn messages without a sender.

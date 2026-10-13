@@ -443,7 +443,7 @@ public sealed class ChatRunDispatcher(
                 var joins = message.Sender is null || message.Sender.Intent is "question" or "answer" or "blocker" or "done";
                 taken.Add(new QueuedRunMessage(message.Id, message.Content, message.CreatedAt,
                     Resources: ResourceReferences.ToDomain(message.Resources), IsAside: !joins,
-                    Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null,
+                    Sender: message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null,
                     JoinsTurn: joins));
             }
             cursor = message.ParentId;
@@ -476,14 +476,14 @@ public sealed class ChatRunDispatcher(
         {
             await SubmitCoreAsync(projectId, chatId, new SubmitChatMessageRequest(id, id,
                     report, ChatSubmitMode.Send, leadId),
-                true, token, new ChatMessageSender(chatId, branchId, "blocker"));
+                true, token, new ChatMessageSender(chatId, branchId, "blocker", projectId));
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException
             or UnauthorizedAccessException or Domain.Common.DomainException) { }
     }
 
     private static MessageSender? ToContract(ChatMessageSender? sender) =>
-        sender is null ? null : new MessageSender(sender.ChatId, sender.BranchId, sender.Intent);
+        sender is null ? null : new MessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId);
 
     public Task<ChatRunSnapshot?> StopAsync(Guid projectId, Guid chatId, Guid branchId, CancellationToken cancellationToken, Guid? operationId = null) =>
         MutateAsync(projectId, chatId, branchId, runtime => { runtime.ResumeRequested = false; runtime.Cancellation?.Cancel(); runtime.State.Pause(); }, operationId, cancellationToken);

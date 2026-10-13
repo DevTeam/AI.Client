@@ -220,7 +220,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             request.ToolCallId,
             ToDomain(request.WorkspaceChanges), ResourceReferences.ToDomain(request.Resources),
             delivery: (ChatMessageDelivery)request.Delivery,
-            sender: request.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
+            sender: request.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null);
         if (role == ChatMessageRole.User) stored.Chat.SetArchived(false, Guid.Empty, now);
         if (request.ReplaceSourceId is { } replaceId)
         {
@@ -694,7 +694,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             ResourceReferences.ToContract(message.Resources),
             message.Role == ChatMessageRole.Tool ? ToolResultErrorFlag(message.Content) : null,
             (MessageDelivery)message.Delivery,
-            message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
+            message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null);
     }
 
     private static TeamMember? ToContract(ChatBranchMember? member) =>

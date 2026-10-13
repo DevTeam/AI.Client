@@ -753,7 +753,7 @@ The statistics below, under "Messages into this branch", are the per-branch figu
 - **Scope.** Whole chat or last turn, with the same switch as the other widgets. The visible branch
   is split into turns by the same rule the Models and Branches widgets use, so "the last turn" means
   the same thing in all of them; the headline says "so far" while it runs.
-- **Source of truth.** `ChatMessageView.Sender` — the `{ ChatId, BranchId, Intent }` the Host records
+- **Source of truth.** `ChatMessageView.Sender` — the `{ ChatId, BranchId, Intent, ProjectId }` the Host records
   beside a message from the sending run's own context (see `docs/34-asides-and-team-messages.md`).
   A message without a sender is the person's or this branch's own and is not counted. Nothing is
   inferred from message text, from the branch list or from `Sender.ChatId`: a message naming another

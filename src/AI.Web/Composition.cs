@@ -55,6 +55,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IGitApi>()
             .Root<IGitPickerState>()
             .Root<IChatHistoryApi>()
+            .Root<ISenderLocations>()
             .Root<IChatMessageDeltaMerger>()
             .Root<IMarkdownRenderer>()
             .Root<IWorkspaceLayoutService>()
@@ -131,7 +132,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Arg<bool>("publicWeb")
             .Singleton<TextCorrectionLanguages, UpdateClient, ChatTipsState, ChatUsageStore,
                 DesktopBadgeNotificationService, HostConnection, SafeMarkdownRenderer, WorkspaceLayoutService,
-                WorkspaceUndoState,
+                WorkspaceUndoState, SenderLocations,
                 WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService>()
             .Transient<GitPickerState, DropAccessPlanner, ChatFeed, TurnLiveText, DirectoryPickerState,
                 SettingsTransferCodec, SettingsImportPlanner, RunStatusPresentation, ComposerHistoryNavigator,

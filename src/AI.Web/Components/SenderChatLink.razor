@@ -1,0 +1,42 @@
+@inject ISenderLocations Locations
+@implements IDisposable
+@* A message another chat's run submitted names where it came from, "Project / Chat / Branch", and
+   opens that branch. Until the names arrive, or when the chat is gone, it reads "Another chat". A
+   sender stored before its project was recorded came from the receiving chat's project. *@
+<button class="message-origin-sender" type="button" title="Open the chat that sent it"
+        @onclick="() => OnNavigate.InvokeAsync(Locations.GetLink(ProjectId, Sender.ChatId, Sender.BranchId))"><AppIcon Name="git-branch" /><span>@(_name ?? "Another chat")</span></button>
+
+@code {
+    [Parameter, EditorRequired] public MessageSender Sender { get; set; } = null!;
+
+    /// <summary>The project of the chat that received the message.</summary>
+    [Parameter] public Guid CurrentProjectId { get; set; }
+
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private readonly CancellationTokenSource _disposed = new();
+    private (Guid ProjectId, Guid ChatId, Guid BranchId)? _read;
+    private string? _name;
+
+    private Guid ProjectId => Sender.ProjectId ?? CurrentProjectId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var read = (ProjectId, Sender.ChatId, Sender.BranchId);
+        if (_read == read) return;
+        _read = read;
+        _name = null;
+        try
+        {
+            var name = await Locations.GetNameAsync(read.ProjectId, read.ChatId, read.BranchId, _disposed.Token);
+            if (_read == read) _name = name;
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public void Dispose()
+    {
+        _disposed.Cancel();
+        _disposed.Dispose();
+    }
+}

@@ -174,7 +174,7 @@ public sealed class AppRunsTool(Func<IChatRunDispatcher> runs, IAppWrites writes
         var branch = branchId ?? chatId;
         // A run outside any chat (a subtask) has no branch to answer to, so its messages carry no sender.
         var sender = run.ChatId == Guid.Empty ? null
-            : new ChatMessageSender(run.ChatId, run.BranchId, intent?.ToString().ToLowerInvariant());
+            : new ChatMessageSender(run.ChatId, run.BranchId, intent?.ToString().ToLowerInvariant(), run.ProjectId);
         return writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             RunOperation.Submit => SubmitAsync(builder, projectId, chatId, branch, operationId, content, resources, mode,

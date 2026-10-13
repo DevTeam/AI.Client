@@ -319,6 +319,10 @@
                                         <button class="message-origin-sender" type="button" title="Open the branch that sent it"
                                                 @onclick="() => OnOpenSenderBranch.InvokeAsync(sender.BranchId)">@SenderMark(sender)<span>@SelectedChat.SenderName(sender)</span></button>
                                     }
+                                    else if (sender.ChatId != SelectedChat.Id)
+                                    {
+                                        <SenderChatLink Sender="@sender" CurrentProjectId="@SelectedChat.ProjectId" OnNavigate="@OnNavigateApp" />
+                                    }
                                     else
                                     {
                                         <span class="message-origin-sender">@SenderMark(sender)<span>@SelectedChat.SenderName(sender)</span></span>

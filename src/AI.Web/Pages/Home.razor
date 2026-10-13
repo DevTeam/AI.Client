@@ -3797,8 +3797,23 @@ else if (_guideInvitation is { } guideInvitation)
     /// <summary>Which teammate or branch a queued team message comes from, and what it is meant to be.</summary>
     private string GetQueuedSenderLabel(MessageSender sender)
     {
-        var name = _selectedChat?.SenderName(sender) ?? "Another chat";
+        var name = _selectedChat is { } chat && sender.ChatId != chat.Id ? GetForeignSenderName(sender, chat.ProjectId)
+            : _selectedChat?.SenderName(sender) ?? "Another chat";
         return sender.Intent is { Length: > 0 } intent ? $"{name} · {intent}" : name;
+    }
+
+    /// <summary>
+    /// "Project / Chat / Branch" for a sender in another chat, from what this page has already read;
+    /// the transcript's own label reads the names from the Host.
+    /// </summary>
+    private string GetForeignSenderName(MessageSender sender, Guid currentProjectId)
+    {
+        var projectId = sender.ProjectId ?? currentProjectId;
+        var chat = _chatDetailsCache.GetValueOrDefault(sender.ChatId);
+        var chatTitle = chat?.Title ?? _chats.FirstOrDefault(item => item.Id == sender.ChatId)?.Title;
+        if (chatTitle is null) return "Another chat";
+        var project = _projects.FirstOrDefault(item => item.Id == projectId)?.Name ?? "Project";
+        return chat is null ? $"{project} / {chatTitle}" : $"{project} / {chatTitle} / {chat.SenderName(sender)}";
     }
 
     /// <summary>Opens the branch whose run sent a message, from the sender label on that message.</summary>

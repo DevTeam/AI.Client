@@ -15,7 +15,7 @@ public sealed class ChatDocumentSerializerAsideTests
     {
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Team", Now);
         var question = new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Which port?", Now,
-            sender: new ChatMessageSender(chat.Id.Value, Guid.NewGuid(), "question"));
+            sender: new ChatMessageSender(chat.Id.Value, Guid.NewGuid(), "question", chat.ProjectId.Value));
         var aside = new ChatMessage(new ChatMessageId(Guid.NewGuid()), question.Id, ChatMessageRole.User, "Use 8080", Now,
             delivery: ChatMessageDelivery.InTurn);
         chat.AddMessage(question, Now);

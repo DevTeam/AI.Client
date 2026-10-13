@@ -31,7 +31,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             message.CreatedAt,
             message.IsIncomplete, message.ToolCalls, message.ToolCallId,
             ToDocument(message.WorkspaceChanges), ResourceReferences.ToContract(message.Resources),
-            message.Delivery, message.Sender is { } sender ? new SenderDocument(sender.ChatId, sender.BranchId, sender.Intent) : null)).ToArray(),
+            message.Delivery, message.Sender is { } sender ? new SenderDocument(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null)).ToArray(),
         chat.Branches.Select(branch => new BranchDocument(branch.Id, branch.HeadMessageId?.Value, branch.Title,
             branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision,
             branch.Member is { } member ? new MemberDocument(member.Name, member.Role, member.Color) : null,
@@ -134,7 +134,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         message.IsIncomplete, message.ToolCalls, message.ToolCallId,
         ToDomain(message.WorkspaceChanges), ResourceReferences.ToDomain(message.Resources),
         allowEmptyAfterResourceRemoval: true, message.Delivery,
-        message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent) : null);
+        message.Sender is { } sender ? new ChatMessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null);
 
     public StoredChatSummary DeserializeSummary(string json)
     {
@@ -296,5 +296,7 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
         SenderDocument? Sender = null);
 
     private sealed record SenderDocument(Guid ChatId, Guid BranchId,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Intent = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Intent = null,
+        // Absent from senders stored before the project was recorded.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ProjectId = null);
 }

@@ -104,6 +104,7 @@ The browser chrome colour in `js/theme.js` and the window background in `AI.Desk
 | Softer accent text, words on accent tints | `--color-accent-text` on `--color-accent-bg*` |
 | Solid accent block | `--color-accent-fill` under `--color-on-accent` |
 | Unseen results: unread dots, counts, history markers, the arrival line of a new reply | `--color-unread` (always blue, independent of the accent) |
+| A run in progress: the ring dot, the outlined branch count, the dashed history marker | `--color-generating` (neutral grey in every theme; the shape, not the colour, sets it apart) |
 | Status icons and dots | `--color-danger`, `--color-warning`, `--color-success` |
 | Status words | `--color-danger-text`, `--color-warning-text`, `--color-success-text` |
 | Status tints and borders | `--color-danger-bg*`, `--color-danger-border*`, `--color-success-border` |

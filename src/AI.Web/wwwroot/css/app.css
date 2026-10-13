@@ -186,6 +186,9 @@
     /* An unread response is always the blue accent's -strong, whatever accent the user picked, so
        its meaning does not change with the accent; attention and failure retain status colours. */
     --color-unread: #4f91dc;
+    /* A run in progress: a neutral grey, the same in every theme family and accent; the mark's
+       shape (a ring, an outline, a dashed line) tells it apart from the solid status dots. */
+    --color-generating: var(--color-text-muted);
     /* The user's own messages: a tint of the accent the user picked, with a hairline of it, so a
        question stands apart from the answers without shouting. -inset is for what sits inside
        the bubble (code blocks, reference chips) and has to read on any accent. */
@@ -2136,7 +2139,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-link > .chat-branch-count > .app-icon { width: 0.65rem; height: 0.65rem; color: inherit; }
 .chat-branch-count:is(.run-status-unread, .run-status-attention, .run-status-failed) { background: color-mix(in srgb, currentColor 14%, transparent); }
 
-.chat-branch-count.run-status-generating { color: var(--color-text-strong); }
+.chat-branch-count.run-status-generating { box-shadow: inset 0 0 0 1px currentColor; color: var(--color-generating); }
 .chat-branch-count.run-status-unread { color: var(--color-unread); }
 .chat-branch-count.run-status-attention { color: var(--color-warning); }
 .chat-branch-count.run-status-failed { color: var(--color-danger); }
@@ -2452,7 +2455,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 /* Doubled class so state beats .active and :hover — a failed message must not read as
    "just the current one" simply because the user scrolled to it. */
-.history-marker.history-marker-generating { color: var(--color-text-strong); }
+.history-marker.history-marker-generating { color: var(--color-generating); }
+.history-marker.history-marker-generating::before { background: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 5px); }
 .history-marker.history-marker-unread { color: var(--color-unread); }
 .history-marker.history-marker-incomplete { color: var(--color-warning); }
 .history-marker.history-marker-failed { color: var(--color-danger); }
@@ -3699,9 +3703,11 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .status-dot.is-blocked { border-color: var(--color-warning); background: var(--color-warning); }
 .status-dot.is-running { border-color: var(--color-accent); background: var(--color-accent); }
 
+/* A ring rather than a solid dot: drawn as a background, so the dot keeps its size and the
+   separating box-shadow its owner sets. Static, as decided for the calmer run-status indicators. */
 .status-dot.run-status-generating {
-    border-color: var(--color-inverse-hover);
-    background: var(--color-inverse-hover);
+    border-color: var(--color-generating);
+    background: radial-gradient(closest-side, transparent 52%, var(--color-generating) 58%);
 }
 
 .status-dot.run-status-unread { border-color: var(--color-unread); background: var(--color-unread); }

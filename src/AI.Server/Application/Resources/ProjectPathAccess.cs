@@ -42,18 +42,30 @@ public sealed class ProjectPathAccess(IFileSystem files, IPath paths, IChatTempo
     /// own temporary directory) are followed, but the two levels the application creates count only
     /// while neither is a link, so one replaced by a junction never opens the place it points at.
     /// </summary>
-    public bool IsTemporary(ProjectDetails project, string path)
+    public bool IsTemporary(ProjectDetails project, string path) =>
+        TemporaryRoot(project) is { } root && InGrant(path, root, recursive: true);
+
+    public string? ChatFilesPath(ProjectDetails project, string path)
+    {
+        if (TemporaryRoot(project) is not { } root || !InGrant(path, root, recursive: true)) return null;
+        // The first segment below the project's scratch space is the chat's own directory.
+        var relative = paths.GetRelativePath(root, path);
+        var separator = relative.IndexOfAny(['\\', '/']);
+        return relative == "." ? null : separator < 0 ? string.Empty : relative[(separator + 1)..];
+    }
+
+    /// <summary>The link-resolved scratch space of the project, or null when it may not be trusted.</summary>
+    private string? TemporaryRoot(ProjectDetails project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        if (project.Id == Guid.Empty) return false;
+        if (project.Id == Guid.Empty) return null;
         var root = paths.TrimEndingDirectorySeparator(paths.GetFullPath(temporary.ProjectRoot(project.Id)));
         if (paths.GetDirectoryName(root) is not { } userRoot || paths.GetDirectoryName(userRoot) is not { } systemRoot)
-            return false;
+            return null;
         var expected = paths.Combine(paths.Combine(ResolveLinks(systemRoot), paths.GetFileName(userRoot)),
             paths.GetFileName(root));
         var resolved = paths.TrimEndingDirectorySeparator(ResolveLinks(root));
-        return string.Equals(resolved, paths.TrimEndingDirectorySeparator(expected), paths.Comparison)
-               && InGrant(path, resolved, recursive: true);
+        return string.Equals(resolved, paths.TrimEndingDirectorySeparator(expected), paths.Comparison) ? resolved : null;
     }
 
     private bool InGrant(string path, string root, bool recursive) => paths.IsInside(path, root, recursive);

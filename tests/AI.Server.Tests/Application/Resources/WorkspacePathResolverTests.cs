@@ -98,6 +98,11 @@ public sealed class WorkspacePathResolverTests : IDisposable
             // Every chat of the project shares its scratch space; another project's stays closed.
             result.Select(item => item.Access).ShouldBe([PathAccess.ReadWrite, PathAccess.None]);
             result.Select(item => item.Temporary).ShouldBe([true, false]);
+            // The preview names a scratch file by its place inside the chat's directory.
+            var access = new ProjectPathAccess(files, paths, temporary);
+            access.ChatFilesPath(project, result[0].Path!).ShouldBe("test.md");
+            access.ChatFilesPath(project, Path.GetDirectoryName(result[0].Path!)!).ShouldBe(string.Empty);
+            access.ChatFilesPath(project, foreign).ShouldBeNull();
         }
         finally
         {

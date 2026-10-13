@@ -13,8 +13,10 @@
     <header class="review-workspace-header">
         <AppIcon Name="@(AssetResource?.Kind == ChatResourceKind.Image ? "image" : "file")" />
         <div class="review-workspace-identity">
-            <strong>@(_file?.Name ?? Path)</strong>
-            <span title="@(_file?.Path ?? Path)">@(_file?.Path ?? Path)</span>
+            <strong>@(_file?.ChatFilesPath == "" ? "Chat files" : _file?.Name ?? Path)</strong>
+            @* A chat's scratch file is named by its place in the chat files; the operating system
+               path, long and full of ids, stays in the tooltip and in Copy path. *@
+            <span title="@(_file?.Path ?? Path)">@(ChatFilesLabel ?? _file?.Path ?? Path)</span>
         </div>
         @if (AssetResource is null)
         {
@@ -68,6 +70,8 @@
     private IJSObjectReference? _module, _handle;
     private string? _error;
     private bool _loading = true;
+    private string? ChatFilesLabel => _file?.ChatFilesPath is not { } inside ? null
+        : string.Join(" › ", new[] { "Chat files" }.Concat(inside.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)));
     private string? ContentUrl => _file?.ContentUrl is { } url ? new Uri(ApiBaseUrl.Value, url).AbsoluteUri : null;
     private IDictionary<string, object> ViewerParameters => new Dictionary<string, object>
     {

@@ -25,7 +25,8 @@ public sealed class FilePreviewService(IProjectService projects, IWorkspacePathR
         var isDirectory = await files.DirectoryExistsAsync(canonical, cancellationToken);
         var entry = isDirectory ? null : await files.GetEntryAsync(canonical, cancellationToken);
         var preview = await formats.DescribeAsync(new FilePreviewContext(project, canonical,
-            contentType ?? "application/octet-stream", isDirectory, entry?.Length ?? 0), cancellationToken);
+            contentType ?? "application/octet-stream", isDirectory, entry?.Length ?? 0), cancellationToken)
+            with { ChatFilesPath = access.ChatFilesPath(project, canonical) };
         if (isDirectory) return preview;
 
         foreach (var ticket in _tickets.Where(item => item.Value.Expires <= DateTimeOffset.UtcNow))

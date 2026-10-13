@@ -28,4 +28,10 @@ public interface IProjectPathAccess
 
     /// <summary>True when the already link-resolved <paramref name="path"/> lies in the project's chat scratch space.</summary>
     bool IsTemporary(ProjectDetails project, string path);
+
+    /// <summary>
+    /// Where the already link-resolved <paramref name="path"/> lies inside its chat's scratch
+    /// directory: empty for that directory itself, null outside every chat's scratch directory.
+    /// </summary>
+    string? ChatFilesPath(ProjectDetails project, string path);
 }

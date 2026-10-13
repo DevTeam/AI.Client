@@ -46,6 +46,15 @@ export function attach(id) {
     } };
 }
 
+// A previewed Markdown document gets the same fence rendering as the chat: Mermaid diagrams,
+// SVG images and highlighted code.
+export async function attachMarkdown(element) {
+    const modules = await Promise.all([
+        import('./mermaidBlocks.js'), import('./svgBlocks.js'), import('./codeHighlight.js')]);
+    const handles = modules.map(module => module.attach(element));
+    return { dispose() { handles.forEach(handle => handle.dispose()); } };
+}
+
 export const copy = text => navigator.clipboard.writeText(text);
 export const imageWidth = id => document.getElementById(id)?.querySelector('img')?.naturalWidth ?? 0;
 export function scrollToLine(id, line) {

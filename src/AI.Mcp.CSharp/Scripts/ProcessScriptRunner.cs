@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using AI.Contracts.Processes;
 
 /// <summary>
 /// Runs each script in a disposable process so a blocking script cannot hold the MCP server past
@@ -23,6 +24,26 @@ public sealed class ProcessScriptRunner : IScriptRunner
             return Failure(stopwatch, $"Timeout must be between 1 and {ScriptLimits.MaxTimeoutMs} milliseconds.");
         }
 
+        using var job = new ChildProcessJob(request.Limits ?? ChildProcessLimits.Default);
+        var result = await RunWorkerAsync(request, job, stopwatch, cancellationToken);
+        return result with { LimitExceeded = LimitExceeded(job, result) };
+    }
+
+    /// <summary>
+    /// The limit the run ran into. The job names it when it refused an allocation or a process, but
+    /// the worker is a .NET process that sizes its own heap from the job's memory limit, so it usually
+    /// throws <see cref="OutOfMemoryException"/> before the job has anything to refuse; under a memory
+    /// limit that exception is the limit.
+    /// </summary>
+    private static string? LimitExceeded(ChildProcessJob job, ScriptResult result) =>
+        job.LimitExceeded
+        ?? (OperatingSystem.IsWindows() && result.Error?.StartsWith(nameof(OutOfMemoryException), StringComparison.Ordinal) == true
+            ? ChildProcessJob.Memory
+            : null);
+
+    private static async Task<ScriptResult> RunWorkerAsync(
+        ScriptRequest request, ChildProcessJob job, Stopwatch stopwatch, CancellationToken cancellationToken)
+    {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(request.TimeoutMs);
 
@@ -32,6 +53,8 @@ public sealed class ProcessScriptRunner : IScriptRunner
         {
             process.Start();
             started = true;
+            // A worker that cannot be placed is killed below: an unlimited run is not what was asked for.
+            job.Attach(process);
             var stdout = ReadBoundedAsync(process.StandardOutput, MaxResultCharacters, deadline.Token);
             var stderr = ReadBoundedAsync(process.StandardError, MaxErrorCharacters, deadline.Token);
 

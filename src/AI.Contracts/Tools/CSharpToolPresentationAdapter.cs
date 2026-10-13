@@ -64,6 +64,7 @@ public sealed class CSharpToolPresentationAdapter : BuiltInToolPresentationAdapt
                 : null),
             ("Duration", Size(structured, "durationMs") is { } milliseconds ? $"{milliseconds} ms" : null),
             ("Timed out", timedOut ? "yes" : null),
+            ("Limit exceeded", Text(structured, "limitExceeded")),
             ("Output truncated", truncated ? "yes" : null));
         facts.AddRange(DiagnosticFacts(structured));
 

@@ -28,6 +28,7 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
         var exitCode = Number(structured, "exitCode");
         var timedOut = Flag(structured, "timedOut");
         var truncated = Flag(structured, "truncated");
+        var limit = Text(structured, "limitExceeded");
         var summary = timedOut ? "Timed out"
             : exitCode is { } code ? (code == 0 ? "Exit 0" : $"Exit {code}")
             : "Finished";
@@ -40,13 +41,14 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
         }.Where(part => part is not null));
 
         return new ToolResultPresentation(
-            summary + (truncated ? " · output truncated" : ""),
+            summary + (limit is null ? "" : $" · {limit} limit exceeded") + (truncated ? " · output truncated" : ""),
             // A non-zero exit is a real outcome the model will act on, not a host failure, so it
             // stays a warning: the row draws the eye without claiming the call broke.
-            SeverityFor(timedOut || truncated || exitCode is not 0),
+            SeverityFor(timedOut || truncated || limit is not null || exitCode is not 0),
             Facts(("Exit code", exitCode?.ToString(CultureInfo.InvariantCulture)),
                 ("Duration", Size(structured, "durationMs") is { } ms ? $"{ms} ms" : null),
                 ("Timed out", timedOut ? "yes" : null),
+                ("Limit exceeded", limit),
                 ("Output truncated", truncated ? "yes" : null)),
             string.IsNullOrEmpty(body) ? null : body);
     }

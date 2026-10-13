@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using AI.Contracts.FileSystem;
+using AI.Contracts.Processes;
 
 namespace AI.Mcp.BuiltIn.Process;
 
@@ -104,7 +105,8 @@ public sealed class ProcessRunner : IProcessRunner
         using var process = new System.Diagnostics.Process();
         process.StartInfo = start;
 
-        using var job = OperatingSystem.IsWindows() ? new WindowsProcessJob() : null;
+        // Created before the process starts: a limit the OS cannot apply fails the call, not the machine.
+        using var job = new ChildProcessJob(request.Limits ?? ChildProcessLimits.Default);
         var timer = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -119,10 +121,7 @@ public sealed class ProcessRunner : IProcessRunner
 
         try
         {
-            if (OperatingSystem.IsWindows())
-            {
-                job!.Attach(process);
-            }
+            job.Attach(process);
         }
         catch
         {
@@ -175,7 +174,8 @@ public sealed class ProcessRunner : IProcessRunner
             timer.ElapsedMilliseconds,
             timedOut || timeout.IsCancellationRequested,
             output.Result || errors.Result,
-            null);
+            null,
+            job.LimitExceeded);
     }
 
     private static async Task<bool> DrainAsync(StreamReader reader, StringBuilder target, CancellationToken token)

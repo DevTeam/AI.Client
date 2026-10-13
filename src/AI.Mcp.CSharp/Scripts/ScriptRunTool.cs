@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using AI.Contracts.FileSystem;
+using AI.Contracts.Processes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -21,7 +22,8 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
                           + "This is not a sandbox: `workingDirectory` and `environment` apply to the child process, and the script can "
                           + $"otherwise reach whatever the server process can, exactly like process_run. Output is limited to {ScriptLimits.OutputCharacters} characters per stream "
                           + $"and the run to {ScriptLimits.MaxTimeoutMs} ms, after which the result is reported as timed out. "
-                          + $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})."
+                          + $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture}). "
+                          + ChildProcessLimits.Describe()
         });
 
     [McpServerTool(Name = "cs_run", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true,
@@ -43,6 +45,10 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
         [MaxLength(64)] Dictionary<string, JsonElement>? globals = null,
         [Description("Timeout in milliseconds before the run is reported as timed out. Must be in [1, 86400000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the script needs a shorter deadline.")]
         [Range(1, ScriptLimits.MaxTimeoutMs)] int timeoutMs = ScriptLimits.DefaultTimeoutMs,
+        [Description("Committed memory, in megabytes, the child process and everything it starts may use (Windows only); the compiler itself needs a few hundred. Omit it for the machine's default, stated in the tool description; raise it only when a previous run reported `limitExceeded: \"memory\"` or the script is known to need more.")]
+        [Range(ChildProcessLimits.MinimumMemoryMb, ChildProcessLimits.SchemaMaximumMemoryMb)] int? memoryLimitMb = null,
+        [Description("Processes that may be alive at once in the tree, the child process itself included (Windows only). Omit it for the default; raise it only when a previous run reported `limitExceeded: \"processes\"`.")]
+        [Range(1, ChildProcessLimits.MaximumProcesses)] int? processLimit = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -57,6 +63,16 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
                 $"Working directory must be absolute: {workingDirectory}"), true);
         }
 
+        ChildProcessLimits limits;
+        try
+        {
+            limits = ChildProcessLimits.Create(memoryLimitMb, processLimit);
+        }
+        catch (ArgumentOutOfRangeException error)
+        {
+            return reply.Reply(new ScriptResult(false, null, null, [], "", "", [], 0, false, false, error.Message), true);
+        }
+
         var request = new ScriptRequest(
             code,
             arguments ?? [],
@@ -65,7 +81,8 @@ public sealed class ScriptRunTool(IScriptRunner runner, IToolReply reply, IPath 
             workingDirectory ?? "",
             environment ?? new Dictionary<string, string>(StringComparer.Ordinal),
             globals ?? new Dictionary<string, JsonElement>(StringComparer.Ordinal),
-            timeoutMs);
+            timeoutMs,
+            limits);
 
         ScriptResult result;
         try

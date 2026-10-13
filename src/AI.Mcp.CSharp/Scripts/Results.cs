@@ -1,6 +1,7 @@
 namespace AI.Mcp.CSharp.Scripts;
 
 using System.Text.Json;
+using AI.Contracts.Processes;
 
 /// <summary>
 /// Everything one script run needs. The working directory and the environment are applied to the
@@ -15,7 +16,8 @@ public sealed record ScriptRequest(
     string WorkingDirectory,
     IReadOnlyDictionary<string, string> Environment,
     IReadOnlyDictionary<string, JsonElement> Globals,
-    int TimeoutMs);
+    int TimeoutMs,
+    ChildProcessLimits? Limits = null);
 
 /// <summary>One compiler message, or a synthetic entry describing a failure at run time.</summary>
 public sealed record ScriptDiagnostic(string Severity, string Id, string Message, int Line, int Column);
@@ -37,4 +39,5 @@ public sealed record ScriptResult(
     long DurationMs,
     bool TimedOut,
     bool Truncated,
-    string? Error);
+    string? Error,
+    string? LimitExceeded = null);

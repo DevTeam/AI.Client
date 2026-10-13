@@ -7,6 +7,7 @@ namespace AI.Infrastructure.Tests.Tools;
 
 using AI.Application.Tools;
 using AI.Contracts.FileSystem;
+using AI.Contracts.Processes;
 using AI.Contracts.Tools;
 using AI.Infrastructure.Tools;
 using Shouldly;
@@ -69,6 +70,10 @@ public sealed class BuiltInToolTests
         var timeoutSchema = tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
         timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
         timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(86400000);
+        var properties = tool.ModelDefinition.InputSchema.GetProperty("properties");
+        properties.GetProperty("memoryLimitMb").GetProperty("minimum").GetInt32().ShouldBe(ChildProcessLimits.MinimumMemoryMb);
+        properties.GetProperty("processLimit").GetProperty("maximum").GetInt32().ShouldBe(ChildProcessLimits.MaximumProcesses);
+        tool.ModelDefinition.Description.ShouldContain($"default {ChildProcessLimits.DefaultMemoryMb}");
         var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 86400000 });
         session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
         Should.Throw<ArgumentException>(() => session.ValidateArguments(tool,
@@ -166,6 +171,59 @@ public sealed class BuiltInToolTests
         result.TimedOut.ShouldBeTrue();
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         await Should.ThrowAsync<OperationCanceledException>(() => new ProcessRunner().RunAsync(request with { TimeoutMs = 600000 }, cancel.Token));
+    }
+
+    [Fact]
+    public async Task ShouldReportTheMemoryLimitOfTheProcessTree()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        // Native memory, so the refusal comes from the job rather than from a managed heap limit.
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-Command", "[Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]1GB) | Out-Null"],
+            AppContext.BaseDirectory, 60000, ChildProcessLimits.Create(ChildProcessLimits.MinimumMemoryMb, null)), CancellationToken.None);
+        result.LimitExceeded.ShouldBe(ChildProcessJob.Memory, result.ToString());
+        result.ExitCode.ShouldNotBe(0);
+    }
+
+    [Fact]
+    public async Task ShouldReportTheProcessLimitOfTheProcessTree()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-Command", "1..4 | ForEach-Object { Start-Process cmd.exe -ArgumentList '/c','ping -n 5 127.0.0.1' -WindowStyle Hidden }"],
+            AppContext.BaseDirectory, 60000, ChildProcessLimits.Create(null, 2)), CancellationToken.None);
+        result.LimitExceeded.ShouldBe(ChildProcessJob.Processes, result.ToString());
+    }
+
+    [Fact]
+    public async Task ShouldRunAnOrdinaryCommandWithinTheDefaultLimits()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-Command", "(Get-Process -Id $PID).PriorityClass"], AppContext.BaseDirectory, 60000), CancellationToken.None);
+        result.ExitCode.ShouldBe(0, result.ToString());
+        result.Stdout.Trim().ShouldBe("BelowNormal", result.ToString());
+        result.LimitExceeded.ShouldBeNull(result.ToString());
+    }
+
+    [Theory]
+    [InlineData(ChildProcessLimits.MinimumMemoryMb - 1, null)]
+    [InlineData(int.MaxValue, null)]
+    [InlineData(null, 0)]
+    [InlineData(null, ChildProcessLimits.MaximumProcesses + 1)]
+    public void ShouldRejectProcessLimitsOutsideSupportedRange(int? memoryLimitMb, int? processLimit)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => ChildProcessLimits.Create(memoryLimitMb, processLimit));
+    }
+
+    [Fact]
+    public void ShouldDefaultToHalfOfMemoryCappedAndAllowUpToThreeQuarters()
+    {
+        var physicalMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024);
+        ChildProcessLimits.DefaultMemoryMb.ShouldBe((int)Math.Max(Math.Min(physicalMb / 2, ChildProcessLimits.DefaultMemoryCapMb), ChildProcessLimits.MinimumMemoryMb));
+        ChildProcessLimits.MaximumMemoryMb.ShouldBe((int)Math.Max(physicalMb * 3 / 4, ChildProcessLimits.MinimumMemoryMb));
+        ChildProcessLimits.Create(null, null).ShouldBe(ChildProcessLimits.Default);
+        ChildProcessLimits.Default.Processes.ShouldBe(ChildProcessLimits.DefaultProcesses);
     }
 
     [Theory]

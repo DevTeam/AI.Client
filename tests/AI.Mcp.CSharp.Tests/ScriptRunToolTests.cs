@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Diagnostics;
+using AI.Contracts.Processes;
 using ModelContextProtocol.Client;
 using Shouldly;
 using Xunit;
@@ -52,7 +53,9 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         var timeoutSchema = tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("timeoutMs");
         timeoutSchema.GetProperty("default").GetInt32().ShouldBe(600000);
         timeoutSchema.GetProperty("maximum").GetInt32().ShouldBe(86400000);
-        tool.Description.ShouldNotBeNullOrWhiteSpace();
+        tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("memoryLimitMb").GetProperty("minimum").GetInt32()
+            .ShouldBe(ChildProcessLimits.MinimumMemoryMb);
+        tool.Description.ShouldNotBeNull().ShouldContain($"default {ChildProcessLimits.DefaultMemoryMb}");
     }
 
     [Fact]
@@ -203,6 +206,39 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         result.GetProperty("success").GetBoolean().ShouldBeTrue();
         result.GetProperty("truncated").GetBoolean().ShouldBeTrue();
         result.GetProperty("stdout").GetString()!.Length.ShouldBe(32768);
+    }
+
+    [Fact]
+    public async Task ReportsTheMemoryLimitInsteadOfExhaustingTheMachine()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var result = await CallAsync(new
+        {
+            code = "var chunks = new List<byte[]>(); while (true) { var chunk = new byte[64 * 1024 * 1024]; Array.Fill(chunk, (byte)1); chunks.Add(chunk); }",
+            memoryLimitMb = 512,
+            timeoutMs = 60000
+        });
+
+        result.GetProperty("success").GetBoolean().ShouldBeFalse();
+        result.GetProperty("limitExceeded").GetString().ShouldBe(ChildProcessJob.Memory, result.ToString());
+    }
+
+    [Fact]
+    public async Task ReportsNoLimitForAnOrdinaryScript()
+    {
+        var result = await CallAsync(new { code = "Environment.ProcessorCount" });
+
+        result.GetProperty("success").GetBoolean().ShouldBeTrue();
+        result.GetProperty("limitExceeded").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task RejectsAMemoryLimitAboveTheMachineMaximum()
+    {
+        var result = await CallAsync(new { code = "1", memoryLimitMb = ChildProcessLimits.MaximumMemoryMb + 1 });
+
+        result.GetProperty("success").GetBoolean().ShouldBeFalse();
+        result.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("memoryLimitMb");
     }
 
     [Fact]

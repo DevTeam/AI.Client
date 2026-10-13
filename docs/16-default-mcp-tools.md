@@ -61,11 +61,26 @@ Input:
 
 `workingDirectory` is required and must be absolute. Arguments are passed as separate array elements; there is no implicit command shell. For a script, the shell is specified explicitly, for example `powershell.exe` with `-NoProfile`, `-NonInteractive`, `-Command`. Interactive stdin is closed.
 
-The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`. A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block.
+The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded`. A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block.
 
 Limits: up to 256 arguments, up to 65536 characters of arguments JSON on the Host side, up to 56535 calls of a single tool per run by default, a default timeout of 600 seconds and a configurable maximum of 86400 seconds per process, and up to 24 hours for the agent loop, excluding time waiting for a person. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. Tool policies inherit chat -> project -> global, with an allowed timeout range of 1..86400 seconds. Saved shorter timeouts remain in effect.
 
 For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..86400000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 3600 seconds.
+
+### Resource limits
+
+Every process tree started by `process_run`, and the disposable worker of `cs_run`, runs within resource limits (`ChildProcessLimits` and `ChildProcessJob` in `AI.Contracts/Processes`). Two of them are call parameters, so the model can raise them for a program that legitimately needs more:
+
+| Parameter | Default | Allowed | Meaning |
+| --- | --- | --- | --- |
+| `memoryLimitMb` | half of physical memory, at most 8192 | 256 .. three quarters of physical memory | committed memory of the whole tree |
+| `processLimit` | 256 | 1..1024 | processes alive at once in the tree, the started program included |
+
+Memory is sized from the machine's physical memory rather than from what is free when the call starts, so the same command does not pass or fail depending on what else happens to run. A value outside the allowed range is refused with the range in the error rather than clamped. The tool descriptions state this machine's default and maximum, and the input schema states the static bounds.
+
+The rest is fixed: the tree may use at most 75% of the machine's CPU time (a hard cap), and its processes run at below-normal priority so the Host and the desktop stay responsive.
+
+On Windows the limits are enforced by a Job Object. A refused allocation or process start fails inside the program, which decides on its own whether that ends it; the job reports which limit it enforced through a completion port, and the result carries it as `limitExceeded` (`memory` or `processes`, otherwise `null`). A .NET program, the `cs_run` worker included, sizes its managed heap from the job's memory limit and usually throws `OutOfMemoryException` before the job refuses anything; `cs_run` reports such a run as `limitExceeded: memory` as well. On Linux and macOS only the priority is lowered: memory, process and CPU limits are not applied, and `limitExceeded` is always `null`.
 
 ## trigger_wait
 
@@ -155,7 +170,7 @@ The process runs under the Host account's permissions. Working directory and dir
 
 The Host and the server pass only the selected system environment variables required to launch programs. Arbitrary Host variables and saved API credentials are not passed automatically. This does not stop the program itself from reading the credential files available to it.
 
-On cancel or timeout, the process tree is terminated. On Windows a Job Object with `KILL_ON_JOB_CLOSE` is used: child processes that joined the job are also terminated when the server closes. This is lifetime management, not a security boundary. Background sessions and PTY are not implemented.
+On cancel or timeout, the process tree is terminated. On Windows the Job Object that carries the resource limits (see "Resource limits") also has `KILL_ON_JOB_CLOSE`: child processes that joined the job are terminated when the server closes. This is lifetime and resource management, not a security boundary. Background sessions and PTY are not implemented.
 
 Each assistant tool call is recorded before execution, and the tool result before the next model request. History nodes preserve the provider call ID. When recovering or forking inside an unfinished pair, a message about the unknown result is added to the context. The previous call is not automatically re-executed. Network errors after a possible side effect stop the run.
 

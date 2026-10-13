@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Components.Web;
 /// run that ended last first. A row says how long is left before its run starts; a chat that has
 /// finished keeps its row, without a countdown, pushed down by the newer ones until it falls past
 /// the window the section remembers. The section folds and pages like Recents, and it is absent
-/// while there is nothing to show.
+/// while there is nothing to show. A row opens its chat in its project, which unfolds.
 /// </summary>
 public partial class Home
 {
@@ -26,18 +26,8 @@ public partial class Home
     private bool _soonFolded;
     private bool _soonShowMore;
 
-    /// <summary>
-    /// The scheduled chats read from the Host, soonest first and finished last, with the chat opened
-    /// from this section on top: its row cannot vanish from under the pointer once newer chats have
-    /// pushed it out of the window, exactly as Notifications keeps the chat opened from it.
-    /// </summary>
-    private List<ScheduledChatSummary> GetSoonChats()
-    {
-        if (!IsFoldedInto(ChatListSurface.Soon) || GetActiveChatId() is not { } opened
-            || _soonChats.Any(item => item.Chat.Id == opened)
-            || _chats.FirstOrDefault(chat => chat.Id == opened) is not { Kind: ChatSchedule.Kind } chat) return _soonChats;
-        return [new ScheduledChatSummary(chat, null), .. _soonChats];
-    }
+    /// <summary>The scheduled chats read from the Host, soonest first and finished last.</summary>
+    private List<ScheduledChatSummary> GetSoonChats() => _soonChats;
 
     /// <summary>
     /// The chats the section shows at this moment: the first few, or the longer list once opened,
@@ -82,11 +72,13 @@ public partial class Home
         StateHasChanged();
     });
 
-    private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat, ChatListSurface.Soon);
+    // A scheduled chat stays listed here whether or not its project is unfolded, so it opens in its
+    // project, unfolded, rather than under this row.
+    private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat, null);
 
     private async Task OpenSoonScheduleAsync(ScheduledChatSummary soon)
     {
-        await OpenChatFromListAsync(soon.Chat, ChatListSurface.Soon);
+        await OpenChatFromListAsync(soon.Chat, null);
         if (soon.BranchId is { } branchId && branchId != soon.Chat.Id)
             await NavigateToTargetAsync(new WorkspaceTarget(soon.Chat.ProjectId, soon.Chat.Id, branchId, null, false));
     }

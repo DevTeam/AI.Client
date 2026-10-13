@@ -21,15 +21,17 @@ public partial class Home
     private int RecentChatsMore => Math.Max(10, RecentChatsShown * 2);
     private const string RecentsStateKey = "ai-client.sidebar-recents.v1";
 
-    // Notifications' fold and page are kept with Recents': entries written before it read as unfolded.
-    private sealed record RecentsState(bool Folded, bool ShowMore, bool NotificationsFolded = false,
-        bool NotificationsShowMore = false, bool SoonFolded = false, bool SoonShowMore = false);
+    // Scheduled's fold and page and the unfolded projects are kept with Recents': entries written
+    // before them read as unfolded and as no project remembered. Fields an older entry still carries
+    // (the removed Notifications section's) are ignored when it is read.
+    private sealed record RecentsState(bool Folded, bool ShowMore, bool SoonFolded = false, bool SoonShowMore = false,
+        Guid[]? ExpandedProjects = null);
 
     /// <summary>
-    /// Where in the sidebar a chat row stands: its project's list, Recents, Notifications or
-    /// Scheduled.
+    /// Where in the sidebar a chat row stands: the open project's list, the list of another unfolded
+    /// project, Recents or Scheduled.
     /// </summary>
-    private enum ChatListSurface { Project, Recents, Notifications, Soon }
+    private enum ChatListSurface { Project, OtherProject, Recents, Soon }
 
     // What the Host last said about every project. The open project's own chats are live in
     // _chats and replace its part of this list, so only the other projects can be behind.
@@ -40,30 +42,45 @@ public partial class Home
     private bool _recentsShowMore;
     private bool _recentsStateLoaded;
 
-    // The open chat was reached through Recents or Notifications: its project folds its chat list
-    // like any other project, and the chat's branches show under the row it was opened from
-    // instead, so they are listed once. Opening something from anywhere else unfolds it; with no
-    // chat open there is nothing to fold.
-    private ChatListSurface? _projectFoldedBy;
+    // The list the open chat was opened from while its project stays folded: Recents. Recents lists
+    // only the chats of folded projects, so opening one there does not unfold its project — the row
+    // would leave Recents from under the pointer — and the chat's branches show under that row
+    // instead. Opening something from anywhere else unfolds the project (see Home.ProjectTree.cs).
+    private ChatListSurface? _openedFrom;
 
-    private bool IsProjectTreeFolded => _projectFoldedBy is not null && GetActiveChatId() is not null;
+    /// <summary>A chat is open and its project's list is folded, so its row stands elsewhere.</summary>
+    private bool IsProjectTreeFolded => GetActiveChatId() is not null && _selectedProject is { } project
+        && !IsProjectExpanded(project.Id);
 
-    private bool IsFoldedInto(ChatListSurface surface) => IsProjectTreeFolded && _projectFoldedBy == surface;
+    /// <summary>
+    /// Whether the open chat's row — its highlight and its branch tree — stands in this list: its
+    /// project's own list while that is unfolded, otherwise the list it was opened from, Recents by
+    /// default. A chat is highlighted in one place only.
+    /// </summary>
+    private bool IsFoldedInto(ChatListSurface surface) => IsProjectTreeFolded && (_openedFrom ?? ChatListSurface.Recents) == surface;
 
-    private void UnfoldProjectTree() => _projectFoldedBy = null;
+    private bool IsChatRowHome(ChatListSurface surface) => surface switch
+    {
+        ChatListSurface.Project => !IsProjectTreeFolded,
+        ChatListSurface.OtherProject => false,
+        _ => IsFoldedInto(surface)
+    };
 
     // Which list the open chat menu or rename editor belongs to; a chat can be listed in more than
     // one, and only the row it was asked for shows it.
     private ChatListSurface _chatActionsSurface;
 
-    /// <summary>The most recent chats first, at most <paramref name="count"/>.</summary>
+    /// <summary>
+    /// The most recent chats of the folded projects first, at most <paramref name="count"/>. An
+    /// unfolded project lists its chats itself, so they are not repeated here.
+    /// </summary>
     private List<ChatSummary> GetRecentChats(int count)
     {
         var selectedProjectId = _selectedProject?.Id;
-        var projectIds = _projects.Select(project => project.Id).ToHashSet();
-        var openProjectChats = selectedProjectId is null
+        var projectIds = _projects.Where(project => !IsProjectExpanded(project.Id)).Select(project => project.Id).ToHashSet();
+        var openProjectChats = selectedProjectId is not { } openId || !projectIds.Contains(openId)
             ? []
-            : _chats.Where(chat => chat.ProjectId == selectedProjectId && chat.ArchivedAt is null && !chat.IsEmpty);
+            : _chats.Where(chat => chat.ProjectId == openId && chat.ArchivedAt is null && !chat.IsEmpty);
         return _recentChats
             .Where(chat => chat.ProjectId != selectedProjectId && projectIds.Contains(chat.ProjectId))
             .Concat(openProjectChats)
@@ -80,7 +97,7 @@ public partial class Home
     private string? GetChatRowTitle(ChatSummary chat, ChatListSurface surface)
     {
         var runTitle = GetRunTitle(chat.Id, chat.Id, GetRun(chat.Id, chat.Id));
-        if (surface == ChatListSurface.Project) return runTitle;
+        if (surface is ChatListSurface.Project or ChatListSurface.OtherProject) return runTitle;
         var projectName = _projects.FirstOrDefault(project => project.Id == chat.ProjectId)?.Name;
         return runTitle is null ? projectName : $"{projectName} · {runTitle}";
     }
@@ -97,11 +114,9 @@ public partial class Home
         if (request != _recentChatsRequest) return;
         _recentChats.Clear();
         _recentChats.AddRange(recent);
-        // Whatever else changed may have changed the notified chats' names and branches too.
-        _notifiedChatsTried.Clear();
-        _notifiedBranchesTried.Clear();
-        await LoadNotifiedChatDataAsync();
-        // The Scheduled section is part of the same read: both answer "what is happening soon".
+        // The other unfolded projects' lists and the Scheduled section are part of the same read:
+        // whatever changed the latest chats may have changed them too.
+        await RefreshExpandedProjectChatsAsync();
         await RefreshSoonChatsAsync();
     }
 
@@ -130,15 +145,20 @@ public partial class Home
     private Task OpenChatRowAsync(ChatSummary chat, ChatListSurface surface) => surface switch
     {
         ChatListSurface.Recents => OpenRecentChatAsync(chat),
-        ChatListSurface.Notifications => OpenNotifiedChatRowAsync(chat),
+        ChatListSurface.OtherProject => OpenChatFromListAsync(chat, null),
         ChatListSurface.Soon => OpenSoonChatRowAsync(chat),
         _ => SelectChatAsync(chat.Id)
     };
 
-    /// <summary>Opens a chat from a list outside its project, folding the project into that list.</summary>
-    private async Task OpenChatFromListAsync(ChatSummary chat, ChatListSurface surface)
+    /// <summary>
+    /// Opens a chat from a list outside the open project's own. From Recents its project stays
+    /// folded and the chat is shown in Recents; from anywhere else (null) the project unfolds and
+    /// the chat is shown in it.
+    /// </summary>
+    private async Task OpenChatFromListAsync(ChatSummary chat, ChatListSurface? surface)
     {
-        _projectFoldedBy = surface;
+        _openedFrom = surface;
+        if (surface is null) ExpandProject(chat.ProjectId);
         if (_selectedProject?.Id == chat.ProjectId)
         {
             await SelectChatAsync(chat.Id);
@@ -236,10 +256,10 @@ public partial class Home
             if (string.IsNullOrEmpty(json) || JsonSerializer.Deserialize<RecentsState>(json) is not { } state) return;
             _recentsFolded = state.Folded;
             _recentsShowMore = state.ShowMore;
-            _notifiedFolded = state.NotificationsFolded;
-            _notifiedShowMore = state.NotificationsShowMore;
             _soonFolded = state.SoonFolded;
             _soonShowMore = state.SoonShowMore;
+            // Joined, not replaced: the project opened before the entry was read stays unfolded.
+            if (state.ExpandedProjects is { } expanded) _expandedProjectIds.UnionWith(expanded);
         }
         catch (JsonException)
         {
@@ -249,6 +269,6 @@ public partial class Home
 
     private Task SaveRecentsStateAsync() =>
         JsRuntime.InvokeVoidAsync("localStorage.setItem", RecentsStateKey,
-            JsonSerializer.Serialize(new RecentsState(_recentsFolded, _recentsShowMore, _notifiedFolded,
-                _notifiedShowMore, _soonFolded, _soonShowMore))).AsTask();
+            JsonSerializer.Serialize(new RecentsState(_recentsFolded, _recentsShowMore, _soonFolded, _soonShowMore,
+                [.. _expandedProjectIds]))).AsTask();
 }

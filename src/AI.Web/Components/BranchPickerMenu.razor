@@ -153,7 +153,6 @@
         @<button class="branch-picker-row @(item.Selected ? "selected" : null) @(highlighted && ShowSearch ? "is-highlighted" : null)"
                  type="button" role="menuitemradio" aria-checked="@(item.Selected ? "true" : "false")" title="@(item.RunStatus is { } result ? $"{item.Tooltip} · {OutcomeLabel(result)}" : item.Tooltip)"
                  @onclick="() => OnSelect.InvokeAsync(item)">
-            @if (item.Selected) { <AppIcon Name="check" Class="branch-picker-check" /> } else { <span class="branch-option-spacer"></span> }
             <span class="run-status-icon branch-option-icon">
                 @if (item.RunStatus is not null)
                 {

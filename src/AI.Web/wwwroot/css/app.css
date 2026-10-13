@@ -760,9 +760,10 @@ body {
 }
 
 .project-nav-row {
+    --row-fade-width: 5.5rem;
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem 1.6rem;
+    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem;
     align-items: center;
     column-gap: 0.12rem;
     border-radius: var(--radius-md);
@@ -780,8 +781,41 @@ body {
    instead of the 4th, collide with the rename button's column, and force the row onto a second
    grid line. */
 .project-nav-row > .project-new-chat-button { grid-column: 2; }
-.project-nav-row > .project-rename-button { grid-column: 3; }
-.project-nav-row > .project-menu-button { grid-column: 4; }
+.project-nav-row > .project-menu-button { grid-column: 3; }
+
+/* The fold chevron takes the tile's place while the row is pointed at, the way a tree shows its
+   twisty: the tile stays the project's mark at rest, and the chevron costs no width of its own. */
+.project-expand-toggle {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: 0.55rem;
+    display: grid;
+    width: 1.3rem;
+    height: 1.3rem;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--color-fill-strong);
+    color: var(--color-text-secondary);
+    opacity: 0;
+    transform: translateY(-50%);
+    transition: opacity var(--duration-fast) ease, background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.project-expand-toggle .app-icon {
+    width: 0.8rem;
+    height: 0.8rem;
+    transition: transform var(--duration-base) ease;
+}
+
+.project-expand-toggle[aria-expanded="true"] .app-icon { transform: rotate(90deg); }
+
+.project-nav-row:is(:hover, :focus-within) > .project-expand-toggle { opacity: 1; }
+.project-nav-row > .project-expand-toggle:hover { background: var(--color-fill-stronger); color: var(--color-text-strong); }
+.project-nav-row.selected > .project-expand-toggle { background: var(--color-accent-fill); color: var(--color-on-accent); }
+.project-nav-row:has(> .sidebar-inline-editor) > .project-expand-toggle { display: none; }
 
 /* Higher specificity than the generic .icon-action size, which is declared later in this file. */
 .project-nav-row > .project-action-button {
@@ -814,7 +848,7 @@ body {
     position: absolute;
     z-index: 1;
     inset: 0 0 0 auto;
-    width: 7.5rem;
+    width: var(--row-fade-width, 7.5rem);
     border-radius: inherit;
     background: linear-gradient(to right, transparent, var(--row-bg, var(--color-fill-hover)) 2.5rem);
     opacity: 0;
@@ -1277,8 +1311,8 @@ body {
     line-height: 1;
 }
 
-/* An unread notification on a row in the sidebar's Notifications, at the end of its label: what
-   to do first, then a failure, then news. */
+/* An unread notification on a chat or branch row, at the end of its label, wherever the row is
+   listed: what to do first, then a failure, then news. */
 .nav-notice-dot {
     width: 0.4rem;
     height: 0.4rem;
@@ -1289,18 +1323,9 @@ body {
 }
 
 .nav-notice-dot.is-error { background: var(--color-danger); }
+/* After the branch count, which already took the free space. */
+.chat-branch-count ~ .nav-notice-dot { margin-left: 0.35rem; }
 .nav-notice-dot.is-action { background: var(--color-warning); }
-
-/* The title line of a chat row: an optional lead, then the title. It is the row's shrinkable flex
-   item, so a long title ellipsizes exactly as it did while the label itself was that item —
-   without this the row grows past the sidebar and the sidebar scrolls sideways. */
-.chat-title-line {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-}
 
 /* How long is left before a Scheduled row's run starts, before its title: a quiet, tabular figure
    so the numbers line up down the column and the title still reads first. */
@@ -1768,9 +1793,10 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 }
 
 .chat-nav-row {
+    --row-fade-width: 3.9rem;
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 1.6rem 1.6rem;
+    grid-template-columns: minmax(0, 1fr) 1.6rem;
     min-width: 0;
     align-items: center;
     column-gap: 0.12rem;
@@ -1809,8 +1835,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     min-width: 0;
 }
 
-.chat-nav-row > .chat-row-action:not(.chat-menu-button) { grid-column: 2; }
-.chat-nav-row > .chat-menu-button { grid-column: 3; }
+.chat-nav-row > .chat-menu-button { grid-column: 2; }
 
 .sidebar-inline-editor {
     grid-column: 1 / -1;
@@ -1939,6 +1964,9 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     color: var(--color-text-muted);
 }
 
+/* A directory reads like a chat beside it: the same muted title, so neither group shouts. */
+.directory-nav-row-child { color: var(--color-text-muted); }
+
 .directory-name {
     flex: 1 1 auto;
     min-width: 0;
@@ -2013,7 +2041,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     border-color: transparent;
     background: transparent;
     color: var(--color-text-faint);
-    transition: color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+    transition: opacity var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease;
 }
 
 .directory-lock-indicator .app-icon {
@@ -2021,8 +2049,22 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     height: 1rem;
 }
 
+/* Read and write is the usual mode: its open lock appears with the row's other actions. A
+   read-only directory keeps its closed lock in view, quiet, as a fact rather than an alert. */
 .directory-lock-indicator.directory-lock-rw {
-    color: var(--color-accent);
+    opacity: 0;
+}
+
+.directory-nav-row:is(:hover, :focus-within) > .directory-lock-rw,
+.directory-lock-rw:focus-visible {
+    opacity: 1;
+}
+
+.directory-nav-row-child > .directory-row-main > .app-icon {
+    flex: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    color: var(--color-text-disabled);
 }
 
 .directory-lock-indicator:hover:not(:disabled),
@@ -2031,13 +2073,13 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 }
 
 /* The chat's scratch space sits under the stored grants but is none of them: a clock instead of a
-   lock, no mode or edit action, and a dashed "temporary" tag. Shape, not colour, sets it apart, so
-   it reads the same under every theme and accent. The whole label opens it in the preview. */
+   folder, and no mode or edit action. Shape, not colour, sets it apart, so it reads the same under
+   every theme and accent. The whole label opens it in the preview. */
 .directory-chat-files-open {
     border: 0;
     border-radius: inherit;
     background: transparent;
-    color: var(--color-text-secondary);
+    color: var(--color-text-muted);
     font: inherit;
     text-align: start;
     cursor: pointer;
@@ -2052,21 +2094,11 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     flex: none;
     width: 0.9rem;
     height: 0.9rem;
-    color: var(--color-text-muted);
+    color: var(--color-text-disabled);
 }
 
 .directory-chat-files-row > .directory-row-main {
     padding-right: 1.9rem;
-}
-
-.directory-temporary-tag {
-    flex: none;
-    padding: 0 0.35rem;
-    border: 1px dashed var(--color-border-strong);
-    border-radius: var(--radius-xs);
-    color: var(--color-text-faint);
-    font-size: var(--font-size-2xs);
-    line-height: 1.5;
 }
 
 .directory-menu-note {
@@ -2118,6 +2150,17 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 
 .chat-menu .menu-danger { color: var(--color-danger-text); }
 
+/* A menu entry's keyboard shortcut, at its end: there to be learned, not read. */
+.menu-shortcut {
+    margin-left: auto;
+    padding: 0 0 0 0.75rem;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-faint);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-xs);
+}
+
 .chat-link,
 .archive-nav-item {
     color: var(--color-text-muted);
@@ -2167,8 +2210,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .chat-nav-row.selected:is(:hover, :focus-within, :has(.menu-open)) .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-active); }
 .branch-picker-row .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-surface-raised); }
 .branch-picker-row:is(:hover, .is-highlighted) .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-fill-hover); }
-.branch-picker-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg); }
-.branch-picker-row.selected.is-highlighted .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
+.branch-picker-row.selected .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-hover); }
+.branch-picker-row.selected.is-highlighted .run-status-icon > .status-dot { box-shadow: 0 0 0 2px var(--color-accent-bg-active); }
 
 /* How many branches the chat has, after its title: a chip coloured by the most urgent branch status. */
 .chat-branch-count {
@@ -3565,9 +3608,13 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     overscroll-behavior: contain;
 }
 
+/* The picker's lines are the sidebar's chat and branch rows in a menu: the same marks, and the
+   open line marked the same way — an accent tint and a short accent bar at the start edge — so
+   "you are here" reads alike in both places. */
 .branch-picker-row {
+    position: relative;
     display: grid;
-    grid-template-columns: 1.2rem auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.4rem;
     border-color: transparent;
@@ -3584,12 +3631,23 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 
 .branch-picker-row.selected,
 .branch-picker-row.selected:hover:not(:disabled) {
-    background: var(--color-accent-bg);
-    color: var(--color-accent-text);
+    background: var(--color-accent-bg-hover);
+    color: var(--color-text-strong);
 }
 
-.branch-picker-row.selected.is-highlighted { background: var(--color-accent-bg-hover); }
-.branch-picker-check { color: var(--color-accent-text); }
+.branch-picker-row.selected.is-highlighted { background: var(--color-accent-bg-active); }
+
+.branch-picker-row.selected::before {
+    content: "";
+    position: absolute;
+    top: 0.45rem;
+    bottom: 0.45rem;
+    left: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+    pointer-events: none;
+}
 
 .branch-picker-search {
     display: flex;

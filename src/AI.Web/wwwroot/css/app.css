@@ -6197,6 +6197,28 @@ textarea {
     mask-image: linear-gradient(to bottom, color-mix(in srgb, currentColor 35%, transparent), currentColor 1.1lh, transparent 2lh);
 }
 
+/* While the model is still writing the newest note, a soft accent sheen runs through its words,
+   so it reads as text in progress; it stops the moment the model finishes or turns to a call.
+   The words take the gradient (background-clip: text); links and code keep their own colours. It
+   loops like a spinner, so it keeps its own timing (see the regulation's exceptions). */
+.workspace-message.live-text.is-writing .markdown-content {
+    background: linear-gradient(100deg, var(--color-text-muted) 44%, var(--color-accent) 50%, var(--color-text-muted) 56%) 0 0 / 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: live-note-sheen 2.4s linear infinite;
+}
+
+/* Elements with their own background would cover the clipped words; they keep plain text. */
+.workspace-message.live-text.is-writing .markdown-content :is(a, code, pre, kbd, mark, th, td) {
+    -webkit-text-fill-color: currentColor;
+}
+
+@keyframes live-note-sheen {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+}
+
 @supports (height: calc-size(auto, size)) {
     .workspace-message.live-text .markdown-content {
         interpolate-size: allow-keywords;
@@ -6227,6 +6249,7 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
     .workspace-message.live-text,
     .workspace-message.live-text .markdown-content { animation: none; transition: none; }
+    .workspace-message.live-text.is-writing .markdown-content { background: none; -webkit-text-fill-color: currentColor; }
 }
 
 /* Concrete tool activity or an approval wait under the running turn's text. */

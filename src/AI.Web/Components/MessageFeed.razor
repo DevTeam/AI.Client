@@ -247,7 +247,7 @@
                     var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
                     var current = entry.LiveAge == 0 && !entry.LiveLeaving;
                     <article @key="liveKey" id="@(current ? "message-live" : null)"
-                             class="workspace-message assistant live-text streaming @(entry.LiveAge > 0 ? "is-settled" : string.Empty) @(entry.LiveOldest ? "is-oldest" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
+                             class="workspace-message assistant live-text streaming @(entry.LiveAge > 0 ? "is-settled" : string.Empty) @(entry.LiveOldest ? "is-oldest" : string.Empty) @(entry.LiveWriting && !entry.LiveLeaving ? "is-writing" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
                              aria-hidden="@(entry.LiveLeaving ? "true" : null)"
                              @onmouseenter="() => SetLiveTextHeld(true)"
                              @onmouseleave="() => SetLiveTextHeld(false)">
@@ -1449,6 +1449,7 @@
         int LiveVersion = 0,
         int LiveAge = 0,
         bool LiveOldest = false,
+        bool LiveWriting = false,
         bool LiveLeaving = false,
         TurnActivity? Activity = null);
 
@@ -1557,7 +1558,8 @@
                     // flight has nowhere else to appear.
                     else if (!answerStreaming && SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
                     {
-                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id));
+                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
+                            LiveWriting: SelectedRun.DraftToolCall is null));
                     }
                 }
 
@@ -1674,9 +1676,19 @@
             var age = notes.Count - 1 - index;
             entries.Add(new RenderedFeedEntry(LiveText: note.Text, LiveVersion: note.Id, TurnId: turn.Id,
                 LiveAge: age, LiveOldest: age > 0 && age == Math.Min(count, notes.Count) - 1,
+                LiveWriting: age == 0 && IsBeingWritten(note.Text),
                 LiveLeaving: answerStreaming || age >= count));
         }
     }
+
+    /// <summary>
+    /// Whether the shown text is the model's prose still streaming: the step in flight is writing
+    /// it and has not moved on to a call.
+    /// </summary>
+    private bool IsBeingWritten(string shown) =>
+        SelectedRun is { Status: ChatRunStatus.Generating, DraftToolCall: null, DraftContent: { } draft }
+        && !string.IsNullOrWhiteSpace(draft)
+        && draft.Trim().StartsWith(shown.Trim(), StringComparison.Ordinal);
 
     /// <summary>
     /// The one line under the live text for tool activity or an approval wait. Questions and

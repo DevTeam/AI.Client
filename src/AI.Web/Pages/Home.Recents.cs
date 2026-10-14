@@ -42,16 +42,54 @@ public partial class Home
     private bool _recentsShowMore;
     private bool _recentsStateLoaded;
 
-    // The open chat's row in Recents scrolls its project's row into view after the next render.
-    private bool _revealOpenChatPending;
+    /// <summary>
+    /// The row the open chat was opened from, which lists its branches: a Recents or Upcoming row
+    /// keeps them where the click was, so nothing in the sidebar moves; an Upcoming row is told
+    /// apart by the branch it schedules. Null, or a different chat, means its project's row.
+    /// </summary>
+    private (ChatListSurface Surface, Guid ChatId, Guid? SoonBranchId)? _branchHost;
+
+    /// <summary>
+    /// Where the open chat's branches are listed: under the row it was opened from while that row is
+    /// on screen, otherwise under its project's row, so they are never lost with a folded section or
+    /// a row pushed under "Show more".
+    /// </summary>
+    private ChatListSurface GetBranchHostSurface()
+    {
+        if (_branchHost is not { } host || host.ChatId != _selectedChat?.Id) return ChatListSurface.Project;
+        return host.Surface switch
+        {
+            ChatListSurface.Recents when GetVisibleRecentChats(GetRecentChats(RecentChatsMore)).Any(chat => chat.Id == host.ChatId)
+                => ChatListSurface.Recents,
+            ChatListSurface.Soon when SoonChatsShown > 0 && GetVisibleSoonChats().Any(soon => IsBranchHost(soon))
+                => ChatListSurface.Soon,
+            _ => ChatListSurface.Project
+        };
+    }
+
+    private bool IsBranchHost(ScheduledChatSummary soon) =>
+        _branchHost is { Surface: ChatListSurface.Soon } host && host.ChatId == soon.Chat.Id && host.SoonBranchId == soon.BranchId;
 
     /// <summary>
     /// Whether a chat row is the open chat's. The open chat is highlighted wherever it is listed —
-    /// its project and Recents alike — so the same chat looks the same in both. Its branches stand
-    /// only under its project's row, so there a branch takes the highlight from its chat.
+    /// its project and Recents alike — so the same chat looks the same in both. Under the row that
+    /// lists its branches, an open branch takes the highlight from its chat.
     /// </summary>
     private bool IsOpenChatRow(ChatSummary chat, ChatListSurface surface) =>
-        chat.Id == GetActiveChatId() && (surface == ChatListSurface.Recents || GetSelectedBranchId() is null);
+        chat.Id == GetActiveChatId() && (surface != GetBranchHostSurface() || GetSelectedBranchId() is null);
+
+    /// <summary>
+    /// Whether an Upcoming row is the open chat's: the row listing the branches while the main
+    /// conversation is open, and any other row while the branch it schedules is.
+    /// </summary>
+    private bool IsOpenSoonRow(ScheduledChatSummary soon)
+    {
+        if (soon.Chat.Id != GetActiveChatId()) return false;
+        if (IsBranchHost(soon) && GetBranchHostSurface() == ChatListSurface.Soon) return GetSelectedBranchId() is null;
+        return soon.BranchId is not { } branchId || branchId == soon.Chat.Id
+            ? GetSelectedBranchId() is null
+            : GetSelectedBranchId() == branchId;
+    }
 
     // Which list the open chat menu or rename editor belongs to; a chat can be listed in more than
     // one, and only the row it was asked for shows it.
@@ -129,27 +167,34 @@ public partial class Home
     }
 
     /// <summary>
-    /// A Recents row is a shortcut: the chat opens in its project, which unfolds, and the project's
-    /// row with the chat's branches scrolls into view.
+    /// A Recents row is a shortcut: the chat opens in its project, which is left folded or unfolded
+    /// as it was, and its branches unfold under the Recents row itself.
     /// </summary>
     private async Task OpenRecentChatAsync(ChatSummary chat)
     {
+        _branchHost = (ChatListSurface.Recents, chat.Id, null);
         await OpenChatFromListAsync(chat);
-        _revealOpenChatPending = true;
     }
 
-    private Task OpenChatRowAsync(ChatSummary chat, ChatListSurface surface) => surface switch
+    private Task OpenChatRowAsync(ChatSummary chat, ChatListSurface surface)
     {
-        ChatListSurface.Recents => OpenRecentChatAsync(chat),
-        ChatListSurface.OtherProject => OpenChatFromListAsync(chat),
-        ChatListSurface.Soon => OpenSoonChatRowAsync(chat),
-        _ => SelectChatAsync(chat.Id)
-    };
+        if (surface is ChatListSurface.Project or ChatListSurface.OtherProject) _branchHost = null;
+        return surface switch
+        {
+            ChatListSurface.Recents => OpenRecentChatAsync(chat),
+            ChatListSurface.OtherProject => OpenChatFromListAsync(chat),
+            ChatListSurface.Soon => OpenSoonChatRowAsync(chat),
+            _ => SelectChatAsync(chat.Id)
+        };
+    }
 
-    /// <summary>Opens a chat from a list outside the open project's own, in its project, which unfolds.</summary>
+    /// <summary>
+    /// Opens a chat from a list outside the open project's own, in its project. The project becomes
+    /// the open one but keeps its fold: unfolding it would shift every row under it while the
+    /// pointer is still on the list the chat was picked from.
+    /// </summary>
     private async Task OpenChatFromListAsync(ChatSummary chat)
     {
-        ExpandProject(chat.ProjectId);
         if (_selectedProject?.Id == chat.ProjectId)
         {
             await SelectChatAsync(chat.Id);
@@ -161,7 +206,7 @@ public partial class Home
         // chat is made the remembered one first; a chat that already is keeps its last branch.
         if (WorkspaceStateService.GetProjectContext(project.Id).ChatId != chat.Id)
             await WorkspaceStateService.SetProjectContextAsync(project.Id, chat.Id, null);
-        await SelectProjectAsync(project);
+        await SelectProjectAsync(project, unfold: false);
         if (_selectedProject?.Id == project.Id && _selectedChat?.Id != chat.Id && _chats.Any(item => item.Id == chat.Id))
             await SelectChatAsync(chat.Id);
     }
@@ -173,7 +218,7 @@ public partial class Home
     /// The chats Recents shows at this moment: the first few, or the longer list once opened, and
     /// none while the section is folded.
     /// </summary>
-    private List<ChatSummary> GetVisibleRecentChats(IReadOnlyList<ChatSummary> recentChats) => _recentsFolded
+    private List<ChatSummary> GetVisibleRecentChats(List<ChatSummary> recentChats) => _recentsFolded
         ? []
         : recentChats.Take(_recentsShowMore ? recentChats.Count : RecentChatsShown).ToList();
 

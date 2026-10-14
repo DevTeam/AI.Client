@@ -34,10 +34,11 @@ public partial class Home
 
     /// <summary>
     /// Opening a chat from anywhere (search, a notification, a new chat, a model's navigation) shows
-    /// it in its project: that project unfolds — the open one by default.
+    /// it in its project: that project unfolds — the open one by default — and lists the branches.
     /// </summary>
     private void UnfoldProjectTree(Guid? projectId = null)
     {
+        _branchHost = null;
         if ((projectId ?? _selectedProject?.Id) is { } id) ExpandProject(id);
     }
 

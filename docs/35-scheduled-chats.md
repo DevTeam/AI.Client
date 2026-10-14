@@ -202,7 +202,8 @@ Schedules are not inherited, so the widget always says whose schedule it shows:
 The sidebar's **Upcoming** section lists branch schedules the Host will act on within the next
 day, across every project, the soonest first — the soonest of a requested run, a retry and the next
 occurrence, the dispatcher's own due rule. A row leads with how long is left (`now`, `~33s`, `~5m`,
-`~3h`, `~2d`) and opens the owning branch in its project, which unfolds. The section folds, pages and is configured in
+`~3h`, `~2d`) and opens the owning branch in its project, which keeps its fold; the chat's branches
+unfold under the row itself. The section folds, pages and is configured in
 Settings → Sidebar → Chats per section → Upcoming. It is absent while nothing is coming.
 
 ## From the message box

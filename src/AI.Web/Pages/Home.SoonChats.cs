@@ -11,7 +11,8 @@ using Microsoft.AspNetCore.Components.Web;
 /// run that ended last first. A row says how long is left before its run starts; a chat that has
 /// finished keeps its row, without a countdown, pushed down by the newer ones until it falls past
 /// the window the section remembers. The section folds and pages like Recents, and it is absent
-/// while there is nothing to show. A row opens its chat in its project, which unfolds.
+/// while there is nothing to show. A row opens its chat in its project, which keeps its fold, and
+/// lists the chat's branches under itself.
 /// </summary>
 public partial class Home
 {
@@ -72,12 +73,17 @@ public partial class Home
         StateHasChanged();
     });
 
-    // A scheduled chat stays listed here whether or not its project is unfolded, so it opens in its
-    // project, unfolded, rather than under this row.
-    private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat);
+    // A scheduled chat opens in its project, which keeps its fold, and lists its branches under the
+    // row it was opened from, as a Recents row does.
+    private Task OpenSoonChatRowAsync(ChatSummary chat)
+    {
+        _branchHost = (ChatListSurface.Soon, chat.Id, null);
+        return OpenChatFromListAsync(chat);
+    }
 
     private async Task OpenSoonScheduleAsync(ScheduledChatSummary soon)
     {
+        _branchHost = (ChatListSurface.Soon, soon.Chat.Id, soon.BranchId);
         await OpenChatFromListAsync(soon.Chat);
         if (soon.BranchId is { } branchId && branchId != soon.Chat.Id)
             await NavigateToTargetAsync(new WorkspaceTarget(soon.Chat.ProjectId, soon.Chat.Id, branchId, null, false));

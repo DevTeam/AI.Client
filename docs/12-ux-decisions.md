@@ -499,6 +499,14 @@ This replaces the rule above that Recents lists only the chats of folded project
 - The open chat is highlighted wherever it is listed, in its project and in Recents alike. Its branches are listed only under its project's row; while a branch is open, the branch takes the highlight in the project and the chat keeps it in Recents.
 - A Recents row is a shortcut: it opens the chat in its project, which unfolds, and scrolls the chat's row there into view. Recents no longer keeps a project folded or shows branches of its own.
 
+## Recents and Upcoming open a chat in place (2026-10-14)
+
+This replaces the last two points above: unfolding the project and scrolling to it moved every row under the pointer, so the list the chat was picked from jumped away.
+
+- A Recents or Upcoming row opens its chat in its project, which becomes the open project but keeps its fold; nothing scrolls. Clicking the open project, or opening the chat any other way (a project row, a new chat, search, a notification, the guide), unfolds it as before.
+- The open chat's branches are listed under the row it was opened from: the Recents row, or the Upcoming row of the schedule that was clicked. They are listed in one place only; when that row is off screen (a folded section, a row under `Show more`, a row pushed out by newer chats), they go back under the project's row.
+- The open chat is still highlighted wherever it is listed. Under the row that lists its branches an open branch takes the highlight; an Upcoming row of a branch schedule is highlighted while that branch is open.
+
 ## Scheduled is called Upcoming (2026-10-14)
 
 - The sidebar section that lists the scheduled chats due within the next day is named **Upcoming**, and so is its count in Settings → Sidebar → Chats per section. "Scheduled" read as the list of every scheduled chat, while the section lists only what comes next; the scheduled chats themselves keep their name everywhere else (the Schedule widget, the stopwatch icon). Identifiers keep the old name (`settings.sidebar.scheduled`, `ClientSettings.SoonChatCount`).

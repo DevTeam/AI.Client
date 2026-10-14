@@ -147,7 +147,7 @@
                     {
                         var chat = orderedChats[chatIndex];
                         RenderChatNavRow(__builder, chat, ChatListSurface.Project);
-                        @if (_selectedChat?.Id == chat.Id)
+                        @if (_selectedChat?.Id == chat.Id && GetBranchHostSurface() == ChatListSurface.Project)
                         {
                             RenderChatBranchRows(__builder, chat);
                         }
@@ -273,7 +273,7 @@
             @* The latest chats of every project, as shortcuts: a chat stays here whether or not its
                project is unfolded, with its project named after its title, and the open chat is
                highlighted here as in its project. Opening a row opens the chat in its project,
-               which unfolds and scrolls into view; the chat's branches are listed there only. The
+               which keeps its fold, and lists the chat's branches under the row itself. The
                sections under the project list follow Settings → Sidebar top to bottom: Recents,
                Upcoming. *@
             var visibleRecents = GetVisibleRecentChats(recentChats);
@@ -309,6 +309,10 @@
                         {
                             var chat = recentChats[recentIndex];
                             RenderChatNavRow(__builder, chat, ChatListSurface.Recents);
+                            @if (_selectedChat?.Id == chat.Id && GetBranchHostSurface() == ChatListSurface.Recents)
+                            {
+                                RenderChatBranchRows(__builder, chat);
+                            }
                         }
                         @if (recentChats.Count > RecentChatsShown)
                         {
@@ -327,7 +331,7 @@
             @* The scheduled chats that come due within the next day, across projects, and under them
                the chats whose schedule has finished its work: how long is left before a run starts,
                the soonest first, and no countdown once there is nothing left to run. A row opens its
-               chat in its project, which unfolds. *@
+               chat in its project, which keeps its fold, and lists the chat's branches under itself. *@
             var visibleSoon = GetVisibleSoonChats();
             <section class="sidebar-recents sidebar-soon" aria-labelledby="sidebar-soon-toggle">
                 <div class="sidebar-section-header">
@@ -343,13 +347,17 @@
                         @foreach (var soon in visibleSoon)
                         {
                             var chat = soon.Chat;
-                            <div @key="(chat.Id, soon.BranchId)" class="chat-nav-row" title="@(soon.BranchTitle ?? chat.Title)">
+                            <div @key="(chat.Id, soon.BranchId)" class="chat-nav-row @(IsOpenSoonRow(soon) ? "selected" : string.Empty)" title="@(soon.BranchTitle ?? chat.Title)">
                                 <button class="workspace-nav-item chat-link" type="button" @onclick="() => OpenSoonScheduleAsync(soon)">
                                     <AppIcon Name="stopwatch" />
                                     @if (GetSoonLead(soon.DueAt, DateTimeOffset.UtcNow) is { } lead) { <span class="chat-soon-lead">@lead</span> }
                                     <span class="nav-item-label">@(soon.BranchTitle is { } title ? $"{chat.Title} · {title}" : chat.Title)</span>
                                 </button>
                             </div>
+                            @if (_selectedChat?.Id == chat.Id && IsBranchHost(soon) && GetBranchHostSurface() == ChatListSurface.Soon)
+                            {
+                                RenderChatBranchRows(__builder, chat);
+                            }
                         }
                         @if (allSoonChats.Count > SoonChatsShown)
                         {
@@ -1418,7 +1426,7 @@ else if (_guideInvitation is { } guideInvitation)
         var noticeClass = GetChatNoticeClass(chat.Id);
         // Keep the chat or team mark visible while the run status sits at its corner.
         var chatStatus = GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id));
-        <div @key="chat.Id" id="@(surface == ChatListSurface.Project && chat.Id == GetActiveChatId() ? OpenChatRowId : null)" class="chat-nav-row @(IsOpenChatRow(chat, surface) ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
+        <div @key="chat.Id" class="chat-nav-row @(IsOpenChatRow(chat, surface) ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
             @if (_editingChatId == chat.Id && actionsHere)
             {
                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
@@ -1737,8 +1745,6 @@ else if (_guideInvitation is { } guideInvitation)
     private IReadOnlyList<ChatSummary>? _deferredChats;
     private bool _playChatListMove;
     private Guid? _focusChatAfterRender;
-    // The open chat's row in its project, which a Recents shortcut scrolls into view.
-    private const string OpenChatRowId = "sidebar-open-chat";
     private static readonly object PinDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
@@ -2291,12 +2297,6 @@ else if (_guideInvitation is { } guideInvitation)
             _focusSearchInput = false;
             try { await _searchInput.FocusAsync(); }
             catch (JSException) { }
-        }
-
-        if (_revealOpenChatPending)
-        {
-            _revealOpenChatPending = false;
-            await WorkspaceLayoutService.RevealElementAsync(OpenChatRowId);
         }
 
         if (_chatListDragHandle is not null && (_playChatListMove || _focusChatAfterRender is not null))
@@ -3131,7 +3131,7 @@ else if (_guideInvitation is { } guideInvitation)
         await SelectProjectAsync(project);
     }
 
-    private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true)
+    private async Task SelectProjectAsync(ProjectSummary project, bool restoreLastChat = true, bool unfold = true)
     {
         await CloseReviewAsync();
         _projectSelectionCancellation?.Cancel();
@@ -3216,7 +3216,8 @@ else if (_guideInvitation is { } guideInvitation)
         // The project left behind may stay unfolded: it lists the chats it had until the next read.
         if (_chats.FirstOrDefault()?.ProjectId is { } previousProjectId && previousProjectId != project.Id)
             _projectChatLists[previousProjectId] = [.. _chats];
-        ExpandProject(project.Id);
+        // A chat picked from Recents or Upcoming opens its project without unfolding it.
+        if (unfold) ExpandProject(project.Id);
         _chats.Clear();
         _chats.AddRange(chats);
         ChatsBusy.End();
@@ -6368,7 +6369,7 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task OpenChatPermissions(ChatSummary chat)
     {
         CloseContextMenus();
-        if (_selectedProject?.Id != chat.ProjectId) await OpenRecentChatAsync(chat);
+        if (_selectedProject?.Id != chat.ProjectId) await OpenChatRowAsync(chat, _chatActionsSurface);
         if (_selectedProject?.Id != chat.ProjectId) return;
         if (!await CloseDrawersExceptAsync(Drawer.Permissions)) return;
         _permissionsScope = "Chat";
@@ -7385,7 +7386,7 @@ else if (_guideInvitation is { } guideInvitation)
         var chatId = chat.Id;
         if (_runEventsModule is not null) await _runEventsModule.InvokeVoidAsync("hideReviewSubmenus");
         CloseContextMenus();
-        if (_selectedProject?.Id != chat.ProjectId) await OpenRecentChatAsync(chat);
+        if (_selectedProject?.Id != chat.ProjectId) await OpenChatRowAsync(chat, _chatActionsSurface);
         else if (_selectedChat?.Id != chatId) await SelectChatAsync(chatId);
         if (_selectedChat?.Id == chatId) await OpenReviewAsync(reviewId);
     }

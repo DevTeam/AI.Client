@@ -1325,6 +1325,24 @@ body {
 .nav-notice-dot.is-error { background: var(--color-danger); }
 /* After the branch count, which already took the free space. */
 .chat-branch-count ~ .nav-notice-dot { margin-left: 0.35rem; }
+
+/* The project a Recents row belongs to, after its title: quiet, and the first to give way when
+   the row is narrow, so the title still reads. */
+.nav-item-project {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    margin-left: auto;
+    padding-left: 0.5rem;
+    overflow: hidden;
+    color: var(--color-text-faint);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-item-project ~ .chat-branch-count,
+.nav-item-project ~ .nav-notice-dot { margin-left: 0.35rem; }
 .nav-notice-dot.is-action { background: var(--color-warning); }
 
 /* How long is left before a Scheduled row's run starts, before its title: a quiet, tabular figure

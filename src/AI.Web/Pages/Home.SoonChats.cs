@@ -6,7 +6,7 @@ using AI.Contracts.Schedules;
 using Microsoft.AspNetCore.Components.Web;
 
 /// <summary>
-/// The sidebar's Scheduled: the scheduled chats that come due within the next day, across every
+/// The sidebar's Upcoming section: the scheduled chats that come due within the next day, across every
 /// project, the soonest first, and under them the chats whose schedule has finished its work, the
 /// run that ended last first. A row says how long is left before its run starts; a chat that has
 /// finished keeps its row, without a countdown, pushed down by the newer ones until it falls past
@@ -74,11 +74,11 @@ public partial class Home
 
     // A scheduled chat stays listed here whether or not its project is unfolded, so it opens in its
     // project, unfolded, rather than under this row.
-    private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat, null);
+    private Task OpenSoonChatRowAsync(ChatSummary chat) => OpenChatFromListAsync(chat);
 
     private async Task OpenSoonScheduleAsync(ScheduledChatSummary soon)
     {
-        await OpenChatFromListAsync(soon.Chat, null);
+        await OpenChatFromListAsync(soon.Chat);
         if (soon.BranchId is { } branchId && branchId != soon.Chat.Id)
             await NavigateToTargetAsync(new WorkspaceTarget(soon.Chat.ProjectId, soon.Chat.Id, branchId, null, false));
     }
@@ -104,7 +104,7 @@ public partial class Home
     }
 
     /// <summary>
-    /// Escape on the Scheduled heading folds the section and hands the keyboard back to the open
+    /// Escape on the Upcoming heading folds the section and hands the keyboard back to the open
     /// project, so the tree is where the person was rather than nowhere.
     /// </summary>
     private async Task OnScheduledToggleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args)

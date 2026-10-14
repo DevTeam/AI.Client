@@ -33,12 +33,11 @@ public partial class Home
     }
 
     /// <summary>
-    /// Opening something other than a Recents row (search, a notification, a new chat, a model's
-    /// navigation) shows the chat in its project: that project unfolds — the open one by default.
+    /// Opening a chat from anywhere (search, a notification, a new chat, a model's navigation) shows
+    /// it in its project: that project unfolds — the open one by default.
     /// </summary>
     private void UnfoldProjectTree(Guid? projectId = null)
     {
-        _openedFrom = null;
         if ((projectId ?? _selectedProject?.Id) is { } id) ExpandProject(id);
     }
 
@@ -52,8 +51,6 @@ public partial class Home
         else
         {
             _expandedProjectIds.Add(project.Id);
-            // The open chat's row moves back into its project with its branches.
-            if (project.Id == _selectedProject?.Id) _openedFrom = null;
         }
         await SaveRecentsStateAsync();
         if (IsProjectExpanded(project.Id) && project.Id != _selectedProject?.Id && !_projectChatLists.ContainsKey(project.Id))

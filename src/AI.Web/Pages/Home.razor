@@ -270,11 +270,12 @@
         </div>
         @if (RecentChatsShown > 0 && GetRecentChats(RecentChatsMore) is { Count: > 0 } recentChats)
         {
-            @* The latest chats of the folded projects, a click away without unfolding their project.
-               Rows look and behave like the project's own chat rows. A chat opened from here keeps
-               its project folded, and its branches show here instead; an unfolded project lists
-               its chats itself, so none of them is repeated here. The sections under the project
-               list follow Settings → Sidebar top to bottom: Recents, Scheduled. *@
+            @* The latest chats of every project, as shortcuts: a chat stays here whether or not its
+               project is unfolded, with its project named after its title, and the open chat is
+               highlighted here as in its project. Opening a row opens the chat in its project,
+               which unfolds and scrolls into view; the chat's branches are listed there only. The
+               sections under the project list follow Settings → Sidebar top to bottom: Recents,
+               Upcoming. *@
             var visibleRecents = GetVisibleRecentChats(recentChats);
             var resumableRecents = GetRecentResumableTasks(visibleRecents);
             <section class="sidebar-recents" aria-labelledby="sidebar-recents-toggle">
@@ -308,10 +309,6 @@
                         {
                             var chat = recentChats[recentIndex];
                             RenderChatNavRow(__builder, chat, ChatListSurface.Recents);
-                            @if (_selectedChat?.Id == chat.Id && IsFoldedInto(ChatListSurface.Recents))
-                            {
-                                RenderChatBranchRows(__builder, chat);
-                            }
                         }
                         @if (recentChats.Count > RecentChatsShown)
                         {
@@ -329,20 +326,20 @@
         {
             @* The scheduled chats that come due within the next day, across projects, and under them
                the chats whose schedule has finished its work: how long is left before a run starts,
-               the soonest first, and no countdown once there is nothing left to run. A chat opened
-               from here folds its project like Recents does and shows its branches here. *@
+               the soonest first, and no countdown once there is nothing left to run. A row opens its
+               chat in its project, which unfolds. *@
             var visibleSoon = GetVisibleSoonChats();
             <section class="sidebar-recents sidebar-soon" aria-labelledby="sidebar-soon-toggle">
                 <div class="sidebar-section-header">
                     <button id="sidebar-soon-toggle" class="sidebar-section-toggle" type="button" aria-expanded="@(_soonFolded ? "false" : "true")"
-                            aria-controls="soon-chat-list" title="@(_soonFolded ? "Show scheduled chats" : "Hide scheduled chats")" @onclick="ToggleSoonFoldedAsync"
+                            aria-controls="soon-chat-list" title="@(_soonFolded ? "Show upcoming scheduled chats" : "Hide upcoming scheduled chats")" @onclick="ToggleSoonFoldedAsync"
                             @onkeydown="OnScheduledToggleKeyDown">
-                        <span>Scheduled</span><AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
+                        <span>Upcoming</span><AppIcon Name="chevron-down" Class="sidebar-section-chevron" />
                     </button>
                 </div>
                 @if (!_soonFolded)
                 {
-                    <nav id="soon-chat-list" class="workspace-chat-list recent-chat-list soon-chat-list" aria-label="Scheduled chats">
+                    <nav id="soon-chat-list" class="workspace-chat-list recent-chat-list soon-chat-list" aria-label="Upcoming scheduled chats">
                         @foreach (var soon in visibleSoon)
                         {
                             var chat = soon.Chat;
@@ -1405,7 +1402,8 @@ else if (_guideInvitation is { } guideInvitation)
     /// Recents: icon, title, branch count, an unread-notification dot and the menu. A row outside
     /// the open project's list opens its chat across projects, has no drag or pin-order handles, and
     /// keeps its own menu and rename editor, so a chat listed in several places opens one of each.
-    /// The open chat is highlighted on one row only (see IsChatRowHome). Renaming is in the menu,
+    /// The open chat is highlighted on every row it has (see IsOpenChatRow); a Recents row names
+    /// its project, since several projects can have chats of the same name. Renaming is in the menu,
     /// on F2 and on a double click.
     /// </summary>
     private void RenderChatNavRow(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat, ChatListSurface surface)
@@ -1416,14 +1414,14 @@ else if (_guideInvitation is { } guideInvitation)
         var noticeClass = GetChatNoticeClass(chat.Id);
         // Keep the chat or team mark visible while the run status sits at its corner.
         var chatStatus = GetRunStatusClass(chat.Id, chat.Id, GetRun(chat.Id, chat.Id));
-        <div @key="chat.Id" class="chat-nav-row @(chat.Id == GetActiveChatId() && GetSelectedBranchId() is null && IsChatRowHome(surface) ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
+        <div @key="chat.Id" id="@(surface == ChatListSurface.Project && chat.Id == GetActiveChatId() ? OpenChatRowId : null)" class="chat-nav-row @(IsOpenChatRow(chat, surface) ? "selected" : string.Empty)" data-chat-id="@(inList ? null : chat.Id.ToString())" data-recent-chat-id="@(surface == ChatListSurface.Recents ? chat.Id.ToString() : null)" data-pinned="@(inList ? null : chat.IsPinned ? "true" : "false")" title="@GetChatRowTitle(chat, surface)" @oncontextmenu="() => OnChatContextMenu(chat.Id, surface)" @oncontextmenu:preventDefault="true">
             @if (_editingChatId == chat.Id && actionsHere)
             {
                 <input class="sidebar-inline-editor chat-link" @ref="_editingInput" value="@_editingTitle" @oninput="e => _editingTitle = e.Value?.ToString() ?? string.Empty" @onkeydown="e => HandleInlineEditKeyAsync(e, () => SaveChatTitleAsync(chat))" @onblur="() => SaveChatTitleAsync(chat)" aria-label="Chat name" />
             }
             else
             {
-                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? "F2" : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P F2" : "Alt+P F2")" @onkeydown="e => HandleChatRowKeyDownAsync(e, chat, surface)" @onclick="() => OpenChatRowAsync(chat, surface)" @ondblclick="() => BeginChatRename(chat, surface)"><span class="chat-icon-with-branch-count run-status-icon">@if (_selectedChat is { } openChat && openChat.Id == chat.Id && openChat.IsTeamLead(chat.Id)) { <MemberDot Lead="true" /> } else { <AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" /> }<span class="status-dot @chatStatus" aria-hidden="true"></span></span><span class="nav-item-label">@chat.Title</span>@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)" aria-hidden="true"><AppIcon Name="git-branch" />@FormatBranchCount(branchCount)</span> }@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
+                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? "F2" : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P F2" : "Alt+P F2")" @onkeydown="e => HandleChatRowKeyDownAsync(e, chat, surface)" @onclick="() => OpenChatRowAsync(chat, surface)" @ondblclick="() => BeginChatRename(chat, surface)"><span class="chat-icon-with-branch-count run-status-icon">@if (_selectedChat is { } openChat && openChat.Id == chat.Id && openChat.IsTeamLead(chat.Id)) { <MemberDot Lead="true" /> } else { <AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" /> }<span class="status-dot @chatStatus" aria-hidden="true"></span></span><span class="nav-item-label">@chat.Title</span>@if (surface == ChatListSurface.Recents && _projects.FirstOrDefault(project => project.Id == chat.ProjectId) is { } chatProject) { <span class="nav-item-project" aria-hidden="true">@chatProject.Name</span> }@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)" aria-hidden="true"><AppIcon Name="git-branch" />@FormatBranchCount(branchCount)</span> }@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
             }
             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, surface)"><AppIcon Name="more" /></button>
             @if (_chatMenuId == chat.Id && actionsHere)
@@ -1735,6 +1733,8 @@ else if (_guideInvitation is { } guideInvitation)
     private IReadOnlyList<ChatSummary>? _deferredChats;
     private bool _playChatListMove;
     private Guid? _focusChatAfterRender;
+    // The open chat's row in its project, which a Recents shortcut scrolls into view.
+    private const string OpenChatRowId = "sidebar-open-chat";
     private static readonly object PinDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
@@ -2287,6 +2287,12 @@ else if (_guideInvitation is { } guideInvitation)
             _focusSearchInput = false;
             try { await _searchInput.FocusAsync(); }
             catch (JSException) { }
+        }
+
+        if (_revealOpenChatPending)
+        {
+            _revealOpenChatPending = false;
+            await WorkspaceLayoutService.RevealElementAsync(OpenChatRowId);
         }
 
         if (_chatListDragHandle is not null && (_playChatListMove || _focusChatAfterRender is not null))
@@ -3206,7 +3212,7 @@ else if (_guideInvitation is { } guideInvitation)
         // The project left behind may stay unfolded: it lists the chats it had until the next read.
         if (_chats.FirstOrDefault()?.ProjectId is { } previousProjectId && previousProjectId != project.Id)
             _projectChatLists[previousProjectId] = [.. _chats];
-        if (_openedFrom is null) ExpandProject(project.Id);
+        ExpandProject(project.Id);
         _chats.Clear();
         _chats.AddRange(chats);
         ChatsBusy.End();

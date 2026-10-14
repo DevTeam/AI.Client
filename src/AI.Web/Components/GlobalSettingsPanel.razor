@@ -118,7 +118,7 @@
                                             </select>
                                         </label>
                                         <label class="section-count-option">
-                                            <span>Scheduled</span>
+                                            <span>Upcoming</span>
                                             <select @attributes="@(ControlHints.Attributes("settings.sidebar.scheduled"))" value="@_scheduledChatCount" @onchange="SetScheduledChatCountAsync">
                                                 @for (var count = AI.Web.Settings.ClientSettings.MinSoonChatCount; count <= AI.Web.Settings.ClientSettings.MaxSoonChatCount; count++)
                                                 {

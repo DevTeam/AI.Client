@@ -489,3 +489,16 @@ This replaces the parts of the 2026-10-08 Recents, Scheduled and labelled-groups
 - The 1px full-width blue line drawn under a reply that had just landed, held for 5 s and faded, read as a rule between sections rather than as a signal, and sat as a second horizontal stroke under the now-visible action row. It is replaced by a faint accent hairline along which a glint runs once from left to right; both dissolve where they are, about 1.7 s in all (`--branch-leaf-draw`, `-hold`, `-fade`; `BranchLeafLineLifetime` in `Home.razor` is 2 s).
 - It takes the accent, not `--color-unread`: the user is looking at the chat when it plays, so it marks completion, not something left unseen. The unread blue stays with the dots, counts and history markers. The answer and the folded turn summary now share one rule; before, one was blue and the other accent.
 - Under reduced motion the glint is dropped; the hairline still appears and dissolves.
+
+## Recents lists every project's latest chats again (2026-10-14)
+
+This replaces the rule above that Recents lists only the chats of folded projects: a chat vanished from Recents the moment its project was unfolded, which read as a bug.
+
+- Recents lists the latest chats of every project, whether or not their project is unfolded; a chat leaves it only when newer chats push it out. A chat may therefore be listed twice, in its project and in Recents, as recent lists do elsewhere.
+- A Recents row names its project after the title, quiet and the first to give way in a narrow sidebar, since chats of different projects can share a name.
+- The open chat is highlighted wherever it is listed, in its project and in Recents alike. Its branches are listed only under its project's row; while a branch is open, the branch takes the highlight in the project and the chat keeps it in Recents.
+- A Recents row is a shortcut: it opens the chat in its project, which unfolds, and scrolls the chat's row there into view. Recents no longer keeps a project folded or shows branches of its own.
+
+## Scheduled is called Upcoming (2026-10-14)
+
+- The sidebar section that lists the scheduled chats due within the next day is named **Upcoming**, and so is its count in Settings → Sidebar → Chats per section. "Scheduled" read as the list of every scheduled chat, while the section lists only what comes next; the scheduled chats themselves keep their name everywhere else (the Schedule widget, the stopwatch icon). Identifiers keep the old name (`settings.sidebar.scheduled`, `ClientSettings.SoonChatCount`).

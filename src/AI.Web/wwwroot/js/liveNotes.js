@@ -1,7 +1,7 @@
 // The running turn's notes window (MessageFeed.razor, .live-notes; docs/18-compact-turn-view.md).
 // Blazor renders the notes; this script only measures them. It keeps the window as tall as the
-// newest notes, at most two lines for each note the settings keep and never lower than it has been
-// during the turn, and glides the track up whenever text arrives below what is shown, so the reader
+// newest notes, at most two lines for each note the settings keep but never less than the newest
+// note whole, never lower than it has been during the turn, and glides the track up whenever text arrives below what is shown, so the reader
 // sees one movement, always upwards, and nothing around the window moves with it.
 (() => {
     const LinesPerNote = 2;
@@ -15,13 +15,16 @@
         }
     });
 
-    // Two lines per kept note and the gaps between them, measured from the notes themselves so the
-    // cap follows the message font size the person chose.
-    const capOf = (track, limit) => {
-        const text = track.querySelector(".live-text:not(.is-older) .markdown-content");
+    // The notes' line height, measured so the window follows the message font size the person chose.
+    const lineOf = track => {
+        const text = track.querySelector(".live-text .markdown-content");
         if (!text) return 0;
         const style = getComputedStyle(text);
-        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+        return parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+    };
+
+    // Two lines per kept note and the gaps between them.
+    const capOf = (track, limit, line) => {
         const gap = track.children.length > 1 ? parseFloat(getComputedStyle(track.firstElementChild).marginBottom) || 0 : 0;
         return limit * LinesPerNote * line + (limit - 1) * gap;
     };
@@ -48,15 +51,23 @@
         const trackHeight = track.offsetHeight;
         const firstKept = track.querySelector(".live-text:not(.is-older)");
         const kept = firstKept ? trackHeight - firstKept.offsetTop : 0;
+        const newest = track.lastElementChild;
+        const newestTop = newest ? newest.offsetTop : trackHeight;
         const limit = Math.max(1, Number(root.dataset.liveLimit) || 1);
-        // Never lower during the turn, except when the person keeps fewer notes than before.
-        state.height = Math.min(Math.max(state.height, kept), capOf(track, limit) || kept);
+        const line = lineOf(track);
+        // The kept notes up to the cap, but never less than the newest note, which is always whole,
+        // and never lower than before during the turn, unless the person now keeps fewer notes.
+        if (limit < state.limit) state.height = 0;
+        state.limit = limit;
+        const cap = line ? capOf(track, limit, line) : kept;
+        state.height = Math.max(state.height, Math.min(kept, cap), trackHeight - newestTop);
         view.style.setProperty("--live-notes-height", `${state.height}px`);
         // The top dissolves only where the window's edge cuts through a note, not when a note
-        // starts right at it.
+        // starts right at it, and never into the newest note.
         const edge = trackHeight - state.height;
-        view.classList.toggle("is-overflowing", edge > 1
-            && ![...track.children].some(note => Math.abs(note.offsetTop - edge) <= 1));
+        const cuts = edge > 1 && ![...track.children].some(note => Math.abs(note.offsetTop - edge) <= 1);
+        const fade = cuts ? Math.max(0, Math.min(1.5 * line, newestTop - edge)) : 0;
+        view.style.setProperty("--live-notes-fade", `${fade}px`);
 
         // What arrived below the note that was newest last time: that note's own growth and any
         // note after it. A note dropped above changes nothing, the track being pinned to the bottom.
@@ -74,7 +85,7 @@
         const track = root.querySelector(".live-notes-track");
         const view = root.querySelector(".live-notes-window");
         if (!track || !view) return;
-        root.liveNotes = { track, view, height: 0, trackHeight: 0, anchor: null, anchorFromBottom: 0 };
+        root.liveNotes = { track, view, height: 0, limit: 0, trackHeight: 0, anchor: null, anchorFromBottom: 0 };
         update(root);
         resizeObserver.observe(track);
     };

@@ -6190,9 +6190,9 @@ textarea {
 /* Before the first note the activity line sits right under the row, as it always has. */
 .live-notes.is-empty { margin-bottom: 0; }
 
-/* While the window's top edge cuts through a note, the top dissolves into the row above, so text
-   scrolling away fades out instead of being cut. The fade is a registered length so it eases in
-   and out rather than snapping. The mask's opaque stop is currentColor, an opaque text token;
+/* While the window's top edge cuts through an older note, the top dissolves into the row above,
+   so text scrolling away fades out instead of being cut; js/liveNotes.js sets how far, stopping
+   short of the newest note. The fade is a registered length so it eases rather than snapping. The mask's opaque stop is currentColor, an opaque text token;
    only its alpha counts. */
 @property --live-notes-fade { syntax: "<length>"; inherits: false; initial-value: 0px; }
 
@@ -6204,8 +6204,6 @@ textarea {
     transition: height calc(var(--duration-slow) * 2) var(--ease-emphasized),
         --live-notes-fade calc(var(--duration-slow) * 2) var(--ease-emphasized);
 }
-
-.live-notes-window.is-overflowing { --live-notes-fade: 1.5lh; }
 
 .live-notes-track {
     position: absolute;

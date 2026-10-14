@@ -59,8 +59,18 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
         return new ResourceMention(start, end, query, scope, filter, lines);
     }
 
+    public string? Folder(ResourceMention mention)
+    {
+        if (mention.Lines is not null || mention.Scope is not (null or ChatResourceKind.File or ChatResourceKind.Directory))
+            return null;
+        var filter = mention.Filter.Replace('\\', '/');
+        var slash = filter.LastIndexOf('/');
+        return slash < 0 ? null : filter[..(slash + 1)];
+    }
+
     public IReadOnlyList<ResourceMentionItem> Match(ResourceMentionSources sources, ResourceMention mention)
     {
+        if (Folder(mention) is { } folder) return Listing(sources, mention, folder);
         var filter = mention.Filter;
         var scoped = mention.Scope is not null;
         var groups = new List<(ResourceMentionGroup Group, List<(ResourceMentionItem Item, int Rank)> Rows)>
@@ -80,9 +90,60 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
         var result = new List<ResourceMentionItem>();
         foreach (var (group, rows) in ordered)
         {
-            var limit = scoped ? ScopedLimit : Limit(group, filter);
-            result.AddRange(rows.OrderBy(row => row.Rank).Take(limit).Select(row => row.Item));
+            var expanded = scoped || sources.Expanded?.Contains(group) == true;
+            var limit = expanded ? ScopedLimit : Limit(group, filter);
+            var shown = rows.OrderBy(row => row.Rank).Take(limit).Select(row => row.Item).ToArray();
+            result.AddRange(shown);
+            // The Host may have found more than it sent: those are only counted.
+            var found = group == ResourceMentionGroup.Files ? Math.Max(rows.Count, sources.FilesTotal) : rows.Count;
+            if (found > shown.Length) result.Add(More(group, found - shown.Length, !expanded && rows.Count > shown.Length));
         }
+        AddBrowse(result, mention);
+        return result;
+    }
+
+    /// <summary>
+    /// "@App/src/": what is inside that one directory, all of it, folders first and then files by
+    /// name, as the Host listed them. What follows the last "/" narrows the listing here, the way a
+    /// name narrows the whole search, so typing within a directory asks the Host nothing new.
+    /// </summary>
+    private static List<ResourceMentionItem> Listing(ResourceMentionSources sources, ResourceMention mention,
+        string folder)
+    {
+        var name = mention.Filter[folder.Length..];
+        var parent = folder.TrimEnd('/');
+        var rows = new List<(ResourceMentionItem Item, int Rank)>();
+        foreach (var file in sources.Files)
+        {
+            if (mention.Scope is { } scope && file.Kind != scope) continue;
+            var relative = file.RelativePath.TrimEnd('/');
+            var slash = relative.LastIndexOf('/');
+            var fileName = relative[(slash + 1)..];
+            if (NameRank(fileName, name) is not { } ranked) continue;
+            var directory = slash < 0 ? string.Empty : relative[..slash];
+            var attached = sources.Attached.Any(item => item.Kind == file.Kind && SamePath(item.Path, file.Path)
+                && item.Lines is null);
+            var token = "@" + Quote(file.Kind == ChatResourceKind.Directory ? relative + "/" : relative);
+            // The path above the list already names the directory; only a row found elsewhere says where.
+            var detail = directory.Equals(parent, StringComparison.OrdinalIgnoreCase) ? null : directory;
+            rows.Add((new ResourceMentionItem(ResourceMentionGroup.Files, file.Kind, fileName, detail, file.Path,
+                ranked.Highlights, attached, Token: token,
+                OpenAs: file.Kind == ChatResourceKind.Directory ? relative : null), ranked.Rank));
+        }
+        var result = rows.OrderBy(row => row.Rank).Select(row => row.Item).ToList();
+        // A listing the Host cut short can be narrowed by a name, not shown further.
+        if (name.Length == 0 && sources.FilesTotal > result.Count)
+            result.Add(More(ResourceMentionGroup.Files, sources.FilesTotal - result.Count, expandable: false));
+        AddBrowse(result, mention);
+        return result;
+    }
+
+    private static ResourceMentionItem More(ResourceMentionGroup group, int count, bool expandable) =>
+        new(group, ChatResourceKind.File, $"{count} more", expandable ? "Show more" : "Type to narrow the list",
+            $"more:{group}", [], Action: ResourceMentionAction.ShowMore, Expandable: expandable);
+
+    private static void AddBrowse(List<ResourceMentionItem> result, ResourceMention mention)
+    {
         if (mention.Lines is null && mention.Scope is null or ChatResourceKind.File or ChatResourceKind.Directory)
         {
             if (mention.Scope != ChatResourceKind.Directory)
@@ -92,7 +153,6 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
                 result.Add(new ResourceMentionItem(ResourceMentionGroup.Browse, ChatResourceKind.Directory, "Browse directory…",
                     null, "directory", [], Action: ResourceMentionAction.BrowseDirectory));
         }
-        return result;
     }
 
     private static bool In(ResourceMention mention, ChatResourceKind kind) =>

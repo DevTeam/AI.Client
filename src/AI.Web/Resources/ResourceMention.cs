@@ -19,8 +19,11 @@ public enum ResourceMentionGroup { Directories, Files, Changes, Chats, Reviews, 
 /// <summary>A directory the project may read, as its sidebar lists it: known before the Host is asked anything.</summary>
 public sealed record ProjectDirectory(string Name, string Path);
 
-/// <summary>What choosing a row does: attach it, or open the file or directory picker of the "+" menu.</summary>
-public enum ResourceMentionAction { Attach, BrowseFile, BrowseDirectory }
+/// <summary>
+/// What choosing a row does: attach it, open the file or directory picker of the "+" menu, or show
+/// the rows a group left out.
+/// </summary>
+public enum ResourceMentionAction { Attach, BrowseFile, BrowseDirectory, ShowMore }
 
 /// <summary>
 /// One row of the "@" list. <see cref="Value"/> is what the reference stores as its path: an
@@ -29,6 +32,7 @@ public enum ResourceMentionAction { Attach, BrowseFile, BrowseDirectory }
 /// <param name="Highlights">Indexes into <see cref="Name"/>, ascending.</param>
 /// <param name="Token">The "@" link the row becomes in the message text, such as "@src/app.cs:12-40".</param>
 /// <param name="OpenAs">For a directory: the word Tab turns the "@" word into to list what is inside, without the "/".</param>
+/// <param name="Expandable">For a "more" row: whether choosing it shows the rest, rather than only counting them.</param>
 public sealed record ResourceMentionItem(
     ResourceMentionGroup Group,
     ChatResourceKind Kind,
@@ -41,12 +45,16 @@ public sealed record ResourceMentionItem(
     ChatLineRange? Lines = null,
     ChatReviewKind? ReviewKind = null,
     string Token = "",
-    string? OpenAs = null)
+    string? OpenAs = null,
+    bool Expandable = false)
 {
     public string Key => $"{Group}:{Action}:{Value}";
 }
 
-/// <summary>Everything the "@" list can offer, as loaded by the page.</summary>
+/// <summary>
+/// Everything the "@" list can offer, as loaded by the page. <see cref="FilesTotal"/> is how many
+/// files the Host found, sent or not; <see cref="Expanded"/> are the groups shown whole.
+/// </summary>
 public sealed record ResourceMentionSources(
     IReadOnlyList<ResourceSuggestion> Files,
     IReadOnlyList<WorkspaceDiffSource> Diffs,
@@ -56,4 +64,6 @@ public sealed record ResourceMentionSources(
     IReadOnlyList<ChatResource> Attached,
     Guid? CurrentChatId,
     Guid? CurrentProjectId,
-    IReadOnlyList<ProjectDirectory>? Directories = null);
+    IReadOnlyList<ProjectDirectory>? Directories = null,
+    int FilesTotal = 0,
+    IReadOnlyCollection<ResourceMentionGroup>? Expanded = null);

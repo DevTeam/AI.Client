@@ -99,6 +99,11 @@ export function attach(textarea, dotNetReference) {
         resize();
     };
 
+    const atWordEnd = () => {
+        const caret = textarea.selectionStart;
+        return caret === textarea.selectionEnd && (caret === textarea.value.length || /\s/.test(textarea.value[caret]));
+    };
+
     const handleMentionList = event => {
         const plain = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
         if ((event.key === "ArrowUp" || event.key === "ArrowDown") && plain) {
@@ -107,13 +112,30 @@ export function attach(textarea, dotNetReference) {
             return true;
         }
         const withContent = event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
-        if ((event.key === "Enter" || event.key === "Tab") && plain || withContent) {
+        // → at the end of the word opens the selected folder as Tab does; elsewhere it moves the caret.
+        const opensFolder = event.key === "ArrowRight" && plain && atWordEnd()
+            && textarea.closest(".workspace-composer")?.querySelector(".resource-mention-menu .skill-command-item.selected[data-opens]");
+        if ((event.key === "Enter" || event.key === "Tab") && plain || withContent || opensFolder) {
             event.preventDefault();
             mentionListOpen = false;
             dotNetReference
-                .invokeMethodAsync("AcceptMentionSuggestion", textarea.value, textarea.selectionStart, event.key === "Tab", withContent)
+                .invokeMethodAsync("AcceptMentionSuggestion", textarea.value, textarea.selectionStart, event.key !== "Enter", withContent)
                 .then(applyTextEdit);
             return true;
+        }
+        // Backspace right after a directory's "/" goes up a level: it selects the last segment and
+        // leaves the deleting to the browser, so the edit reports itself and can be undone.
+        if (event.key === "Backspace" && plain && atWordEnd()) {
+            const caret = textarea.selectionStart;
+            const before = textarea.value.slice(0, caret);
+            const start = before.search(/\S*$/);
+            const word = before.slice(start);
+            if (word.startsWith("@") && word.endsWith("/") && !word.includes("\"")) {
+                const inner = word.slice(0, -1);
+                const cut = Math.max(inner.lastIndexOf("/"), inner.indexOf(":"), 0) + 1;
+                textarea.setSelectionRange(start + cut, caret);
+            }
+            return false;
         }
         if (event.key === "Escape") {
             event.preventDefault();

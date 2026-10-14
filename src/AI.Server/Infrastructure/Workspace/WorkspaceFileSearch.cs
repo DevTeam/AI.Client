@@ -68,6 +68,8 @@ public sealed class WorkspaceFileSearch(
         var roots = RootsOf(project);
         var found = new List<(ResourceSuggestion Suggestion, int Rank)>();
         var complete = true;
+        // A listing reads like the directory it is: folders, then files, each by name.
+        var listing = true;
         if (query.Length == 0)
         {
             // The top of each directory, and the index for the name the user is about to type.
@@ -81,19 +83,30 @@ public sealed class WorkspaceFileSearch(
         {
             foreach (var root in roots) found.AddRange(ListPath(project, root, query));
             // "Pages/Home" names no directory at the top; it may still end a deeper path.
-            if (found.Count == 0) complete = SearchIndex(project, roots, query, found);
+            if (found.Count == 0)
+            {
+                listing = false;
+                complete = SearchIndex(project, roots, query, found);
+            }
         }
-        else complete = SearchIndex(project, roots, query, found);
-        var items = found
-            .OrderBy(item => item.Rank)
-            .ThenBy(item => item.Suggestion.RelativePath.Count(character => character == '/'))
-            .ThenBy(item => item.Suggestion.RelativePath.Length)
+        else
+        {
+            listing = false;
+            complete = SearchIndex(project, roots, query, found);
+        }
+        var ranked = found.OrderBy(item => item.Rank);
+        if (!listing)
+        {
+            ranked = ranked
+                .ThenBy(item => item.Suggestion.RelativePath.Count(character => character == '/'))
+                .ThenBy(item => item.Suggestion.RelativePath.Length);
+        }
+        var matches = ranked
             .ThenBy(item => item.Suggestion.RelativePath, StringComparer.OrdinalIgnoreCase)
             .DistinctBy(item => item.Suggestion.Path, _comparer)
-            .Take(limit)
             .Select(item => item.Suggestion)
             .ToArray();
-        return new ResourceSearchResult(items, complete);
+        return new ResourceSearchResult(matches.Take(limit).ToArray(), complete, matches.Length);
     }
 
     private List<Root> RootsOf(ProjectDetails project)

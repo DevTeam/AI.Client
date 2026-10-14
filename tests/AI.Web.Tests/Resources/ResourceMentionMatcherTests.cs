@@ -104,6 +104,63 @@ public sealed class ResourceMentionMatcherTests
         path.ShouldNotContain(item => item.Group == ResourceMentionGroup.Directories);
     }
 
+    [Fact]
+    public void ShouldListADirectoryWholeAndNarrowItByTheNameAfterTheSlash()
+    {
+        var files = Enumerable.Range(0, 12)
+            .Select(index => new ResourceSuggestion(ChatResourceKind.Directory, $"C:\\App\\dir{index:00}", $"App/dir{index:00}", PathAccess.Read))
+            .Append(new ResourceSuggestion(ChatResourceKind.File, "C:\\App\\Home.razor", "App/Home.razor", PathAccess.Read))
+            .ToArray();
+        var sources = new ResourceMentionSources(files, [], [], [], [], [], null, null, FilesTotal: 13);
+
+        var mention = _matcher.GetMention("@App/", 5)!;
+        var listed = _matcher.Match(sources, mention);
+        var narrowed = _matcher.Match(sources, _matcher.GetMention("@App/hrz", 8)!);
+
+        _matcher.Folder(mention).ShouldBe("App/");
+        listed.Count(item => item.Group == ResourceMentionGroup.Files).ShouldBe(13);
+        // The path above the list names the directory; the rows do not repeat it.
+        listed.Where(item => item.Group == ResourceMentionGroup.Files).ShouldAllBe(item => item.Detail == null);
+        listed.ShouldNotContain(item => item.Action == ResourceMentionAction.ShowMore);
+        narrowed[0].Token.ShouldBe("@App/Home.razor");
+        narrowed[0].Highlights.ShouldBe([0, 5, 7]);
+        _matcher.Folder(_matcher.GetMention("@App/Home.razor:3", 17)!).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldCountTheRowsASearchLeftOutAndShowThemOnRequest()
+    {
+        var files = Enumerable.Range(0, 20)
+            .Select(index => new ResourceSuggestion(ChatResourceKind.File, $"C:\\App\\page{index:00}.cs", $"page{index:00}.cs", PathAccess.Read))
+            .ToArray();
+        var mention = _matcher.GetMention("@page", 5)!;
+
+        var limited = _matcher.Match(new ResourceMentionSources(files, [], [], [], [], [], null, null, FilesTotal: 70), mention);
+        var whole = _matcher.Match(new ResourceMentionSources(files, [], [], [], [], [], null, null, FilesTotal: 70,
+            Expanded: [ResourceMentionGroup.Files]), mention);
+
+        var more = limited.Single(item => item.Action == ResourceMentionAction.ShowMore);
+        more.Name.ShouldBe("62 more");
+        more.Expandable.ShouldBeTrue();
+        whole.Count(item => item is { Group: ResourceMentionGroup.Files, Action: ResourceMentionAction.Attach }).ShouldBe(20);
+        // What the Host never sent can only be counted, and narrowed by typing.
+        whole.Single(item => item.Action == ResourceMentionAction.ShowMore).Expandable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldCountWhatAPartlyListedDirectoryLeftOut()
+    {
+        var sources = new ResourceMentionSources(
+            [new ResourceSuggestion(ChatResourceKind.File, "C:\\App\\a.cs", "App/a.cs", PathAccess.Read)],
+            [], [], [], [], [], null, null, FilesTotal: 400);
+
+        var listed = _matcher.Match(sources, _matcher.GetMention("@App/", 5)!);
+
+        listed.Single(item => item.Action == ResourceMentionAction.ShowMore).ShouldSatisfyAllConditions(
+            more => more.Name.ShouldBe("399 more"),
+            more => more.Expandable.ShouldBeFalse());
+    }
+
     private static ChatSummary Chat(Guid id, string title) =>
         new(id, Guid.NewGuid(), title, DateTimeOffset.UnixEpoch, 1, DateTimeOffset.UnixEpoch);
 }

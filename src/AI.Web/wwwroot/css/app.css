@@ -4606,14 +4606,62 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .skill-command-item:is(.selected, :hover) .resource-mention-content { visibility: visible; }
 .resource-mention-content:hover { border-color: var(--color-border-strong); background: var(--color-fill-hover); color: var(--color-accent); }
 .resource-mention-menu .resource-mention-content .app-icon { width: .9rem; height: .9rem; color: inherit; }
-/* What the keys do, pinned under the rows while they scroll. */
-.resource-mention-keys {
-    position: sticky;
-    bottom: -.35rem;
+/* The "@" list scrolls only its rows: the path of a listed directory stays above them, and the
+   browse rows and the keys stay under them, however long the listing is. */
+.resource-mention-menu {
     display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
+.resource-mention-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: .35rem;
+}
+.resource-mention-rows:empty { display: none; }
+.resource-mention-path {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: .25rem;
+    min-width: 0;
+    padding: .35rem .6rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-subtle);
+    font-size: var(--font-size-md);
+}
+.resource-mention-path button {
+    display: inline-flex;
+    align-items: center;
+    padding: .1rem .3rem;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: inherit;
+    cursor: pointer;
+}
+.resource-mention-path button:hover { background: var(--color-fill-stronger); color: var(--color-text); }
+.resource-mention-path .app-icon { width: .9rem; height: .9rem; }
+.resource-mention-path .resource-mention-path-current { overflow: hidden; color: var(--color-text); text-overflow: ellipsis; white-space: nowrap; }
+.resource-mention-path-segment { white-space: nowrap; }
+.resource-mention-loading { margin-left: auto; color: var(--color-text-muted); animation: tool-row-spin .9s linear infinite; }
+.resource-mention-pinned {
+    display: grid;
+    flex: none;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    padding: .35rem;
+    border-top: 1px solid var(--color-border);
+}
+.resource-mention-menu .resource-mention-more .skill-command-name { color: var(--color-text-subtle); }
+/* What the keys do, under the rows. */
+.resource-mention-keys {
+    display: flex;
+    flex: none;
     flex-wrap: wrap;
     gap: .35rem 1rem;
-    margin: .3rem -.35rem -.35rem;
     padding: .4rem .9rem;
     border-top: 1px solid var(--color-border);
     background: var(--color-fill-hover);

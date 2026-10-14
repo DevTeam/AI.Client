@@ -63,6 +63,25 @@ public sealed class WorkspaceFileSearchTests : IDisposable
     }
 
     [Fact]
+    public async Task ShouldListADirectoryByNameAndCountWhatTheLimitLeftOut()
+    {
+        var token = TestContext.Current.CancellationToken;
+        foreach (var name in new[] { "b.txt", "a.txt", "Zeta" })
+        {
+            if (name.Contains('.')) File.WriteAllText(Path.Combine(_root, "src", name), "");
+            else Directory.CreateDirectory(Path.Combine(_root, "src", name));
+        }
+
+        var all = await _search.SearchAsync(_projectId, "src/", 20, token);
+        var cut = await _search.SearchAsync(_projectId, "src/", 2, token);
+
+        // Folders, then files, each by name.
+        all.Items.Select(item => item.RelativePath).ShouldBe(["src/Web", "src/Zeta", "src/a.txt", "src/b.txt"]);
+        cut.Items.Count.ShouldBe(2);
+        cut.Total.ShouldBe(4);
+    }
+
+    [Fact]
     public async Task ShouldFindANameOnceTheBackgroundIndexIsWhole()
     {
         var token = TestContext.Current.CancellationToken;

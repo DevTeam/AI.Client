@@ -12,6 +12,12 @@ public interface IResourceMentionMatcher
     /// </summary>
     ResourceMention? GetMention(string text, int caret);
 
+    /// <summary>
+    /// The directory <paramref name="mention"/> lists, with its trailing "/" ("App/src/" for
+    /// "@App/src/We"), or null when it is a search rather than a listing.
+    /// </summary>
+    string? Folder(ResourceMention mention);
+
     /// <summary>The rows for <paramref name="mention"/>, grouped, best group first, browse rows last.</summary>
     IReadOnlyList<ResourceMentionItem> Match(ResourceMentionSources sources, ResourceMention mention);
 }

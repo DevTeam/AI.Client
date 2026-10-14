@@ -2,32 +2,60 @@
 @using AI.Contracts.Resources
 @* The composer's "@" list: the "+" menu reached from the keyboard. It is drawn like the slash list
    of skills and driven the same way — the page owns the selection (chatComposer.js hands it the
-   keys), rows only report pointer picks, on mousedown so the textarea keeps focus and the caret. *@
-<div class="skill-command-menu resource-mention-menu" role="listbox" aria-label="Add to chat" id="resource-mention-menu">
-    @for (var index = 0; index < Items.Count; index++)
+   keys), rows only report pointer picks, on mousedown so the textarea keeps focus and the caret.
+   Inside a directory the path to it stays above the rows, and the browse rows stay under them,
+   so neither scrolls away in a long listing. *@
+<div class="skill-command-menu resource-mention-menu" id="resource-mention-menu">
+    @if (Folder is not null)
     {
-        var row = index;
-        var item = Items[row];
-        if (row == 0 || Items[row - 1].Group != item.Group)
-        {
-            <div class="skill-command-label" role="presentation">@GroupLabel(item.Group)</div>
-        }
-        <div @key="item.Key" id="resource-mention-@row" role="option" aria-selected="@(row == SelectedIndex ? "true" : "false")"
-             class="skill-command-item @(row == SelectedIndex ? "selected" : null) @(item.Attached ? "attached" : null)"
-             @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
-             @onmousemove="() => Hover(row)">
-            <AppIcon Name="@IconOf(item)" />
-            <span class="skill-command-name">@foreach (var part in Parts(item)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
-            <span class="skill-command-description" title="@item.Detail">@item.Detail</span>
-            <span class="skill-command-source">@(item.Attached ? "Attached" : item.Kind == ChatResourceKind.Directory && item.Action == ResourceMentionAction.Attach ? "Tab to open" : null)</span>
-            @if (CanSendContent(item))
+        var segments = Folder.TrimEnd('/').Split('/');
+        <nav class="resource-mention-path" aria-label="Directory">
+            <button class="resource-mention-up" type="button" tabindex="-1" title="Up one level (Backspace)" aria-label="Up one level"
+                    @onmousedown="() => OnNavigate.InvokeAsync(Parent(segments))" @onmousedown:preventDefault>
+                <AppIcon Name="chevron-left" />
+            </button>
+            @for (var index = 0; index < segments.Length; index++)
             {
-                @* The second way to take the row, for the pointer: Shift+Enter is the keyboard's. *@
-                <button class="resource-mention-content" type="button" tabindex="-1"
-                        title="Add with its content (Shift+Enter)" aria-label="Add @item.Name with its content"
-                        @onmousedown="() => OnPickContent.InvokeAsync(row)" @onmousedown:preventDefault @onmousedown:stopPropagation>
-                    <AppIcon Name="file-text" />
-                </button>
+                var depth = index;
+                if (depth > 0) { <span class="resource-mention-path-separator" aria-hidden="true">/</span> }
+                if (depth == segments.Length - 1)
+                {
+                    <span class="resource-mention-path-current" aria-current="location">@segments[depth]</span>
+                }
+                else
+                {
+                    <button class="resource-mention-path-segment" type="button" tabindex="-1"
+                            @onmousedown="() => OnNavigate.InvokeAsync(string.Join('/', segments[..(depth + 1)]) + '/')" @onmousedown:preventDefault>
+                        @segments[depth]
+                    </button>
+                }
+            }
+            @if (Loading)
+            {
+                <AppIcon Name="spinner" Class="resource-mention-loading" />
+            }
+        </nav>
+    }
+    <div class="resource-mention-rows" role="listbox" aria-label="Add to chat">
+        @for (var index = 0; index < Items.Count; index++)
+        {
+            var row = index;
+            var item = Items[row];
+            if (item.Group == ResourceMentionGroup.Browse) continue;
+            if ((row == 0 || Items[row - 1].Group != item.Group) && item.Action != ResourceMentionAction.ShowMore
+                && !(Folder is not null && item.Group == ResourceMentionGroup.Files))
+            {
+                <div class="skill-command-label" role="presentation">@GroupLabel(item.Group)</div>
+            }
+            @Row(row, item)
+        }
+    </div>
+    @if (Items.Any(item => item.Group == ResourceMentionGroup.Browse))
+    {
+        <div class="resource-mention-pinned" role="listbox" aria-label="Browse">
+            @for (var index = 0; index < Items.Count; index++)
+            {
+                if (Items[index].Group == ResourceMentionGroup.Browse) { @Row(index, Items[index]) }
             }
         </div>
     }
@@ -40,12 +68,25 @@
             {
                 <span><kbd>Tab</kbd> open folder</span>
             }
+            @if (Folder is not null)
+            {
+                <span><kbd>Backspace</kbd> up</span>
+            }
         </div>
     }
 </div>
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ResourceMentionItem> Items { get; set; } = [];
+
+    /// <summary>The directory being listed, with its trailing "/", or null while the list is a search.</summary>
+    [Parameter] public string? Folder { get; set; }
+
+    /// <summary>The Host has yet to answer for what is typed: the rows shown are the last answer.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>A directory picked on the path: its "@" word with the trailing "/", or empty for the top.</summary>
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
 
     [Parameter] public int SelectedIndex { get; set; }
 
@@ -76,10 +117,40 @@
         _ => "file"
     };
 
+    private RenderFragment Row(int row, ResourceMentionItem item) =>
+        @<div @key="item.Key" id="resource-mention-@row" role="option" aria-selected="@(row == SelectedIndex ? "true" : "false")"
+              class="skill-command-item @(row == SelectedIndex ? "selected" : null) @(item.Attached ? "attached" : null) @(item.Action == ResourceMentionAction.ShowMore ? "resource-mention-more" : null)"
+              data-opens="@(Opens(item) ? "true" : null)"
+              @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
+              @onmousemove="() => Hover(row)">
+            <AppIcon Name="@IconOf(item)" />
+            <span class="skill-command-name">@foreach (var part in Parts(item)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
+            <span class="skill-command-description" title="@item.Detail">@item.Detail</span>
+            @* "Tab to open" is a hint for the row the keyboard is on, not a column repeated down the list. *@
+            <span class="skill-command-source">@(item.Attached ? "Attached" : Opens(item) && row == SelectedIndex ? "Tab to open" : null)</span>
+            @if (CanSendContent(item))
+            {
+                @* The second way to take the row, for the pointer: Shift+Enter is the keyboard's. *@
+                <button class="resource-mention-content" type="button" tabindex="-1"
+                        title="Add with its content (Shift+Enter)" aria-label="Add @item.Name with its content"
+                        @onmousedown="() => OnPickContent.InvokeAsync(row)" @onmousedown:preventDefault @onmousedown:stopPropagation>
+                    <AppIcon Name="file-text" />
+                </button>
+            }
+        </div>;
+
+    /// <summary>A directory row: Tab and → list what is inside instead of attaching it.</summary>
+    private static bool Opens(ResourceMentionItem item) =>
+        item is { Kind: ChatResourceKind.Directory, Action: ResourceMentionAction.Attach };
+
+    private static string Parent(string[] segments) =>
+        segments.Length <= 1 ? string.Empty : string.Join('/', segments[..^1]) + '/';
+
     private static string IconOf(ResourceMentionItem item) => item.Action switch
     {
         ResourceMentionAction.BrowseFile => "file",
         ResourceMentionAction.BrowseDirectory => "folder-plus",
+        ResourceMentionAction.ShowMore => "more",
         _ => IconOf(item.Kind)
     };
 

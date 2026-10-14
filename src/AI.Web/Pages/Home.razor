@@ -750,7 +750,8 @@
             }
             else if (IsMentionListOpen())
             {
-                <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnPickContent="PickMentionContentAsync" OnHover="HoverMentionSuggestion" />
+                <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnPickContent="PickMentionContentAsync" OnHover="HoverMentionSuggestion"
+                                     Folder="@(_mention is { } listed ? MentionMatcher.Folder(listed) : null)" Loading="_mentionFilesLoading" OnNavigate="NavigateMentionAsync" />
             }
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
             <div @attributes="@(ControlHints.Attributes("chat.composer", nativeTooltip: false))" class="composer-input">
@@ -1816,6 +1817,13 @@ else if (_guideInvitation is { } guideInvitation)
     private string? _replySuggestionPushed;
     private IReadOnlyList<ResourceSuggestion> _mentionFiles = [];
     private string? _mentionFilesQuery;
+    private int _mentionFilesTotal;
+    private bool _mentionFilesLoading;
+    // A directory the Host listed only in part: a name typed in it is searched by the Host, not here.
+    private string? _mentionPartialFolder;
+    // The groups of the "@" list shown whole, for the word they were opened for.
+    private readonly HashSet<AI.Web.Resources.ResourceMentionGroup> _mentionExpanded = [];
+    private string? _mentionExpandedFor;
     private IReadOnlyList<WorkspaceDiffSource> _mentionDiffs = [];
     private int _mentionSearchVersion;
     private Guid? _mentionDiffsLoadedFor;
@@ -6959,7 +6967,7 @@ else if (_guideInvitation is { } guideInvitation)
         _mention = mention;
         if (starting) _ = LoadMentionSourcesAsync();
         RecomputeMentionItems();
-        if (NeedsFileSearch(mention) && _mentionFilesQuery != mention.Filter) _ = SearchMentionFilesAsync(mention.Filter);
+        if (MentionFileQuery(mention) is { } query && _mentionFilesQuery != query) _ = SearchMentionFilesAsync(query);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -6992,6 +7000,19 @@ else if (_guideInvitation is { } guideInvitation)
 
     private static bool NeedsFileSearch(AI.Web.Resources.ResourceMention mention) =>
         mention.Scope is null or ChatResourceKind.File or ChatResourceKind.Directory;
+
+    /// <summary>
+    /// What the Host is asked for the word: a listed directory by itself ("App/src/" for
+    /// "@App/src/We"), since the name after it narrows the listing on the page, unless the Host
+    /// could list that directory only in part.
+    /// </summary>
+    private string? MentionFileQuery(AI.Web.Resources.ResourceMention mention)
+    {
+        if (!NeedsFileSearch(mention)) return null;
+        return MentionMatcher.Folder(mention) is { } folder
+               && !string.Equals(folder, _mentionPartialFolder, StringComparison.OrdinalIgnoreCase)
+            ? folder : mention.Filter;
+    }
 
     private void CloseMention()
     {
@@ -7057,10 +7078,13 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedProject is not { } project) return;
         var version = ++_mentionSearchVersion;
         _mentionFilesQuery = query;
+        _mentionFilesLoading = true;
+        // A directory is listed whole as far as the Host allows; a search needs only what a group can show.
+        var listing = query.EndsWith('/') || query.EndsWith('\\');
         ResourceSearchResult found;
         try
         {
-            found = await ResourceApi.SearchAsync(project.Id, query, 40, CancellationToken.None);
+            found = await ResourceApi.SearchAsync(project.Id, query, listing ? 200 : 50, CancellationToken.None);
         }
         catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
         {
@@ -7069,12 +7093,22 @@ else if (_guideInvitation is { } guideInvitation)
         // A later keystroke already asked again; its answer is the one to show.
         if (version != _mentionSearchVersion || _selectedProject?.Id != project.Id || _mention is null) return;
         _mentionFiles = found.Items;
+        _mentionFilesTotal = Math.Max(found.Total, found.Items.Count);
+        _mentionFilesLoading = !found.Complete;
+        if (listing && found.Total > found.Items.Count) _mentionPartialFolder = query;
         RecomputeMentionItems();
         await InvokeAsync(StateHasChanged);
+        // A directory too large to list whole: the name already typed in it goes to the Host.
+        if (_mention is { } current && MentionFileQuery(current) is { } next && next != query)
+        {
+            await SearchMentionFilesAsync(next);
+            return;
+        }
         if (found.Complete) return;
         // The Host is still indexing: what it has is shown, and the same word is asked again shortly.
         await Task.Delay(400);
-        if (version == _mentionSearchVersion && _mention?.Filter == query) await SearchMentionFilesAsync(query);
+        if (version == _mentionSearchVersion && _mention is { } mention && MentionFileQuery(mention) == query)
+            await SearchMentionFilesAsync(query);
     }
 
     private AI.Web.Resources.ProjectDirectory[] ProjectDirectories() => _security.DirectoryGrants
@@ -7088,10 +7122,18 @@ else if (_guideInvitation is { } guideInvitation)
         if (_mention is not { } mention) { _mentionItems = []; return; }
         var selectedKey = _mentionItems.ElementAtOrDefault(_mentionIndex)?.Key;
         var reviews = ReviewsForComposer();
+        if (_mentionExpandedFor != mention.Query)
+        {
+            // "Show more" was for the word it was chosen on; the next word starts short again.
+            _mentionExpanded.Clear();
+            _mentionExpandedFor = mention.Query;
+        }
         _mentionItems = MentionMatcher.Match(new AI.Web.Resources.ResourceMentionSources(
             _mentionFiles, _mentionDiffs, _chats, reviews, _projects, _draftResources,
-            _selectedChat?.Id, _selectedProject?.Id, ProjectDirectories()), mention);
-        var kept = selectedKey is null ? -1 : _mentionItems.ToList().FindIndex(item => item.Key == selectedKey);
+            _selectedChat?.Id, _selectedProject?.Id, ProjectDirectories(), _mentionFilesTotal, _mentionExpanded), mention);
+        // The browse rows are all a list has before the Host answers; the rows it sends come first.
+        var kept = selectedKey is null ? -1 : _mentionItems.ToList()
+            .FindIndex(item => item.Key == selectedKey && item.Group != AI.Web.Resources.ResourceMentionGroup.Browse);
         _mentionIndex = kept >= 0 && mention.Filter.Length > 0 ? kept : 0;
         _scrollMention = true;
     }
@@ -7141,10 +7183,37 @@ else if (_guideInvitation is { } guideInvitation)
 
     private void HoverMentionSuggestion(int index) => _mentionIndex = index;
 
+    /// <summary>
+    /// A directory picked on the path above a listing: the "@" word becomes that directory, its
+    /// scope word kept, and the list shows what is inside. An empty one is the top of the project.
+    /// </summary>
+    private async Task NavigateMentionAsync(string folder)
+    {
+        if (_mention is not { } mention || _composerHandle is null) return;
+        var text = _chat.Message;
+        if (mention.End > text.Length) return;
+        var scope = mention.Query[..(mention.Query.Length - mention.Filter.Length)];
+        var opened = $"{text[..mention.Start]}@{scope}{folder}";
+        var edit = new AI.Web.Composer.ComposerTextEdit(opened + text[mention.End..], opened.Length);
+        SetComposerText(edit.Text);
+        await _composerHandle.InvokeVoidAsync("setText", edit.Text, edit.Caret);
+        await OnComposerCaret(edit.Text, edit.Caret);
+    }
+
     private async Task<AI.Web.Composer.ComposerTextEdit?> AcceptMentionAsync(AI.Web.Resources.ResourceMentionItem item,
         string text, int caret, bool openDirectory, bool includeContent)
     {
         if (MentionMatcher.GetMention(text, caret) is not { } mention) return null;
+        if (item.Action == AI.Web.Resources.ResourceMentionAction.ShowMore)
+        {
+            // The word stays as typed; the group grows in place and keeps the selection where the row was.
+            var at = _mentionIndex;
+            if (item.Expandable) _mentionExpanded.Add(item.Group);
+            RecomputeMentionItems();
+            _mentionIndex = Math.Clamp(at, 0, Math.Max(0, _mentionItems.Count - 1));
+            _mentionListPushed = null;
+            return new AI.Web.Composer.ComposerTextEdit(text, caret);
+        }
         if (openDirectory && item is { Kind: ChatResourceKind.Directory, Action: AI.Web.Resources.ResourceMentionAction.Attach })
         {
             var relative = item.OpenAs ?? (item.Detail is { Length: > 0 } parent ? $"{parent}/{item.Name}" : item.Name);
@@ -8011,6 +8080,9 @@ else if (_guideInvitation is { } guideInvitation)
         CloseMention();
         _mentionFiles = [];
         _mentionFilesQuery = null;
+        _mentionFilesTotal = 0;
+        _mentionFilesLoading = false;
+        _mentionPartialFolder = null;
         _draftResources.Clear();
         if (_resourceDrafts.TryGetValue(GetComposerDraftKey(), out var resources)) _draftResources.AddRange(resources);
     }

@@ -8,9 +8,10 @@ public sealed record ResourceSuggestion(ChatResourceKind Kind, string Path, stri
 
 /// <summary>
 /// The "@" list's files and directories. <paramref name="Complete"/> is false while the Host is
-/// still indexing: the list asks again shortly, and better matches may arrive.
+/// still indexing: the list asks again shortly, and better matches may arrive. <paramref name="Total"/>
+/// counts every match found before the limit cut the list, so the list can say how many it left out.
 /// </summary>
-public sealed record ResourceSearchResult(IReadOnlyList<ResourceSuggestion> Items, bool Complete);
+public sealed record ResourceSearchResult(IReadOnlyList<ResourceSuggestion> Items, bool Complete, int Total = 0);
 
 /// <summary>
 /// A repository with uncommitted changes, offered as "@diff:Name": a project directory inside a

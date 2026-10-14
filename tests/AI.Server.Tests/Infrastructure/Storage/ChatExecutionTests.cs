@@ -1355,6 +1355,34 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AnswerWhileTheSwitchedModeIsAssessingMustWinAndTakeTheCardDown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+        var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
+        var approvalId = pending.PendingApproval!.Id;
+
+        // The assessment is left unanswered: the person decides while it is still running.
+        fixture.Completion.RiskStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.RiskRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await fixture.Chats.UpdateApprovalModeAsync(fixture.ProjectId, fixture.ChatId,
+            new UpdateChatApprovalModeRequest(ToolApprovalMode.Auto), CancellationToken.None);
+        await fixture.Completion.RiskStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(approvalId, ToolApprovalAction.Allow), CancellationToken.None)).ShouldBeTrue();
+
+        var next = await fixture.NextCallAsync();
+        fixture.Tools.CallCount.ShouldBe(1);
+        (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
+            .Single(run => run.ChatId == fixture.ChatId).PendingApproval.ShouldBeNull();
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ShouldOpenAToolSessionEvenThoughToolsCanStartNestedRuns()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2482,6 +2510,10 @@ public sealed partial class ChatExecutionTests
         /// <summary>What the skill router answers; nowhere by default.</summary>
         public string RouteAnswer { get; set; } = "{}";
         public string RiskAnswer { get; set; } = "{\"decision\":\"ask\",\"risk\":\"medium\",\"reason\":\"Review this call.\"}";
+        /// <summary>Completed when a risk assessment starts.</summary>
+        public TaskCompletionSource? RiskStarted { get; set; }
+        /// <summary>When set, a risk assessment waits for it before answering.</summary>
+        public TaskCompletionSource? RiskRelease { get; set; }
         /// <summary>What a summary request is answered with; summaries fail when it is null.</summary>
         public string? SummaryAnswer { get; set; }
         public int SummaryRequests;
@@ -2502,6 +2534,8 @@ public sealed partial class ChatExecutionTests
             }
             if (request.Message == "Assess a tool call")
             {
+                RiskStarted?.TrySetResult();
+                if (RiskRelease is { } release) await release.Task.WaitAsync(cancellationToken);
                 yield return new ChatCompletionChunk(RiskAnswer);
                 yield break;
             }

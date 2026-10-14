@@ -994,7 +994,10 @@ public sealed class ChatRunDispatcher(
 
         using var lease = await synchronization.EnterAsync(chatId, token);
         if (runtime.PendingApproval?.Id != decision.ApprovalId) return false;
-        return runtime.Approval?.TrySetResult(decision.Action) == true;
+        // The same answer sent twice, by a double click or a card that has not gone yet, is not a
+        // conflict; only a different answer to an approval already decided is.
+        return runtime.Approval is { } pending && (pending.TrySetResult(decision.Action)
+            || pending.Task.IsCompletedSuccessfully && pending.Task.Result == decision.Action);
     }
 
     private async Task<ToolApprovalAction> ApproveAsync(Runtime runtime, AgentTool tool, string arguments, long timeout,
@@ -1034,9 +1037,20 @@ public sealed class ChatRunDispatcher(
                 var current = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
                 if (current == mode) continue;
                 mode = current;
-                if (current != ToolApprovalMode.Ask
-                    && (await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token)).Allowed)
-                    return ToolApprovalAction.Allow;
+                if (current == ToolApprovalMode.Ask) continue;
+                // The assessment takes seconds while the card stays answerable. The person's answer
+                // wins: waiting for the assessment kept the card on screen after it was accepted,
+                // and the next click on it was refused as an approval that no longer exists.
+                using var assessing = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var assessment = autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, assessing.Token);
+                if (await Task.WhenAny(assessment, completion.Task) == completion.Task)
+                {
+                    await assessing.CancelAsync();
+                    try { await assessment; }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                    return await completion.Task;
+                }
+                if ((await assessment).Allowed) return ToolApprovalAction.Allow;
             }
         }
         finally
@@ -1044,6 +1058,10 @@ public sealed class ChatRunDispatcher(
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
             runtime.PendingApproval = null;
             runtime.Approval = null;
+            // A refused call publishes nothing until the model speaks again, so the card is taken
+            // down here rather than left to be answered a second time.
+            runtime.Snapshot = runtime.Snapshot with { PendingApproval = null };
+            Publish();
         }
     }
 

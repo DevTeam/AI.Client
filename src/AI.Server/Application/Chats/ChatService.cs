@@ -703,26 +703,44 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     private static BranchSettings? ToContract(ChatBranchSettings? settings) => BranchSettingsMapping.ToContract(settings);
 
     /// <summary>
-    /// What a folded call keeps of its arguments: nothing, except the skill a <c>run_skill</c> call
-    /// ran, so the Skills widget can name it without loading the turn. Its parameters can carry
-    /// whole documents for a generic skill, so they stay with the turn's activity.
+    /// What a folded call keeps of its arguments: nothing, except what names the call's subject for
+    /// the chat widgets — the skill a <c>run_skill</c> call ran, the paths and pages a built-in read
+    /// tool read — so they can list it without loading the turn. Everything else, such as a generic
+    /// skill's parameters that can hold whole documents, stays with the turn's activity.
     /// </summary>
     private static string CompactArguments(ChatToolCall call)
     {
-        if (call.Name != ToolRef.AppPrefix + "run_skill") return string.Empty;
+        var tool = ToolRef.Parse(call.Name);
+        string[]? kept = tool switch
+        {
+            { IsApp: true, Name: "run_skill" } => ["skillId"],
+            { IsBuiltIn: true } when ReadToolNames.Contains(tool.Name) => ["path", "paths", "url"],
+            _ => null
+        };
+        if (kept is null) return string.Empty;
         try
         {
             using var document = System.Text.Json.JsonDocument.Parse(call.Arguments);
-            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
-                && document.RootElement.TryGetProperty("skillId", out var skillId)
-                && skillId.ValueKind == System.Text.Json.JsonValueKind.String
-                    ? System.Text.Json.JsonSerializer.Serialize(new { skillId = skillId.GetString() }) : string.Empty;
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return string.Empty;
+            var compact = new System.Text.Json.Nodes.JsonObject();
+            foreach (var name in kept)
+                if (document.RootElement.TryGetProperty(name, out var value)
+                    && value.ValueKind is System.Text.Json.JsonValueKind.String or System.Text.Json.JsonValueKind.Array)
+                    compact[name] = System.Text.Json.Nodes.JsonNode.Parse(value.GetRawText());
+            return compact.Count == 0 ? string.Empty : compact.ToJsonString();
         }
         catch (System.Text.Json.JsonException)
         {
             return string.Empty;
         }
     }
+
+    /// <summary>The built-in tools whose subject is a path or a page: what the Knowledge widget lists.</summary>
+    private static readonly HashSet<string> ReadToolNames = new(StringComparer.Ordinal)
+    {
+        "read_text_file", "read_multiple_files", "read_image_file", "list_directory", "directory_tree",
+        "search_files", "grep_files", "get_file_info", "zip_list", "zip_read", "fetch"
+    };
 
     private static bool? ToolResultErrorFlag(string content)
     {

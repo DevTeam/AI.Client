@@ -2,7 +2,8 @@
 @inject IChatSkillStatisticsCalculator Calculator
 @* The skills the visible branch used: those a message carried from the slash list and those the
    assistant ran with run_skill, added up per skill. Two-tone bars split each count by who started
-   the skill; the words beside them say the same. A row shows the newest message that used it. *@
+   the skill; the words beside them say the same. A row opens the skill's settings; its locate
+   button steps through the messages that used it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-skills-widget">
     @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
     @if (_stats.Uses == 0)
@@ -57,37 +58,33 @@
         }
         <div class="chat-usage-section">
             <div class="chat-usage-row chat-usage-heading"><span>Most used</span><span class="chat-usage-muted">uses</span></div>
-            <ul class="chat-skills-list">
+            <ul class="chat-widget-rows">
                 @foreach (var skill in _showAll ? _stats.Skills : _stats.Skills.Take(VisibleSkills))
                 {
-                    <li @key="skill.Id">
-                        <button class="chat-skills-row @(skill.IsRunning ? "is-running" : null)" type="button"
-                                title="@($"{skill.Id} · click to show its latest use")" disabled="@(skill.LatestMessageId is null)"
-                                @onclick="() => ShowLatestAsync(skill)">
-                            <span class="chat-skills-tile" aria-hidden="true"><SkillIcon Icon="@skill.Icon" /></span>
-                            <span class="chat-skills-body">
-                                <span class="chat-skills-name">@skill.Name</span>
-                                <span class="chat-skills-meta chat-usage-muted">
-                                    @if (KindLabel(skill.Kind) is { } kind) { <span title="@KindTitle(skill.Kind)">@kind</span> }
-                                    @if (skill.Requested > 0) { <span>@skill.Requested from you</span> }
-                                    @if (skill.ByAssistant > 0) { <span>@skill.ByAssistant by the assistant</span> }
-                                    @if (skill.Failed > 0) { <span class="chat-skills-failed" title="Runs whose result reports an error, a failure or a cancellation">@skill.Failed failed</span> }
-                                    @if (skill.IsRunning) { <span title="A run of this skill has not returned yet">running</span> }
-                                </span>
-                            </span>
-                            <span class="chat-skills-figure" title="@($"Uses of {skill.Name} in the selected scope")">@skill.Uses</span>
-                            <span class="chat-skills-track" aria-hidden="true">
-                                @if (skill.Requested > 0) { <span class="is-requested" style="flex-grow: @skill.Requested"></span> }
-                                @if (skill.ByAssistant > 0) { <span class="is-assistant" style="flex-grow: @skill.ByAssistant"></span> }
-                                @if (_stats.Skills[0].Uses > skill.Uses) { <i style="flex-grow: @(_stats.Skills[0].Uses - skill.Uses)"></i> }
-                            </span>
-                        </button>
-                    </li>
+                    <ChatWidgetRow @key="skill.Id" Widget="@Widget" Link="@ChatWidgetActions.SkillLink(skill.Id)"
+                                   OpenTitle="@($"Open {skill.Name} in Skills settings · {skill.Id}")"
+                                   Uses="@skill.Messages" Running="@skill.IsRunning">
+                        <Tile><SkillIcon Icon="@skill.Icon" /></Tile>
+                        <Name>@skill.Name</Name>
+                        <Details>
+                            @if (KindLabel(skill.Kind) is { } kind) { <span title="@KindTitle(skill.Kind)">@kind</span> }
+                            @if (skill.Requested > 0) { <span>@skill.Requested from you</span> }
+                            @if (skill.ByAssistant > 0) { <span>@skill.ByAssistant by the assistant</span> }
+                            @if (skill.Failed > 0) { <span class="chat-skills-failed" title="Runs whose result reports an error, a failure or a cancellation">@skill.Failed failed</span> }
+                            @if (skill.IsRunning) { <span title="A run of this skill has not returned yet">running</span> }
+                        </Details>
+                        <Figure><span title="@($"Uses of {skill.Name} in the selected scope")">@skill.Uses</span></Figure>
+                        <Bar>
+                            @if (skill.Requested > 0) { <span class="is-requested" style="flex-grow: @skill.Requested"></span> }
+                            @if (skill.ByAssistant > 0) { <span class="is-assistant" style="flex-grow: @skill.ByAssistant"></span> }
+                            @if (_stats.Skills[0].Uses > skill.Uses) { <i style="flex-grow: @(_stats.Skills[0].Uses - skill.Uses)"></i> }
+                        </Bar>
+                    </ChatWidgetRow>
                 }
             </ul>
             @if (_stats.Skills.Count > VisibleSkills)
             {
-                <button class="chat-usage-link chat-skills-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Skills.Count - VisibleSkills} more")</button>
+                <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Skills.Count - VisibleSkills} more")</button>
             }
         </div>
         @if (_scope == ChatWidgetScope.Chat)
@@ -108,7 +105,6 @@
     /// <summary>The project's effective skills, for names, icons and kinds.</summary>
     [Parameter] public IReadOnlyList<SkillDefinition> Skills { get; set; } = [];
 
-    [Parameter] public EventCallback<Guid> OnSelectMessage { get; set; }
     private ChatWidgetScope _scope = ChatWidgetScope.Chat;
     private ChatSkillStatistics _stats = ChatSkillStatistics.Empty;
     private bool _hasAny;
@@ -145,8 +141,6 @@
         var whole = _scope == ChatWidgetScope.Chat ? _stats : Calculator.Calculate(Messages, Run, Skills, ChatWidgetScope.Chat);
         _hasAny = whole.Uses > 0 || whole.Searches > 0;
     }
-    private Task ShowLatestAsync(ChatSkillStatistic skill) =>
-        skill.LatestMessageId is { } id ? OnSelectMessage.InvokeAsync(id) : Task.CompletedTask;
     private string? GetSummary() => _stats.Uses == 0 ? null
         : $"{_stats.Uses} {(_stats.Uses == 1 ? "use" : "uses")}" + (_stats.Count(ChatSkillOutcome.Failed) is > 0 and var failed
             ? $" · {failed} failed"

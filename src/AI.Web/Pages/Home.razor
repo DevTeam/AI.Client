@@ -911,7 +911,7 @@
         var widgetRun = GetSelectedRun();
         var widgetUsage = widgetChat is null ? null : ChatUsage.Find(widgetChat.Id);
         var widgetMessages = widgetChat is null ? [] : GetWidgetMessages(widgetChat);
-        <ChatWidgetRail Widgets="@_chatWidgets" GuideExpandedWidgetId="@_guideExpandedWidgetId" GuideExpansionDismissed="() => _guideExpandedWidgetId = null" WidgetsChanged="SaveChatWidgetsAsync" OnClose="ToggleChatWidgetsAsync">
+        <ChatWidgetRail Widgets="@_chatWidgets" GuideExpandedWidgetId="@_guideExpandedWidgetId" GuideExpansionDismissed="() => _guideExpandedWidgetId = null" WidgetsChanged="SaveChatWidgetsAsync" OnClose="ToggleChatWidgetsAsync" Actions="@WidgetActions">
             <WidgetTemplate Context="widget">
                 @switch (widget.Definition.Id)
                 {
@@ -955,8 +955,7 @@
                         <ChatSkillsWidget Widget="@widget"
                                           Messages="@widgetMessages"
                                           Run="@widgetRun"
-                                          Skills="@_composerSkills"
-                                          OnSelectMessage="ScrollToTurnAsync" />
+                                          Skills="@_composerSkills" />
                         break;
                     case ChatWidgetCatalog.ChatPerformance:
                         <ChatPerformanceWidget Widget="@widget"
@@ -995,8 +994,7 @@
                     case ChatWidgetCatalog.ChatReferences:
                         <ChatReferencesWidget Widget="@widget"
                                               Messages="@widgetMessages"
-                                              IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
-                                              OnSelectMessage="ScrollToTurnAsync" />
+                                              IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)" />
                         break;
                     case ChatWidgetCatalog.ChatModels:
                         <ChatModelsWidget Widget="@widget"
@@ -1010,7 +1008,6 @@
                                         Messages="@widgetMessages"
                                         Branches="@widgetChat?.Branches"
                                         IsGenerating="@(widgetRun?.Status == ChatRunStatus.Generating)"
-                                        OnSelectMessage="ScrollToTurnAsync"
                                         Chat="@widgetChat"
                                         Runs="@(widgetChat is null ? [] : RunState.Runs.Values.Where(run => run.ChatId == widgetChat.Id).ToArray())"
                                         SelectedBranchId="@GetSelectedBranchId()"
@@ -3823,6 +3820,25 @@ else if (_guideInvitation is { } guideInvitation)
     // The Timeline widget rows are also a table of contents: a click scrolls the transcript to
     // the turn's first user message. The feed handles pending cases (branch switch, message not
     // yet in the DOM) by re-trying after later renders.
+    private ChatWidgetActions? _widgetActions;
+
+    /// <summary>What a widget row opens and shows: the same paths the transcript's own links take.</summary>
+    private ChatWidgetActions WidgetActions => _widgetActions ??= new ChatWidgetActions(
+        ScrollToTurnAsync, OpenWidgetResourceAsync, OpenAppNavigationLinkAsync);
+
+    private Task OpenWidgetResourceAsync(ChatResource resource) => resource switch
+    {
+        { Kind: ChatResourceKind.File or ChatResourceKind.Image, AssetId: not null } => OpenAssetPreviewAsync(resource),
+        { Kind: ChatResourceKind.File or ChatResourceKind.Directory or ChatResourceKind.Image } =>
+            OpenFileLinkPreviewAsync(new FilePreviewTarget(resource.Path, resource.Lines?.Start, resource.Lines?.End)),
+        { Kind: ChatResourceKind.Review } => OpenAttachedReviewAsync(resource),
+        { Kind: ChatResourceKind.Skill } => OpenAppNavigationLinkAsync(ChatWidgetActions.SkillLink(resource.Path)),
+        { Kind: ChatResourceKind.Chat } when Guid.TryParse(resource.Path, out var chatId) => SelectChatAsync(chatId),
+        { Kind: ChatResourceKind.Project } when Guid.TryParse(resource.Path, out var projectId) =>
+            OpenAppNavigationLinkAsync($"aiclient://navigate/project?projectId={projectId}"),
+        _ => Task.CompletedTask
+    };
+
     private async Task ScrollToTurnAsync(Guid messageId)
     {
         if (_messageFeed is null) return;

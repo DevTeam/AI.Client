@@ -35,6 +35,7 @@ public class ChatToolStatisticsCalculatorTests
         (stats.Calls, stats.Turns, stats.TurnsWithTools).ShouldBe((3, 2, 2));
         stats.Tools.Select(tool => (tool.Name, tool.Calls, tool.Errors))
             .ShouldBe([("mcp_one__read", 2, 0), ("mcp_two__read", 1, 1)]);
+        stats.Tools[0].Messages.Count.ShouldBe(2);
         stats.Count(ChatToolOutcome.Succeeded).ShouldBe(2);
         stats.Count(ChatToolOutcome.Failed).ShouldBe(1);
     }

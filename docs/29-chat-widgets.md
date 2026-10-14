@@ -16,13 +16,13 @@ Current widgets:
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Tokens, cost and where they went, with the compacting actions for a filling window |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
-| `chat-skills` | Skills | `skill` | `ChatSkillsWidget` | Skills started from the slash list and run by the assistant, split by who started them, with run outcomes, skill searches and a click that shows each skill's latest use |
+| `chat-skills` | Skills | `skill` | `ChatSkillsWidget` | Skills started from the slash list and run by the assistant, split by who started them, with run outcomes, skill searches; a row opens the skill's settings and locates its uses |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
-| `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
+| `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch: reads by tool, then the most read sources, each opening its preview or page and locating its reads |
 | `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
 | `chat-branches` | Branches | `git-branch` | `ChatBranchesWidget` | Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch |
-| `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each with a click that shows its earliest message |
+| `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each row opening its target and locating the messages that named it |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
 | `chat-team` | Team | `users` | `ChatTeamWidget` | The branches that sent team messages into the visible branch, with what each sent: messages, asides and intents, for the whole chat or the last turn, each with a click that shows its latest message |
 | `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, failed with a recovery action left, still generating or with messages queued behind it — with what each waits on, a filter by reason, a click that opens its chat and branch and, where a resume is what it waits for, a button that resumes it |
@@ -91,6 +91,41 @@ Current widgets:
 - **Actions where the figures are.** A widget offers the next step where it shows the problem:
   "Compact now" beside a full context window, "Set prices" in place of an unknown cost, "Review"
   beside changed files.
+
+### Rows
+
+A list in a widget is a list of things — skills, tools, files, sources, references, models,
+branches — and every row behaves the same, whichever widget it is in (`ChatWidgetRow`):
+
+- **The row opens what it names, where it lives.** A skill opens in Skills settings, a tool in tool
+  settings, a file in its preview or its review, a page in the browser, a chat or a branch in place.
+  A row never scrolls the transcript instead: that is the second action's job.
+- **Leaving or staying.** When the open leads out of the chat (settings, a preview, a review, the
+  browser), an arrow (`arrow-up-right`) lights up beside the name on hover and focus. An open that
+  stays in the chat — switching to a branch — has no arrow.
+- **Locate.** The trailing button (`message-circle`) shows where the chat used the thing: the newest
+  use first, scrolled to the centre with the arrival glint under it. Each further press goes one
+  use further back, round to the newest after the oldest; Shift+press goes the other way. While it
+  steps it stays lit in the accent tint and says "2/5". New uses, or another scope, start it again.
+  A row whose subject is not tied to messages (a model's answers are recorded per request) has none.
+- **Nothing to open.** A row with nowhere to go — an `@diff` reference — is not a button: no hover,
+  no pointer, and its tile is neutral instead of accent, so whether a row opens shows at rest.
+- **Keyboard.** Tab reaches the row and then its locate button; Enter opens or locates.
+- **Touch.** The locate button is always shown, as the widget header's buttons are.
+
+Where each widget stands:
+
+| Widget | Row opens | Locate steps through |
+| --- | --- | --- |
+| Skills | The skill in Skills settings | Messages that used the skill |
+| Tools | The tool in tool settings | Messages that called it |
+| Files | The review of the newest turn that changed it | Receipts of the turns that changed it |
+| Knowledge | The file or directory preview, or the page | Messages whose calls read it |
+| References | The target: preview, upload, review, skill, chat, project | Messages that named it |
+| Models | Model connections | — (answers are per request) |
+| Team, messages into this branch | The sending branch | Messages it sent |
+| Team roster, Branches, Unfinished work | The member's branch, the branch, the run's chat (already the row's action) | — |
+| Timeline | The turn in the transcript: the turn is a place in the chat | — |
 
 ### Accessibility
 
@@ -166,7 +201,7 @@ Figures always use tabular digits (`font-variant-numeric: tabular-nums`) and do 
 | Bar | `chat-usage-bar`, `chat-files-bar` | .35–.45rem high on `--color-fill`, segments `flex-grow` by value |
 | Legend | `chat-usage-legend`, `context-swatch` | A wrapping line of swatch, label and value |
 | Share bars | `chat-usage-shares` | Label, 0.3rem track, percentage |
-| List row | `chat-files-row` | A button: grid `1rem 1fr 2.6rem 2.6rem`, with a 3px bar on the second line |
+| Widget row | `chat-widget-rows`, `chat-widget-row` (component `ChatWidgetRow`) | Tile, name with meta line, figure on the right and a 3px bar under the name; the locate button trails; see [Rows](#rows) |
 | Inline link | `chat-usage-link` | Accent text, underline on hover |
 | Action button | `compact-action` | The small secondary button used across the app |
 | Note | `chat-usage-note`, `chat-usage-footnote`, `chat-usage-empty` | A tinted strip for warnings; subtle .72rem text for notes and empty states |
@@ -186,9 +221,9 @@ Colour carries meaning only together with a sign, a letter or a word. A zero cou
 
 ### Alignment
 
-Numbers compared down a list sit in fixed-width columns, centred, so they line up file under file;
-a bar that shows the same values goes on the second line of the row, under the name, instead of
-competing with the numbers. Column headers ("added", "removed") sit over their columns.
+A row's figure sits at the right edge with tabular digits, so counts line up down the list; a bar
+that shows the same values goes on the second line of the row, under the name, instead of competing
+with the numbers. The heading row above a list names the figure ("uses", "calls", "lines").
 
 ### Copy
 
@@ -217,6 +252,8 @@ widget description and full summary through a tooltip.
 | `ChatWidgetRail` | `src/AI.Web/Components/ChatWidgetRail.razor` | The column: header, menu, list, reordering, empty state |
 | `ChatWidget` | `src/AI.Web/Components/ChatWidget.razor` | The shell: handle, folding title, `Summary`, `HeaderActions`, hide |
 | `ChatWidgetScopeSwitch` | `src/AI.Web/Components/ChatWidgetScopeSwitch.razor` | The shared scope switch (`Value` / `ValueChanged`) |
+| `ChatWidgetRow` | `src/AI.Web/Components/ChatWidgetRow.razor` | One list row: `Tile`, `Name`, `Details`, `Figure`, `Bar`; opens a `Resource`, an app `Link`, a web `Href` or `OnOpen`; locates `Uses` |
+| `ChatWidgetActions` | `src/AI.Web/Widgets/ChatWidgets.cs` | What rows ask of the page, carried in `ChatWidgetContext.Actions`: `ShowMessage`, `OpenResource`, `Navigate` |
 | `chatWidgets.js` | `src/AI.Web/wwwroot/js/chatWidgets.js` | Pointer reordering by the handle |
 | Client settings | `src/AI.Web/Settings/ClientSettings.cs` | `ChatWidgetsOpen`, `ChatWidgets` |
 
@@ -402,7 +439,9 @@ Files changed by the chat (`ChatFilesWidget`, `IChatFileStatisticsCalculator`).
   not clickable.
 - **Layout.** Scope switch; file count with "+N −M" and the added/removed bar; counts by kind
   (A new, M edited, D deleted, R renamed); "Most changed" — files by lines touched, binary files
-  last, six shown with "Show N more"; then "In X of Y turns" and the review button.
+  last, six shown with "Show N more"; then "In X of Y turns" and the review button. A row's tile
+  carries the kind letter, its details the folder and an earlier name, its figure "+N −M" and its
+  bar the two in their colours. The locate button steps through the receipts that changed the file.
 - **Review.** A review covers one turn's receipt. A file opens the review of the newest turn that
   changed it, unfolded and scrolled to that file (`ChatFileReviewRequest`, `ReviewWorkspace.StartPath`).
   The button opens that turn's review — "Review" when the scope has one receipt, "Review latest"
@@ -427,13 +466,31 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
 - **Layout.** Scope switch; total calls and distinct tools; outcome grid; Most used, sorted by
   call count then name, six shown with Show more. A tool's label comes from `IToolPresentations`,
   so a dedicated adapter names it here exactly as the message feed does and an unknown tool is
-  only reformatted from its call name. Each tool shows its server, count, relative
-  usage bar and errors when present. The raw call name is in the tooltip; different servers
-  remain separate. In the whole-chat scope the footer shows turns with calls.
+  only reformatted from its call name. Each tool is a widget row: a tile by origin (`tool` built-in,
+  `zap` application, `code` C#, `mcp` a server), its server and errors, the count and a relative
+  bar. The row opens the tool in tool settings (`settings.tools?toolName=`), where its permission
+  is set; locate steps through the messages that called it. The raw call name is in the tooltip;
+  different servers remain separate. In the whole-chat scope the footer shows turns with calls.
 - **Folded summary.** Call count and errors for the selected scope.
 - **Live data.** The headline says so far during a running or paused turn. Draft calls with
   arguments still streaming are not counted until recorded or executing. No durations are inferred
   from message timestamps, which do not measure tool execution time.
+
+## Knowledge widget
+
+What the assistant read on the visible branch (`ChatKnowledgeWidget`,
+`IChatKnowledgeStatisticsCalculator`).
+
+- **Source.** The built-in read tools (`read_text_file`, `read_multiple_files`, `read_image_file`,
+  `list_directory`, `directory_tree`, `search_files`, `grep_files`, `get_file_info`, `zip_list`,
+  `zip_read`) and `fetch`. Write, edit, `process_run` and third-party tools never count, even when
+  their results land in the model's context. A folded call keeps its `path`, `paths` and `url`
+  (`ChatService.CompactArguments`), so sources are known before a turn is opened.
+- **Layout.** Scope switch; reads and distinct sources; a legend of reads by tool; "Most read" —
+  one widget row per path or page, most read first and then most recent, six shown with Show more.
+  A row's tile says file, folder (a source only listed or searched) or page; its details name the
+  folder and the tools that read it. The row opens the file or directory preview, or the page in
+  the browser; locate steps through the messages whose calls read it.
 
 ## Skills widget
 
@@ -450,7 +507,7 @@ Skill use on the visible branch (`ChatSkillsWidget`, `IChatSkillStatisticsCalcul
   and run none.
 - **The skill id in a folded transcript.** The transcript the page loads leaves tool-call arguments
   out until a turn's activity is opened, so a `run_skill` call would name no skill. The Host keeps
-  one exception (`ChatService.CompactArguments`): a folded `mcp_app__run_skill` call carries
+  what names a call's subject (`ChatService.CompactArguments`): a folded `mcp_app__run_skill` call carries
   `{"skillId": …}` alone. Its parameters, which can hold whole documents for a generic skill, still
   wait for the activity. A skill the router loads before the model's first step (`route_…` call ids)
   is persisted as the same call and counts as the assistant's run.
@@ -466,13 +523,13 @@ Skill use on the visible branch (`ChatSkillsWidget`, `IChatSkillStatisticsCalcul
 - **Layout.** Scope switch; uses and distinct skills; a two-tone bar of uses from you (solid
   `--color-accent-strong`) and by the assistant (a 40% mix of it) with a legend that states both
   counts and the searches; the outcome grid when the assistant ran any; Most used, sorted by uses
-  then name, six shown with Show more. A row is a button with the skill's icon on an accent tile,
-  its name, a meta line — kind (Playbook, Isolated, Built-in code), uses from you, by the
-  assistant, failures in the danger text colour, "running" — the count, and a 3px track that
-  splits the row's uses in the same two tones against the most used skill. A running skill rings
-  its tile in `--color-generating`. A click shows the newest message in scope that used the skill
-  (`OnSelectMessage` → `ScrollToTurnAsync`). In the whole-chat scope the footer shows turns with
-  skills.
+  then name, six shown with Show more. A row is a widget row with the skill's icon on its tile,
+  its name, details — kind (Playbook, Isolated, Built-in code), uses from you, by the assistant,
+  failures in the danger text colour, "running" — the count, and a bar that splits the row's uses
+  in the same two tones against the most used skill. A running skill rings its tile in
+  `--color-generating`. The row opens the skill in Skills settings (`settings.skills?skillId=`);
+  locate steps through the messages that used it. In the whole-chat scope the footer shows turns
+  with skills.
 - **Empty states.** "Skills appear here once you start one from the slash list or the assistant
   runs one."; in the last-turn scope with data elsewhere, "The last turn used no skills."; when the
   assistant only searched, how many times it searched and that it ran none.
@@ -704,8 +761,10 @@ What the chat was given and received (`ChatReferencesWidget`,
     the transcript draws for that reference, through `IResourcePresenter` (`Label`, `Hint`,
     `Summary`), so a reference reads identically in the widget and in the feed. A `@diff` row
     shows its captured totals (`+120 −34` or "no changes"). Six rows are shown, with "Show N more".
-  - **A click** on a row asks `Home` to scroll the transcript to the earliest message in scope
-    that named the target (`OnSelectMessage` → `ScrollToTurnAsync`), the same path Timeline rows use.
+  - **A row** opens its target through `ChatWidgetActions.OpenResource`, the way the transcript's
+    own links do: a file or directory in the preview, an upload in the asset preview, a review, a
+    skill's settings, a chat, a project. An `@diff` has nowhere to open and its row is inert.
+    Locate steps through the messages in scope that named the target, newest first.
   - **Footer.** "In X of Y turns references were named".
 - **Honesty about numbers.**
   - Every figure is a count of stored references; none of it is inferred from timestamps, so
@@ -724,7 +783,7 @@ What the chat was given and received (`ChatReferencesWidget`,
   function over the branch with no DI. Bound in `Composition.cs` and tested in
   `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`, the scope switch and
   the shared `chat-usage-*` building blocks (`chat-usage-section`, `chat-usage-legend`,
-  `chat-usage-empty`, `chat-usage-footnote`, `chat-usage-link`); the rows use `chat-references-*`.
+  `chat-usage-empty`, `chat-usage-footnote`, `chat-usage-link`) and widget rows.
 
 ## Models widget
 
@@ -739,9 +798,10 @@ Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalcula
   are quoted exactly as the endpoint reported them, so two spellings of one model stay two rows.
 - **What it shows.**
   - **Headline.** Number of distinct answering models, and the scope's answer requests on the right.
-  - **Rows.** Most requests first, then by name. Each row: the model name, a bar with its share of
-    the scope's answer requests, that share as a percentage and its request count. The tooltip
-    names the request count, the share and when its first and latest request were recorded.
+  - **Rows.** Most requests first, then by name. Each row: the model name, its request count, its
+    share of the scope's answer requests as a percentage and a bar. The tooltip names the request
+    count, the share and when its first and latest request were recorded. A row opens model
+    connections; it has no locate button, since an answer is recorded per request, not per message.
   - **Footer.** "In X of Y turns models answered", and a note that tokens are not recorded per
     model.
 - **What is *not* implemented, and why.** The per-model **token** share does not exist client-side.
@@ -763,8 +823,7 @@ Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalcula
   `ChatModelStatistics` record holding one `ChatModelEntry` per model; a pure function over the
   usage pair and the branch. Bound in `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`.
   The widget is a `ChatWidget` with `Summary`, `ChatWidgetScopeSwitch`, the shared count headline
-  and `chat-usage-*` building blocks; the rows use `chat-models-*` and reuse
-  `chat-usage-share-track` for the bar.
+  and `chat-usage-*` building blocks; the rows are widget rows.
 
 ## Team widget
 
@@ -812,7 +871,7 @@ The statistics below, under "Messages into this branch", are the per-branch figu
     define, in their own spelling.
   - **Rows.** Most messages first, then by title. Each row: the branch title, its message count, how
     many of those were asides, its intent counts and the arrival time of its latest message in
-    scope. A click shows that message in the transcript.
+    scope. The row opens the sending branch; locate steps through the messages it sent.
   - **Footer.** "In X of Y turns team messages arrived", and a note that every figure comes from the
     recorded sender and that arrival times are message timestamps.
 - **Honesty rules.**

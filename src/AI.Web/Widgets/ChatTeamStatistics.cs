@@ -26,7 +26,8 @@ public sealed record ChatTeamIntentCount(string? Intent, int Count);
 /// When this branch's latest message in scope was recorded. Approximate: it comes from the message
 /// timestamp, which is when the message was stored, not when the sending branch wrote it.
 /// </param>
-/// <param name="LastMessageId">That latest message; the transcript scrolls to it.</param>
+/// <param name="LastMessageId">That latest message.</param>
+/// <param name="MessageIds">Every message it sent into the scope, oldest first.</param>
 public sealed record ChatTeamBranchSummary(
     Guid BranchId,
     string Title,
@@ -34,7 +35,11 @@ public sealed record ChatTeamBranchSummary(
     int Asides,
     IReadOnlyList<ChatTeamIntentCount> Intents,
     DateTimeOffset LastAt,
-    Guid LastMessageId);
+    Guid LastMessageId,
+    IReadOnlyList<Guid>? MessageIds = null)
+{
+    public IReadOnlyList<Guid> Sent => MessageIds ?? [LastMessageId];
+}
 
 /// <summary>
 /// The team a branch is working with: every branch whose run sent a message into this one, in the
@@ -182,6 +187,7 @@ public sealed class ChatTeamStatisticsCalculator : IChatTeamStatisticsCalculator
         private readonly Dictionary<string, int> _intents = new(StringComparer.Ordinal);
         private DateTimeOffset _lastAt = message.CreatedAt;
         private Guid _lastMessageId = message.Id;
+        private readonly List<ChatMessageView> _sent = [message];
 
         public int Messages { get; private set; } = 1;
 
@@ -190,6 +196,7 @@ public sealed class ChatTeamStatisticsCalculator : IChatTeamStatisticsCalculator
         public void Add(ChatMessageView other, string? otherIntent)
         {
             Messages++;
+            _sent.Add(other);
             if (other.Delivery == MessageDelivery.Aside) Asides++;
             if (otherIntent is not null)
                 _intents[otherIntent] = _intents.TryGetValue(otherIntent, out var known) ? known + 1 : 1;
@@ -202,7 +209,8 @@ public sealed class ChatTeamStatisticsCalculator : IChatTeamStatisticsCalculator
         {
             if (intent is not null) _intents[intent] = _intents.TryGetValue(intent, out var known) ? known + 1 : 1;
             var intents = OrderIntents(_intents);
-            return new ChatTeamBranchSummary(branchId, title, Messages, Asides, intents, _lastAt, _lastMessageId);
+            return new ChatTeamBranchSummary(branchId, title, Messages, Asides, intents, _lastAt, _lastMessageId,
+                _sent.OrderBy(item => item.CreatedAt).Select(item => item.Id).ToArray());
         }
     }
 }

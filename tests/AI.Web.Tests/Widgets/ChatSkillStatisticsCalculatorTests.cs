@@ -87,13 +87,13 @@ public class ChatSkillStatisticsCalculatorTests
     }
 
     [Fact]
-    public void ShouldPointEachSkillAtItsNewestUse()
+    public void ShouldListEachMessageThatUsedASkillOnceOldestFirst()
     {
         var first = User("x");
-        var second = Calls(Run("a", "x"));
+        var second = Calls(Run("a", "x"), Run("b", "x"));
         var stats = Calculate([first, second]);
 
-        stats.Skills.Single().LatestMessageId.ShouldBe(second.Id);
+        stats.Skills.Single().Messages.ShouldBe([first.Id, second.Id]);
     }
 
     private ChatSkillStatistics Calculate(IReadOnlyList<ChatMessageView> messages, ChatRunSnapshot? run = null,

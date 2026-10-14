@@ -1,6 +1,7 @@
 namespace AI.Web.Widgets;
 
 using AI.Contracts.Navigation;
+using AI.Contracts.Resources;
 
 /// <summary>How one widget sits in the chat's widget column, as the person left it.</summary>
 public sealed record ChatWidgetPreference(string Id, bool Hidden = false, bool Collapsed = false);
@@ -150,4 +151,44 @@ public sealed record ChatWidgetContext(
     Func<Task> ToggleCollapsed,
     Func<Task> Hide,
     Func<int, Task> Move,
-    bool GuideExpanded = false);
+    bool GuideExpanded = false,
+    ChatWidgetActions? Actions = null)
+{
+    /// <summary>The page's actions for a widget row; none outside the page, as in tests.</summary>
+    public ChatWidgetActions Act => Actions ?? ChatWidgetActions.None;
+}
+
+/// <summary>
+/// The two things a widget row can do, the same way in every widget (docs/29-chat-widgets.md, Rows):
+/// open what the row is about where it lives, and show where the chat used it. Widgets never open
+/// drawers or scroll the transcript themselves; the page does, through these.
+/// </summary>
+/// <param name="ShowMessage">Scrolls the transcript to a message and marks it for a moment.</param>
+/// <param name="OpenResource">Opens a file, directory, upload, review, chat, project or skill.</param>
+/// <param name="Navigate">Follows an application link (<c>aiclient://navigate/...</c>).</param>
+public sealed record ChatWidgetActions(
+    Func<Guid, Task> ShowMessage,
+    Func<ChatResource, Task> OpenResource,
+    Func<string, Task> Navigate)
+{
+    public static ChatWidgetActions None { get; } =
+        new(_ => Task.CompletedTask, _ => Task.CompletedTask, _ => Task.CompletedTask);
+
+    /// <summary>Whether <see cref="OpenResource"/> has somewhere to take <paramref name="resource"/>.</summary>
+    public static bool CanOpen(ChatResource resource) => resource.Kind switch
+    {
+        ChatResourceKind.Diff => false,
+        ChatResourceKind.Chat or ChatResourceKind.Project => Guid.TryParse(resource.Path, out _),
+        _ => resource.Path.Length > 0 || resource.AssetId is not null
+    };
+
+    /// <summary>The settings page of a skill.</summary>
+    public static string SkillLink(string skillId) =>
+        $"aiclient://navigate/settings.skills?skillId={Uri.EscapeDataString(skillId)}";
+
+    /// <summary>The settings page of a tool, by the name it is called with.</summary>
+    public static string ToolLink(string callName) =>
+        $"aiclient://navigate/settings.tools?toolName={Uri.EscapeDataString(callName)}";
+
+    public const string ConnectionsLink = "aiclient://navigate/settings.connections";
+}

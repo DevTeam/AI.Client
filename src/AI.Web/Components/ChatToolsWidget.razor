@@ -1,5 +1,7 @@
 @inject IChatToolStatisticsCalculator Calculator
 
+@* Tool use on the visible branch. A row opens the tool's settings, where its permission is set;
+   its locate button steps through the messages that called it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-tools-widget">
     @if (_hasAnyCalls) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
     @if (_stats.Calls == 0)
@@ -29,22 +31,28 @@
         </div>
         <div class="chat-usage-section">
             <div class="chat-usage-row chat-usage-heading"><span>Most used</span><span class="chat-usage-muted">calls</span></div>
-            <ul class="chat-tools-list">
+            <ul class="chat-widget-rows">
                 @foreach (var tool in _showAll ? _stats.Tools : _stats.Tools.Take(VisibleTools))
                 {
-                    <li @key="tool.Name" title="@tool.Name">
-                        <span class="chat-tools-name">@tool.Label
-                            @if (tool.Server.Length > 0) { <small class="chat-usage-muted">@tool.Server</small> }
-                        </span>
-                        <span class="chat-tools-figure" title="@($"Invocations of {tool.Name} in the selected scope")">@tool.Calls</span>
-                        <span class="chat-tools-track" aria-hidden="true"><span style="flex-grow: @tool.Calls"></span><i style="flex-grow: @(_stats.Tools[0].Calls - tool.Calls)"></i></span>
-                        @if (tool.Errors > 0) { <small class="chat-tools-errors" title="Stored results for this tool that report an error, including refused calls">@tool.Errors @(tool.Errors == 1 ? "error" : "errors")</small> }
-                    </li>
+                    <ChatWidgetRow @key="tool.Name" Widget="@Widget" Link="@ChatWidgetActions.ToolLink(tool.Name)"
+                                   OpenTitle="@($"Open {tool.Label} in tool settings · {tool.Name}")" Uses="@tool.Messages" UseNoun="call">
+                        <Tile><AppIcon Name="@ServerIcon(tool.Name)" /></Tile>
+                        <Name>@tool.Label</Name>
+                        <Details>
+                            @if (tool.Server.Length > 0) { <span>@tool.Server</span> }
+                            @if (tool.Errors > 0) { <span class="chat-tools-errors" title="Stored results for this tool that report an error, including refused calls">@tool.Errors @(tool.Errors == 1 ? "error" : "errors")</span> }
+                        </Details>
+                        <Figure><span title="@($"Invocations of {tool.Name} in the selected scope")">@tool.Calls</span></Figure>
+                        <Bar>
+                            <span style="flex-grow: @tool.Calls"></span>
+                            @if (_stats.Tools[0].Calls > tool.Calls) { <i style="flex-grow: @(_stats.Tools[0].Calls - tool.Calls)"></i> }
+                        </Bar>
+                    </ChatWidgetRow>
                 }
             </ul>
             @if (_stats.Tools.Count > VisibleTools)
             {
-                <button class="chat-usage-link chat-tools-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Tools.Count - VisibleTools} more")</button>
+                <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Tools.Count - VisibleTools} more")</button>
             }
         </div>
         @if (_scope == ChatWidgetScope.Chat)
@@ -97,6 +105,14 @@
     private string? GetSummary() => _stats.Calls == 0 ? null
         : $"{_stats.Calls} {(_stats.Calls == 1 ? "call" : "calls")}" + (_stats.Count(ChatToolOutcome.Failed) > 0
             ? $" · {_stats.Count(ChatToolOutcome.Failed)} {(_stats.Count(ChatToolOutcome.Failed) == 1 ? "error" : "errors")}" : "");
+    /// <summary>The tile of a tool says where it comes from: the Host, the application, C# or an MCP server.</summary>
+    private static string ServerIcon(string callName) => AI.Contracts.Tools.ToolRef.Parse(callName) switch
+    {
+        { IsBuiltIn: true } => "tool",
+        { IsApp: true } => "zap",
+        { IsCSharp: true } => "code",
+        _ => "mcp"
+    };
     private static string OutcomeLabel(ChatToolOutcome outcome) => outcome switch
     {
         ChatToolOutcome.Succeeded => "Succeeded", ChatToolOutcome.Failed => "Errors",

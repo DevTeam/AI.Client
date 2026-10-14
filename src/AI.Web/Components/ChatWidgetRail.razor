@@ -56,7 +56,7 @@
                 @WidgetTemplate(new ChatWidgetContext(definition, widget,
                     () => ToggleCollapsedAsync(id),
                     () => HideAsync(id),
-                    offset => ChangeAsync(Layout.MoveBy(Widgets, id, offset)), id == GuideExpandedWidgetId))
+                    offset => ChangeAsync(Layout.MoveBy(Widgets, id, offset)), id == GuideExpandedWidgetId, Actions))
             </div>
         }
         @if (GetVisible().Count == 0)
@@ -82,6 +82,10 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
+
+    /// <summary>What widget rows open and show; see <see cref="ChatWidgetActions"/>.</summary>
+    [Parameter]
+    public ChatWidgetActions? Actions { get; set; }
 
     /// <summary>Temporarily shows and opens a widget without changing its saved preference.</summary>
     [Parameter] public string? GuideExpandedWidgetId { get; set; }

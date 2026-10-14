@@ -24,18 +24,35 @@ public sealed record ChatKnowledgeSourceGroup(
     int Calls,
     IReadOnlyList<KnowledgeSource> Recent);
 
+/// <summary>One file, directory or page the assistant read, over every tool that read it.</summary>
+/// <param name="Display">The path with slashes, or the URL.</param>
+/// <param name="Target">The path as the call gave it, for the preview to open, or the URL.</param>
+/// <param name="Tools">The labels of the tools that read it, in the order they first did.</param>
+/// <param name="Messages">The messages in scope whose calls read it, oldest first, each once.</param>
+public sealed record ChatKnowledgeSourceEntry(
+    string Display,
+    string Target,
+    bool IsUrl,
+    int Reads,
+    IReadOnlyList<string> Tools,
+    IReadOnlyList<Guid> Messages);
+
 /// <summary>All sources of knowledge on the visible branch or last turn.</summary>
 /// <param name="Groups">One entry per (server, tool) pair, ordered by calls then label.</param>
 /// <param name="TotalReads">How many read calls happened in scope.</param>
 /// <param name="TurnsWithReads">How many of the scope's turns contained at least one read.</param>
 /// <param name="IsRunning">True while the last turn is still going.</param>
+/// <param name="Sources">Every source read in scope, most read first, then most recent.</param>
 public sealed record ChatKnowledgeStatistics(
     IReadOnlyList<ChatKnowledgeSourceGroup> Groups,
     int TotalReads,
     int TurnsWithReads,
-    bool IsRunning)
+    bool IsRunning,
+    IReadOnlyList<ChatKnowledgeSourceEntry>? Sources = null)
 {
     public static ChatKnowledgeStatistics Empty { get; } = new([], 0, 0, false);
+
+    public IReadOnlyList<ChatKnowledgeSourceEntry> Entries => Sources ?? [];
 }
 
 /// <summary>
@@ -84,6 +101,7 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
         var scopedTurns = scope == ChatWidgetScope.LastTurn && turns.Count > 1 ? turns[^1..] : turns;
 
         var groups = new Dictionary<string, GroupAccumulator>(StringComparer.Ordinal);
+        var sources = new Dictionary<string, SourceAccumulator>(StringComparer.OrdinalIgnoreCase);
         var totalReads = 0;
         var turnsWithReads = 0;
 
@@ -102,9 +120,10 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
                     if (!IsRead(call.Name)) continue;
                     hadRead = true;
                     var readCount = 0;
-                    foreach (var source in ExtractSources(call.Name, call.Arguments))
+                    foreach (var (source, target) in ExtractSources(call.Name, call.Arguments))
                     {
                         Add(groups, call.Name, source);
+                        AddSource(sources, call.Name, source, target, message.Id);
                         readCount++;
                     }
                     // A read_multiple_files call with no parseable paths still counts as one read
@@ -118,8 +137,11 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
             {
                 if (!IsRead(liveCall.Name)) continue;
                 hadRead = true;
-                foreach (var source in ExtractSources(liveCall.Name, liveCall.Arguments))
+                foreach (var (source, target) in ExtractSources(liveCall.Name, liveCall.Arguments))
+                {
                     Add(groups, liveCall.Name, source);
+                    AddSource(sources, liveCall.Name, source, target, run!.ActiveMessageId);
+                }
                 totalReads++;
             }
 
@@ -132,7 +154,10 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
             .Select(item => item.ToGroup())
             .ToArray();
 
-        return new ChatKnowledgeStatistics(result, totalReads, turnsWithReads, isRunning);
+        var entries = sources.Values.Select((item, order) => (Entry: item.ToEntry(), Order: order))
+            .OrderByDescending(item => item.Entry.Reads).ThenByDescending(item => item.Order)
+            .Select(item => item.Entry).ToArray();
+        return new ChatKnowledgeStatistics(result, totalReads, turnsWithReads, isRunning, entries);
     }
 
     private static bool IsRead(string callName) => ReadTools.Contains(ToolRef.Parse(callName).Name);
@@ -147,7 +172,15 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
         return result;
     }
 
-    private static IEnumerable<KnowledgeSource> ExtractSources(string callName, string arguments)
+    private static void AddSource(Dictionary<string, SourceAccumulator> sources, string callName,
+        KnowledgeSource source, string target, Guid? messageId)
+    {
+        if (!sources.TryGetValue(source.Display, out var entry))
+            sources[source.Display] = entry = new SourceAccumulator(source.Display, target, ToolRef.Parse(callName).Name == "fetch");
+        entry.Add(ToolLabel(ToolRef.Parse(callName).Name), messageId);
+    }
+
+    private static IEnumerable<(KnowledgeSource Source, string Target)> ExtractSources(string callName, string arguments)
     {
         var tool = ToolRef.Parse(callName).Name;
         var parsed = TryParse(arguments);
@@ -162,7 +195,7 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
                     foreach (var item in paths.EnumerateArray())
                     {
                         if (item.ValueKind == JsonValueKind.String && item.GetString() is { } path && path.Length > 0)
-                            yield return new KnowledgeSource(NormalizePath(path), 0);
+                            yield return (new KnowledgeSource(NormalizePath(path), 0), path);
                     }
                 }
                 yield break;
@@ -170,13 +203,13 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
             case "fetch":
             {
                 if (TryGetString(parsed, "url") is { } url && url.Length > 0)
-                    yield return new KnowledgeSource(url, 0);
+                    yield return (new KnowledgeSource(url, 0), url);
                 yield break;
             }
             default:
             {
                 if (TryGetString(parsed, "path") is { } path && path.Length > 0)
-                    yield return new KnowledgeSource(NormalizePath(path), 0);
+                    yield return (new KnowledgeSource(NormalizePath(path), 0), path);
                 yield break;
             }
         }
@@ -267,6 +300,22 @@ public sealed class ChatKnowledgeStatisticsCalculator : IChatKnowledgeStatistics
             turns[^1].Add(message);
         }
         return turns;
+    }
+
+    private sealed class SourceAccumulator(string display, string target, bool isUrl)
+    {
+        private readonly List<string> _tools = [];
+        private readonly List<Guid> _messages = [];
+        private int _reads;
+
+        public void Add(string tool, Guid? messageId)
+        {
+            _reads++;
+            if (!_tools.Contains(tool)) _tools.Add(tool);
+            if (messageId is { } id && !_messages.Contains(id)) _messages.Add(id);
+        }
+
+        public ChatKnowledgeSourceEntry ToEntry() => new(display, target, isUrl, _reads, _tools, _messages);
     }
 
     private sealed class GroupAccumulator(string server, string toolName, string toolLabel)

@@ -17,9 +17,9 @@ public enum ChatSkillOutcome { Succeeded, Skipped, Failed, Running, AwaitingResu
 /// <param name="Kind">A <see cref="SkillKinds"/> value when the catalog knows the skill, otherwise null.</param>
 /// <param name="Requested">Uses from the slash list or a schedule: a message that carried the skill.</param>
 /// <param name="ByAssistant">Uses the assistant started with <c>run_skill</c>.</param>
-/// <param name="LatestMessageId">The newest message in scope that used the skill, for the transcript to show.</param>
+/// <param name="Messages">The messages in scope that used the skill, oldest first, each once.</param>
 public sealed record ChatSkillStatistic(string Id, string Name, string? Icon, string? Kind,
-    int Uses, int Requested, int ByAssistant, int Failed, bool IsRunning, Guid? LatestMessageId);
+    int Uses, int Requested, int ByAssistant, int Failed, bool IsRunning, IReadOnlyList<Guid> Messages);
 
 public sealed record ChatSkillStatistics(
     IReadOnlyList<ChatSkillStatistic> Skills,
@@ -119,7 +119,7 @@ public sealed class ChatSkillStatisticsCalculator(IToolResultCodec codec) : ICha
                 group.Count(use => use.Requested), group.Count(use => !use.Requested),
                 group.Count(use => use.Outcome == ChatSkillOutcome.Failed),
                 group.Any(use => use.Outcome is ChatSkillOutcome.Running or ChatSkillOutcome.AwaitingResult),
-                group.Select(use => use.MessageId).LastOrDefault(id => id is not null));
+                group.Where(use => use.MessageId is not null).Select(use => use.MessageId!.Value).Distinct().ToArray());
         }).OrderByDescending(skill => skill.Uses).ThenBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
         return new ChatSkillStatistics(statistics,

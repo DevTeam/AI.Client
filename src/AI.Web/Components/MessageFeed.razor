@@ -146,7 +146,7 @@
                         {
                             <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         }
-                        <span class="turn-summary-text">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
+                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
                         @* Only a finished turn says what it used: a figure ticking up beside the timer
                            would pull the eye away from the answer being written under it. *@
                         @if (ShowTurnTokens && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)
@@ -265,7 +265,7 @@
                          role="@(idle ? null : "status")" aria-hidden="@(idle ? "true" : null)">
                         @if (!idle)
                         {
-                            <span class="turn-activity-title">@activity.Title</span>
+                            <span class="turn-activity-title @(activity.Waiting ? null : "text-sheen")">@activity.Title</span>
                         }
                         @if (activity.Detail is { Length: > 0 } activityDetail)
                         {
@@ -1453,7 +1453,7 @@
         bool LiveLeaving = false,
         TurnActivity? Activity = null);
 
-    private sealed record TurnActivity(string Title, string? Detail)
+    private sealed record TurnActivity(string Title, string? Detail, bool Waiting = false)
     {
         public static TurnActivity None { get; } = new(string.Empty, null);
     }
@@ -1697,7 +1697,7 @@
     private TurnActivity? GetTurnActivity()
     {
         if (SelectedRun is not { Status: ChatRunStatus.Generating } run || run.PendingPrompt is not null || run.Wait is not null) return null;
-        if (run.PendingApproval is not null) return new TurnActivity("Waiting for tool approval", null);
+        if (run.PendingApproval is not null) return new TurnActivity("Waiting for tool approval", null, Waiting: true);
         if (run.ActiveTools is { Count: > 0 } tools)
         {
             var call = Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments);
@@ -1940,6 +1940,10 @@
     private bool IsRunningTurn(FeedTurn turn) =>
         IsCurrentTurn(turn) && turn.FinalAnswer is null
         && SelectedRun?.Status == ChatRunStatus.Generating;
+
+    // Running and not waiting on the person: the sheen on "Working for …" means the model is busy.
+    private bool IsTurnBusy(FeedTurn turn) =>
+        IsRunningTurn(turn) && SelectedRun is { PendingApproval: null, PendingPrompt: null, Wait: null };
 
     private bool IsCurrentUnfinishedTurn(FeedTurn turn) =>
         IsCurrentTurn(turn) && LastTurnEndedWithoutFinalAnswer();

@@ -6,7 +6,9 @@ using AI.Contracts.Tools;
 
 public enum ChatToolOutcome { Succeeded, Failed, Running, AwaitingResult, Unknown, NoResult }
 
-public sealed record ChatToolStatistic(string Name, string Label, string Server, int Calls, int Errors);
+/// <param name="Messages">The messages in scope that called the tool, oldest first, each once.</param>
+public sealed record ChatToolStatistic(string Name, string Label, string Server, int Calls, int Errors,
+    IReadOnlyList<Guid> Messages);
 
 public sealed record ChatToolStatistics(
     IReadOnlyList<ChatToolStatistic> Tools,
@@ -47,7 +49,7 @@ public sealed class ChatToolStatisticsCalculator(
             && turns.Count > 0 && turns[^1].Any(message => message.Id == active);
         if (scope == ChatWidgetScope.LastTurn && turns.Count > 1) turns = turns[^1..];
 
-        var calls = new List<(string Name, string Arguments, ChatToolOutcome Outcome)>();
+        var calls = new List<(string Name, string Arguments, ChatToolOutcome Outcome, Guid? MessageId)>();
         var turnsWithTools = 0;
         for (var index = 0; index < turns.Count; index++)
         {
@@ -58,9 +60,8 @@ public sealed class ChatToolStatisticsCalculator(
                 .GroupBy(message => message.ToolCallId!, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
             var invocations = turn.Where(message => message.Role == "Assistant")
-                .SelectMany(message => message.ToolCalls ?? [])
-                .Select(call => (call.Id, call.Name, call.Arguments))
-                .Concat(activeTools.Select(call => (Id: call.CallId, call.Name, call.Arguments)))
+                .SelectMany(message => (message.ToolCalls ?? []).Select(call => (call.Id, call.Name, call.Arguments, MessageId: (Guid?)message.Id)))
+                .Concat(activeTools.Select(call => (Id: call.CallId, call.Name, call.Arguments, MessageId: run!.ActiveMessageId)))
                 .DistinctBy(call => call.Id, StringComparer.Ordinal).ToArray();
             if (invocations.Length > 0) turnsWithTools++;
             foreach (var call in invocations)
@@ -75,7 +76,7 @@ public sealed class ChatToolStatisticsCalculator(
                 }
                 else if (activeTools.Any(tool => tool.CallId == call.Id)) outcome = ChatToolOutcome.Running;
                 else outcome = live ? ChatToolOutcome.AwaitingResult : ChatToolOutcome.NoResult;
-                calls.Add((call.Name, call.Arguments, outcome));
+                calls.Add((call.Name, call.Arguments, outcome, call.MessageId));
             }
         }
 
@@ -84,7 +85,8 @@ public sealed class ChatToolStatisticsCalculator(
             var tool = ToolRef.Parse(group.Key);
             var server = tool.IsBuiltIn ? "Built-in" : tool.IsApp ? "App" : tool.ServerPrefix.TrimEnd('_');
             return new ChatToolStatistic(group.Key, presentations.DescribeCall(group.Key, group.First().Arguments).Title,
-                server, group.Count(), group.Count(call => call.Outcome == ChatToolOutcome.Failed));
+                server, group.Count(), group.Count(call => call.Outcome == ChatToolOutcome.Failed),
+                group.Where(call => call.MessageId is not null).Select(call => call.MessageId!.Value).Distinct().ToArray());
         }).OrderByDescending(tool => tool.Calls).ThenBy(tool => tool.Name, StringComparer.Ordinal).ToArray();
         return new ChatToolStatistics(tools,
             calls.GroupBy(call => call.Outcome).ToDictionary(group => group.Key, group => group.Count()),

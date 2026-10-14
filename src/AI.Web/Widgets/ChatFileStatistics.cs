@@ -15,6 +15,7 @@ using AI.Web.Components;
 /// only change is in a run still going.
 /// </param>
 /// <param name="IsApproximate">Some run could not measure this file's lines, so its counts are short.</param>
+/// <param name="SourceMessageIds">Every saved receipt in scope that holds this file, oldest first.</param>
 public sealed record ChatFileStatistic(
     string Path,
     FileChangeKind Kind,
@@ -23,7 +24,11 @@ public sealed record ChatFileStatistic(
     bool IsBinary,
     bool IsApproximate,
     Guid? LatestSourceMessageId,
-    string? PreviousPath = null);
+    string? PreviousPath = null,
+    IReadOnlyList<Guid>? SourceMessageIds = null)
+{
+    public IReadOnlyList<Guid> Sources => SourceMessageIds ?? [];
+}
 
 public sealed record ChatFileStatistics(
     IReadOnlyList<ChatFileStatistic> Files,
@@ -139,6 +144,7 @@ public sealed class ChatFileStatisticsCalculator(IChatFeedProjection feed) : ICh
         private int _additions, _deletions;
         private bool _binary, _approximate;
         private Guid? _source;
+        private readonly List<Guid> _sources = [];
 
         public Accumulator MoveTo(string newPath)
         {
@@ -160,7 +166,9 @@ public sealed class ChatFileStatisticsCalculator(IChatFeedProjection feed) : ICh
             _binary |= change.IsBinary;
             _approximate |= change.Confidence == FileChangeConfidence.Approximate
                             || !change.IsBinary && (change.Additions is null || change.Deletions is null);
-            if (sourceId is not null) _source = sourceId;
+            if (sourceId is not { } id) return;
+            _source = id;
+            if (!_sources.Contains(id)) _sources.Add(id);
         }
 
         public void Merge(Accumulator other)
@@ -171,6 +179,8 @@ public sealed class ChatFileStatisticsCalculator(IChatFeedProjection feed) : ICh
             _approximate |= other._approximate;
             _renamed |= other._renamed;
             _source ??= other._source;
+            // Receipts come in branch order; the moved file's go before this path's own.
+            _sources.InsertRange(0, other._sources.Where(id => !_sources.Contains(id)));
         }
 
         public ChatFileStatistic ToStatistic()
@@ -180,7 +190,7 @@ public sealed class ChatFileStatisticsCalculator(IChatFeedProjection feed) : ICh
                 : _renamed ? FileChangeKind.Renamed
                 : FileChangeKind.Modified;
             return new ChatFileStatistic(_path, kind, _additions, _deletions, _binary, _approximate, _source,
-                kind == FileChangeKind.Renamed ? _origin : null);
+                kind == FileChangeKind.Renamed ? _origin : null, _sources.ToArray());
         }
     }
 }

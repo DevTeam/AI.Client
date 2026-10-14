@@ -68,9 +68,10 @@ public sealed class ChatReferencesWidgetRenderingTests
         await using var services = (ServiceProvider)composition.CreateServiceProvider(composition.CreateBuilder(registrations));
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         var definition = new ChatWidgetCatalog(new AppNavigationTargets()).Find(ChatWidgetCatalog.ChatReferences)!;
-        var widget = new ChatWidgetContext(definition, new(definition.Id), () => Task.CompletedTask,
-            () => Task.CompletedTask, _ => Task.CompletedTask);
         Guid? selected = null;
+        var widget = new ChatWidgetContext(definition, new(definition.Id), () => Task.CompletedTask,
+            () => Task.CompletedTask, _ => Task.CompletedTask,
+            Actions: ChatWidgetActions.None with { ShowMessage = id => { selected = id; return Task.CompletedTask; } });
         var html = string.Empty;
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
@@ -79,9 +80,7 @@ public sealed class ChatReferencesWidgetRenderingTests
                 {
                     [nameof(ChatReferencesWidget.Widget)] = widget,
                     [nameof(ChatReferencesWidget.Messages)] = messages,
-                    [nameof(ChatReferencesWidget.IsGenerating)] = isGenerating,
-                    [nameof(ChatReferencesWidget.OnSelectMessage)] =
-                        EventCallback.Factory.Create<Guid>(renderer, id => selected = id)
+                    [nameof(ChatReferencesWidget.IsGenerating)] = isGenerating
                 }));
             html = component.ToHtmlString();
         });

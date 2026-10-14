@@ -1,0 +1,126 @@
+@using AI.Contracts.Resources
+@* One row of a widget list, the same in every widget (docs/29-chat-widgets.md, Rows). The row is
+   what it names: pressing it opens that thing where it lives — a skill's or tool's settings, a
+   file's preview or review, a branch. The trailing button shows where the chat used it: the newest
+   use first, then each press steps one use further back, with "2/5" on the button while it does.
+   A row with nothing to open is not a button and its tile turns neutral; a row with no uses has
+   no locate button. An arrow beside the name says the row leads out of the chat. *@
+<li class="chat-widget-row @Class @(Running ? "is-running" : null) @(Current ? "is-current" : null) @(_stepping ? "is-locating" : null)"
+    aria-current="@(Current ? "true" : null)">
+    @if (Href is { } href)
+    {
+        <a class="chat-widget-row-main is-openable" href="@href" target="_blank" rel="noopener noreferrer" title="@OpenTitle">@Content</a>
+    }
+    else if (IsOpenable)
+    {
+        <button class="chat-widget-row-main is-openable" type="button" title="@OpenTitle" @onclick="OpenAsync">@Content</button>
+    }
+    else
+    {
+        <div class="chat-widget-row-main" title="@OpenTitle">@Content</div>
+    }
+    @if (Uses.Count > 0)
+    {
+        <button class="chat-widget-row-locate" type="button" title="@LocateTitle()" aria-label="@LocateTitle()" @onclick="LocateAsync">
+            <AppIcon Name="message-circle" />
+            @if (_stepping && Uses.Count > 1) { <span class="chat-widget-row-step">@(Uses.Count - _step)/@Uses.Count</span> }
+        </button>
+    }
+    @Trailing
+</li>
+
+@code {
+    [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The icon or mark on the row's tile.</summary>
+    [Parameter] public RenderFragment? Tile { get; set; }
+
+    [Parameter, EditorRequired] public RenderFragment Name { get; set; } = null!;
+    [Parameter] public RenderFragment? Details { get; set; }
+
+    /// <summary>The row's count, right-aligned beside its name.</summary>
+    [Parameter] public RenderFragment? Figure { get; set; }
+
+    /// <summary>Segments of the thin bar under the row, already sized with flex-grow.</summary>
+    [Parameter] public RenderFragment? Bar { get; set; }
+
+    /// <summary>A control of the row's own after the locate button, such as Resume.</summary>
+    [Parameter] public RenderFragment? Trailing { get; set; }
+
+    /// <summary>Opened through the page: a file, directory, upload, review, chat, project or skill.</summary>
+    [Parameter] public ChatResource? Resource { get; set; }
+
+    /// <summary>An application link (<c>aiclient://navigate/...</c>) the row opens.</summary>
+    [Parameter] public string? Link { get; set; }
+
+    /// <summary>A web page the row opens in the browser.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>An open of the widget's own, such as switching to a branch.</summary>
+    [Parameter] public EventCallback OnOpen { get; set; }
+
+    /// <summary>The row's tooltip: what pressing it opens.</summary>
+    [Parameter] public string? OpenTitle { get; set; }
+
+    /// <summary>Whether the open leaves the chat (settings, a preview, a review); draws the arrow.</summary>
+    [Parameter] public bool LeavesChat { get; set; } = true;
+
+    /// <summary>The messages that used the row's subject, oldest first.</summary>
+    [Parameter] public IReadOnlyList<Guid> Uses { get; set; } = [];
+
+    /// <summary>What one use is called in the locate tooltip: "use", "call", "read", "change".</summary>
+    [Parameter] public string UseNoun { get; set; } = "use";
+
+    [Parameter] public bool Running { get; set; }
+    [Parameter] public bool Current { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private bool _stepping;
+    private int _step;
+    private (int Count, Guid Last) _usesKey;
+
+    private bool IsOpenable => Resource is { } resource ? ChatWidgetActions.CanOpen(resource) : Link is not null || OnOpen.HasDelegate;
+
+    private RenderFragment Content => @<text>
+        <span class="chat-widget-row-tile" aria-hidden="true">@Tile</span>
+        <span class="chat-widget-row-body">
+            <span class="chat-widget-row-name"><span class="chat-widget-row-label">@Name</span>@if ((IsOpenable || Href is not null) && LeavesChat) { <AppIcon Name="arrow-up-right" Class="chat-widget-row-away" /> }</span>
+            @if (Details is not null) { <span class="chat-widget-row-meta chat-usage-muted">@Details</span> }
+        </span>
+        @if (Figure is not null) { <span class="chat-widget-row-figure">@Figure</span> }
+        @if (Bar is not null) { <span class="chat-widget-row-track" aria-hidden="true">@Bar</span> }
+    </text>;
+
+    protected override void OnParametersSet()
+    {
+        // New uses, or another scope, start the steps again from the newest.
+        var key = (Uses.Count, Uses.Count > 0 ? Uses[^1] : Guid.Empty);
+        if (key == _usesKey) return;
+        _usesKey = key;
+        _stepping = false;
+        _step = 0;
+    }
+
+    private Task OpenAsync()
+    {
+        if (Resource is { } resource) return Widget.Act.OpenResource(resource);
+        if (Link is { } link) return Widget.Act.Navigate(link);
+        return OnOpen.InvokeAsync();
+    }
+
+    private Task LocateAsync(MouseEventArgs args)
+    {
+        if (!_stepping) { _stepping = true; _step = 0; }
+        else _step = (_step + (args.ShiftKey ? Uses.Count - 1 : 1)) % Uses.Count;
+        return Widget.Act.ShowMessage(Uses[Uses.Count - 1 - _step]);
+    }
+
+    private string LocateTitle()
+    {
+        var plural = UseNoun.EndsWith('s') ? UseNoun + "es" : UseNoun + "s";
+        if (Uses.Count == 1) return $"Show the {UseNoun} in the chat";
+        return _stepping
+            ? $"{UseNoun[..1].ToUpperInvariant()}{UseNoun[1..]} {Uses.Count - _step} of {Uses.Count} · press for an earlier one, Shift+press for a later one"
+            : $"Show the latest {UseNoun} in the chat · {Uses.Count} {plural}";
+    }
+}

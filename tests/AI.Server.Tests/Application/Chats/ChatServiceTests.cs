@@ -172,7 +172,7 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task ShouldKeepOnlyTheSkillIdOfAFoldedSkillRun()
+    public async Task ShouldKeepOnlyTheSubjectOfAFoldedSkillRunOrRead()
     {
         var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000030"));
         var callId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000031"));
@@ -182,7 +182,8 @@ public class ChatServiceTests
             toolCalls:
             [
                 new ChatToolCall("call-1", "mcp_app__run_skill", "{\"skillId\":\"project-describe\",\"parameters\":{\"text\":\"large\"}}"),
-                new ChatToolCall("call-2", "mcp_other__run_skill", "{\"skillId\":\"x\"}")
+                new ChatToolCall("call-2", "mcp_other__run_skill", "{\"skillId\":\"x\"}"),
+                new ChatToolCall("call-3", "mcp_built_in__read_text_file", "{\"path\":\"src/a.cs\",\"head\":40}")
             ]), _now.AddSeconds(1));
         _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
             .ReturnsAsync(new StoredChat(chat, 2));
@@ -192,6 +193,7 @@ public class ChatServiceTests
         var calls = transcript!.Messages.Single(message => message.Id == callId.Value).ToolCalls!;
         calls[0].Arguments.ShouldBe("{\"skillId\":\"project-describe\"}");
         calls[1].Arguments.ShouldBeEmpty();
+        calls[2].Arguments.ShouldBe("{\"path\":\"src/a.cs\"}");
     }
 
     [Fact]

@@ -31,6 +31,19 @@ public class ChatFileStatisticsCalculatorTests
     }
 
     [Fact]
+    public void ShouldListEveryReceiptThatChangedAFileOldestFirst()
+    {
+        var first = Answer(Change("src/app.css", FileChangeKind.Modified, 10, 0));
+        var second = Answer(Change("README.md", FileChangeKind.Added, 3, 0));
+        var third = Answer(Change("src/app.css", FileChangeKind.Modified, 0, 4));
+
+        var stats = _calculator.Calculate([User(), first, User(), second, User(), third], null, ChatWidgetScope.Chat);
+
+        stats.Files.Single(file => file.Path == "src/app.css").Sources.ShouldBe([first.Id, third.Id]);
+        stats.Files.Single(file => file.Path == "README.md").Sources.ShouldBe([second.Id]);
+    }
+
+    [Fact]
     public void ShouldCountOnlyTheLastTurnWhenAsked()
     {
         var stats = _calculator.Calculate(

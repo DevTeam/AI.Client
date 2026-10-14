@@ -192,6 +192,22 @@ public class ChatKnowledgeStatisticsCalculatorTests
         _calculator.Calculate([], null, ChatWidgetScope.Chat).ShouldBe(ChatKnowledgeStatistics.Empty);
     }
 
+    [Fact]
+    public void ShouldListEachSourceOnceWithItsToolsAndMessages()
+    {
+        var first = Calls(ReadTextFile(@"src\app.cs"), Fetch("https://example.com/docs"));
+        var second = Calls(SearchFiles("src/app.cs"), ReadTextFile("src/app.cs"));
+
+        var stats = _calculator.Calculate([User(), first, User(), second], null, ChatWidgetScope.Chat);
+
+        var app = stats.Entries[0];
+        (app.Display, app.Target, app.IsUrl, app.Reads).ShouldBe(("src/app.cs", @"src\app.cs", false, 3));
+        app.Tools.ShouldBe(["Read file", "Search files"]);
+        app.Messages.ShouldBe([first.Id, second.Id]);
+        var page = stats.Entries[1];
+        (page.Target, page.IsUrl, page.Reads).ShouldBe(("https://example.com/docs", true, 1));
+    }
+
     private static ChatMessageView User() => new(Guid.NewGuid(), null, "User", "Hi", DateTimeOffset.UnixEpoch);
 
     private static ChatMessageView Calls(params ChatToolCall[] calls) =>

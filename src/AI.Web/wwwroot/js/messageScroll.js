@@ -434,8 +434,24 @@ export function attach(scroller, owner) {
         else {
             setCurrentMatch(marks, -1, null);
             element.scrollIntoView({ behavior: "smooth", block: "center" });
+            markLocated(element);
         }
         return true;
+    };
+
+    // A message reached from a widget row gets the same accent glint a reply gets when it lands,
+    // so the eye finds it at the end of the scroll. The class goes when its fade ends; a second
+    // locate of the same message restarts it.
+    const markLocated = element => {
+        element.classList.remove("is-located");
+        void element.offsetWidth;
+        element.classList.add("is-located");
+        const done = event => {
+            if (event.animationName !== "branch-leaf-fade") return;
+            element.classList.remove("is-located");
+            element.removeEventListener("animationend", done);
+        };
+        element.addEventListener("animationend", done);
     };
 
     const onKeyDown = event => {

@@ -15,11 +15,13 @@ using AI.Contracts.Resources;
 /// <param name="Mentions">How many messages in scope name this same target.</param>
 /// <param name="FirstMessageId">The earliest message in scope that names it; the transcript scrolls there.</param>
 /// <param name="FirstAt">When that message was recorded.</param>
+/// <param name="Messages">Every message in scope that names it, oldest first.</param>
 public sealed record ChatReferenceEntry(
     ChatResource Reference,
     int Mentions,
     Guid FirstMessageId,
-    DateTimeOffset FirstAt);
+    DateTimeOffset FirstAt,
+    IReadOnlyList<Guid> Messages);
 
 /// <summary>
 /// What the chat was given and received: the references carried by the messages of the visible
@@ -128,15 +130,18 @@ public sealed class ChatReferenceStatisticsCalculator : IChatReferenceStatistics
 
         private Guid _firstMessageId = message.Id;
         private DateTimeOffset _firstAt = message.CreatedAt;
+        private readonly List<ChatMessageView> _messages = [message];
 
         public void Add(ChatMessageView other)
         {
             Mentions++;
+            _messages.Add(other);
             if (other.CreatedAt >= _firstAt) return;
             _firstAt = other.CreatedAt;
             _firstMessageId = other.Id;
         }
 
-        public ChatReferenceEntry ToEntry() => new(Reference, Mentions, _firstMessageId, _firstAt);
+        public ChatReferenceEntry ToEntry() => new(Reference, Mentions, _firstMessageId, _firstAt,
+            _messages.OrderBy(item => item.CreatedAt).Select(item => item.Id).Distinct().ToArray());
     }
 }

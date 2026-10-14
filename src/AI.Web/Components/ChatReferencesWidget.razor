@@ -3,8 +3,9 @@
 @inject AI.Web.Resources.IResourcePresenter Presenter
 @* What the chat was given and received: the references the messages of the visible branch carry,
    added up over the turns in scope. Every entry comes from the resources the transcript stores
-   beside the message that named them, so a path written in prose is not counted. A click scrolls
-   the transcript to the earliest message in scope that used the reference. *@
+   beside the message that named them, so a path written in prose is not counted. A row opens the
+   target — a file's preview, a skill's settings, a chat — and its locate button steps through the
+   messages that named it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-references-widget">
     @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
@@ -34,33 +35,28 @@
         </div>
 
         <div class="chat-usage-section">
-            <ul class="chat-references-list">
+            <ul class="chat-widget-rows">
                 @foreach (var entry in _showAll ? _stats.References : _stats.References.Take(VisibleReferences))
                 {
-                    <li @key="entry.Reference.Id">
-                        <button class="chat-references-row" type="button" title="@RowTitle(entry)" @onclick="() => ShowInTranscriptAsync(entry)">
-                            <span class="chat-references-mark" aria-hidden="true"><AppIcon Name="@IconFor(entry.Reference.Kind)" /></span>
-                            <span class="chat-references-body">
-                                <span class="chat-references-title">@Presenter.Label(entry.Reference)</span>
-                                <span class="chat-references-meta chat-usage-muted">
-                                    <span>@KindTitle(entry.Reference.Kind)</span>
-                                    @if (Presenter.Summary(entry.Reference) is { } summary)
-                                    {
-                                        <span title="Totals the reference captured when the message was sent">@summary</span>
-                                    }
-                                    @if (entry.Mentions > 1)
-                                    {
-                                        <span title="Messages in the selected scope that name this same target">@entry.Mentions mentions</span>
-                                    }
-                                </span>
-                            </span>
-                        </button>
-                    </li>
+                    <ChatWidgetRow @key="entry.Reference.Id" Widget="@Widget" Resource="@entry.Reference"
+                                   LeavesChat="@(entry.Reference.Kind != ChatResourceKind.Chat)"
+                                   OpenTitle="@RowTitle(entry)" Uses="@entry.Messages" UseNoun="mention">
+                        <Tile><AppIcon Name="@IconFor(entry.Reference.Kind)" /></Tile>
+                        <Name>@Presenter.Label(entry.Reference)</Name>
+                        <Details>
+                            <span>@KindTitle(entry.Reference.Kind)</span>
+                            @if (Presenter.Summary(entry.Reference) is { } summary)
+                            {
+                                <span title="Totals the reference captured when the message was sent">@summary</span>
+                            }
+                        </Details>
+                        <Figure><span title="Messages in the selected scope that name this same target">@entry.Mentions</span></Figure>
+                    </ChatWidgetRow>
                 }
             </ul>
             @if (_stats.References.Count > VisibleReferences)
             {
-                <button class="chat-usage-link chat-references-more" type="button" @onclick="() => _showAll = !_showAll">
+                <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">
                     @(_showAll ? "Show fewer" : $"Show {_stats.References.Count - VisibleReferences} more")
                 </button>
             }
@@ -93,10 +89,6 @@
     /// <summary>True while the last turn is still going; the widget says so far.</summary>
     [Parameter]
     public bool IsGenerating { get; set; }
-
-    /// <summary>Asks the page to scroll the transcript to the message that named the reference.</summary>
-    [Parameter]
-    public EventCallback<Guid> OnSelectMessage { get; set; }
 
     private ChatWidgetScope _scope = ChatWidgetScope.Chat;
     private bool _showAll;
@@ -139,16 +131,14 @@
     private string? GetSummary() =>
         _stats.References.Count == 0 ? null : $"{_stats.References.Count} · {_stats.MessagesWithReferences}";
 
-    private Task ShowInTranscriptAsync(ChatReferenceEntry entry) =>
-        OnSelectMessage.InvokeAsync(entry.FirstMessageId);
-
     private string RowTitle(ChatReferenceEntry entry)
     {
         var when = entry.FirstAt.LocalDateTime.ToString("g");
         var mentions = entry.Mentions == 1
             ? "Named once in the selected scope"
             : $"Named in {entry.Mentions} messages of the selected scope";
-        return $"{Presenter.Hint(entry.Reference)}\n{mentions}. First used {when} — click to show it in the transcript.";
+        var open = ChatWidgetActions.CanOpen(entry.Reference) ? "click to open it" : "find it in the chat with the button beside it";
+        return $"{Presenter.Hint(entry.Reference)}\n{mentions}. First used {when} — {open}.";
     }
 
     private static string IconFor(ChatResourceKind kind) => kind switch

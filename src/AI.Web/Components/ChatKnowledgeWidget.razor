@@ -1,8 +1,10 @@
+@using AI.Contracts.Resources
 @inject IChatKnowledgeStatisticsCalculator Calculator
 @* What the assistant read on the visible branch: the read-only tool calls, the sources they
    named, and how often each one came up. Only built-in read tools and web fetches count; write,
    edit, process_run and third-party tools do not, even when their results happen to land in the
-   model's context. A path or URL is shown once with its repeat count rather than once per call. *@
+   model's context. A path or URL is one row with its read count: the row opens its preview or the
+   page, and its locate button steps through the messages that read it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-knowledge-widget">
     @if (_hasAnyReads) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
@@ -18,47 +20,50 @@
             <div class="chat-widget-headline">
                 <span class="chat-widget-count" title="Read attempts by supported file and web tools in the selected scope; a stored batch counts each source, including repeated reads">@_stats.TotalReads</span>
                 <span class="chat-usage-muted">@(_stats.TotalReads == 1 ? "read" : "reads")@(_stats.IsRunning ? " so far" : null)</span>
+                @if (_stats.Entries.Count > 0)
+                {
+                    <span class="chat-widget-headline-aside chat-usage-muted" title="Distinct files, directories and pages read in the selected scope">@_stats.Entries.Count @(_stats.Entries.Count == 1 ? "source" : "sources")</span>
+                }
+            </div>
+            <div class="chat-usage-legend">
+                @foreach (var group in _stats.Groups)
+                {
+                    <span @key="@(group.Server + group.ToolName)" title="@($"Read attempts by {group.ToolLabel}{(group.Server.Length > 0 ? $" ({group.Server})" : "")}; stored batches count each source")"><b>@group.Calls</b> @group.ToolLabel</span>
+                }
             </div>
         </div>
 
-        <div class="chat-usage-section">
-            <div class="chat-usage-row chat-usage-heading"><span>By tool</span><span class="chat-usage-muted">calls</span></div>
-            <ul class="chat-knowledge-list">
-                @foreach (var group in _showAll ? _stats.Groups : _stats.Groups.Take(VisibleGroups))
+        @if (_stats.Entries.Count > 0)
+        {
+            <div class="chat-usage-section">
+                <div class="chat-usage-row chat-usage-heading"><span>Most read</span><span class="chat-usage-muted">reads</span></div>
+                <ul class="chat-widget-rows">
+                    @foreach (var source in _showAll ? _stats.Entries : _stats.Entries.Take(VisibleSources))
+                    {
+                        <ChatWidgetRow @key="source.Display" Widget="@Widget" Uses="@source.Messages" UseNoun="read"
+                                       Resource="@(source.IsUrl ? null : new ChatResource(Guid.Empty, ChatResourceKind.File, source.Target))"
+                                       Href="@(source.IsUrl ? source.Target : null)"
+                                       OpenTitle="@($"{(source.IsUrl ? "Open the page" : "Preview")} {source.Display}")">
+                            <Tile><AppIcon Name="@(source.IsUrl ? "globe" : IsDirectoryTool(source) ? "folder" : "file")" /></Tile>
+                            <Name>@Leaf(source)</Name>
+                            <Details>
+                                @if (Parent(source) is { Length: > 0 } parent) { <span title="@source.Display">@parent</span> }
+                                <span>@string.Join(", ", source.Tools)</span>
+                            </Details>
+                            <Figure><span title="Times this source was read in the selected scope">@source.Reads</span></Figure>
+                            <Bar>
+                                <span style="flex-grow: @source.Reads"></span>
+                                @if (_stats.Entries[0].Reads > source.Reads) { <i style="flex-grow: @(_stats.Entries[0].Reads - source.Reads)"></i> }
+                            </Bar>
+                        </ChatWidgetRow>
+                    }
+                </ul>
+                @if (_stats.Entries.Count > VisibleSources)
                 {
-                    var max = Math.Max(1, _stats.Groups[0].Calls);
-                    <li @key="@(group.Server + group.ToolName)">
-                        <span class="chat-knowledge-name">@group.ToolLabel
-                            @if (group.Server.Length > 0) { <small class="chat-usage-muted">@group.Server</small> }
-                        </span>
-                        <span class="chat-knowledge-figure" title="Read attempts attributed to this tool; stored batches count each source">@group.Calls</span>
-                        <span class="chat-knowledge-track" aria-hidden="true"><span style="flex-grow: @group.Calls"></span><i style="flex-grow: @(max - group.Calls)"></i></span>
-                        @if (group.Recent.Count > 0)
-                        {
-                            <ul class="chat-knowledge-sources">
-                                @foreach (var source in group.Recent)
-                                {
-                                    var title = source.Occurrences > 1
-                                        ? $"{source.Display} · read {source.Occurrences} times"
-                                        : source.Display;
-                                    <li @key="source.Display" class="chat-knowledge-source" title="@title">
-                                        <span class="chat-knowledge-source-name">@source.Display</span>
-                                        @if (source.Occurrences > 1)
-                                        {
-                                            <span class="chat-knowledge-source-count chat-usage-muted" title="Number of times this source was requested in the selected scope">×@source.Occurrences</span>
-                                        }
-                                    </li>
-                                }
-                            </ul>
-                        }
-                    </li>
+                    <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Entries.Count - VisibleSources} more")</button>
                 }
-            </ul>
-            @if (_stats.Groups.Count > VisibleGroups)
-            {
-                <button class="chat-usage-link chat-knowledge-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Groups.Count - VisibleGroups} more")</button>
-            }
-        </div>
+            </div>
+        }
 
         @if (_scope == ChatWidgetScope.Chat && _stats.TurnsWithReads > 0)
         {
@@ -70,7 +75,7 @@
 </ChatWidget>
 
 @code {
-    private const int VisibleGroups = 6;
+    private const int VisibleSources = 6;
 
     [Parameter, EditorRequired]
     public ChatWidgetContext Widget { get; set; } = null!;
@@ -118,6 +123,25 @@
         _hasAnyReads = _scope == ChatWidgetScope.Chat
             ? _stats.TotalReads > 0
             : Calculator.Calculate(Messages, Run, ChatWidgetScope.Chat).TotalReads > 0;
+    }
+
+    private static bool IsDirectoryTool(ChatKnowledgeSourceEntry source) =>
+        source.Tools.All(tool => tool is "List directory" or "Read directory tree" or "Search files" or "Search in files");
+
+    private static string Leaf(ChatKnowledgeSourceEntry source)
+    {
+        if (source.IsUrl) return Uri.TryCreate(source.Target, UriKind.Absolute, out var url) ? url.Host + url.AbsolutePath.TrimEnd('/') : source.Display;
+        var trimmed = source.Display.TrimEnd('/');
+        var index = trimmed.LastIndexOf('/');
+        return index < 0 || index == trimmed.Length - 1 ? trimmed : trimmed[(index + 1)..];
+    }
+
+    private static string Parent(ChatKnowledgeSourceEntry source)
+    {
+        if (source.IsUrl) return string.Empty;
+        var trimmed = source.Display.TrimEnd('/');
+        var index = trimmed.LastIndexOf('/');
+        return index <= 0 ? string.Empty : trimmed[..index];
     }
 
     private string? GetSummary()

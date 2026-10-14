@@ -117,33 +117,30 @@
         </div>
 
         <div class="chat-usage-section">
-            <ul class="chat-team-list">
+            <ul class="chat-widget-rows">
                 @foreach (var branch in _stats.Branches)
                 {
-                    <li @key="branch.BranchId">
-                        <button class="chat-team-row" type="button" title="@RowTitle(branch)" @onclick="() => ShowInTranscriptAsync(branch)">
-                            <span class="chat-team-mark" aria-hidden="true">
-                                @if (Chat?.MemberOf(branch.BranchId) is { Swatch: not null } member) { <MemberDot Member="member" /> }
-                                else if (Chat?.IsTeamLead(branch.BranchId) == true) { <MemberDot Lead="true" /> }
-                                else { <AppIcon Name="user" /> }
-                            </span>
-                            <span class="chat-team-body">
-                                <span class="chat-team-title">@branch.Title</span>
-                                <span class="chat-team-meta chat-usage-muted">
-                                    <span title="Messages this branch sent into the selected scope">@branch.Messages @(branch.Messages == 1 ? "message" : "messages")</span>
-                                    @if (branch.Asides > 0)
-                                    {
-                                        <span title="Of them, added as asides: the turn in flight reads an aside at its next step, so it costs the receiving branch no turn of its own">@branch.Asides @(branch.Asides == 1 ? "aside" : "asides")</span>
-                                    }
-                                    @foreach (var intent in branch.Intents)
-                                    {
-                                        <span title="@IntentTitle(intent.Intent)" class="@IntentClass(intent.Intent)">@IntentCountLabel(intent)</span>
-                                    }
-                                    <span title="Arrival time of this branch's latest message in scope; it is when the message was stored, not when the sender wrote it">≈ @FormatAt(branch.LastAt)</span>
-                                </span>
-                            </span>
-                        </button>
-                    </li>
+                    <ChatWidgetRow @key="branch.BranchId" Widget="@Widget" LeavesChat="false" OpenTitle="@RowTitle(branch)"
+                                   OnOpen="@(() => OnOpenBranch.InvokeAsync(branch.BranchId))" Uses="@branch.Sent" UseNoun="message" Class="chat-team-sender">
+                        <Tile>
+                            @if (Chat?.MemberOf(branch.BranchId) is { Swatch: not null } member) { <MemberDot Member="member" /> }
+                            else if (Chat?.IsTeamLead(branch.BranchId) == true) { <MemberDot Lead="true" /> }
+                            else { <AppIcon Name="user" /> }
+                        </Tile>
+                        <Name>@branch.Title</Name>
+                        <Details>
+                            @if (branch.Asides > 0)
+                            {
+                                <span title="Of them, added as asides: the turn in flight reads an aside at its next step, so it costs the receiving branch no turn of its own">@branch.Asides @(branch.Asides == 1 ? "aside" : "asides")</span>
+                            }
+                            @foreach (var intent in branch.Intents)
+                            {
+                                <span title="@IntentTitle(intent.Intent)" class="@IntentClass(intent.Intent)">@IntentCountLabel(intent)</span>
+                            }
+                            <span title="Arrival time of this branch's latest message in scope; it is when the message was stored, not when the sender wrote it">≈ @FormatAt(branch.LastAt)</span>
+                        </Details>
+                        <Figure><span title="Messages this branch sent into the selected scope">@branch.Messages</span></Figure>
+                    </ChatWidgetRow>
                 }
             </ul>
         </div>
@@ -170,10 +167,6 @@
     /// <summary>True while the last turn is still going; the widget says so far.</summary>
     [Parameter]
     public bool IsGenerating { get; set; }
-
-    /// <summary>Asks the page to scroll the transcript to a message.</summary>
-    [Parameter]
-    public EventCallback<Guid> OnSelectMessage { get; set; }
 
     /// <summary>The chat with the messages of every branch, for the team as a whole.</summary>
     [Parameter]
@@ -266,9 +259,6 @@
 
     // The branch's latest message in scope: the most recent thing it said is what a person reaches
     // for, and the transcript marks that message as coming from a branch.
-    private Task ShowInTranscriptAsync(ChatTeamBranchSummary branch) =>
-        OnSelectMessage.InvokeAsync(branch.LastMessageId);
-
     private string RowTitle(ChatTeamBranchSummary branch)
     {
         var sent = $"{branch.Messages} {(branch.Messages == 1 ? "message" : "messages")} sent into the selected scope";
@@ -280,7 +270,7 @@
             : string.Join(", ", branch.Intents.Select(intent => $"{intent.Count} {IntentLabel(intent.Intent)}"));
         var when = branch.LastAt.LocalDateTime.ToString("g");
         var head = $"{branch.Title} — {sent}{(asides is null ? null : $", {asides}")}. Intents: {intents}.";
-        return $"{head} Last message stored {when} — click to show it in the transcript.";
+        return $"{head} Last message stored {when} — click to open the branch that sent them.";
     }
 
     private static string StateLabel(ChatTeamMemberState state) => state switch

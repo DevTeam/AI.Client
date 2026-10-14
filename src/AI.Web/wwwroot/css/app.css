@@ -3401,15 +3401,16 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
    under two seconds, before it can be read as a rule between sections. Pseudo-elements keep the
    motion on transform and opacity, off the layout path: ::after is the hairline and fades,
    ::before is the glint, 30% of the width, travelling its own width more than three times over
-   to cross. The answer and the folded turn share the rule. */
+   to cross. The answer and the folded turn share the rule, and so does a message a widget row
+   located (is-located, set by messageScroll.js): the same gesture says "here it is". */
 .turn-summary.branch-leaf-arrived {
     position: relative;
     padding-bottom: 0.3rem;
     overflow-x: clip;
 }
 
-:is(.workspace-message, .turn-summary).branch-leaf-arrived::after,
-:is(.workspace-message, .turn-summary).branch-leaf-arrived::before {
+:is(.workspace-message, .turn-summary):is(.branch-leaf-arrived, .is-located)::after,
+:is(.workspace-message, .turn-summary):is(.branch-leaf-arrived, .is-located)::before {
     content: "";
     position: absolute;
     bottom: 0;
@@ -3417,7 +3418,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     pointer-events: none;
 }
 
-:is(.workspace-message, .turn-summary).branch-leaf-arrived::after {
+:is(.workspace-message, .turn-summary):is(.branch-leaf-arrived, .is-located)::after {
     left: 0;
     right: 0;
     background: color-mix(in srgb, var(--color-accent) 30%, transparent);
@@ -3426,7 +3427,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
         branch-leaf-fade var(--branch-leaf-fade) ease-out calc(var(--branch-leaf-draw) + var(--branch-leaf-hold)) 1 forwards;
 }
 
-:is(.workspace-message, .turn-summary).branch-leaf-arrived::before {
+:is(.workspace-message, .turn-summary):is(.branch-leaf-arrived, .is-located)::before {
     z-index: 1;
     left: 0;
     width: 30%;
@@ -3453,7 +3454,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 /* Reduced motion keeps the hairline, which still appears and dissolves on the same schedule,
    and drops the travelling glint. */
 @media (prefers-reduced-motion: reduce) {
-    :is(.workspace-message, .turn-summary).branch-leaf-arrived::before { content: none; }
+    :is(.workspace-message, .turn-summary):is(.branch-leaf-arrived, .is-located)::before { content: none; }
 }
 
 .workspace-message.fork-source {
@@ -6215,16 +6216,18 @@ textarea {
     mask-image: linear-gradient(to bottom, color-mix(in srgb, currentColor 35%, transparent), currentColor 1.1lh, transparent 2lh);
 }
 
-/* While the model is still writing the newest note, a soft accent sheen runs through its words,
-   so it reads as text in progress; it stops the moment the model finishes or turns to a call.
-   The words take the gradient (background-clip: text); links and code keep their own colours. It
-   loops like a spinner, so it keeps its own timing (see the regulation's exceptions). */
+/* A soft accent sheen running through words says "this is in progress": the running turn's
+   "Working for …", the tool it is calling now, and the newest note while the model is still
+   writing it. It stops the moment the work does. The words take the gradient
+   (background-clip: text) over their own colour, so a hover that changes the colour still shows.
+   It loops like a spinner, so it keeps its own timing (see the regulation's exceptions). */
+.text-sheen,
 .workspace-message.live-text.is-writing .markdown-content {
-    background: linear-gradient(100deg, var(--color-text-muted) 44%, var(--color-accent) 50%, var(--color-text-muted) 56%) 0 0 / 250% 100%;
+    background: linear-gradient(100deg, currentColor 44%, var(--color-accent) 50%, currentColor 56%) 0 0 / 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: live-note-sheen 2.4s linear infinite;
+    animation: text-sheen 2.4s linear infinite;
 }
 
 /* Elements with their own background would cover the clipped words; they keep plain text. */
@@ -6232,9 +6235,14 @@ textarea {
     -webkit-text-fill-color: currentColor;
 }
 
-@keyframes live-note-sheen {
+@keyframes text-sheen {
     from { background-position: 100% 0; }
     to { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .text-sheen,
+    .workspace-message.live-text.is-writing .markdown-content { animation: none; background: none; -webkit-text-fill-color: currentColor; }
 }
 
 @supports (height: calc-size(auto, size)) {
@@ -6267,7 +6275,6 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
     .workspace-message.live-text,
     .workspace-message.live-text .markdown-content { animation: none; transition: none; }
-    .workspace-message.live-text.is-writing .markdown-content { background: none; -webkit-text-fill-color: currentColor; }
 }
 
 /* Concrete tool activity or an approval wait under the running turn's text. */
@@ -9149,6 +9156,93 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-widget-count { color: var(--color-text); font-size: var(--font-size-3xl); font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .chat-widget-headline-aside { margin-left: auto; white-space: nowrap; }
 .chat-widget-secondary { color: var(--color-text); font-size: var(--font-size-lg); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Widget rows (ChatWidgetRow): one anatomy and two actions in every widget. The row opens what it
+   names; an accent tile says it can, a neutral tile that it cannot, and an arrow that lights up
+   beside the name on hover says the open leads out of the chat. The trailing locate button
+   appears on hover or focus (always on touch) and steps through the uses in the chat; while it
+   steps it stays lit in the accent tint with its "2/5". */
+.chat-widget-rows { display: grid; gap: .1rem; margin: 0 -.35rem; padding: 0; list-style: none; }
+.chat-widget-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; border-radius: var(--radius-sm); transition: background-color var(--duration-fast) ease; }
+.chat-widget-row:has(> .is-openable:hover), .chat-widget-row:has(> .is-openable:focus-visible) { background: var(--color-fill-hover); }
+.chat-widget-row.is-current { background: var(--color-accent-bg); }
+.chat-widget-row-main {
+    display: grid;
+    grid-template-columns: 1.65rem minmax(0, 1fr) auto;
+    grid-template-areas: "tile body figure" "tile track track";
+    align-items: center;
+    gap: .3rem .55rem;
+    min-width: 0;
+    padding: .4rem .35rem;
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+}
+.chat-widget-row-main.is-openable { cursor: pointer; }
+.chat-widget-row-main:focus-visible, .chat-widget-row-locate:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.chat-widget-row-tile {
+    display: inline-flex;
+    grid-area: tile;
+    align-self: start;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    transition: background-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.chat-widget-row-tile > .app-icon { width: .95rem; height: .95rem; }
+.chat-widget-row-main:not(.is-openable) .chat-widget-row-tile { background: var(--color-fill); color: var(--color-text-subtle); }
+.chat-widget-row-main.is-openable:is(:hover, :focus-visible) .chat-widget-row-tile { background: var(--color-accent-bg-hover); }
+.chat-widget-row.is-running .chat-widget-row-tile { box-shadow: 0 0 0 1px var(--color-generating); }
+.chat-widget-row-body { display: flex; grid-area: body; flex-direction: column; gap: .05rem; min-width: 0; }
+.chat-widget-row-name { display: flex; align-items: center; gap: .3rem; min-width: 0; font-size: var(--font-size-md); line-height: 1.2rem; }
+.chat-widget-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-widget-row-label small { margin-left: .3rem; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
+.chat-widget-row-away { flex: none; width: .75rem; height: .75rem; color: var(--color-accent-text); opacity: 0; transition: opacity var(--duration-fast) ease; }
+.chat-widget-row-main:is(:hover, :focus-visible) .chat-widget-row-away { opacity: 1; }
+/* Every detail carries its own leading dot; the box starts a dot's width to the left and clips it,
+   so a line that wraps never begins with a stray separator. */
+.chat-widget-row-meta { display: flex; flex-wrap: wrap; margin-left: -.8rem; clip-path: inset(0 0 0 .8rem); font-size: var(--font-size-xs); }
+.chat-widget-row-meta > span { white-space: nowrap; }
+.chat-widget-row-meta > span::before { content: "\00b7"; display: inline-block; width: .8rem; color: var(--color-text-faint); text-align: center; }
+.chat-widget-row-figure { grid-area: figure; align-self: start; color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; line-height: 1.2rem; text-align: right; white-space: nowrap; }
+.chat-widget-row-track { display: flex; grid-area: track; gap: 1px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
+.chat-widget-row-track > span { min-width: 0; border-radius: inherit; background: var(--color-accent-strong); }
+.chat-widget-row-locate {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .2rem;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    margin: .4rem .3rem 0 0;
+    padding: 0 .3rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-text-subtle);
+    font: inherit;
+    font-size: var(--font-size-2xs);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+.chat-widget-row-locate > .app-icon { width: .85rem; height: .85rem; }
+.chat-widget-row:is(:hover, :focus-within) .chat-widget-row-locate { opacity: 1; }
+.chat-widget-row-locate:hover { background: var(--color-fill-active); color: var(--color-accent-text); }
+.chat-widget-row.is-locating .chat-widget-row-locate { border-color: color-mix(in srgb, var(--color-accent) 35%, transparent); background: var(--color-accent-bg); color: var(--color-accent-text); opacity: 1; }
+@media (hover: none) { .chat-widget-row-locate { opacity: 1; } }
+.chat-widget-more { justify-self: start; margin-top: .3rem; font-size: var(--font-size-sm); }
 .chat-usage-footnote, .chat-usage-empty { margin: .2rem 0 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); line-height: 1.45; }
 
 /* The Context widget: the composer's ring shown large, with the layers it is made of beside it. */
@@ -9202,98 +9296,33 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-widget-scope button:hover { color: var(--color-text); }
 .chat-widget-scope button.is-selected { background: var(--color-surface); color: var(--color-text); font-weight: 500; box-shadow: 0 0 0 1px var(--color-border-subtle); }
 .chat-files-total-lines { display: inline-flex; gap: .45rem; font-size: var(--font-size-base); font-variant-numeric: tabular-nums; }
-.chat-files-bar, .chat-files-track { display: flex; overflow: hidden; background: var(--color-fill); }
+.chat-files-bar { display: flex; overflow: hidden; background: var(--color-fill); }
 .chat-files-bar { gap: 1px; height: .35rem; border-radius: var(--radius-2xs); }
-.chat-files-bar > span, .chat-files-track > span { flex-basis: 0; }
+.chat-files-bar > span { flex-basis: 0; }
 .chat-files-bar-added { background: var(--color-success); }
 .chat-files-bar-removed { background: var(--color-danger); }
 .chat-files-kind { display: inline-block; width: 1rem; color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 600; text-align: center; }
 .chat-files-kind-added { color: var(--color-success); }
 .chat-files-kind-deleted { color: var(--color-danger); }
 .chat-usage-legend .chat-files-kind { width: auto; margin-right: .1rem; }
-.chat-files-columns,
-.chat-files-row { display: grid; grid-template-columns: 1rem minmax(0, 1fr) 2.6rem 2.6rem; column-gap: .35rem; align-items: center; }
-.chat-files-columns { font-size: var(--font-size-xs); }
-.chat-files-columns > span:first-child { grid-column: 1 / 3; }
-.chat-files-columns > span:not(:first-child) { text-align: center; }
-.chat-files-list { display: grid; margin: 0 -.35rem; padding: 0; list-style: none; }
-.chat-files-row { row-gap: .3rem; width: 100%; padding: .35rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-text); font: inherit; text-align: left; cursor: pointer; }
-.chat-files-row:hover:not(:disabled) { background: var(--color-fill-hover); }
-.chat-files-row:disabled { cursor: default; }
-.chat-files-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-files-row .chat-files-figure { min-width: 0; font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; text-align: center; }
-.chat-files-binary { grid-column: 3 / 5; font-size: var(--font-size-xs); text-align: center; }
-.chat-files-track { grid-column: 2 / 5; height: 3px; border-radius: 2px; }
-.chat-files-more { justify-self: start; font-size: var(--font-size-sm); }
+.chat-files-lines { display: inline-flex; gap: .35rem; font-size: var(--font-size-sm); }
+.chat-widget-row-track > .chat-files-bar-added { background: var(--color-success); }
+.chat-widget-row-track > .chat-files-bar-removed { background: var(--color-danger); }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
-.chat-tools-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
-.chat-tools-list li { display: grid; grid-template-columns: minmax(0, 1fr) 2.6rem; align-items: baseline; gap: .2rem .55rem; }
-.chat-tools-name { min-width: 0; overflow-wrap: anywhere; font-size: var(--font-size-sm); }
-.chat-tools-name small { display: block; font-size: var(--font-size-xs); }
-.chat-tools-figure { text-align: right; font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chat-tools-track { display: flex; height: .2rem; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
-.chat-tools-track > span { background: var(--color-accent-text); }
 .chat-tools-errors { color: var(--color-danger-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chat-tools-list small.chat-tools-errors { text-align: right; font-size: var(--font-size-xs); }
-.chat-tools-more { align-self: flex-start; }
 
-/* Skills widget: the skills the branch used, each on the accent tile its icon wears in the slash
+/* Skills widget: the skills the branch used, in widget rows with the icon each wears in the slash
    list. Two tones split every count by who started the skill — the solid accent for uses from the
    person, a lighter mix of it for the assistant's own runs — and the legend and meta words say the
-   same, so the tone never carries the meaning alone. A run still in progress rings its tile in the
-   neutral generating colour the rest of the app uses for running work. */
+   same, so the tone never carries the meaning alone. */
 .chat-skills-split { display: flex; gap: 2px; height: .35rem; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
 .chat-skills-widget .is-requested { background: var(--color-accent-strong); }
 .chat-skills-widget .is-assistant { background: color-mix(in srgb, var(--color-accent-strong) 40%, transparent); }
 .chat-skills-swatch { display: inline-block; flex: none; width: .5rem; height: .5rem; border-radius: 2px; }
 .chat-skills-search { display: inline-flex; color: var(--color-text-muted); }
 .chat-skills-search > .app-icon { width: .8rem; height: .8rem; }
-.chat-skills-list { display: grid; gap: .1rem; margin: 0 -.35rem; padding: 0; list-style: none; }
-.chat-skills-row {
-    display: grid;
-    grid-template-columns: 1.65rem minmax(0, 1fr) auto;
-    grid-template-areas: "tile body figure" "tile track track";
-    align-items: center;
-    gap: .3rem .55rem;
-    width: 100%;
-    padding: .4rem .35rem;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: none;
-    color: var(--color-text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color var(--duration-fast) ease;
-}
-.chat-skills-row:hover:not(:disabled), .chat-skills-row:focus-visible { background: var(--color-fill-hover); outline: none; }
-.chat-skills-row:disabled { cursor: default; }
-.chat-skills-tile {
-    display: inline-flex;
-    grid-area: tile;
-    align-self: start;
-    align-items: center;
-    justify-content: center;
-    width: 1.65rem;
-    height: 1.65rem;
-    border-radius: var(--radius-sm);
-    background: var(--color-accent-bg);
-    color: var(--color-accent);
-    transition: background-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
-}
-.chat-skills-tile > .app-icon { width: .95rem; height: .95rem; }
-.chat-skills-row:hover:not(:disabled) .chat-skills-tile, .chat-skills-row:focus-visible .chat-skills-tile { background: var(--color-accent-bg-hover); }
-.chat-skills-row.is-running .chat-skills-tile { box-shadow: 0 0 0 1px var(--color-generating); }
-.chat-skills-body { display: flex; grid-area: body; flex-direction: column; gap: .05rem; min-width: 0; }
-.chat-skills-name { overflow: hidden; font-size: var(--font-size-md); line-height: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
-.chat-skills-meta { display: flex; flex-wrap: wrap; font-size: var(--font-size-xs); }
-.chat-skills-meta > span { white-space: nowrap; }
-.chat-skills-meta > span + span::before { content: "\00b7"; margin: 0 .35rem; color: var(--color-text-faint); }
-.chat-skills-figure { grid-area: figure; align-self: start; color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; line-height: 1.2rem; text-align: right; white-space: nowrap; }
-.chat-skills-track { display: flex; grid-area: track; gap: 1px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
 .chat-skills-failed { color: var(--color-danger-text); font-variant-numeric: tabular-nums; }
-.chat-skills-more { justify-self: start; margin-top: .3rem; font-size: var(--font-size-sm); }
 
 /* Where the model's view of the chat begins: a quiet rule with the summary behind a toggle. */
 .history-checkpoint-mark { width: min(100%, 48rem); margin: .2rem auto 1.1rem; color: var(--color-text-faint); font-size: var(--font-size-sm); }
@@ -9339,25 +9368,6 @@ button.is-auto-pressed { filter: brightness(1.15); }
    share of the scope that went to them. Reuses chat-usage-* building blocks (rows, footnote,
    empty state); only headline layout is widget-specific. Wall-clock and "how many distinct
    subtasks" are not shown because the ledger does not record them. */
-
-/* Knowledge widget: what the assistant read on the visible branch. Reuses chat-usage-*
-   building blocks (rows, footnote, empty state, more-link); the only new piece is the per-tool
-   list of recent sources with a repeat count. The headline row mirrors chat-files so a turn that
-   only reads a couple of files still shows the same shape. */
-.chat-knowledge-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
-.chat-knowledge-list > li { display: grid; grid-template-columns: minmax(0, 1fr) 2.6rem; column-gap: .6rem; row-gap: .25rem; align-items: baseline; padding: .15rem 0; border-top: 1px solid var(--color-border-subtle); }
-.chat-knowledge-list > li:first-child { border-top: 0; }
-.chat-knowledge-name { min-width: 0; }
-.chat-knowledge-name small { font-weight: 400; margin-left: .3rem; }
-.chat-knowledge-figure { text-align: right; font-variant-numeric: tabular-nums; }
-.chat-knowledge-track { display: flex; grid-column: 1 / -1; height: 4px; background: var(--color-fill); border-radius: var(--radius-2xs); overflow: hidden; }
-.chat-knowledge-track > span { background: var(--color-accent-text); min-width: 2px; }
-.chat-knowledge-track > i { display: block; }
-.chat-knowledge-sources { grid-column: 1 / -1; display: grid; gap: .15rem; margin: .15rem 0 0; padding: 0; list-style: none; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
-.chat-knowledge-source { display: flex; gap: .35rem; min-width: 0; align-items: baseline; }
-.chat-knowledge-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.chat-knowledge-source-count { font-variant-numeric: tabular-nums; }
-.chat-knowledge-more { align-self: flex-start; }
 
 /* Timeline widget: one row per turn on the visible branch, with the same building blocks as the
    other widgets (chat-usage-* for rows, footnote, muted text). The list is a vertical timeline
@@ -9452,33 +9462,15 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .file-preview-archive-entry > small { color: var(--color-text-muted); white-space: nowrap; }
 .mention-tool { --mention-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2Z'/%3E%3C/svg%3E"); }
 
-/* References widget: the targets the conversation named, one row each. The kind icon takes the
-   narrow first column so labels line up; the row is a button that scrolls the transcript to the
-   earliest message in scope that named the target. Counts by kind sit in the shared legend. */
+/* References widget: the targets the conversation named, one widget row each. Counts by kind sit in
+   the shared legend, each with its kind icon. */
 .chat-references-kind { display: inline-flex; flex: none; align-items: center; color: var(--color-text-muted); }
 .chat-references-kind > .app-icon { width: .85rem; height: .85rem; }
-.chat-references-list { display: grid; margin: 0 -.35rem; padding: 0; list-style: none; }
-.chat-references-row { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; column-gap: .45rem; width: 100%; padding: .35rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-text); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--duration-fast) ease; }
-.chat-references-row:hover, .chat-references-row:focus-visible { background: var(--color-fill-hover); outline: none; }
-.chat-references-mark { display: inline-flex; align-items: center; justify-content: center; height: 1.1rem; color: var(--color-text-muted); }
-.chat-references-row:hover .chat-references-mark, .chat-references-row:focus-visible .chat-references-mark { color: var(--color-accent-text); }
-.chat-references-body { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
-.chat-references-title { overflow: hidden; font-size: var(--font-size-md); line-height: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
-.chat-references-meta { display: flex; flex-wrap: wrap; font-size: var(--font-size-xs); }
-.chat-references-meta > span { white-space: nowrap; }
-.chat-references-meta > span + span::before { content: "\00b7"; margin: 0 .35rem; }
-.chat-references-more { justify-self: start; margin-top: .3rem; font-size: var(--font-size-sm); }
 
 /* Models widget: which models answered and how much of the answering each one did. The bar shows
    the model's share of the scope's answer requests; token totals are not recorded per model, so
    the row carries no token figure and the footer says why. */
-.chat-models-list { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
-.chat-models-list > li { display: grid; grid-template-columns: minmax(0, 1fr) 3.5rem 2.6rem; align-items: center; gap: .35rem .55rem; grid-template-areas: "name track value" "meta meta meta"; }
-.chat-models-name { overflow: hidden; grid-area: name; color: var(--color-text-secondary); line-height: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
-.chat-models-value { grid-area: value; color: var(--color-text-subtle); text-align: right; font-variant-numeric: tabular-nums; }
-.chat-models-meta { grid-area: meta; font-size: var(--font-size-xs); }
 .chat-models-note { font-size: var(--font-size-xs); font-style: italic; }
-.chat-models-list .chat-usage-share-track { grid-area: track; }
 
 /* Team widget: which branches sent team messages into this one, and what each sent. The row is a
    button that shows the branch's latest message in the transcript; the intent words come from the

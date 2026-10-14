@@ -2,7 +2,8 @@
 @* Which models answered the chat, and how much of the answering each one did. The only per-model
    figure the client receives is the list of answer requests (TurnTokenUsage.AnswerModels), so the
    widget shows request counts and request share. Token totals are grouped by purpose, not by model,
-   and the widget says so instead of inventing a per-model token share. *@
+   and the widget says so instead of inventing a per-model token share. A row opens the model
+   connections; answers are recorded per request, not per message, so a row has no locate button. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-models-widget">
     @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
 
@@ -23,15 +24,20 @@
         </div>
 
         <div class="chat-usage-section">
-            <ul class="chat-models-list">
+            <ul class="chat-widget-rows">
                 @foreach (var model in _stats.Models)
                 {
-                    <li @key="model.Model" title="@ModelTitle(model)">
-                        <span class="chat-models-name">@model.Model</span>
-                        <span class="chat-usage-share-track" aria-hidden="true"><span style="width: @Percent(model.Share)%"></span></span>
-                        <span class="chat-models-value">@FormatPercent(model.Share)</span>
-                        <span class="chat-models-meta chat-usage-muted">@model.Requests @(model.Requests == 1 ? "request" : "requests")</span>
-                    </li>
+                    <ChatWidgetRow @key="model.Model" Widget="@Widget" Link="@ChatWidgetActions.ConnectionsLink"
+                                   OpenTitle="@($"{ModelTitle(model)}\nClick to open model connections")">
+                        <Tile><AppIcon Name="cpu" /></Tile>
+                        <Name>@model.Model</Name>
+                        <Details><span>@model.Requests @(model.Requests == 1 ? "request" : "requests")</span></Details>
+                        <Figure><span title="This model's share of the scope's answer requests">@FormatPercent(model.Share)</span></Figure>
+                        <Bar>
+                            <span style="flex-grow: @model.Requests"></span>
+                            @if (_stats.Requests > model.Requests) { <i style="flex-grow: @(_stats.Requests - model.Requests)"></i> }
+                        </Bar>
+                    </ChatWidgetRow>
                 }
             </ul>
         </div>
@@ -126,7 +132,4 @@
 
     private static string FormatPercent(double share) =>
         $"{(int)Math.Round(Math.Clamp(share, 0d, 1d) * 100)}%";
-
-    private static string Percent(double share) =>
-        Math.Round(Math.Clamp(share, 0d, 1d) * 100, 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -2,8 +2,8 @@
 @inject IChatFileStatisticsCalculator Calculator
 @* What the open chat did to files on disk, added up over its turns or for the last one. Each run's
    receipt is a net change of that run; the widget sums them, so a line written in one turn and
-   removed in the next counts on both sides. A file opens the review of the newest turn that
-   changed it. *@
+   removed in the next counts on both sides. A row opens the review of the newest turn that changed
+   the file; its locate button steps through the turns that changed it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-files-widget">
     @{ var stats = _stats; }
     @if (_hasAnyChanges) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
@@ -43,43 +43,45 @@
         </div>
 
         <div class="chat-usage-section">
-            <div class="chat-files-columns chat-usage-muted">
-                <span>Most changed</span>
-                <span>added</span>
-                <span>removed</span>
-            </div>
+            <div class="chat-usage-row chat-usage-heading"><span>Most changed</span><span class="chat-usage-muted">lines</span></div>
             @{ var max = Math.Max(1, stats.Files.Max(file => file.Additions + file.Deletions)); }
-            <ul class="chat-files-list">
+            <ul class="chat-widget-rows">
                 @foreach (var file in _showAll ? stats.Files : stats.Files.Take(VisibleFiles))
                 {
-                    var source = file.LatestSourceMessageId;
-                    <li @key="file.Path">
-                        <button class="chat-files-row" type="button" disabled="@(source is null)"
-                                title="@RowTitle(file)"
-                                @onclick="() => OpenFileAsync(file)">
-                            <span class="chat-files-kind chat-files-kind-@file.Kind.ToString().ToLowerInvariant()" title="@KindTitle(file.Kind)">@Glyph(file.Kind)</span>
-                            <span class="chat-files-name">@FileName(file.Path) <span class="chat-usage-muted">@Folder(file.Path)</span></span>
+                    <ChatWidgetRow @key="file.Path" Widget="@Widget" OpenTitle="@RowTitle(file)" Uses="@file.Sources" UseNoun="change"
+                                   OnOpen="@(file.LatestSourceMessageId is null ? default : EventCallback.Factory.Create(this, () => OpenFileAsync(file)))"
+                                   Running="@(file.LatestSourceMessageId is null)">
+                        <Tile><span class="chat-files-kind chat-files-kind-@file.Kind.ToString().ToLowerInvariant()" title="@KindTitle(file.Kind)">@Glyph(file.Kind)</span></Tile>
+                        <Name>@FileName(file.Path)</Name>
+                        <Details>
+                            @if (Folder(file.Path) is { Length: > 0 } folder) { <span class="chat-files-folder" title="@file.Path">@folder</span> }
+                            @if (file.PreviousPath is { } previous) { <span title="@($"Renamed from {previous}")">was @FileName(previous)</span> }
+                            @if (file.LatestSourceMessageId is null) { <span title="The run still going has changed this file; its review opens once the run saves its receipt">changing</span> }
+                        </Details>
+                        <Figure>
                             @if (file.IsBinary && file.Additions + file.Deletions == 0)
                             {
-                                <span class="chat-files-binary chat-usage-muted" title="Binary file change; text line counts are unavailable">binary</span>
+                                <span class="chat-usage-muted" title="Binary file change; text line counts are unavailable">binary</span>
                             }
                             else
                             {
-                                <span title="Lines added to this path across the selected scope" class="chat-files-figure @(file.Additions > 0 ? "workspace-added" : "chat-usage-muted")">@(file.Additions > 0 ? $"+{file.Additions}" : "—")</span>
-                                <span title="Lines removed from this path across the selected scope" class="chat-files-figure @(file.Deletions > 0 ? "workspace-removed" : "chat-usage-muted")">@(file.Deletions > 0 ? $"−{file.Deletions}" : "—")</span>
-                                <span class="chat-files-track" aria-hidden="true">
-                                    <span class="chat-files-bar-added" style="flex-grow: @file.Additions"></span>
-                                    <span class="chat-files-bar-removed" style="flex-grow: @file.Deletions"></span>
-                                    <span style="flex-grow: @(max - file.Additions - file.Deletions)"></span>
+                                <span class="chat-files-lines">
+                                    <span title="Lines added to this path across the selected scope" class="@(file.Additions > 0 ? "workspace-added" : "chat-usage-muted")">@(file.Additions > 0 ? $"+{file.Additions}" : "—")</span>
+                                    <span title="Lines removed from this path across the selected scope" class="@(file.Deletions > 0 ? "workspace-removed" : "chat-usage-muted")">@(file.Deletions > 0 ? $"−{file.Deletions}" : "—")</span>
                                 </span>
                             }
-                        </button>
-                    </li>
+                        </Figure>
+                        <Bar>
+                            @if (file.Additions > 0) { <span class="chat-files-bar-added" style="flex-grow: @file.Additions"></span> }
+                            @if (file.Deletions > 0) { <span class="chat-files-bar-removed" style="flex-grow: @file.Deletions"></span> }
+                            @if (max > file.Additions + file.Deletions) { <i style="flex-grow: @(max - file.Additions - file.Deletions)"></i> }
+                        </Bar>
+                    </ChatWidgetRow>
                 }
             </ul>
             @if (stats.Files.Count > VisibleFiles)
             {
-                <button class="chat-usage-link chat-files-more" type="button" @onclick="() => _showAll = !_showAll">
+                <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">
                     @(_showAll ? "Show fewer" : $"Show {stats.Files.Count - VisibleFiles} more")
                 </button>
             }

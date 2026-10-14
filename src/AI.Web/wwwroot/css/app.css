@@ -483,6 +483,21 @@
     --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* Settings → Appearance → Animations off (data-animations on the root, set by js/theme.js): nothing
+   moves. Durations go to zero rather than `none`, so every element still lands in its end state and
+   the animationend/transitionend events scripts wait for still fire. Loops stop after one instant
+   pass. Scripts that move things themselves check the same attribute. */
+:root[data-animations="false"] *,
+:root[data-animations="false"] *::before,
+:root[data-animations="false"] *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+}
+
 .app-loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1rem; background: var(--color-bg-sunken); color: var(--color-text); }
 .app-loading-mark { display: block; width: 4.5rem; height: 4.5rem; }
 .app-loading-copy { display: grid; justify-items: center; gap: 0.35rem; }
@@ -6352,13 +6367,6 @@ textarea {
 @keyframes text-sheen {
     from { background-position: 100% 0; }
     to { background-position: 0% 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .live-notes,
-    .live-notes-window,
-    .live-notes-track,
-    .workspace-message.live-text { animation: none; transition: none; }
 }
 
 /* Concrete tool activity or an approval wait under the running turn's text. */

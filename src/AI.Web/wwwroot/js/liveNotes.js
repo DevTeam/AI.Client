@@ -6,8 +6,6 @@
 (() => {
     const LinesPerNote = 2;
 
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-
     const resizeObserver = new ResizeObserver(entries => {
         for (const entry of entries) {
             const root = entry.target.closest(".live-notes");
@@ -77,7 +75,7 @@
         state.anchor = last;
         state.anchorFromBottom = last ? trackHeight - last.offsetTop : 0;
         state.trackHeight = trackHeight;
-        if (grown > 0.5 && !reducedMotion.matches) glide(track, grown);
+        if (grown > 0.5) glide(track, grown);
     };
 
     const attach = root => {

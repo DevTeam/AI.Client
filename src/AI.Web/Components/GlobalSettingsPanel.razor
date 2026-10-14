@@ -100,6 +100,10 @@
                                         <output>@_cornerRoundnessPercent%</output>
                                     </span>
                                 </div>
+                                <label @attributes="@(ControlHints.Attributes("settings.appearance.animations"))" class="settings-row">
+                                    <span class="settings-row-label">Animations</span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_animationsEnabled" @onchange="SetAnimationsAsync" />
+                                </label>
                             </div>
                         </section>
                         <section class="settings-group" aria-labelledby="settings-sidebar">
@@ -644,6 +648,7 @@
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
     private bool _otherSoundsEnabled = true;
+    private bool _animationsEnabled = true;
     private bool _showTurnTokens;
     private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
     private int _recentChatCount = AI.Web.Settings.ClientSettings.DefaultRecentChatCount;
@@ -696,6 +701,7 @@
         var clientSettings = await ClientSettings.GetAsync();
         _notificationSoundEnabled = clientSettings.NotificationSoundEnabled;
         _otherSoundsEnabled = clientSettings.OtherSoundsEnabled;
+        _animationsEnabled = clientSettings.AnimationsEnabled;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
         _recentChatCount = clientSettings.RecentChatCount;
@@ -847,6 +853,12 @@
     {
         _notificationSoundEnabled = args.Value is true;
         await ClientSettings.UpdateAsync(current => current with { NotificationSoundEnabled = _notificationSoundEnabled });
+    }
+
+    private async Task SetAnimationsAsync(ChangeEventArgs args)
+    {
+        _animationsEnabled = args.Value is true;
+        await ClientSettings.UpdateAsync(current => current with { AnimationsEnabled = _animationsEnabled });
     }
 
     private async Task SetOtherSoundsAsync(ChangeEventArgs args)

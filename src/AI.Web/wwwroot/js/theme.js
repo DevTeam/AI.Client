@@ -64,12 +64,19 @@
         document.documentElement.dataset.otherSounds = String(value !== false);
     }
 
+    // Settings → Appearance → Animations; app.css and the scripts that move things read it.
+    function applyAnimations(value) {
+        document.documentElement.dataset.animations = String(value !== false);
+    }
+
     let ready;
     globalThis.aiClientSettingsReady = new Promise(resolve => { ready = resolve; });
 
     function saveClientSettings(json) {
         localStorage.setItem(storageKey, json);
-        applyOtherSounds(JSON.parse(json)?.otherSoundsEnabled);
+        const settings = JSON.parse(json);
+        applyOtherSounds(settings?.otherSoundsEnabled);
+        applyAnimations(settings?.animationsEnabled);
         if (typeof globalThis.invokeCSharpAction === "function") {
             globalThis.invokeCSharpAction(JSON.stringify({ type: "client-settings-save", settings: json }));
         }
@@ -136,6 +143,7 @@
         applyAccent(restored?.accent);
         applyCornerRoundness(restored?.cornerRoundnessPercent);
         applyOtherSounds(restored?.otherSoundsEnabled);
+        applyAnimations(restored?.animationsEnabled);
         apply(restored?.theme);
         ready();
     }
@@ -145,6 +153,7 @@
     applyAccent(saved?.accent);
     applyCornerRoundness(saved?.cornerRoundnessPercent);
     applyOtherSounds(saved?.otherSoundsEnabled);
+    applyAnimations(saved?.animationsEnabled);
     apply(saved?.theme, false);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
     // The bridge may not be injected yet while <head> runs. Wait for it before Blazor reads the

@@ -14,7 +14,7 @@
 
             scroller.scrollTo({
                 top: scroller.scrollTop + header.top - viewport.top - 8,
-                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"
+                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.animations === "false" ? "instant" : "smooth"
             });
         },
         initialize(id) {

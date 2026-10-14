@@ -261,7 +261,7 @@ export function attach(root, dotNet) {
     function playPositions() {
         const previous = positions;
         positions = null;
-        if (!previous || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if (!previous || window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.animations === "false") return;
         for (const row of rows()) {
             const before = previous.get(row.dataset.chatId);
             if (before === undefined) continue;

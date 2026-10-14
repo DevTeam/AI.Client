@@ -13,6 +13,9 @@ public sealed record ClientSettings
 
     public int CornerRoundnessPercent { get; init; } = 100;
 
+    /// <summary>Whether the interface moves: transitions, arrivals, sheens and glides. Off, every change is instant.</summary>
+    public bool AnimationsEnabled { get; init; } = true;
+
     public bool NotificationSoundEnabled { get; init; } = true;
 
     public bool OtherSoundsEnabled { get; init; } = true;

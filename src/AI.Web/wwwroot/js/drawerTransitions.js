@@ -26,7 +26,7 @@
     }
 
     function reducedMotion() {
-        return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.animations === "false";
     }
 
     function leave(node) {

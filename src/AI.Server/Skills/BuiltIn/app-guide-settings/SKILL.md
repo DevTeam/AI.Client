@@ -149,7 +149,7 @@ Text correction: settings.chat.text_correction → settings.chat.text_correction
 a discovered language switch → settings.chat.text_correction.enabled → chat.text_correction.
 Split language selection, typing behavior and undo/paste behavior into short steps using the help.
 Other preferences: settings.appearance.theme → settings.appearance.accent →
-settings.appearance.corners, or settings.sounds.notifications → settings.sounds.other,
+settings.appearance.corners → settings.appearance.animations, or settings.sounds.notifications → settings.sounds.other,
 or settings.guide.enabled → settings.guide.idle → settings.guide.progress.
 Tools, memory and skills: settings.tools → settings.memory → settings.skills as requested.
 Choose a focused branch; do not show every setting in one tour.

@@ -57,7 +57,7 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
-- A new text surfaces in place out of a soft blur (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animations and the gliding off.
+- A new text surfaces in place out of a soft blur (300 ms); growth of the same text is patched in place. The notes move the same way under `prefers-reduced-motion`: this motion is how the window says the turn is at work.
 
 #### Notes window
 
@@ -93,7 +93,7 @@ One muted line under the live text says what the turn is doing between its notes
 - **Series.** Calls of the same tool in a row are one series: the title stays and only the count and the detail change. A note from the model or any other tool starts a new series. The count covers the turn's calls since its last note (`ToolCalls` of its assistant messages), plus the calls running and the one being prepared.
 - **Hold.** Each state stays up at least 600 ms. What arrives meanwhile waits; when the time is up the latest is shown, skipping those in between. A series that flashed by during a pause is still shown, with its count, rather than skipped for the pause.
 - **Thinking.** `Thinking…` appears only after 400 ms without a call: between two calls in quick succession it would flash for a frame.
-- **Morph.** A change morphs instead of replacing the text (`js/textMorph.js`): the part the old and new text share, character by character, stays put; the rest dissolves into the new text through a slight blur while its width eases to fit, so whatever follows on the line glides along. The row's `Working for …` morphs the same way on each tick, so only the digits that change move. Off under reduced motion.
+- **Morph.** A change morphs instead of replacing the text (`js/textMorph.js`): the part the old and new text share, character by character, stays put; the rest dissolves into the new text through a slight blur while its width eases to fit, so whatever follows on the line glides along. The row's `Working for …` morphs the same way on each tick, so only the digits that change move. It morphs under reduced motion too.
 - **Sheen.** The title of a call and `Thinking…` carry the in-progress sheen (see Notes window); a wait does not.
 - **Height.** The line is exactly one line tall for the whole running turn, empty or not, so nothing under it moves; both morph layers share one grid cell and one baseline.
 - **Assistive technology.** A visually hidden status names only the tool or the wait, so a count or a path changing is not read out; the visible text is hidden from it.

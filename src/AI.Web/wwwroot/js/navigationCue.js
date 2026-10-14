@@ -10,7 +10,7 @@ for (const type of ["keydown", "wheel", "touchmove"]) {
     window.addEventListener(type, () => { lastBusyInput = Date.now(); }, { capture: true, passive: true });
 }
 
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.animations === "false";
 
 /** Whether moving the window now would break into something the user is doing. */
 export function isUserBusy(quietMs) {

@@ -10,7 +10,7 @@ let pointedRequest = null;
 let usedTarget = null;
 let layoutObserver = null;
 let lastActivity = Date.now();
-const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.animations === "false";
 const delay = (ms, signal) => new Promise((resolve, reject) => {
     if (signal.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
     const onAbort = () => { clearTimeout(timer); reject(new DOMException("Cancelled", "AbortError")); };

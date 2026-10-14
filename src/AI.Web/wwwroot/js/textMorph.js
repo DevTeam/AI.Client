@@ -18,8 +18,6 @@
     // would otherwise flash for a frame.
     const ThinkingAfterMs = 400;
 
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-
     // A zero-width space keeps an empty layer one line tall, so the baseline never moves.
     const layer = (text, className) => {
         const span = document.createElement("span");
@@ -41,7 +39,7 @@
         if (previous === text) return;
         element.morphText = text;
         clearTimeout(element.morphTimer);
-        if (previous === undefined || reducedMotion.matches || !element.isConnected) {
+        if (previous === undefined || !element.isConnected) {
             element.textContent = text;
             return;
         }

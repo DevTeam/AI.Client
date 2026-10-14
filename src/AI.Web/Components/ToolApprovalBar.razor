@@ -156,9 +156,16 @@
             };
             if (message is not null) Notifications.ShowSuccess(message);
         }
-        catch (HttpRequestException)
+        // Only a conflict means the call stopped waiting. A failed connection or a server error
+        // leaves the call pending, so the card stays answerable once the app is reachable again.
+        catch (HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.Conflict)
         {
             _approvalError = "This approval is no longer available. Refresh the chat.";
+            Notifications.ShowError(_approvalError);
+        }
+        catch (HttpRequestException)
+        {
+            _approvalError = "The app could not be reached, so the decision was not sent. Try again.";
             Notifications.ShowError(_approvalError);
         }
         finally { _decidingApproval = false; }

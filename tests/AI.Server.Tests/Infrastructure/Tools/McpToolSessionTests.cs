@@ -48,6 +48,32 @@ public sealed class McpToolSessionTests
         }
     }
 
+    [Fact]
+    public async Task ShouldReturnRemoteProtocolErrorsAsToolErrors()
+    {
+        var reply = new AppToolReply();
+        var factory = new AppToolSessionFactory(new AppMcpServerHost([new RejectingTool()], reply),
+            new ToolResultModelProjector());
+        await using var session = await factory.OpenAsync([],
+            new ToolRunContext(Guid.Empty, Guid.Empty, Guid.Empty, true), TestContext.Current.CancellationToken);
+
+        var result = await session.CallAsync(session.Tools.Single(), "{}", null, TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeTrue();
+        result.ModelContent.ShouldContain("Job not found: AI/code-ai/nik/IDEAI-606");
+    }
+
+    private sealed class RejectingTool : IAppTool
+    {
+        public McpServerTool Create(ToolRunContext run, IAppToolReply reply) =>
+            McpServerTool.Create(Execute, new McpServerToolCreateOptions { SerializerOptions = reply.Json });
+
+        [McpServerTool(Name = "reject")]
+        private string Execute() =>
+            throw new ModelContextProtocol.McpProtocolException(
+                "Job not found: AI/code-ai/nik/IDEAI-606", ModelContextProtocol.McpErrorCode.InvalidParams);
+    }
+
     private sealed class ProbeTool(CallToolResult result) : IAppTool
     {
         public McpServerTool Create(ToolRunContext run, IAppToolReply reply) =>

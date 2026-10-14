@@ -240,7 +240,19 @@ public sealed class McpToolSession : IToolSession
         // request; without one the server is told not to report, so this stays null when
         // nobody is listening.
         var sink = progress is null ? null : new ProgressRelay(progress);
-        var result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
+        ModelContextProtocol.Protocol.CallToolResult result;
+        try
+        {
+            result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
+        }
+        // The server answered with a JSON-RPC error, such as a Jenkins job that does not exist. The
+        // transport worked and the outcome is known, so this is the call's result, not a failure of
+        // the turn: the model reads it and corrects the call instead of the whole run ending.
+        catch (ModelContextProtocol.McpProtocolException error)
+        {
+            var rejection = new[] { ToolContent.OfText(error.Message) };
+            return new ToolCallResult(rejection, null, null, true, _modelProjector.Project(rejection, null, true));
+        }
         // MCP tool errors may contain only text; the output schema describes successful results.
         if (result.IsError != true && _descriptors[tool.OriginalName].OutputSchema is { } outputSchema
             && (result.StructuredContent is not { } content || !BuildSchema(outputSchema).Evaluate(content).IsValid))

@@ -2,6 +2,8 @@ namespace AI.Web.Resources;
 
 using System.Globalization;
 using System.Text.RegularExpressions;
+using AI.Contracts.Chats;
+using AI.Contracts.Projects;
 using AI.Contracts.Resources;
 
 public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
@@ -23,6 +25,9 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
     private static readonly string[] DiffWords = ["diff", "changes"];
 
     private const int ScopedLimit = 50;
+
+    /// <summary>The most rows one opened level lists; the rest are counted and narrowed by typing.</summary>
+    private const int LevelLimit = 200;
 
     public ResourceMention? GetMention(string text, int caret)
     {
@@ -70,6 +75,7 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
 
     public IReadOnlyList<ResourceMentionItem> Match(ResourceMentionSources sources, ResourceMention mention)
     {
+        if (sources.Trail is { Depth: > 0 } trail) return Level(sources, trail, mention.Filter);
         if (Folder(mention) is { } folder) return Listing(sources, mention, folder);
         var filter = mention.Filter;
         var scoped = mention.Scope is not null;
@@ -79,6 +85,7 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             (ResourceMentionGroup.Files, Files(sources, mention)),
             (ResourceMentionGroup.Changes, In(mention, ChatResourceKind.Diff) ? Changes(sources, filter, scoped) : []),
             (ResourceMentionGroup.Chats, In(mention, ChatResourceKind.Chat) ? Chats(sources, filter) : []),
+            (ResourceMentionGroup.OtherChats, In(mention, ChatResourceKind.Chat) ? OtherChats(sources, filter) : []),
             (ResourceMentionGroup.Reviews, In(mention, ChatResourceKind.Review) ? Reviews(sources, filter) : []),
             (ResourceMentionGroup.Projects, In(mention, ChatResourceKind.Project) ? Projects(sources, filter) : [])
         };
@@ -95,7 +102,8 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             var shown = rows.OrderBy(row => row.Rank).Take(limit).Select(row => row.Item).ToArray();
             result.AddRange(shown);
             // The Host may have found more than it sent: those are only counted.
-            var found = group == ResourceMentionGroup.Files ? Math.Max(rows.Count, sources.FilesTotal) : rows.Count;
+            var found = group == ResourceMentionGroup.Files && mention.Scope is null or ChatResourceKind.File or ChatResourceKind.Directory
+                ? Math.Max(rows.Count, sources.FilesTotal) : rows.Count;
             if (found > shown.Length) result.Add(More(group, found - shown.Length, !expanded && rows.Count > shown.Length));
         }
         AddBrowse(result, mention);
@@ -136,6 +144,122 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             result.Add(More(ResourceMentionGroup.Files, sources.FilesTotal - result.Count, expandable: false));
         AddBrowse(result, mention);
         return result;
+    }
+
+    /// <summary>
+    /// An opened level: the chats of a project, newest first, or the branches of a chat, the main
+    /// one first and each followed by those taken from it. The filter narrows it as a name does.
+    /// </summary>
+    private static List<ResourceMentionItem> Level(ResourceMentionSources sources, ResourceMentionTrail trail, string filter)
+    {
+        var now = sources.Now ?? DateTimeOffset.UtcNow;
+        var project = trail.Project is { } opened && opened.Id != sources.CurrentProjectId ? opened : null;
+        var rows = new List<(ResourceMentionItem Item, int Rank)>();
+        var group = ResourceMentionGroup.Chats;
+        if (trail.Chat is { } chat)
+        {
+            group = ResourceMentionGroup.Branches;
+            if (sources.TrailChat is { } details && details.Id == chat.Id)
+            {
+                var id = details.Id.ToString();
+                foreach (var (branch, count, headAt) in BranchesOf(details))
+                {
+                    var title = branch.Id == details.Id ? "Main branch" : branch.Title is { Length: > 0 } named ? named : "Branch";
+                    if (NameRank(title, filter) is not { } ranked) continue;
+                    var label = string.Join(" › ", new[] { project?.Name, details.Title, title }.OfType<string>());
+                    var detail = (count == 1 ? "1 message" : $"{count} messages") + (headAt is { } at ? $" · {Ago(at, now)}" : string.Empty);
+                    var attached = sources.Attached.Any(item => item.Kind == ChatResourceKind.Chat && item.Path == id
+                        && item.BranchId == branch.Id);
+                    rows.Add((new ResourceMentionItem(group, ChatResourceKind.Chat, title, detail, id, ranked.Highlights,
+                        attached, Token: "@chat:" + Quote(label), ProjectId: project?.Id, BranchId: branch.Id,
+                        FullName: label), ranked.Rank));
+                }
+            }
+        }
+        else
+        {
+            foreach (var item in Offered(sources, sources.TrailChats ?? []))
+            {
+                if (NameRank(item.Title, filter) is not { } ranked) continue;
+                // The path above the list already names the project.
+                rows.Add((ChatRow(sources, item, project, group, ranked.Highlights, now, nameProject: false), ranked.Rank));
+            }
+        }
+        var result = rows.OrderBy(row => row.Rank).Take(LevelLimit).Select(row => row.Item).ToList();
+        if (rows.Count > result.Count) result.Add(More(group, rows.Count - result.Count, expandable: false));
+        return result;
+    }
+
+    /// <summary>
+    /// The branches of a chat in the order the sidebar shows them, with how many messages lead to
+    /// each one's head and when that head was written.
+    /// </summary>
+    private static IEnumerable<(ChatBranchView Branch, int Messages, DateTimeOffset? HeadAt)> BranchesOf(ChatDetails chat)
+    {
+        var branches = (chat.Branches ?? []).Where(branch => branch.HeadMessageId is not null).ToList();
+        var children = branches.Where(branch => branch.Id != chat.Id).ToLookup(branch => branch.ParentBranchId ?? chat.Id);
+        var ordered = new List<ChatBranchView>();
+        var visited = new HashSet<Guid>();
+        void Add(ChatBranchView branch)
+        {
+            if (!visited.Add(branch.Id)) return;
+            ordered.Add(branch);
+            foreach (var child in children[branch.Id]) Add(child);
+        }
+        if (branches.FirstOrDefault(branch => branch.Id == chat.Id) is { } main) Add(main);
+        foreach (var child in children[chat.Id]) Add(child);
+        // A branch whose parent is gone is still offered.
+        foreach (var branch in branches) Add(branch);
+        var messages = new Dictionary<Guid, ChatMessageView>();
+        foreach (var message in chat.Messages) messages.TryAdd(message.Id, message);
+        foreach (var branch in ordered)
+        {
+            var count = 0;
+            var head = branch.HeadMessageId is { } headId && messages.TryGetValue(headId, out var found) ? found : null;
+            for (var current = head; current is not null && count <= messages.Count;
+                 current = current.ParentId is { } parent && messages.TryGetValue(parent, out var next) ? next : null)
+                count++;
+            yield return (branch, count, head?.CreatedAt);
+        }
+    }
+
+    /// <summary>
+    /// The chats a list offers, newest first: not archived ones or ones never written in, and not
+    /// the current chat unless it has branches to open.
+    /// </summary>
+    private static IEnumerable<ChatSummary> Offered(ResourceMentionSources sources, IEnumerable<ChatSummary> chats) =>
+        chats.Where(chat => !chat.IsEmpty && chat.ArchivedAt is null && (chat.Id != sources.CurrentChatId || chat.BranchCount > 0))
+            .OrderByDescending(chat => chat.LastActivityAt);
+
+    /// <summary>
+    /// A chat as a row: when it was last written in and how many branches Tab opens. A chat of
+    /// another project names that project first, in the row and in its link.
+    /// </summary>
+    private static ResourceMentionItem ChatRow(ResourceMentionSources sources, ChatSummary chat, ProjectSummary? project,
+        ResourceMentionGroup group, IReadOnlyList<int> highlights, DateTimeOffset now, bool nameProject = true)
+    {
+        var details = new List<string>(3);
+        if (project is not null && nameProject) details.Add(project.Name);
+        details.Add(chat.Id == sources.CurrentChatId ? "This chat" : Ago(chat.LastActivityAt, now));
+        // The count leaves out the main branch, which is the chat itself.
+        if (chat.BranchCount > 0) details.Add($"{chat.BranchCount + 1} branches");
+        var label = project is null ? chat.Title : $"{project.Name} › {chat.Title}";
+        var id = chat.Id.ToString();
+        var attached = sources.Attached.Any(item => item.Kind == ChatResourceKind.Chat && item.Path == id
+            && item.BranchId is null && item.ProjectId == project?.Id);
+        return new ResourceMentionItem(group, ChatResourceKind.Chat, chat.Title, string.Join(" · ", details), id,
+            highlights, attached, Token: "@chat:" + Quote(label), ProjectId: project?.Id, HasLevel: chat.BranchCount > 0,
+            FullName: label);
+    }
+
+    private static string Ago(DateTimeOffset at, DateTimeOffset now)
+    {
+        var age = now - at;
+        if (age < TimeSpan.FromMinutes(1)) return "just now";
+        if (age < TimeSpan.FromHours(1)) return $"{(int)age.TotalMinutes} min ago";
+        if (age < TimeSpan.FromDays(1)) return $"{(int)age.TotalHours} h ago";
+        if (age < TimeSpan.FromDays(30)) return $"{(int)age.TotalDays} d ago";
+        return at.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture);
     }
 
     private static ResourceMentionItem More(ResourceMentionGroup group, int count, bool expandable) =>
@@ -241,14 +365,25 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
     private static List<(ResourceMentionItem, int)> Chats(ResourceMentionSources sources, string filter)
     {
         var rows = new List<(ResourceMentionItem, int)>();
-        foreach (var chat in sources.Chats.Where(chat => chat.Id != sources.CurrentChatId && !chat.IsEmpty)
-                     .OrderByDescending(chat => chat.LastActivityAt))
+        var now = sources.Now ?? DateTimeOffset.UtcNow;
+        foreach (var chat in Offered(sources, sources.Chats))
         {
             if (NameRank(chat.Title, filter) is not { } ranked) continue;
-            var id = chat.Id.ToString();
-            rows.Add((new ResourceMentionItem(ResourceMentionGroup.Chats, ChatResourceKind.Chat, chat.Title, "Chat", id,
-                ranked.Highlights, sources.Attached.Any(item => item.Kind == ChatResourceKind.Chat && item.Path == id),
-                Token: "@chat:" + Quote(chat.Title)), ranked.Rank));
+            rows.Add((ChatRow(sources, chat, null, ResourceMentionGroup.Chats, ranked.Highlights, now), ranked.Rank));
+        }
+        return rows;
+    }
+
+    /// <summary>Recent chats of the other projects, each named with its project.</summary>
+    private static List<(ResourceMentionItem, int)> OtherChats(ResourceMentionSources sources, string filter)
+    {
+        var rows = new List<(ResourceMentionItem, int)>();
+        var now = sources.Now ?? DateTimeOffset.UtcNow;
+        foreach (var chat in Offered(sources, (sources.OtherChats ?? []).Where(chat => chat.ProjectId != sources.CurrentProjectId)))
+        {
+            if (sources.Projects.FirstOrDefault(project => project.Id == chat.ProjectId) is not { } project
+                || NameRank(chat.Title, filter) is not { } ranked) continue;
+            rows.Add((ChatRow(sources, chat, project, ResourceMentionGroup.OtherChats, ranked.Highlights, now), ranked.Rank));
         }
         return rows;
     }
@@ -278,7 +413,7 @@ public sealed partial class ResourceMentionMatcher : IResourceMentionMatcher
             var detail = string.IsNullOrWhiteSpace(project.Description) ? "Project" : project.Description.ReplaceLineEndings(" ");
             rows.Add((new ResourceMentionItem(ResourceMentionGroup.Projects, ChatResourceKind.Project, project.Name, detail, id,
                 ranked.Highlights, sources.Attached.Any(item => item.Kind == ChatResourceKind.Project && item.Path == id),
-                Token: "@project:" + Quote(project.Name)), ranked.Rank));
+                Token: "@project:" + Quote(project.Name), HasLevel: true), ranked.Rank));
         }
         return rows;
     }

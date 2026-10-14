@@ -410,9 +410,9 @@
                                         {
                                             <button class="resource-pill-target @kind" type="button" title="Open review" @onclick="() => OnOpenReview.InvokeAsync(resource)"><span class="resource-pill-label">@ResourceLabel(resource)</span></button>
                                         }
-                                        else if (resource.Kind == ChatResourceKind.Chat && Guid.TryParse(resource.Path, out var referencedChatId))
+                                        else if (resource.Kind == ChatResourceKind.Chat && Guid.TryParse(resource.Path, out _))
                                         {
-                                            <button class="resource-pill-target @kind" type="button" title="Open chat" @onclick="() => OnOpenChat.InvokeAsync(referencedChatId)"><span class="resource-pill-label">@ResourceLabel(resource)</span></button>
+                                            <button class="resource-pill-target @kind" type="button" title="Open chat" @onclick="() => OpenChatReferenceAsync(resource)"><span class="resource-pill-label">@ResourceLabel(resource)</span></button>
                                         }
                                         else if (resource.Kind == ChatResourceKind.Diff && ResourcePresenter.Changes(resource) is { Changes.IsEmpty: false })
                                         {
@@ -951,6 +951,17 @@
         OnCurrentTurnSummaryVisibilityChanged.InvokeAsync(visible);
 
     /// <summary>
+    /// A chat reference opens the chat in place; one naming a branch, or a chat of another project,
+    /// goes there by the app's own link.
+    /// </summary>
+    private Task OpenChatReferenceAsync(ChatResource reference)
+    {
+        if (SelectedChat is not null && AI.Web.Widgets.ChatWidgetActions.ChatLink(reference, SelectedChat.ProjectId) is { } link)
+            return OnNavigateApp.InvokeAsync(link);
+        return Guid.TryParse(reference.Path, out var chatId) ? OnOpenChat.InvokeAsync(chatId) : Task.CompletedTask;
+    }
+
+    /// <summary>
     /// A click on an "@" link to a chat, a review or captured changes in a user message: it opens
     /// what it names. Files and directories are ordinary local-path links and never get here.
     /// </summary>
@@ -961,8 +972,8 @@
         var reference = SelectedChat.Messages.SelectMany(item => item.Resources ?? []).FirstOrDefault(item => item.Id == id);
         switch (reference)
         {
-            case { Kind: ChatResourceKind.Chat } when Guid.TryParse(reference.Path, out var chatId):
-                return OnOpenChat.InvokeAsync(chatId);
+            case { Kind: ChatResourceKind.Chat }:
+                return OpenChatReferenceAsync(reference);
             case { Kind: ChatResourceKind.Review }:
                 return OnOpenReview.InvokeAsync(reference);
             case { Kind: ChatResourceKind.Diff }:

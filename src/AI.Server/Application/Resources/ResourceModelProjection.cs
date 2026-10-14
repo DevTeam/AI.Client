@@ -112,9 +112,15 @@ public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAs
                              + $"media type {reference.MediaType}; {reference.Size} bytes; saved content follows when readable]";
                 yield break;
             case ChatResourceKind.Chat:
-                yield return $"- chat: {name}{Linked(reference)} [chat {reference.Path} in this project; read its messages with app_read "
-                             + $"resource Messages and chatId {reference.Path}]";
+            {
+                var where = reference.ProjectId is { } projectId ? $"in project {projectId}" : "in this project";
+                var branch = reference.BranchId is { } branchId ? $", its branch {branchId}" : string.Empty;
+                var read = (reference.ProjectId is { } owner ? $", projectId {owner}" : string.Empty)
+                           + (reference.BranchId is { } only ? $" and branchId {only}" : string.Empty);
+                yield return $"- chat: {name}{Linked(reference)} [chat {reference.Path} {where}{branch}; read its messages with app_read "
+                             + $"resource Messages and chatId {reference.Path}{read}]";
                 yield break;
+            }
             case ChatResourceKind.Project:
                 yield return $"- project: {name}{Linked(reference)} [project {reference.Path}; read it with app_read resource Project "
                              + $"and projectId {reference.Path}, its chats with Chats]";

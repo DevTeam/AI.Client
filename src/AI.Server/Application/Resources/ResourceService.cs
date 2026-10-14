@@ -188,9 +188,6 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             .Where(item => item.Kind is ChatResourceKind.Chat or ChatResourceKind.Project or ChatResourceKind.Diff)
             .ToArray();
         if (named.Length == 0) return;
-        var chatList = named.Any(item => item.Kind == ChatResourceKind.Chat)
-            ? (await chats.ListAsync(projectId, cancellationToken)).ToDictionary(item => item.Id)
-            : [];
         foreach (var reference in named)
         {
             if (reference.Id == Guid.Empty || byId.ContainsKey(reference.Id))
@@ -198,11 +195,7 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
             switch (reference.Kind)
             {
                 case ChatResourceKind.Chat:
-                    if (!Guid.TryParse(reference.Path, out var otherChatId) || !chatList.TryGetValue(otherChatId, out var chat))
-                        throw new InvalidOperationException("The chat is not in this project.");
-                    if (otherChatId == chatId) throw new ArgumentException("A chat cannot reference itself.");
-                    byId.Add(reference.Id, new ChatResource(reference.Id, ChatResourceKind.Chat, chat.Id.ToString(), chat.Title,
-                        Mention: reference.Mention));
+                    byId.Add(reference.Id, await NameChatAsync(projectId, chatId, reference, cancellationToken));
                     break;
                 case ChatResourceKind.Project:
                     var project = Guid.TryParse(reference.Path, out var otherProjectId)
@@ -216,6 +209,38 @@ public sealed class ResourceService(IProjectService projects, IDirectoryBrowser 
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// A chat of this project or of another one, whole or one of its branches, named the way the
+    /// list offered it: "Project › Chat › Branch", the parts that are not this project and chat.
+    /// </summary>
+    private async Task<ChatResource> NameChatAsync(Guid projectId, Guid chatId, ChatResource reference,
+        CancellationToken cancellationToken)
+    {
+        var ownerId = reference.ProjectId ?? projectId;
+        if (!Guid.TryParse(reference.Path, out var otherChatId))
+            throw new InvalidOperationException("The chat is not in this project.");
+        if (otherChatId == chatId && ownerId == projectId && reference.BranchId is null)
+            throw new ArgumentException("A chat cannot reference itself.");
+        var parts = new List<string>(3);
+        if (ownerId != projectId)
+        {
+            var owner = await projects.GetAsync(ownerId, cancellationToken)
+                ?? throw new InvalidOperationException("The project does not exist.");
+            parts.Add(owner.Name);
+        }
+        var chat = await chats.GetAsync(ownerId, otherChatId, cancellationToken)
+            ?? throw new InvalidOperationException(ownerId == projectId ? "The chat is not in this project." : "The chat is not in that project.");
+        parts.Add(chat.Title);
+        if (reference.BranchId is { } branchId)
+        {
+            var branch = chat.Branches?.SingleOrDefault(item => item.Id == branchId)
+                ?? throw new InvalidOperationException("The branch is not in that chat.");
+            parts.Add(branchId == chat.Id ? "Main branch" : branch.Title is { Length: > 0 } title ? title : "Branch");
+        }
+        return new ChatResource(reference.Id, ChatResourceKind.Chat, chat.Id.ToString(), string.Join(" › ", parts),
+            Mention: reference.Mention, ProjectId: ownerId == projectId ? null : ownerId, BranchId: reference.BranchId);
     }
 
     private async Task<ChatResource> CaptureDiffAsync(Guid projectId, ChatResource reference, CancellationToken cancellationToken)

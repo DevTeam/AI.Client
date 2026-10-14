@@ -270,6 +270,10 @@ public sealed class ResourceServiceTests
         }
     }
 
+    private static AI.Contracts.Chats.ChatDetails Chat(Guid id, Guid projectId, string title,
+        params AI.Contracts.Chats.ChatBranchView[] branches) =>
+        new(id, projectId, title, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, null, [], branches);
+
     [Fact]
     public async Task ShouldNameLinkedChatsAndProjectsAndCaptureUncommittedChanges()
     {
@@ -282,10 +286,17 @@ public sealed class ResourceServiceTests
             var chatId = Guid.CreateVersion7();
             var otherChatId = Guid.CreateVersion7();
             var projects = ProjectsWith(projectId, root);
+            var otherProjectId = Guid.CreateVersion7();
+            var farChatId = Guid.CreateVersion7();
+            var branchId = Guid.CreateVersion7();
+            projects.Setup(item => item.GetAsync(otherProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(
+                new ProjectDetails(otherProjectId, "Pure.DI", "", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, [], [], []));
             var chats = new Mock<IChatService>();
-            chats.Setup(item => item.ListAsync(projectId, It.IsAny<CancellationToken>())).ReturnsAsync([
-                new AI.Contracts.Chats.ChatSummary(chatId, projectId, "This chat", DateTimeOffset.UnixEpoch, 1, DateTimeOffset.UnixEpoch),
-                new AI.Contracts.Chats.ChatSummary(otherChatId, projectId, "Deploy fix", DateTimeOffset.UnixEpoch, 1, DateTimeOffset.UnixEpoch)]);
+            chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(Chat(chatId, projectId, "This chat",
+                new AI.Contracts.Chats.ChatBranchView(chatId, null, "This chat"), new AI.Contracts.Chats.ChatBranchView(branchId, null, "Try B")));
+            chats.Setup(item => item.GetAsync(projectId, otherChatId, It.IsAny<CancellationToken>())).ReturnsAsync(Chat(otherChatId, projectId, "Deploy fix"));
+            chats.Setup(item => item.GetAsync(otherProjectId, farChatId, It.IsAny<CancellationToken>())).ReturnsAsync(Chat(farChatId, otherProjectId, "Release",
+                new AI.Contracts.Chats.ChatBranchView(farChatId, null, "Release")));
             var diffs = new Mock<IWorkspaceDiffReader>();
             diffs.Setup(item => item.FindRepository(It.IsAny<string>())).Returns(root);
             diffs.Setup(item => item.ReadDiff(It.IsAny<string>())).Returns("diff --git a/x b/x");
@@ -296,13 +307,24 @@ public sealed class ResourceServiceTests
             var validated = await service.ValidateForChatAsync(projectId, chatId, [
                 new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, otherChatId.ToString(), "Stale", Mention: "@chat:\"Deploy fix\""),
                 new ChatResource(Guid.NewGuid(), ChatResourceKind.Project, projectId.ToString()),
-                new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, root, Excerpt: "forged", Mention: "@diff")], token);
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Diff, root, Excerpt: "forged", Mention: "@diff"),
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString(), BranchId: branchId),
+                new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, farChatId.ToString(), ProjectId: otherProjectId, BranchId: farChatId)], token);
 
             validated[0].Name.ShouldBe("Deploy fix");
             validated[0].Mention.ShouldBe("@chat:\"Deploy fix\"");
             validated[1].Name.ShouldBe("Project");
             validated[2].Excerpt.ShouldBe("diff --git a/x b/x");
             validated[2].Mention.ShouldBe("@diff");
+            // Another branch of this very chat is a reference like any other.
+            validated[3].Name.ShouldBe("This chat › Try B");
+            validated[3].BranchId.ShouldBe(branchId);
+            validated[4].Name.ShouldBe("Pure.DI › Release › Main branch");
+            validated[4].ProjectId.ShouldBe(otherProjectId);
+            await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
+                [new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, otherChatId.ToString(), BranchId: Guid.NewGuid())], token));
+            await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
+                [new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, farChatId.ToString())], token));
             await Should.ThrowAsync<ArgumentException>(() => service.ValidateForChatAsync(projectId, chatId,
                 [new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString())], token));
             await Should.ThrowAsync<InvalidOperationException>(() => service.ValidateForChatAsync(projectId, chatId,
@@ -366,6 +388,11 @@ public sealed class ResourceServiceTests
         // The captured text holds a fence of its own, so the one around it is longer.
         projected.ShouldContain("  ````\n  two\n  ```\n  three\n  ````");
         projected.ShouldContain($"- chat: \"x\" (linked in the message as \"@chat:x\") [chat {chatId}");
+        var branchId = Guid.NewGuid();
+        var otherProjectId = Guid.NewGuid();
+        new ResourceModelProjection().Project("See @chat:y", [new ChatResource(Guid.NewGuid(), ChatResourceKind.Chat, chatId.ToString(),
+                "y", Mention: "@chat:y", ProjectId: otherProjectId, BranchId: branchId)])
+            .ShouldContain($"chatId {chatId}, projectId {otherProjectId} and branchId {branchId}]");
         projected.ShouldContain("  ```diff\n  +added\n  ```");
     }
 

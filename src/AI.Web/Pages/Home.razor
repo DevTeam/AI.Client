@@ -751,7 +751,8 @@
             else if (IsMentionListOpen())
             {
                 <ResourceMentionMenu Items="_mentionItems" SelectedIndex="_mentionIndex" OnPick="PickMentionSuggestionAsync" OnPickContent="PickMentionContentAsync" OnHover="HoverMentionSuggestion"
-                                     Folder="@(_mention is { } listed ? MentionMatcher.Folder(listed) : null)" Loading="_mentionFilesLoading" OnNavigate="NavigateMentionAsync" />
+                                     Path="MentionPath()" Levels="@(_mentionTrail is not null)" OnPathNavigate="NavigateMentionPathAsync"
+                                     Loading="@(_mentionTrail is not null ? _mentionTrailLoading : _mentionFilesLoading)" />
             }
             @* chatComposer.js draws the draft's "@" links as pills under the text; nothing here renders into it. *@
             <div @attributes="@(ControlHints.Attributes("chat.composer", nativeTooltip: false))" class="composer-input">
@@ -1824,6 +1825,17 @@ else if (_guideInvitation is { } guideInvitation)
     // The groups of the "@" list shown whole, for the word they were opened for.
     private readonly HashSet<AI.Web.Resources.ResourceMentionGroup> _mentionExpanded = [];
     private string? _mentionExpandedFor;
+    // The project and chat opened from the "@" list with Tab, the "@" word and scope they were
+    // opened in, and what they list: null until loaded.
+    private AI.Web.Resources.ResourceMentionTrail? _mentionTrail;
+    private int _mentionTrailAt;
+    private ChatResourceKind _mentionTrailScope;
+    private IReadOnlyList<ChatSummary>? _mentionTrailChats;
+    private ChatDetails? _mentionTrailChat;
+    private bool _mentionTrailLoading;
+    // Recent chats of every project, for the "Chats in other projects" group.
+    private IReadOnlyList<ChatSummary> _mentionOtherChats = [];
+    private DateTimeOffset _mentionOtherChatsLoadedAt;
     private IReadOnlyList<WorkspaceDiffSource> _mentionDiffs = [];
     private int _mentionSearchVersion;
     private Guid? _mentionDiffsLoadedFor;
@@ -3842,6 +3854,8 @@ else if (_guideInvitation is { } guideInvitation)
             OpenFileLinkPreviewAsync(new FilePreviewTarget(resource.Path, resource.Lines?.Start, resource.Lines?.End)),
         { Kind: ChatResourceKind.Review } => OpenAttachedReviewAsync(resource),
         { Kind: ChatResourceKind.Skill } => OpenAppNavigationLinkAsync(ChatWidgetActions.SkillLink(resource.Path)),
+        { Kind: ChatResourceKind.Chat } when _selectedProject is { } project
+            && ChatWidgetActions.ChatLink(resource, project.Id) is { } link => OpenAppNavigationLinkAsync(link),
         { Kind: ChatResourceKind.Chat } when Guid.TryParse(resource.Path, out var chatId) => SelectChatAsync(chatId),
         { Kind: ChatResourceKind.Project } when Guid.TryParse(resource.Path, out var projectId) =>
             OpenAppNavigationLinkAsync($"aiclient://navigate/project?projectId={projectId}"),
@@ -6965,6 +6979,8 @@ else if (_guideInvitation is { } guideInvitation)
         if (_mentionDismissedAt is { } dismissed && dismissed != mention.Start) _mentionDismissedAt = null;
         var starting = _mention?.Start != mention.Start;
         _mention = mention;
+        // An opened level belongs to its "@" word and scope; editing either leaves it.
+        if (_mentionTrail is not null && (mention.Start != _mentionTrailAt || mention.Scope != _mentionTrailScope)) ClearMentionTrail();
         if (starting) _ = LoadMentionSourcesAsync();
         RecomputeMentionItems();
         if (MentionFileQuery(mention) is { } query && _mentionFilesQuery != query) _ = SearchMentionFilesAsync(query);
@@ -7019,6 +7035,127 @@ else if (_guideInvitation is { } guideInvitation)
         _mention = null;
         _mentionItems = [];
         _mentionDismissedAt = null;
+        ClearMentionTrail();
+    }
+
+    private void ClearMentionTrail()
+    {
+        _mentionTrail = null;
+        _mentionTrailChats = null;
+        _mentionTrailChat = null;
+        _mentionTrailLoading = false;
+    }
+
+    /// <summary>
+    /// The path above the "@" list: the scope and the project and chat opened in it, or the
+    /// segments of a listed directory, or null for a search.
+    /// </summary>
+    private IReadOnlyList<string>? MentionPath()
+    {
+        if (_mentionTrail is { } trail)
+            return new[] { _mentionTrailScope == ChatResourceKind.Project ? "Projects" : "Chats", trail.Project?.Name, trail.Chat?.Title }
+                .OfType<string>().ToArray();
+        return _mention is { } mention && MentionMatcher.Folder(mention) is { } folder ? folder.TrimEnd('/').Split('/') : null;
+    }
+
+    /// <summary>A place picked on the path above the list, by how many of its segments stay.</summary>
+    private Task NavigateMentionPathAsync(int keep)
+    {
+        if (_mentionTrail is not null) return LeaveMentionLevelsAsync(keep - 1);
+        if (_mention is not { } mention || MentionMatcher.Folder(mention) is not { } folder) return Task.CompletedTask;
+        var segments = folder.TrimEnd('/').Split('/');
+        return NavigateMentionAsync(keep <= 0 ? string.Empty : string.Join('/', segments[..Math.Min(keep, segments.Length)]) + "/");
+    }
+
+    /// <summary>Backspace right after the scope word of an opened level: up one level.</summary>
+    [JSInvokable]
+    public Task MentionLevelUp() => _mentionTrail is { } trail ? LeaveMentionLevelsAsync(trail.Depth - 1) : Task.CompletedTask;
+
+    /// <summary>Keeps the first <paramref name="depth"/> opened levels and starts the filter over.</summary>
+    private async Task LeaveMentionLevelsAsync(int depth)
+    {
+        if (_mentionTrail is not { } trail) return;
+        if (depth <= 0) ClearMentionTrail();
+        else if (depth < trail.Depth)
+        {
+            _mentionTrail = trail with { Chat = null };
+            _mentionTrailChat = null;
+            _mentionTrailLoading = _mentionTrailChats is null;
+        }
+        await SetMentionWordAsync(_mentionTrailScope == ChatResourceKind.Project ? "@project:" : "@chat:");
+    }
+
+    /// <summary>
+    /// Tab or → on a project or a chat with branches: the list shows what is inside and the "@"
+    /// word keeps only its scope, since the names it opened stay on the path above the list.
+    /// </summary>
+    private async Task<AI.Web.Composer.ComposerTextEdit?> OpenMentionLevelAsync(AI.Web.Resources.ResourceMentionItem item,
+        string text, AI.Web.Resources.ResourceMention mention)
+    {
+        if (_selectedProject is not { } current || !Guid.TryParse(item.Value, out var id)) return null;
+        var opened = _mentionTrail;
+        var scope = opened is not null ? _mentionTrailScope
+            : item.Kind == ChatResourceKind.Project ? ChatResourceKind.Project : ChatResourceKind.Chat;
+        if (item.Kind == ChatResourceKind.Project)
+        {
+            if (_projects.FirstOrDefault(project => project.Id == id) is not { } project) return null;
+            _mentionTrail = new AI.Web.Resources.ResourceMentionTrail(project, null);
+            _mentionTrailChats = null;
+            _mentionTrailChat = null;
+            _ = LoadMentionTrailChatsAsync(project.Id);
+        }
+        else
+        {
+            var summary = (_mentionTrailChats ?? []).Concat(_chats).Concat(_mentionOtherChats).FirstOrDefault(chat => chat.Id == id);
+            if (summary is null) return null;
+            var project = opened?.Project ?? (item.ProjectId is { } other ? _projects.FirstOrDefault(entry => entry.Id == other) : null);
+            _mentionTrail = new AI.Web.Resources.ResourceMentionTrail(project, summary);
+            _mentionTrailChat = null;
+            _ = LoadMentionTrailChatAsync(project?.Id ?? current.Id, id);
+        }
+        _mentionTrailLoading = true;
+        _mentionTrailAt = mention.Start;
+        _mentionTrailScope = scope;
+        var word = scope == ChatResourceKind.Project ? "@project:" : "@chat:";
+        var before = text[..mention.Start] + word;
+        var edit = new AI.Web.Composer.ComposerTextEdit(before + text[mention.End..], before.Length);
+        SetComposerText(edit.Text);
+        // chatComposer.js took the list for closed when it sent the key; it stays open on the level.
+        _mentionListPushed = null;
+        await OnComposerCaret(edit.Text, edit.Caret);
+        return edit;
+    }
+
+    private async Task LoadMentionTrailChatsAsync(Guid projectId)
+    {
+        IReadOnlyList<ChatSummary> chats;
+        try { chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException) { chats = []; }
+        if (_mentionTrail is not { Project: { } project, Chat: null } || project.Id != projectId) return;
+        _mentionTrailChats = chats;
+        _mentionTrailLoading = false;
+        await RefreshMentionAsync();
+    }
+
+    private async Task LoadMentionTrailChatAsync(Guid projectId, Guid chatId)
+    {
+        ChatDetails? chat;
+        try { chat = await ChatHistoryApi.GetTranscriptAsync(projectId, chatId, CancellationToken.None); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException) { chat = null; }
+        if (_mentionTrail?.Chat?.Id != chatId) return;
+        _mentionTrailChat = chat;
+        _mentionTrailLoading = false;
+        await RefreshMentionAsync();
+    }
+
+    private async Task LoadMentionOtherChatsAsync()
+    {
+        IReadOnlyList<ChatSummary> chats;
+        try { chats = await ChatHistoryApi.ListRecentAsync(50, CancellationToken.None); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException) { return; }
+        _mentionOtherChats = chats;
+        _mentionOtherChatsLoadedAt = DateTimeOffset.UtcNow;
+        await RefreshMentionAsync();
     }
 
     private async Task WarmMentionSearchAsync(Guid projectId)
@@ -7041,7 +7178,9 @@ else if (_guideInvitation is { } guideInvitation)
         var diffs = _mentionDiffsLoadedFor == project.Id && DateTimeOffset.UtcNow - _mentionDiffsLoadedAt < TimeSpan.FromSeconds(10)
             ? Task.CompletedTask : LoadMentionDiffsAsync(project.Id);
         var reviews = _selectedChat is not null && _reviews.Count == 0 ? LoadMentionReviewsAsync() : Task.CompletedTask;
-        await Task.WhenAll(diffs, reviews);
+        var others = DateTimeOffset.UtcNow - _mentionOtherChatsLoadedAt < TimeSpan.FromSeconds(30)
+            ? Task.CompletedTask : LoadMentionOtherChatsAsync();
+        await Task.WhenAll(diffs, reviews, others);
     }
 
     private async Task LoadMentionDiffsAsync(Guid projectId)
@@ -7130,7 +7269,8 @@ else if (_guideInvitation is { } guideInvitation)
         }
         _mentionItems = MentionMatcher.Match(new AI.Web.Resources.ResourceMentionSources(
             _mentionFiles, _mentionDiffs, _chats, reviews, _projects, _draftResources,
-            _selectedChat?.Id, _selectedProject?.Id, ProjectDirectories(), _mentionFilesTotal, _mentionExpanded), mention);
+            _selectedChat?.Id, _selectedProject?.Id, ProjectDirectories(), _mentionFilesTotal, _mentionExpanded,
+            _mentionOtherChats, _mentionTrail, _mentionTrailChats, _mentionTrailChat), mention);
         // The browse rows are all a list has before the Host answers; the rows it sends come first.
         var kept = selectedKey is null ? -1 : _mentionItems.ToList()
             .FindIndex(item => item.Key == selectedKey && item.Group != AI.Web.Resources.ResourceMentionGroup.Browse);
@@ -7187,13 +7327,19 @@ else if (_guideInvitation is { } guideInvitation)
     /// A directory picked on the path above a listing: the "@" word becomes that directory, its
     /// scope word kept, and the list shows what is inside. An empty one is the top of the project.
     /// </summary>
-    private async Task NavigateMentionAsync(string folder)
+    private Task NavigateMentionAsync(string folder)
+    {
+        if (_mention is not { } mention) return Task.CompletedTask;
+        return SetMentionWordAsync($"@{mention.Query[..(mention.Query.Length - mention.Filter.Length)]}{folder}");
+    }
+
+    /// <summary>The "@" word replaced by <paramref name="word"/>, the caret after it, the list following.</summary>
+    private async Task SetMentionWordAsync(string word)
     {
         if (_mention is not { } mention || _composerHandle is null) return;
         var text = _chat.Message;
         if (mention.End > text.Length) return;
-        var scope = mention.Query[..(mention.Query.Length - mention.Filter.Length)];
-        var opened = $"{text[..mention.Start]}@{scope}{folder}";
+        var opened = text[..mention.Start] + word;
         var edit = new AI.Web.Composer.ComposerTextEdit(opened + text[mention.End..], opened.Length);
         SetComposerText(edit.Text);
         await _composerHandle.InvokeVoidAsync("setText", edit.Text, edit.Caret);
@@ -7214,6 +7360,10 @@ else if (_guideInvitation is { } guideInvitation)
             _mentionListPushed = null;
             return new AI.Web.Composer.ComposerTextEdit(text, caret);
         }
+        // The current chat whole is no reference to itself; its row is there for its branches.
+        if (item.HasLevel && (openDirectory || item is { Kind: ChatResourceKind.Chat, ProjectId: null, BranchId: null }
+                && item.Value == _selectedChat?.Id.ToString()))
+            return await OpenMentionLevelAsync(item, text, mention);
         if (openDirectory && item is { Kind: ChatResourceKind.Directory, Action: AI.Web.Resources.ResourceMentionAction.Attach })
         {
             var relative = item.OpenAs ?? (item.Detail is { Length: > 0 } parent ? $"{parent}/{item.Name}" : item.Name);
@@ -7341,9 +7491,11 @@ else if (_guideInvitation is { } guideInvitation)
             if (_reviews.FirstOrDefault(review => review.Id.ToString() == item.Value) is not { } review || IsEmptyReview(review)) return;
             reference = new ChatResource(review.Id, ChatResourceKind.Review, string.Empty, review.Name, review.Kind, Mention: item.Token);
         }
-        else reference = new ChatResource(Guid.NewGuid(), item.Kind, item.Value, item.Name, Mention: item.Token);
+        else reference = new ChatResource(Guid.NewGuid(), item.Kind, item.Value, item.FullName ?? item.Name, Mention: item.Token,
+            ProjectId: item.ProjectId, BranchId: item.BranchId);
         var existing = _draftResources.FindIndex(resource => resource.Kind == item.Kind
-            && (item.Kind == ChatResourceKind.Review ? resource.Id == reference.Id : resource.Path == item.Value));
+            && (item.Kind == ChatResourceKind.Review ? resource.Id == reference.Id
+                : resource.Path == item.Value && resource.ProjectId == item.ProjectId && resource.BranchId == item.BranchId));
         if (existing >= 0) _draftResources[existing] = _draftResources[existing] with { Mention = item.Token };
         else if (_draftResources.Count >= 20)
         {

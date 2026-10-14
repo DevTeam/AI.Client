@@ -17,6 +17,8 @@ using System.Text.Json.Serialization;
 /// The "@" link in the message text that names this reference, such as "@src/app.cs:12-40", or
 /// null for one attached beside the text. The transcript draws the link in place of that text.
 /// </param>
+/// <param name="ProjectId">For a chat: the project it is in, when that is not the project of the message.</param>
+/// <param name="BranchId">For a chat: the one branch meant, the main one included; null for the whole chat.</param>
 /// <param name="IncludeContent">
 /// A draft's request for a workspace file: send its content, not only its path. The Host reads the
 /// file when the message is sent and keeps that copy as an asset, so a sent reference has an
@@ -26,7 +28,9 @@ public sealed record ChatResource(Guid Id, ChatResourceKind Kind, string Path, s
     ChatReviewKind? ReviewKind = null, ChatLineRange? Lines = null, string? Excerpt = null, string? Mention = null,
     ChatResourceSource Source = ChatResourceSource.Workspace, string? AssetId = null,
     string? MediaType = null, long? Size = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IncludeContent = false)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool IncludeContent = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ProjectId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? BranchId = null)
 {
     /// <summary>A workspace file sent with its content as it was then.</summary>
     [JsonIgnore]

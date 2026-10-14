@@ -3,29 +3,28 @@
 @* The composer's "@" list: the "+" menu reached from the keyboard. It is drawn like the slash list
    of skills and driven the same way — the page owns the selection (chatComposer.js hands it the
    keys), rows only report pointer picks, on mousedown so the textarea keeps focus and the caret.
-   Inside a directory the path to it stays above the rows, and the browse rows stay under them,
-   so neither scrolls away in a long listing. *@
-<div class="skill-command-menu resource-mention-menu" id="resource-mention-menu">
-    @if (Folder is not null)
+   Inside a directory, a project or a chat the path to it stays above the rows, and the browse rows
+   stay under them, so neither scrolls away in a long listing. *@
+<div class="skill-command-menu resource-mention-menu" id="resource-mention-menu" data-levels="@(Levels ? "true" : null)">
+    @if (Path is { Count: > 0 } segments)
     {
-        var segments = Folder.TrimEnd('/').Split('/');
-        <nav class="resource-mention-path" aria-label="Directory">
+        <nav class="resource-mention-path" aria-label="Location">
             <button class="resource-mention-up" type="button" tabindex="-1" title="Up one level (Backspace)" aria-label="Up one level"
-                    @onmousedown="() => OnNavigate.InvokeAsync(Parent(segments))" @onmousedown:preventDefault>
+                    @onmousedown="() => OnPathNavigate.InvokeAsync(segments.Count - 1)" @onmousedown:preventDefault>
                 <AppIcon Name="chevron-left" />
             </button>
-            @for (var index = 0; index < segments.Length; index++)
+            @for (var index = 0; index < segments.Count; index++)
             {
                 var depth = index;
                 if (depth > 0) { <span class="resource-mention-path-separator" aria-hidden="true">/</span> }
-                if (depth == segments.Length - 1)
+                if (depth == segments.Count - 1)
                 {
                     <span class="resource-mention-path-current" aria-current="location">@segments[depth]</span>
                 }
                 else
                 {
                     <button class="resource-mention-path-segment" type="button" tabindex="-1"
-                            @onmousedown="() => OnNavigate.InvokeAsync(string.Join('/', segments[..(depth + 1)]) + '/')" @onmousedown:preventDefault>
+                            @onmousedown="() => OnPathNavigate.InvokeAsync(depth + 1)" @onmousedown:preventDefault>
                         @segments[depth]
                     </button>
                 }
@@ -43,7 +42,7 @@
             var item = Items[row];
             if (item.Group == ResourceMentionGroup.Browse) continue;
             if ((row == 0 || Items[row - 1].Group != item.Group) && item.Action != ResourceMentionAction.ShowMore
-                && !(Folder is not null && item.Group == ResourceMentionGroup.Files))
+                && Path is null)
             {
                 <div class="skill-command-label" role="presentation">@GroupLabel(item.Group)</div>
             }
@@ -64,11 +63,11 @@
         <div class="resource-mention-keys" role="presentation">
             <span><kbd>Enter</kbd> path</span>
             <span><kbd>Shift+Enter</kbd> with content</span>
-            @if (Items.Any(item => item is { Kind: ChatResourceKind.Directory, Action: ResourceMentionAction.Attach }))
+            @if (Items.Any(item => item.Opens))
             {
-                <span><kbd>Tab</kbd> open folder</span>
+                <span><kbd>Tab</kbd> open</span>
             }
-            @if (Folder is not null)
+            @if (Path is not null)
             {
                 <span><kbd>Backspace</kbd> up</span>
             }
@@ -79,14 +78,20 @@
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ResourceMentionItem> Items { get; set; } = [];
 
-    /// <summary>The directory being listed, with its trailing "/", or null while the list is a search.</summary>
-    [Parameter] public string? Folder { get; set; }
+    /// <summary>
+    /// Where the list is, outermost first — a directory's segments, or the scope then the project
+    /// and chat opened in it — or null while the list is a search.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? Path { get; set; }
+
+    /// <summary>The path is of opened levels, kept by the page, not of segments typed in the text.</summary>
+    [Parameter] public bool Levels { get; set; }
 
     /// <summary>The Host has yet to answer for what is typed: the rows shown are the last answer.</summary>
     [Parameter] public bool Loading { get; set; }
 
-    /// <summary>A directory picked on the path: its "@" word with the trailing "/", or empty for the top.</summary>
-    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+    /// <summary>A place picked on the path: how many of its segments to keep, one fewer for "up".</summary>
+    [Parameter] public EventCallback<int> OnPathNavigate { get; set; }
 
     [Parameter] public int SelectedIndex { get; set; }
 
@@ -120,14 +125,14 @@
     private RenderFragment Row(int row, ResourceMentionItem item) =>
         @<div @key="item.Key" id="resource-mention-@row" role="option" aria-selected="@(row == SelectedIndex ? "true" : "false")"
               class="skill-command-item @(row == SelectedIndex ? "selected" : null) @(item.Attached ? "attached" : null) @(item.Action == ResourceMentionAction.ShowMore ? "resource-mention-more" : null)"
-              data-opens="@(Opens(item) ? "true" : null)"
+              data-opens="@(item.Opens ? "true" : null)"
               @onmousedown="() => OnPick.InvokeAsync(row)" @onmousedown:preventDefault
               @onmousemove="() => Hover(row)">
             <AppIcon Name="@IconOf(item)" />
             <span class="skill-command-name">@foreach (var part in Parts(item)) { if (part.Matched) { <mark>@part.Text</mark> } else { @part.Text } }</span>
             <span class="skill-command-description" title="@item.Detail">@item.Detail</span>
             @* "Tab to open" is a hint for the row the keyboard is on, not a column repeated down the list. *@
-            <span class="skill-command-source">@(item.Attached ? "Attached" : Opens(item) && row == SelectedIndex ? "Tab to open" : null)</span>
+            <span class="skill-command-source">@(item.Attached ? "Attached" : item.Opens && row == SelectedIndex ? "Tab to open" : null)</span>
             @if (CanSendContent(item))
             {
                 @* The second way to take the row, for the pointer: Shift+Enter is the keyboard's. *@
@@ -139,19 +144,12 @@
             }
         </div>;
 
-    /// <summary>A directory row: Tab and → list what is inside instead of attaching it.</summary>
-    private static bool Opens(ResourceMentionItem item) =>
-        item is { Kind: ChatResourceKind.Directory, Action: ResourceMentionAction.Attach };
-
-    private static string Parent(string[] segments) =>
-        segments.Length <= 1 ? string.Empty : string.Join('/', segments[..^1]) + '/';
-
     private static string IconOf(ResourceMentionItem item) => item.Action switch
     {
         ResourceMentionAction.BrowseFile => "file",
         ResourceMentionAction.BrowseDirectory => "folder-plus",
         ResourceMentionAction.ShowMore => "more",
-        _ => IconOf(item.Kind)
+        _ => item.BranchId is not null ? "git-branch" : IconOf(item.Kind)
     };
 
     private static string GroupLabel(ResourceMentionGroup group) => group switch
@@ -160,6 +158,8 @@
         ResourceMentionGroup.Files => "Files",
         ResourceMentionGroup.Changes => "Uncommitted changes",
         ResourceMentionGroup.Chats => "Chats",
+        ResourceMentionGroup.OtherChats => "Chats in other projects",
+        ResourceMentionGroup.Branches => "Branches",
         ResourceMentionGroup.Reviews => "Reviews",
         ResourceMentionGroup.Projects => "Projects",
         _ => "Add"

@@ -130,6 +130,14 @@ export function attach(textarea, dotNetReference) {
             const before = textarea.value.slice(0, caret);
             const start = before.search(/\S*$/);
             const word = before.slice(start);
+            // An opened project or chat is kept by the page, not in the word: right after its scope
+            // word ("@chat:") Backspace leaves that level instead of the colon.
+            if (/^@[a-z]+:$/i.test(word)
+                && textarea.closest(".workspace-composer")?.querySelector(".resource-mention-menu[data-levels]")) {
+                event.preventDefault();
+                dotNetReference.invokeMethodAsync("MentionLevelUp");
+                return true;
+            }
             if (word.startsWith("@") && word.endsWith("/") && !word.includes("\"")) {
                 const inner = word.slice(0, -1);
                 const cut = Math.max(inner.lastIndexOf("/"), inner.indexOf(":"), 0) + 1;

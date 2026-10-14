@@ -182,6 +182,16 @@ public sealed record ChatWidgetActions(
         _ => resource.Path.Length > 0 || resource.AssetId is not null
     };
 
+    /// <summary>
+    /// Where a chat reference opens when it is not simply a chat of this project: the branch it
+    /// names, or the main branch of a chat in another project. Null for a whole chat of this project.
+    /// </summary>
+    public static string? ChatLink(ChatResource resource, Guid projectId) =>
+        resource is { Kind: ChatResourceKind.Chat } && (resource.ProjectId is not null || resource.BranchId is not null)
+        && Guid.TryParse(resource.Path, out var chatId)
+            ? $"aiclient://navigate/branch?projectId={resource.ProjectId ?? projectId}&chatId={chatId}&branchId={resource.BranchId ?? chatId}"
+            : null;
+
     /// <summary>The settings page of a skill.</summary>
     public static string SkillLink(string skillId) =>
         $"aiclient://navigate/settings.skills?skillId={Uri.EscapeDataString(skillId)}";

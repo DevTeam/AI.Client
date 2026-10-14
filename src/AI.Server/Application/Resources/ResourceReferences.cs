@@ -10,7 +10,7 @@ public static class ResourceReferences
             item.ReviewKind is { } reviewKind ? (Domain.Resources.ChatReviewKind)reviewKind : null,
             item.Lines is { } lines ? new Domain.Resources.ChatLineRange(lines.Start, lines.End) : null,
             item.Excerpt, item.Mention, (Domain.Resources.ChatResourceSource)item.Source,
-            item.AssetId, item.MediaType, item.Size)).ToArray();
+            item.AssetId, item.MediaType, item.Size, ProjectId: item.ProjectId, BranchId: item.BranchId)).ToArray();
 
     public static IReadOnlyList<Contracts.Resources.ChatResource>? ToContract(
         IReadOnlyList<Domain.Resources.ChatResource>? references) =>
@@ -19,5 +19,5 @@ public static class ResourceReferences
             item.ReviewKind is { } reviewKind ? (Contracts.Resources.ChatReviewKind)reviewKind : null,
             item.Lines is { } lines ? new Contracts.Resources.ChatLineRange(lines.Start, lines.End) : null,
             item.Excerpt, item.Mention, (Contracts.Resources.ChatResourceSource)item.Source,
-            item.AssetId, item.MediaType, item.Size)).ToArray();
+            item.AssetId, item.MediaType, item.Size, ProjectId: item.ProjectId, BranchId: item.BranchId)).ToArray();
 }

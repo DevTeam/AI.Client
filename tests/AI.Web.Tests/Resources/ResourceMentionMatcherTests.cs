@@ -161,6 +161,64 @@ public sealed class ResourceMentionMatcherTests
             more => more.Expandable.ShouldBeFalse());
     }
 
+    [Fact]
+    public void ShouldOfferChatsOfOtherProjectsAndOpenOnesWithBranches()
+    {
+        var current = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var now = DateTimeOffset.UnixEpoch.AddDays(10);
+        var here = Chat(Guid.NewGuid(), "Deploy fix") with { ProjectId = current, BranchCount = 2, LastActivityAt = now.AddHours(-3) };
+        var there = Chat(Guid.NewGuid(), "Deploy script") with { ProjectId = other, LastActivityAt = now.AddDays(-2) };
+        var sources = new ResourceMentionSources([], [], [here], [], [new ProjectSummary(other, "Pure.DI", "", DateTimeOffset.UnixEpoch, 1)],
+            [], null, current, OtherChats: [here, there], Now: now);
+
+        var items = _matcher.Match(sources, _matcher.GetMention("@dep", 4)!);
+
+        var mine = items.Single(item => item.Group == ResourceMentionGroup.Chats);
+        mine.Detail.ShouldBe("3 h ago · 3 branches");
+        mine.Opens.ShouldBeTrue();
+        var theirs = items.Single(item => item.Group == ResourceMentionGroup.OtherChats);
+        theirs.Detail.ShouldBe("Pure.DI · 2 d ago");
+        theirs.Token.ShouldBe("@chat:\"Pure.DI › Deploy script\"");
+        theirs.ProjectId.ShouldBe(other);
+        theirs.Opens.ShouldBeFalse();
+        _matcher.Match(sources, _matcher.GetMention("@pure", 5)!).Single(item => item.Group == ResourceMentionGroup.Projects).Opens.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldListAnOpenedProjectsChatsAndAnOpenedChatsBranches()
+    {
+        var current = Guid.NewGuid();
+        var project = new ProjectSummary(Guid.NewGuid(), "Pure.DI", "", DateTimeOffset.UnixEpoch, 1);
+        var chatId = Guid.NewGuid();
+        var chat = Chat(chatId, "Release") with { ProjectId = project.Id, BranchCount = 1 };
+        var root = Guid.NewGuid();
+        var answer = Guid.NewGuid();
+        var retry = Guid.NewGuid();
+        var tryB = Guid.NewGuid();
+        var details = new ChatDetails(chatId, project.Id, "Release", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 1, null,
+            [Message(root, null), Message(answer, root), Message(retry, root)],
+            [new ChatBranchView(chatId, answer, "Release"), new ChatBranchView(tryB, retry, "Try B", chatId)]);
+
+        var chats = _matcher.Match(new ResourceMentionSources([], [], [], [], [project], [], null, current,
+            Trail: new ResourceMentionTrail(project, null), TrailChats: [chat]), _matcher.GetMention("@project:", 9)!);
+        var branches = _matcher.Match(new ResourceMentionSources([], [], [], [], [project], [], null, current,
+            Trail: new ResourceMentionTrail(project, chat), TrailChat: details), _matcher.GetMention("@project:", 9)!);
+        var narrowed = _matcher.Match(new ResourceMentionSources([], [], [], [], [project], [], null, current,
+            Trail: new ResourceMentionTrail(project, chat), TrailChat: details), _matcher.GetMention("@project:try", 12)!);
+
+        chats.ShouldHaveSingleItem().Token.ShouldBe("@chat:\"Pure.DI › Release\"");
+        branches.Select(item => (item.Name, item.Detail, item.BranchId))
+            .ShouldBe([("Main branch", "2 messages · just now", (Guid?)chatId), ("Try B", "2 messages · just now", tryB)]);
+        branches[1].Token.ShouldBe("@chat:\"Pure.DI › Release › Try B\"");
+        branches[1].FullName.ShouldBe("Pure.DI › Release › Try B");
+        branches[1].ProjectId.ShouldBe(project.Id);
+        narrowed.ShouldHaveSingleItem().BranchId.ShouldBe(tryB);
+    }
+
+    private static ChatMessageView Message(Guid id, Guid? parent) =>
+        new(id, parent, "User", "text", DateTimeOffset.UtcNow);
+
     private static ChatSummary Chat(Guid id, string title) =>
         new(id, Guid.NewGuid(), title, DateTimeOffset.UnixEpoch, 1, DateTimeOffset.UnixEpoch);
 }

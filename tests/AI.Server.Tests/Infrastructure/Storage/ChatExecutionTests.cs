@@ -2361,6 +2361,28 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task HostShutdownDuringAToolCallShouldNameTheToolWhoseOutcomeIsUnknown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run the build"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        fixture.Tools.HangNextCall = true;
+        first.Answer.SetResult("");
+        await fixture.WaitAsync(run => run.ActiveTools is { Count: > 0 });
+        await fixture.RestartAsync();
+
+        var interrupted = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None)).Single(run => run.BranchId == fixture.ChatId);
+        interrupted.Status.ShouldBe(ChatRunStatus.Interrupted);
+        // The call is closed as abandoned, but what it did before the shutdown is unknown, and the
+        // run names it so the person can check before resuming.
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("Its effects may have occurred");
+        interrupted.Interruption.ShouldNotBeNull().ToolName.ShouldBe("mcp_built_in__process_run");
+    }
+
+    [Fact]
     public async Task HostShutdownShouldInterruptTheRunAndUserStopShouldStayPaused()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2373,6 +2395,10 @@ public sealed partial class ChatExecutionTests
         var interrupted = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
             .Single(run => run.BranchId == fixture.ChatId);
         interrupted.Status.ShouldBe(ChatRunStatus.Interrupted);
+        // It says the Host was closed, when, and when it came back; nothing else is left over.
+        interrupted.Interruption.ShouldNotBeNull().Cause.ShouldBe(RunInterruptionCause.Shutdown);
+        interrupted.Interruption.StoppedAt.ShouldNotBeNull().ShouldBeLessThanOrEqualTo(interrupted.Interruption.RecoveredAt);
+        interrupted.Interruption.ToolName.ShouldBeNull();
         await fixture.Dispatcher.ResumeAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         (await fixture.NextCallAsync()).Answer.SetResult("Answer");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -2382,8 +2408,9 @@ public sealed partial class ChatExecutionTests
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None, Guid.NewGuid());
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Paused);
         await fixture.RestartAsync();
-        (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None))
-            .Single(run => run.BranchId == fixture.ChatId).Status.ShouldBe(ChatRunStatus.Paused);
+        var paused = (await fixture.Dispatcher.GetSnapshotAsync(CancellationToken.None)).Single(run => run.BranchId == fixture.ChatId);
+        paused.Status.ShouldBe(ChatRunStatus.Paused);
+        paused.Interruption.ShouldBeNull();
     }
 
     [Fact]

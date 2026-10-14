@@ -27,6 +27,9 @@ public sealed class WorkspaceLayoutService(IJSRuntime jsRuntime) : IWorkspaceLay
     public Task RevealElementAsync(string elementId) =>
         _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("revealElement", elementId).AsTask();
 
+    public Task RevealElementAtTopAsync(string elementId) =>
+        _module is null ? Task.CompletedTask : _module.InvokeVoidAsync("revealElement", elementId, "start").AsTask();
+
     public async ValueTask DisposeAsync()
     {
         if (_handle is not null)

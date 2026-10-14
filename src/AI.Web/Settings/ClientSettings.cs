@@ -67,6 +67,28 @@ public sealed record ClientSettings
     public DateTimeOffset? GuideLastOfferedAt { get; init; }
     public IReadOnlyList<string> CompletedGuideTopics { get; init; } = [];
 
+    /// <summary>What happens to the work a restart of the application stopped.</summary>
+    public RestartRecoveryMode AfterRestart { get; init; } = RestartRecoveryMode.Ask;
+
+    /// <summary>
+    /// The start of the Host whose stopped work has been dealt with on this device: resumed, left
+    /// stopped or dismissed. Work a later start recovers is offered again.
+    /// </summary>
+    public DateTimeOffset? RestartSeenAt { get; init; }
+
     /// <summary>The widgets of that column in the person's order, with what each one shows.</summary>
     public IReadOnlyList<AI.Web.Widgets.ChatWidgetPreference> ChatWidgets { get; init; } = [];
+}
+
+/// <summary>What the client does with the work a restart of the application stopped.</summary>
+public enum RestartRecoveryMode
+{
+    /// <summary>Points it out above the composer and in Unfinished work, and waits for the person.</summary>
+    Ask,
+
+    /// <summary>Resumes it after a short countdown that can be cancelled; a tool call with an unknown outcome still waits.</summary>
+    ResumeAutomatically,
+
+    /// <summary>Says nothing: the work stays stopped and is listed in Unfinished work.</summary>
+    LeaveStopped
 }

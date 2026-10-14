@@ -733,10 +733,24 @@
         return run.Status switch
         {
             ChatRunStatus.Failed => new TurnState("failed", "error", $"Failed: {run.Error}", canResume, canRebase),
+            ChatRunStatus.Interrupted when run.Interruption is { } interruption =>
+                new TurnState("stopped", "power", DescribeInterruption(interruption), canResume, canRebase),
             ChatRunStatus.Interrupted => new TurnState("stopped", "interrupted", "Interrupted before it finished", canResume, canRebase),
             ChatRunStatus.Paused => new TurnState("stopped", "interrupted", "Stopped before it finished", canResume, canRebase),
             _ => null
         };
+    }
+
+    // What a restart did to the turn, and the one thing to check before continuing: a tool call that
+    // never reported back. Continuing tells the model the same, so it does not run it again blindly.
+    private static string DescribeInterruption(RunInterruption interruption)
+    {
+        // A shutdown commits the part already written; a crash keeps only what had been saved.
+        var stopped = interruption is { Cause: RunInterruptionCause.Shutdown, StoppedAt: { } at }
+            ? $"Stopped by the restart at {at.LocalDateTime:HH:mm}"
+            : "Stopped when the application closed unexpectedly";
+        if (interruption.ToolName is { } tool) return $"{stopped}; {tool} did not report back, so its outcome is unknown";
+        return interruption.Cause == RunInterruptionCause.Shutdown ? $"{stopped}; what was written is kept" : stopped;
     }
 
     private ElementReference _historyMarkers;

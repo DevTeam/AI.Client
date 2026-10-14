@@ -106,5 +106,5 @@ public sealed class HostLifetimeChatRunRepository : IHostLifetimeChatRunReposito
 
     private static ChatRunState Copy(ChatRunState state) => ChatRunState.Restore(state.ProjectId,
         state.ChatId, state.BranchId, state.Status, state.StreamingContent, state.Error, state.FailureKind,
-        state.HasUnreadResponse, state.Revision, state.Queue, state.Operations);
+        state.HasUnreadResponse, state.Revision, state.Queue, state.Operations, state.Interruption);
 }

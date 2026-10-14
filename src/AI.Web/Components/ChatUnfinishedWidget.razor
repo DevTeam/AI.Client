@@ -7,13 +7,64 @@
    or branch. Only the tasks waiting for a resume offer one, one by one or all at once, and a resume
    in flight disables its button so a second click cannot send it twice. The data is the client's
    own run snapshots, so a run the Host no longer keeps is not listed, and last-activity times are
-   message timestamps. *@
-<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-unfinished-widget">
-    @if (!HasTasks)
+   message timestamps.
+   What the latest restart of the application stopped comes first, as a group of its own, across
+   every project: the person resumes it, lets it resume after a countdown or leaves it stopped, and
+   from then on its rows are listed with the rest. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="@(Restart is null ? "chat-unfinished-widget" : "chat-unfinished-widget has-restart")">
+    @if (Restart is { } restart)
+    {
+        var remaining = AutoResumeSeconds(restart);
+        var resumable = restart.Resumable;
+        <div class="chat-usage-section chat-unfinished-restart" role="group" aria-labelledby="chat-unfinished-restart-title">
+            <div class="chat-unfinished-restart-head">
+                <AppIcon Name="power" Class="chat-unfinished-reason-icon" />
+                <span class="chat-unfinished-restart-title" id="chat-unfinished-restart-title" title="@RestartTitle(restart)">@RestartHeading(restart)</span>
+                <span class="chat-unfinished-restart-count">@restart.Tasks.Count @(restart.Tasks.Count == 1 ? "task" : "tasks")</span>
+            </div>
+            <p class="chat-unfinished-restart-note" role="status">@RestartNote(restart, remaining)</p>
+            @if (remaining is not null && restart.AutoResumeAt is { } at)
+            {
+                <span class="chat-unfinished-countdown" aria-hidden="true"><span style="width: @CountdownPercent(at)%"></span></span>
+            }
+            <div class="chat-unfinished-restart-actions">
+                @if (restart.Progress is { } progress)
+                {
+                    <button class="compact-action chat-unfinished-restart-primary" type="button" disabled>
+                        <AppIcon Name="spinner" Class="chat-unfinished-spin" />
+                        <span>Resuming @progress.Done of @progress.Total…</span>
+                    </button>
+                }
+                else if (resumable.Count > 0)
+                {
+                    <button class="compact-action chat-unfinished-restart-primary" type="button"
+                            title="@(resumable.Count == restart.Tasks.Count ? "Resumes every task the restart stopped, one after another" : "Resumes the tasks the restart stopped, one after another; a task whose tool call has an unknown outcome waits for you")"
+                            @onclick="() => OnResumeRestart.InvokeAsync()">
+                        <AppIcon Name="play" />
+                        <span>@(remaining is null ? $"Resume {(resumable.Count == restart.Tasks.Count ? "all" : resumable.Count.ToString())}" : "Resume now")</span>
+                    </button>
+                }
+                @if (remaining is not null)
+                {
+                    <button class="compact-action" type="button" title="Keeps the work stopped; resume it here or in its chat whenever you like" @onclick="() => OnCancelAutoResume.InvokeAsync()">Cancel</button>
+                }
+                <button class="compact-action chat-unfinished-restart-dismiss" type="button" disabled="@(restart.Progress is not null)"
+                        title="Keeps the work stopped and moves it into the list below; nothing is resumed"
+                        @onclick="() => OnLeaveRestartStopped.InvokeAsync()">Leave stopped</button>
+            </div>
+            <ul class="chat-unfinished-list">
+                @foreach (var task in restart.Tasks)
+                {
+                    @TaskRow(task)
+                }
+            </ul>
+        </div>
+    }
+    @if (!HasTasks && Restart is null)
     {
         <p class="chat-usage-empty">Nothing is unfinished. Runs that wait for you, were paused or interrupted, failed or still have messages queued appear here.</p>
     }
-    else
+    else if (HasTasks)
     {
         var reasons = PresentReasons();
         var filter = EffectiveFilter(reasons);
@@ -92,55 +143,7 @@
             <ul class="chat-unfinished-list">
                 @foreach (var task in visible)
                 {
-                    var key = (task.ChatId, task.BranchId);
-                    var isOpen = IsOpen(task);
-                    var resuming = _resuming.Contains(key);
-                    <li @key="key" class="@(isOpen ? "is-current" : null)">
-                        <div class="chat-unfinished-row">
-                            <button class="chat-unfinished-open" type="button" title="@RowTitle(task)" aria-current="@(isOpen ? "true" : null)" @onclick="() => OpenAsync(task)">
-                                <span class="chat-unfinished-mark @ReasonClass(task.Reason)" aria-hidden="true"><AppIcon Name="@ReasonIcon(task.Reason)" /></span>
-                                <span class="chat-unfinished-body">
-                                    <span class="chat-unfinished-title">@task.ChatTitle</span>
-                                    @if (DetailText(task) is { } detail)
-                                    {
-                                        <span class="chat-unfinished-detail">@detail</span>
-                                    }
-                                    <span class="chat-unfinished-meta chat-usage-muted">
-                                        <span class="@ReasonClass(task.Reason)" title="@ReasonTitle(task.Reason)">@ReasonLabel(task.Reason)</span>
-                                        @if (isOpen)
-                                        {
-                                            <span class="chat-unfinished-here" title="This run belongs to the chat and branch open now">open now</span>
-                                        }
-                                        else if (task.ChatId == CurrentChatId)
-                                        {
-                                            <span class="chat-unfinished-here" title="This run belongs to the open chat, on another of its branches">this chat</span>
-                                        }
-                                        @if (!task.IsMainBranch)
-                                        {
-                                            <span title="The run works on a branch rather than on the chat itself">branch</span>
-                                        }
-                                        @if (task.Queued > 0)
-                                        {
-                                            <span title="Messages waiting in the queue, sent once the run ahead of them finishes">@task.Queued queued</span>
-                                        }
-                                        @if (!StatusRepeatsReason(task))
-                                        {
-                                            <span class="chat-unfinished-status" title="The run's status exactly as the Host reported it">@task.Status</span>
-                                        }
-                                        <span title="@($"The chat was last written to at {task.LastActivityAt.LocalDateTime:F}; that is when something was written, not when the run stopped")">≈ @FormatAt(task.LastActivityAt)</span>
-                                    </span>
-                                </span>
-                            </button>
-                            @if (task.CanResume)
-                            {
-                                <button class="icon-action chat-unfinished-resume" type="button" disabled="@(resuming || _resumeAll is not null)"
-                                        title="@(resuming ? "Resuming…" : "Resume this run")" aria-label="Resume @task.ChatTitle" aria-busy="@(resuming ? "true" : null)"
-                                        @onclick="() => ResumeAsync(task)">
-                                    <AppIcon Name="@(resuming ? "spinner" : "play")" Class="@(resuming ? "chat-unfinished-spin" : null)" />
-                                </button>
-                            }
-                        </div>
-                    </li>
+                    @TaskRow(task)
                 }
             </ul>
             @if (shown.Count > CollapsedRows)
@@ -162,6 +165,57 @@
 @code {
     // Enough rows to see what needs you first without the widget pushing the rest of the column away.
     private const int CollapsedRows = 6;
+
+    // One row, the same in the restart group and in the list under it.
+    private RenderFragment<ChatUnfinishedTask> TaskRow => task =>
+        @<li class="@(IsOpen(task) ? "is-current" : null)">
+            <div class="chat-unfinished-row">
+                <button class="chat-unfinished-open" type="button" title="@RowTitle(task)" aria-current="@(IsOpen(task) ? "true" : null)" @onclick="() => OpenAsync(task)">
+                    <span class="chat-unfinished-mark @ReasonClass(task.Reason)" aria-hidden="true"><AppIcon Name="@ReasonIcon(task.Reason)" /></span>
+                    <span class="chat-unfinished-body">
+                        <span class="chat-unfinished-title">@task.ChatTitle@if (ProjectName(task) is { } project) { <span class="chat-unfinished-project" title="The chat belongs to another project">· @project</span> }</span>
+                        @if (DetailText(task) is { } detail)
+                        {
+                            <span class="chat-unfinished-detail @(task.HasUnknownToolOutcome ? "is-unknown" : null)">@detail</span>
+                        }
+                        <span class="chat-unfinished-meta chat-usage-muted">
+                            <span class="@ReasonClass(task.Reason)" title="@ReasonTitle(task.Reason)">@ReasonLabel(task.Reason)</span>
+                            @if (IsOpen(task))
+                            {
+                                <span class="chat-unfinished-here" title="This run belongs to the chat and branch open now">open now</span>
+                            }
+                            else if (task.ChatId == CurrentChatId)
+                            {
+                                <span class="chat-unfinished-here" title="This run belongs to the open chat, on another of its branches">this chat</span>
+                            }
+                            @if (!task.IsMainBranch)
+                            {
+                                <span title="The run works on a branch rather than on the chat itself">branch</span>
+                            }
+                            @if (task.Queued > 0)
+                            {
+                                <span title="Messages waiting in the queue, sent once the run ahead of them finishes">@task.Queued queued</span>
+                            }
+                            @if (!StatusRepeatsReason(task))
+                            {
+                                <span class="chat-unfinished-status" title="The run's status exactly as the Host reported it">@task.Status</span>
+                            }
+                            <span title="@($"The chat was last written to at {task.LastActivityAt.LocalDateTime:F}; that is when something was written, not when the run stopped")">≈ @FormatAt(task.LastActivityAt)</span>
+                        </span>
+                    </span>
+                </button>
+                @if (task.CanResume)
+                {
+                    <button class="icon-action chat-unfinished-resume" type="button" disabled="@(IsResuming(task) || _resumeAll is not null)"
+                            title="@(IsResuming(task) ? "Resuming…" : "Resume this run")" aria-label="Resume @task.ChatTitle" aria-busy="@(IsResuming(task) ? "true" : null)"
+                            @onclick="() => ResumeAsync(task)">
+                        <AppIcon Name="@(IsResuming(task) ? "spinner" : "play")" Class="@(IsResuming(task) ? "chat-unfinished-spin" : null)" />
+                    </button>
+                }
+            </div>
+        </li>;
+
+    private bool IsResuming(ChatUnfinishedTask task) => _resuming.Contains((task.ChatId, task.BranchId));
 
     [Parameter, EditorRequired]
     public ChatWidgetContext Widget { get; set; } = null!;
@@ -186,7 +240,29 @@
     [Parameter]
     public EventCallback<ChatUnfinishedTask> OnResume { get; set; }
 
+    /// <summary>The project open in the workspace; a row of any other project names its project.</summary>
+    [Parameter]
+    public Guid? CurrentProjectId { get; set; }
+
+    /// <summary>What the latest restart stopped, while it has not been dealt with; null otherwise.</summary>
+    [Parameter]
+    public RestartRecovery? Restart { get; set; }
+
+    /// <summary>Resumes the restart's work now, the countdown included; the page shows its progress.</summary>
+    [Parameter]
+    public EventCallback OnResumeRestart { get; set; }
+
+    /// <summary>Stops the countdown of an automatic resume; the group stays until it is dealt with.</summary>
+    [Parameter]
+    public EventCallback OnCancelAutoResume { get; set; }
+
+    /// <summary>Keeps the restart's work stopped and lets its rows join the list.</summary>
+    [Parameter]
+    public EventCallback OnLeaveRestartStopped { get; set; }
+
     private ChatUnfinishedStatistics _stats = ChatUnfinishedStatistics.Empty;
+    private ChatUnfinishedStatistics? _source;
+    private RestartRecovery? _sourceRestart;
     private ChatUnfinishedReason? _filter;
     private bool _showAll;
     private readonly HashSet<(Guid ChatId, Guid BranchId)> _resuming = [];
@@ -197,11 +273,58 @@
     protected override void OnParametersSet()
     {
         // The page re-renders as runs change; only a different statistics object needs a redraw.
-        if (!ReferenceEquals(_stats, Statistics)) _stats = Statistics;
+        // A task of the restart group is listed in the group, not a second time below it.
+        if (ReferenceEquals(_source, Statistics) && ReferenceEquals(_sourceRestart, Restart)) return;
+        _source = Statistics;
+        _sourceRestart = Restart;
+        if (Restart is not { } restart)
+        {
+            _stats = Statistics;
+            return;
+        }
+        var rest = Statistics.Tasks.Where(task => !restart.Contains(task.ChatId, task.BranchId)).ToArray();
+        _stats = rest.Length == Statistics.Tasks.Count ? Statistics
+            : new ChatUnfinishedStatistics(rest, rest.Select(task => task.ChatId).Distinct().Count(), rest.Count(task => task.CanResume));
     }
+
+    private string? ProjectName(ChatUnfinishedTask task) =>
+        task.ProjectId == default || task.ProjectId == CurrentProjectId ? null
+        : Restart?.ProjectNames?.GetValueOrDefault(task.ProjectId) ?? "another project";
+
+    // "Restart · 14:32" names the moment the work stopped; after a crash only the return is known.
+    private static string RestartHeading(RestartRecovery restart) => restart.StoppedAt is { } stopped && !restart.Crashed
+        ? $"Restart · {FormatAt(stopped)}"
+        : $"Closed unexpectedly · {FormatAt(restart.RecoveredAt)}";
+
+    private static string RestartTitle(RestartRecovery restart) => restart.StoppedAt is { } stopped && !restart.Crashed
+        ? $"The application was closed at {stopped.LocalDateTime:F} and started again at {restart.RecoveredAt.LocalDateTime:F}; these runs were working then"
+        : $"The application stopped without closing and started again at {restart.RecoveredAt.LocalDateTime:F}; these runs were working then";
+
+    private static string RestartNote(RestartRecovery restart, int? remaining)
+    {
+        var waiting = restart.Tasks.Count - restart.Resumable.Count;
+        var waits = waiting == 0 ? null : $" · {waiting} {(waiting == 1 ? "waits" : "wait")} for you";
+        if (restart.Progress is not null) return "Resuming one after another" + waits;
+        if (remaining is { } seconds) return $"Resuming {restart.Resumable.Count} in {seconds} s{waits}";
+        // A shutdown commits what the runs had written; a crash keeps only what was already saved.
+        var kept = restart.Crashed ? null : "What was written is kept. ";
+        return waiting == 0
+            ? kept + "Nothing was run again."
+            : kept + "A tool call that never reported back is not run again: check it in its chat.";
+    }
+
+    // Whole seconds left of the countdown, or null when there is none.
+    private static int? AutoResumeSeconds(RestartRecovery restart) => restart is { AutoResumeAt: { } at, Progress: null }
+        ? Math.Max(0, (int)Math.Ceiling((at - DateTimeOffset.UtcNow).TotalSeconds))
+        : null;
+
+    private static int CountdownPercent(DateTimeOffset at) =>
+        (int)Math.Round(Math.Clamp((at - DateTimeOffset.UtcNow).TotalSeconds / RestartRecoveryTiming.CountdownSeconds, 0, 1) * 100);
 
     private string? GetSummary()
     {
+        if (Restart is { } restart)
+            return $"{restart.Tasks.Count} stopped by the restart" + (HasTasks ? $" · {_stats.Tasks.Count} more" : null);
         if (!HasTasks) return null;
         var chats = $"{_stats.ChatsWithUnfinishedWork} chat{(_stats.ChatsWithUnfinishedWork == 1 ? null : "s")}";
         return _stats.NeedingAttention > 0
@@ -277,7 +400,7 @@
         var order = new[]
         {
             ChatUnfinishedReason.Approval, ChatUnfinishedReason.Prompt, ChatUnfinishedReason.Wait,
-            ChatUnfinishedReason.Failed, ChatUnfinishedReason.Paused, ChatUnfinishedReason.Interrupted,
+            ChatUnfinishedReason.Failed, ChatUnfinishedReason.Restart, ChatUnfinishedReason.Paused, ChatUnfinishedReason.Interrupted,
             ChatUnfinishedReason.Running, ChatUnfinishedReason.Queue
         };
         var counts = new Dictionary<ChatUnfinishedReason, int>();
@@ -292,6 +415,7 @@
         ChatUnfinishedReason.Prompt when task.Detail is { } question => $"Asks: {question}",
         ChatUnfinishedReason.Wait when task.RetryAt is { } retryAt => $"Tries again at {FormatAt(retryAt)}",
         ChatUnfinishedReason.Failed when task.Detail is { } error => error,
+        ChatUnfinishedReason.Restart => task.Detail,
         ChatUnfinishedReason.Queue or ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted
             when task.Detail is { } next => $"Next: {next}",
         _ => null
@@ -303,6 +427,7 @@
         (ChatUnfinishedReason.Running, ChatRunStatus.Generating) => true,
         (ChatUnfinishedReason.Paused, ChatRunStatus.Paused) => true,
         (ChatUnfinishedReason.Interrupted, ChatRunStatus.Interrupted) => true,
+        (ChatUnfinishedReason.Restart, ChatRunStatus.Interrupted) => true,
         (ChatUnfinishedReason.Failed, ChatRunStatus.Failed) => true,
         _ => false
     };
@@ -315,6 +440,7 @@
         ChatUnfinishedReason.Failed => "failed",
         ChatUnfinishedReason.Paused => "paused",
         ChatUnfinishedReason.Interrupted => "interrupted",
+        ChatUnfinishedReason.Restart => "stopped by restart",
         ChatUnfinishedReason.Running => "running",
         _ => "queued"
     };
@@ -326,7 +452,8 @@
         ChatUnfinishedReason.Wait => "The provider set a limit; the run waits and then tries again on its own",
         ChatUnfinishedReason.Failed => "The run ended with a failure and still offers a recovery action",
         ChatUnfinishedReason.Paused => "The run is stopped with its work held; resume it to continue",
-        ChatUnfinishedReason.Interrupted => "The run stopped without finishing; closing the application leaves runs in this state until you resume them",
+        ChatUnfinishedReason.Interrupted => "The run stopped without finishing; resume it to continue",
+        ChatUnfinishedReason.Restart => "The application was closed or stopped while the run was working; what it wrote is kept, and resuming continues from there",
         ChatUnfinishedReason.Running => "The run is still producing its answer",
         _ => "The run finished or is idle, but messages are still queued behind it"
     };
@@ -337,6 +464,7 @@
         ChatUnfinishedReason.Wait => "timer",
         ChatUnfinishedReason.Failed => "error",
         ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted => "interrupted",
+        ChatUnfinishedReason.Restart => "power",
         ChatUnfinishedReason.Running => "spinner",
         _ => "queue"
     };
@@ -345,8 +473,9 @@
     // states that ask a person to act wear a status colour; a run still going or merely queued does not.
     private static string? ReasonClass(ChatUnfinishedReason reason) => reason switch
     {
+        // A restart is not the person's stop: it wears the warning colour of the restart group.
         ChatUnfinishedReason.Approval or ChatUnfinishedReason.Prompt or ChatUnfinishedReason.Wait
-            or ChatUnfinishedReason.Failed => "chat-unfinished-attention",
+            or ChatUnfinishedReason.Failed or ChatUnfinishedReason.Restart => "chat-unfinished-attention",
         ChatUnfinishedReason.Paused or ChatUnfinishedReason.Interrupted => "chat-unfinished-held",
         _ => null
     };

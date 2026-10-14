@@ -25,7 +25,7 @@ public sealed class JsonChatRunRepository(IFileSystem fileSystem, IChatRunStorag
         using var lease = await _writes.EnterAsync(cancellationToken);
         var document = new Document(SchemaVersion, state.ProjectId, state.ChatId, state.BranchId, state.Status,
             state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,
-            state.Queue.ToArray(), state.Operations.ToArray());
+            state.Queue.ToArray(), state.Operations.ToArray(), state.Interruption);
         var temp = paths.GetTemporaryPath(state.ProjectId, state.ChatId, state.BranchId);
         await fileSystem.WriteTextAsync(temp, JsonSerializer.Serialize(document, Options), cancellationToken);
         await fileSystem.MoveAsync(temp, paths.GetPath(state.ProjectId, state.ChatId, state.BranchId), true, cancellationToken);
@@ -90,7 +90,8 @@ public sealed class JsonChatRunRepository(IFileSystem fileSystem, IChatRunStorag
         document.HasUnreadResponse,
         document.Revision,
         document.Queue ?? Enumerable.Empty<QueuedRunMessage>(),
-        document.Operations ?? Enumerable.Empty<Guid>());
+        document.Operations ?? Enumerable.Empty<Guid>(),
+        document.Interruption);
 
     private sealed record Document(
         // ReSharper disable once MemberHidesStaticFromOuterClass
@@ -105,5 +106,7 @@ public sealed class JsonChatRunRepository(IFileSystem fileSystem, IChatRunStorag
         bool HasUnreadResponse,
         long Revision,
         QueuedRunMessage[]? Queue,
-        Guid[]? Operations);
+        Guid[]? Operations,
+        // Added without a schema bump: a document written before it reads as no interruption.
+        RunInterruption? Interruption = null);
 }

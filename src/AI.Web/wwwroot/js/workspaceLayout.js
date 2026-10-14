@@ -32,8 +32,8 @@ export function focusAdjacentItem(containerSelector, itemSelector, key) {
     items[nextIndex].focus();
 }
 
-export function revealElement(id) {
-    document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+export function revealElement(id, block = "nearest") {
+    document.getElementById(id)?.scrollIntoView({ block });
 }
 
 // Both side panels share one behaviour; they differ in the edge they grow from and in their limits.

@@ -286,6 +286,69 @@ public class ChatUnfinishedStatisticsCalculatorTests
         stats.ShouldBe(ChatUnfinishedStatistics.Empty);
     }
 
+    [Fact]
+    public void ShouldTellARestartFromAPlainInterruption()
+    {
+        var restart = new RunInterruption(RunInterruptionCause.Shutdown, T0.AddMinutes(3), T0, "write_file");
+        var task = _calculator.Calculate([Chat(ChatA, "Alpha")],
+            [Run(ChatA, ChatA, ChatRunStatus.Interrupted) with { Interruption = restart }]).Tasks.ShouldHaveSingleItem();
+
+        task.Reason.ShouldBe(ChatUnfinishedReason.Restart);
+        task.ProjectId.ShouldBe(ProjectId);
+        task.Interruption.ShouldBe(restart);
+        task.HasUnknownToolOutcome.ShouldBeTrue();
+        task.CanResume.ShouldBeTrue();
+        task.Detail.ShouldBe("Was running write_file; its outcome is unknown");
+    }
+
+    [Fact]
+    public void ShouldGroupOnlyTheLatestRestartUntilItIsSeen()
+    {
+        var older = new RunInterruption(RunInterruptionCause.Shutdown, T0.AddHours(1), T0);
+        var latest = new RunInterruption(RunInterruptionCause.Shutdown, T0.AddHours(2), T0.AddHours(2).AddMinutes(-1), "shell");
+        var runs = new List<ChatRunSnapshot>
+        {
+            Run(ChatA, ChatA, ChatRunStatus.Interrupted) with { Interruption = older },
+            Run(ChatB, ChatB, ChatRunStatus.Interrupted) with { Interruption = latest },
+            Run(ChatB, BranchX, ChatRunStatus.Interrupted) with { Interruption = latest with { ToolName = null } },
+            Run(ChatA, BranchX, ChatRunStatus.Paused)
+        };
+        var chats = new[] { Chat(ChatA, "Alpha"), Chat(ChatB, "Beta") };
+
+        var restart = _calculator.FindRestart(chats, runs, seenAt: null).ShouldNotBeNull();
+        restart.RecoveredAt.ShouldBe(latest.RecoveredAt);
+        restart.StoppedAt.ShouldBe(latest.StoppedAt);
+        restart.Crashed.ShouldBeFalse();
+        restart.Tasks.Select(task => task.BranchId).ShouldBe([ChatB, BranchX], ignoreOrder: true);
+        // The run whose tool call never reported back waits for the person.
+        restart.Resumable.ShouldHaveSingleItem().BranchId.ShouldBe(BranchX);
+        restart.Contains(ChatA, ChatA).ShouldBeFalse();
+
+        _calculator.FindRestart(chats, runs, seenAt: latest.RecoveredAt).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldReportACrashWithoutAStopTime()
+    {
+        var crash = new RunInterruption(RunInterruptionCause.Crash, T0.AddHours(1));
+        var restart = _calculator.FindRestart([Chat(ChatA, "Alpha")],
+            [Run(ChatA, ChatA, ChatRunStatus.Interrupted) with { Interruption = crash }], seenAt: T0).ShouldNotBeNull();
+
+        restart.Crashed.ShouldBeTrue();
+        restart.StoppedAt.ShouldBeNull();
+        // A crash commits nothing of what was only streamed, so nothing is promised.
+        restart.Tasks.ShouldHaveSingleItem().Detail.ShouldBe("Was writing the answer");
+    }
+
+    [Fact]
+    public void ShouldFindNoRestartOnceItsWorkHasMovedOn()
+    {
+        var resumed = new RunInterruption(RunInterruptionCause.Shutdown, T0.AddHours(1), T0);
+        // A resumed run is no longer Interrupted; a stale interruption on it does not count.
+        _calculator.FindRestart([Chat(ChatA, "Alpha")],
+            [Run(ChatA, ChatA, ChatRunStatus.Generating) with { Interruption = resumed }], seenAt: null).ShouldBeNull();
+    }
+
     private static ChatSummary Chat(Guid id, string title, bool empty = false, bool archived = false) =>
         new(id, ProjectId, title, T0, 1, T0, IsEmpty: empty, ArchivedAt: archived ? T0 : null);
 

@@ -145,6 +145,14 @@
                                         }
                                     </select>
                                 </label>
+                                <label class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">After a restart</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.chat.after_restart")</span></span>
+                                    <select @attributes="@(ControlHints.Attributes("settings.chat.after_restart"))" value="@_afterRestart" @onchange="SetAfterRestartAsync">
+                                        <option value="@AI.Web.Settings.RestartRecoveryMode.Ask">Ask me</option>
+                                        <option value="@AI.Web.Settings.RestartRecoveryMode.ResumeAutomatically">Resume automatically</option>
+                                        <option value="@AI.Web.Settings.RestartRecoveryMode.LeaveStopped">Leave stopped</option>
+                                    </select>
+                                </label>
                                 @* These are the Host's: it makes the model calls, whichever window is open. *@
                                 <details class="settings-disclosure">
                                     <summary @attributes="@(ControlHints.Attributes("settings.chat.helpers"))" class="settings-row">
@@ -557,6 +565,7 @@
     [Parameter] public EventCallback Saved { get; set; }
     [Parameter] public EventCallback<bool> TurnTokensChanged { get; set; }
     [Parameter] public EventCallback<int> LiveNoteCountChanged { get; set; }
+    [Parameter] public EventCallback<AI.Web.Settings.RestartRecoveryMode> AfterRestartChanged { get; set; }
     [Parameter] public EventCallback<int> RecentChatCountChanged { get; set; }
     [Parameter] public EventCallback<int> ScheduledChatCountChanged { get; set; }
     /// <summary>The project whose memory and skills the ProjectMemory and ProjectSkills sections edit.</summary>
@@ -646,6 +655,7 @@
     private bool _animationsEnabled = true;
     private bool _showTurnTokens;
     private int _liveNoteCount = AI.Web.Settings.ClientSettings.DefaultLiveNoteCount;
+    private AI.Web.Settings.RestartRecoveryMode _afterRestart = AI.Web.Settings.RestartRecoveryMode.Ask;
     private int _recentChatCount = AI.Web.Settings.ClientSettings.DefaultRecentChatCount;
     private int _scheduledChatCount = AI.Web.Settings.ClientSettings.DefaultSoonChatCount;
     private bool _guideSuggestionsEnabled = true;
@@ -699,6 +709,7 @@
         _animationsEnabled = clientSettings.AnimationsEnabled;
         _showTurnTokens = clientSettings.ShowTurnTokens;
         _liveNoteCount = clientSettings.LiveNoteCount;
+        _afterRestart = clientSettings.AfterRestart;
         _recentChatCount = clientSettings.RecentChatCount;
         _guideSuggestionsEnabled = clientSettings.GuideSuggestionsEnabled;
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
@@ -868,6 +879,14 @@
         _liveNoteCount = Math.Clamp(count, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
         await ClientSettings.UpdateAsync(current => current with { LiveNoteCount = _liveNoteCount });
         await LiveNoteCountChanged.InvokeAsync(_liveNoteCount);
+    }
+
+    private async Task SetAfterRestartAsync(ChangeEventArgs args)
+    {
+        if (!Enum.TryParse<AI.Web.Settings.RestartRecoveryMode>(args.Value?.ToString(), out var mode)) return;
+        _afterRestart = mode;
+        await ClientSettings.UpdateAsync(current => current with { AfterRestart = mode });
+        await AfterRestartChanged.InvokeAsync(mode);
     }
 
     private async Task SetRecentChatCountAsync(ChangeEventArgs args)

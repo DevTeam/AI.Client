@@ -148,6 +148,7 @@ Helpers: settings.chat.helpers → the helper switch the person chooses → widg
 Text correction: settings.chat.text_correction → settings.chat.text_correction.languages →
 a discovered language switch → settings.chat.text_correction.enabled → chat.text_correction.
 Split language selection, typing behavior and undo/paste behavior into short steps using the help.
+Work stopped by a restart: settings.chat.after_restart → widgets.chat-unfinished.
 Other preferences: settings.appearance.theme → settings.appearance.accent →
 settings.appearance.corners → settings.appearance.animations, or settings.sounds.notifications → settings.sounds.other,
 or settings.guide.enabled → settings.guide.idle → settings.guide.progress.

@@ -81,6 +81,8 @@ public sealed class ChatRunDispatcher(
     public async Task WarmUpAsync(CancellationToken cancellationToken)
     {
         var states = await repository.ListAsync(cancellationToken);
+        // One moment for the whole start: the client groups the runs this start took back by it.
+        var recoveredAt = clock.UtcNow;
         foreach (var group in states.GroupBy(state => (state.ProjectId, state.ChatId)))
         {
             var (projectId, chatId) = group.Key;
@@ -93,7 +95,7 @@ public sealed class ChatRunDispatcher(
             foreach (var state in group)
             {
                 var revision = state.Revision;
-                state.RecoverAfterRestart();
+                state.RecoverAfterRestart(recoveredAt, UnansweredToolName(chat, state.BranchId));
                 if (state.Revision != revision) await repository.SaveAsync(state, cancellationToken);
                 var runtime = new Runtime(state) { Snapshot = Snapshot(state, chat) };
                 _runtimes.TryAdd(new RunKey(projectId, chatId, state.BranchId), runtime);
@@ -842,7 +844,7 @@ public sealed class ChatRunDispatcher(
             if (error is OperationCanceledException && _shutdown.IsCancellationRequested
                 && runtime.State.Status == RunStatus.Generating)
             {
-                runtime.State.Interrupt();
+                runtime.State.Interrupt(clock.UtcNow, runtime.ActiveTools.Values.FirstOrDefault()?.Name);
             }
             else if (error is OperationCanceledException)
             {
@@ -1684,7 +1686,30 @@ public sealed class ChatRunDispatcher(
         BranchRevision: chat?.Branches?.SingleOrDefault(branch => branch.Id == state.BranchId)?.Revision ?? 0,
         RecoveryActions: RecoveryActions(state), ActiveMessageId: activeMessageId,
         Kind: chat?.Kind ?? "conversation", InteractionSurface: chat?.InteractionSurface ?? "chat",
-        ShowInMainRuns: chat?.ShowInMainRuns ?? true);
+        ShowInMainRuns: chat?.ShowInMainRuns ?? true,
+        Interruption: state is { Status: RunStatus.Interrupted, Interruption: { RecoveredAt: { } recoveredAt } interruption }
+            ? new Contracts.Runs.RunInterruption((Contracts.Runs.RunInterruptionCause)interruption.Cause, recoveredAt,
+                interruption.StoppedAt, interruption.ToolName)
+            : null);
+
+    /// <summary>
+    /// The tool call the branch's last turn started and never got a result for, by its model-facing
+    /// name: what a restart left with an unknown outcome. Walks back from the branch head to the
+    /// message that opened the turn.
+    /// </summary>
+    private static string? UnansweredToolName(ChatDetails chat, Guid branchId)
+    {
+        if (chat.Branches?.SingleOrDefault(branch => branch.Id == branchId)?.HeadMessageId is not { } head) return null;
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var answered = new HashSet<string>(StringComparer.Ordinal);
+        for (var id = (Guid?)head; id is { } current && byId.TryGetValue(current, out var message); id = message.ParentId)
+        {
+            if (message.ToolCallId is { } callId) answered.Add(callId);
+            if (message.ToolCalls?.LastOrDefault(call => !answered.Contains(call.Id)) is { } unanswered) return unanswered.Name;
+            if (message.StartsTurn) break;
+        }
+        return null;
+    }
 
     private static QueuedMessageStage Stage(QueuedRunStage stage) => stage switch
     {
@@ -1752,7 +1777,7 @@ public sealed class ChatRunDispatcher(
 
     private static ChatRunState Clone(ChatRunState state) => ChatRunState.Restore(state.ProjectId, state.ChatId, state.BranchId,
         state.Status, state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,
-        state.Queue.ToArray(), state.Operations.ToArray());
+        state.Queue.ToArray(), state.Operations.ToArray(), state.Interruption);
 
     private sealed class Runtime(ChatRunState state)
     {

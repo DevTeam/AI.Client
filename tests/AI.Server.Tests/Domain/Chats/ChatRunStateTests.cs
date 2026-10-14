@@ -62,10 +62,34 @@ public class ChatRunStateTests
             "Partial", null, RunFailureKind.None, false, 4, [], []);
 
         state.Status.ShouldBe(RunStatus.Generating);
-        state.RecoverAfterRestart();
+        var recoveredAt = DateTimeOffset.UtcNow;
+        state.RecoverAfterRestart(recoveredAt, "write_file");
         state.Status.ShouldBe(RunStatus.Interrupted);
         state.StreamingContent.ShouldBe("Partial");
         state.Revision.ShouldBe(5);
+        state.Interruption.ShouldBe(new RunInterruption(RunInterruptionCause.Crash, null, recoveredAt, "write_file"));
+    }
+
+    [Fact]
+    public void ShouldStampShutdownInterruptionWhenTheHostStartsAgain()
+    {
+        var state = ChatRunState.Restore(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), RunStatus.Generating,
+            "Partial", null, RunFailureKind.None, false, 4, [], []);
+        var stoppedAt = DateTimeOffset.UtcNow;
+        var recoveredAt = stoppedAt.AddMinutes(3);
+
+        state.Interrupt(stoppedAt);
+        state.Interruption.ShouldBe(new RunInterruption(RunInterruptionCause.Shutdown, stoppedAt, null, null));
+        state.MarkRead();
+        state.RecoverAfterRestart(recoveredAt, null);
+
+        state.Interruption.ShouldBe(new RunInterruption(RunInterruptionCause.Shutdown, stoppedAt, recoveredAt, null));
+        state.HasUnreadResponse.ShouldBeTrue();
+        // A later start does not claim the run again: it still belongs to the restart that recovered it.
+        state.RecoverAfterRestart(recoveredAt.AddDays(1), "shell");
+        state.Interruption!.RecoveredAt.ShouldBe(recoveredAt);
+        state.Resume();
+        state.Interruption.ShouldBeNull();
     }
 
     [Fact]

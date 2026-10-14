@@ -25,7 +25,7 @@ Current widgets:
 | `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each row opening its target and locating the messages that named it |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
 | `chat-team` | Team | `users` | `ChatTeamWidget` | The branches that sent team messages into the visible branch, with what each sent: messages, asides and intents, for the whole chat or the last turn, each with a click that shows its latest message |
-| `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, failed with a recovery action left, still generating or with messages queued behind it — with what each waits on, a filter by reason, a click that opens its chat and branch and, where a resume is what it waits for, a button that resumes it |
+| `chat-unfinished` | Unfinished work | `list-checks` | `ChatUnfinishedWidget` | Every run in this project that has not finished — waiting for an approval or an answer, paused, interrupted, stopped by a restart, failed with a recovery action left, still generating or with messages queued behind it — with what each waits on, a filter by reason, a click that opens its chat and branch and, where a resume is what it waits for, a button that resumes it; above them, what the latest restart stopped in any project, until it is resumed or left stopped |
 
 ## UX
 
@@ -912,6 +912,26 @@ starting the application, when runs left over from the last session are waiting.
   startup and kept in step by the Host's pushes. Each one carries `Status`, `Queue`, `PendingApproval`,
   `PendingPrompt`, `Wait`, `Error` and `RecoveryActions`; the chat's own title and last-activity time
   come from the sidebar's `ChatSummary`. Nothing is inferred from token usage.
+- **What the latest restart stopped.** Every run the latest start of the Host found cut short — in any
+  project, not only this one — is a group of its own above everything else, until this device has
+  dealt with that start (`ClientSettings.RestartSeenAt`). See [Work a restart stopped](12-ux-decisions.md#work-a-restart-stopped-2026-10-14).
+  - **Heading.** `Restart · HH:mm` with the time the application was closed, or
+    `Closed unexpectedly · HH:mm` (when it started again) after a crash, and the number of tasks; the tooltip has both
+    full times.
+  - **Note.** "What was written is kept. Nothing was run again." ("Nothing was run again." after a
+    crash, which commits nothing of what was only streamed), or, when a tool call never reported
+    back, that it is not run again and should be checked in its chat. While an automatic resume counts
+    down: `Resuming N in S s · K waits for you` over a bar that empties with the seconds left; while
+    the group resumes: `Resuming one after another`.
+  - **Actions.** `Resume all` (`Resume N` when a task waits for the person, `Resume now` during the
+    countdown), `Cancel` during the countdown, and `Leave stopped`, which keeps everything stopped and
+    lets the rows join the list below. A task whose tool call has an unknown outcome is never part of a
+    group resume; its own row still resumes it, and the model is told not to repeat the call blindly.
+  - **Rows.** The same rows as below, with `stopped by restart` as the reason, the detail
+    `Was running <tool>; its outcome is unknown` (in the warning colour), `Was answering: <message>` or
+    `Was writing the answer` (with `; the part written is kept` after a shutdown), and `· <project>` after the title for a chat of
+    another project. A row of another project opens that project and resumes there.
+  - **Frame.** While the group is there the widget's border and the group take a faint warning tint.
 - **What counts as unfinished.** A run is listed while it is `Generating`, `Paused`, `Interrupted` or
   `Failed` with a recovery action left, while it has a pending approval, a pending question or a
   provider wait, or while messages are still queued behind it.
@@ -920,7 +940,9 @@ starting the application, when runs left over from the last session are waiting.
     chat counts as its own run. On the right, how many of them need the person (in the warning colour),
     or "nothing needs you" when every run is still moving on its own.
   - **Legend and filter.** One entry per reason the project actually has, most demanding first:
-    `Approval`, `Prompt`, `Wait`, `Failed`, `Paused`, `Interrupted`, `Running`, `Queue`. With more than
+    `Approval`, `Prompt`, `Wait`, `Failed`, `Restart`, `Paused`, `Interrupted`, `Running`, `Queue`. A
+    run interrupted with a recorded `Interruption` counts as `Restart` (power icon); one without is a
+    plain `Interrupted`. With more than
     one reason present each entry is a toggle button (`aria-pressed`) that narrows the list to that
     reason; pressing it again shows everything. A filter whose reason has gone from the project stops
     narrowing on its own.
@@ -956,16 +978,18 @@ starting the application, when runs left over from the last session are waiting.
   - **Empty chats and archived chats are left out**, even when a stale snapshot still names them.
 - **Empty state.** "Nothing is unfinished. Runs that wait for you, were paused or interrupted, failed
   or still have messages queued appear here."
-- **Folded summary.** `N need/needs you · M unfinished` while anything needs the person, otherwise
+- **Folded summary.** `N stopped by the restart · M more` while the restart group is shown;
+  otherwise `N need/needs you · M unfinished` while anything needs the person, or
   `M unfinished · K chat/chats`; null when nothing is unfinished.
 - **Data.** The sidebar's `ChatSummary` list and `IRunStateService.Runs`, plus the open chat and branch
   from the page. No presentation service is injected; the page resumes one run per `OnResume` call and
   the widget sequences "Resume all" itself so it can show progress.
 - **Architecture.** `IChatUnfinishedStatisticsCalculator` in `src/AI.Web/Widgets` returns a
   `ChatUnfinishedStatistics` record holding one `ChatUnfinishedTask` per unfinished run; a pure
-  function over the chats and the run snapshots. Bound in `Composition.cs` and tested in
+  function over the chats and the run snapshots. `FindRestart` returns the `RestartRecovery` group
+  from every chat the page knows; the page reads the chat lists of other projects it still lacks. Bound in `Composition.cs` and tested in
   `tests/AI.Web.Tests/Widgets`. The widget is a `ChatWidget` with `Summary`, the shared count headline
   and `chat-usage-*` building blocks; the rows use `chat-unfinished-*`. Only a reason that asks a
-  person to act wears a status word colour — `--color-warning-text` for what blocks the run now,
-  `--color-danger-text` for what stopped — and the reason word stays in the text beside the mark, so
+  person to act wears a status word colour — `--color-warning-text` for what blocks the run now and
+  for what a restart stopped, `--color-danger-text` for what the person stopped — and the reason word stays in the text beside the mark, so
   colour never carries the meaning alone.

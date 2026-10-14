@@ -642,6 +642,33 @@
                         <button class="chat-card-action chat-card-action-icon" type="button" title="Dismiss" aria-label="Dismiss" @onclick="() => _navigationArrival = null"><AppIcon Name="x" /></button>
                     </span>
                 </div>
+            }
+            @if (GetRestartPill() is { } restart)
+            {
+                @* Work a restart stopped elsewhere: the restored chat may have finished, so the
+                   person would not otherwise know. The open branch's own stop is its turn status. *@
+                var openBranch = _selectedChat is null ? (Guid?)null : GetSelectedRunBranchId();
+                <div class="navigation-cue restart-cue chat-card-header" role="status" aria-live="polite">
+                    <span class="chat-card-mark" aria-hidden="true"><AppIcon Name="power" /></span>
+                    <span class="navigation-cue-text chat-card-title" title="@(restart.StoppedAt is { } stoppedAt && !restart.Crashed ? $"The application was closed at {stoppedAt.LocalDateTime:t}; what the runs wrote is kept" : "The application stopped without closing; resuming continues from what was saved")">@GetRestartPillText(restart, _selectedChat?.Id, openBranch)</span>
+                    <span class="chat-card-header-actions">
+                        <button class="chat-card-action" type="button" title="Show them in Unfinished work" @onclick="ShowRestartWorkAsync">Show</button>
+                        @if (restart.Progress is null && restart.AutoResumeAt is not null)
+                        {
+                            <button class="chat-card-action" type="button" title="Keep them stopped for now" @onclick="CancelAutoResume">Cancel</button>
+                        }
+                        @if (restart.Progress is null && restart.Resumable.Count > 0)
+                        {
+                            <button class="chat-card-action chat-card-action-primary" type="button"
+                                    title="@(restart.Resumable.Count == restart.Tasks.Count ? "Resume every task the restart stopped, one after another" : "Resume the tasks the restart stopped; a tool call with an unknown outcome waits for you")"
+                                    @onclick="ResumeRestartAsync">@(restart.AutoResumeAt is null ? "Resume all" : "Resume now")</button>
+                        }
+                        @if (restart.AutoResumeAt is null)
+                        {
+                            <button class="chat-card-action chat-card-action-icon" type="button" title="Leave them stopped; they stay in Unfinished work" aria-label="Leave stopped" disabled="@(restart.Progress is not null)" @onclick="LeaveRestartStoppedAsync"><AppIcon Name="x" /></button>
+                        }
+                    </span>
+                </div>
             }        <div class="composer-status" role="status">
             @* While the composer shows a history entry the counter comes first and the plain
                hint is dropped — the hint describes what Enter does with text the user wrote,
@@ -1040,6 +1067,11 @@
                     case ChatWidgetCatalog.ChatUnfinished:
                         <ChatUnfinishedWidget Widget="@widget"
                                               Statistics="@GetUnfinishedStatistics()"
+                                              Restart="@GetRestartRecovery()"
+                                              CurrentProjectId="@_selectedProject?.Id"
+                                              OnResumeRestart="ResumeRestartAsync"
+                                              OnCancelAutoResume="CancelAutoResume"
+                                              OnLeaveRestartStopped="LeaveRestartStoppedAsync"
                                               CurrentChatId="@_selectedChat?.Id"
                                               CurrentBranchId="@(_selectedChat is null ? null : (Guid?)GetSelectedRunBranchId())"
                                               OnOpen="OpenUnfinishedTaskAsync"
@@ -1327,7 +1359,7 @@ else if (_guideInvitation is { } guideInvitation)
 }
 @if (_globalSection is not null)
 {
-    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" RecentChatCountChanged="SetRecentChatCount" ScheduledChatCountChanged="SetSoonChatCount" />
+    <GlobalSettingsPanel @ref="_globalSettingsPanel" @key="@(_globalSection is "ProjectMemory" or "ProjectSkills" ? _selectedProject?.Id : null)" Section="@_globalSection" ConnectionToEdit="@_connectionToEdit" SkillToEdit="@_linkedSkillId" SkillSource="@_linkedSkillSource" ToolToEdit="@_linkedToolName" LinkSelection="@_linkedSelection" ProjectId="@_selectedProject?.Id" Saved="LoadGlobalSettingsAsync" Close="CloseGlobalSettings" TurnTokensChanged="value => _showTurnTokens = value" LiveNoteCountChanged="value => _liveNoteCount = value" AfterRestartChanged="SetAfterRestart" RecentChatCountChanged="SetRecentChatCount" ScheduledChatCountChanged="SetSoonChatCount" />
 }
 
 @if (_branchSettingsId is { } settingsBranchId && _selectedProject is not null && _selectedChat is { } settingsChat)
@@ -2168,6 +2200,7 @@ else if (_guideInvitation is { } guideInvitation)
         _soonChatCount = clientSettings.SoonChatCount;
         _chatWidgetsOpen = clientSettings.ChatWidgetsOpen;
         _chatWidgets = WidgetLayout.Arrange(clientSettings.ChatWidgets);
+        LoadRestartSettings(clientSettings);
         Notifications.Changed += OnNotificationsChanged;
         HostConnection.Changed += OnHostStatusChanged;
         ReplySuggestions.Changed += OnReplySuggestionChanged;
@@ -2191,6 +2224,7 @@ else if (_guideInvitation is { } guideInvitation)
         _notificationsOpen = target.NotificationsOpen;
         if (_notificationsOpen) Notifications.MarkAllSeen();
         _workspaceInitialized = true;
+        await UpdateRestartRecoveryAsync();
         _ = RunGeneratingTickerAsync(_generatingTickerCancellation.Token);
     }
 
@@ -2205,6 +2239,7 @@ else if (_guideInvitation is { } guideInvitation)
             catch (OperationCanceledException) { break; }
             if (_guideStep is not null || GetSelectedRun()?.Status == ChatRunStatus.Generating) await InvokeAsync(StateHasChanged);
             if (_workspaceInitialized && _guideModule is not null) await InvokeAsync(CheckGuideStateAsync);
+            if (_autoResumeAt is not null) await InvokeAsync(TickAutoResumeAsync);
         }
     }
 
@@ -2256,6 +2291,11 @@ else if (_guideInvitation is { } guideInvitation)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_revealRestartWork)
+        {
+            _revealRestartWork = false;
+            await WorkspaceLayoutService.RevealElementAtTopAsync("chat-widget-title-" + ChatWidgetCatalog.ChatUnfinished);
+        }
         if (_focusComposerReasoningBack)
         {
             _focusComposerReasoningBack = false;
@@ -2787,6 +2827,7 @@ else if (_guideInvitation is { } guideInvitation)
             chatOrderChanged |= await ApplyRunSnapshotAsync(update);
         }
         if (chatOrderChanged) await RefreshChatOrderAsync();
+        if (_workspaceInitialized) await UpdateRestartRecoveryAsync();
         if (_recentChatsStale)
         {
             _recentChatsStale = false;
@@ -5033,14 +5074,16 @@ else if (_guideInvitation is { } guideInvitation)
 
     /// <summary>Opens the chat a task belongs to, and its branch when the run works on a fork.</summary>
     private Task OpenUnfinishedTaskAsync(ChatUnfinishedTask task) =>
-        NavigateToTargetAsync(new WorkspaceTarget(null, task.ChatId, task.BranchId, null, false));
+        NavigateToTargetAsync(new WorkspaceTarget(task.ProjectId != default ? task.ProjectId : null, task.ChatId, task.BranchId, null, false));
 
     // The widget resumes one task at a time, "Resume all" included, so it can show which one is in
     // flight; this completes once the Host has answered and reports a refusal like any queue command.
     private async Task ResumeUnfinishedTaskAsync(ChatUnfinishedTask task)
     {
-        if (_selectedProject is not { } project) return;
-        await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(project.Id, task.ChatId, task.BranchId,
+        // A row of the restart group may belong to another project; it is resumed there.
+        var projectId = task.ProjectId != default ? task.ProjectId : _selectedProject?.Id;
+        if (projectId is not { } id) return;
+        await RunQueueCommandAsync(() => ChatRunsApi.ResumeAsync(id, task.ChatId, task.BranchId,
             Guid.CreateVersion7(), CancellationToken.None));
     }
     private Task SkipFailedQueueAsync() => _selectedProject is null || _selectedChat is null ? Task.CompletedTask

@@ -27,6 +27,9 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public bool HasUnreadResponse { get; private set; }
 
+    /// <summary>Why the run is Interrupted; null once it leaves that status or when nothing was recorded.</summary>
+    public RunInterruption? Interruption { get; private set; }
+
     public long Revision { get; private set; }
 
     public IReadOnlyList<QueuedRunMessage> Queue => _queue;
@@ -57,6 +60,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Error = null;
         FailureKind = RunFailureKind.None;
         StreamingContent = string.Empty;
+        Interruption = null;
         Revision++;
     }
 
@@ -69,6 +73,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         StreamingContent = string.Empty;
         Error = null;
         FailureKind = RunFailureKind.None;
+        Interruption = null;
         Revision++;
     }
 
@@ -182,6 +187,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
         Status = RunStatus.Idle;
         Error = null;
         FailureKind = RunFailureKind.None;
+        Interruption = null;
         Revision++;
     }
 
@@ -234,6 +240,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
             Status = RunStatus.Idle;
             Error = null;
             FailureKind = RunFailureKind.None;
+            Interruption = null;
             Revision++;
         }
     }
@@ -258,6 +265,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
             Status = RunStatus.Idle;
             Error = null;
             FailureKind = RunFailureKind.None;
+            Interruption = null;
         }
 
         Revision++;
@@ -291,7 +299,7 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
 
     public static ChatRunState Restore(Guid projectId, Guid chatId, Guid branchId, RunStatus status, string streamingContent,
         string? error, RunFailureKind failureKind, bool hasUnreadResponse, long revision,
-        IEnumerable<QueuedRunMessage> queue, IEnumerable<Guid> operations)
+        IEnumerable<QueuedRunMessage> queue, IEnumerable<Guid> operations, RunInterruption? interruption = null)
     {
         var state = new ChatRunState(projectId, chatId, branchId)
         {
@@ -300,24 +308,50 @@ public sealed class ChatRunState(Guid projectId, Guid chatId, Guid branchId)
             Error = error,
             FailureKind = failureKind,
             HasUnreadResponse = hasUnreadResponse,
-            Revision = revision
+            Revision = revision,
+            Interruption = status == RunStatus.Interrupted ? interruption : null
         };
         state._queue.AddRange(queue);
         state._operations.UnionWith(operations);
         return state;
     }
 
-    public void RecoverAfterRestart() => Interrupt();
+    /// <summary>
+    /// Takes the run back when the Host starts. A run still generating was cut short by a crash; a
+    /// run the last shutdown interrupted learns when the Host came back. Both get the tool call
+    /// left without a result, if the transcript shows one. Every run one start recovers shares
+    /// <paramref name="now"/>, which is how the client tells this restart's work from older work.
+    /// </summary>
+    public void RecoverAfterRestart(DateTimeOffset now, string? unansweredToolName)
+    {
+        if (Status == RunStatus.Generating)
+        {
+            Status = RunStatus.Interrupted;
+            Interruption = new RunInterruption(RunInterruptionCause.Crash, null, now, unansweredToolName);
+            HasUnreadResponse = true;
+            Revision++;
+        }
+        else if (Status == RunStatus.Interrupted && Interruption is { RecoveredAt: null } interrupted)
+        {
+            Interruption = interrupted with { RecoveredAt = now, ToolName = interrupted.ToolName ?? unansweredToolName };
+            HasUnreadResponse = true;
+            Revision++;
+        }
+    }
 
     /// <summary>
-    /// Marks a generation cut short by the Host itself — a shutdown or a crash — rather than by
-    /// the user. Only a run that was still generating qualifies: Stop pauses the run before
+    /// Marks a generation cut short by the Host itself while it shuts down, rather than by the
+    /// user. Only a run that was still generating qualifies: Stop pauses the run before
     /// cancelling it, and that pause is the user's own decision to keep.
     /// </summary>
-    public void Interrupt()
+    /// <param name="now">When the Host shut down.</param>
+    /// <param name="runningToolName">The tool call the shutdown cut off: it is recorded as abandoned,
+    /// but what it did before is unknown.</param>
+    public void Interrupt(DateTimeOffset now, string? runningToolName = null)
     {
         if (Status != RunStatus.Generating) return;
         Status = RunStatus.Interrupted;
+        Interruption = new RunInterruption(RunInterruptionCause.Shutdown, now, null, runningToolName);
         HasUnreadResponse = true;
         Revision++;
     }

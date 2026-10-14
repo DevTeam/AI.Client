@@ -9671,6 +9671,35 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-unfinished-more .app-icon { width: .8rem; height: .8rem; }
 .chat-unfinished-spin { animation: tool-row-spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .chat-unfinished-spin { animation: none; } }
+/* What the latest restart stopped: a group of its own above the list, on a faint warning tint, and
+   the widget's frame takes the same hue while the group is there. The countdown bar follows the
+   seconds left of an automatic resume. */
+.chat-widget.has-restart, .chat-widget.has-restart:hover, .chat-widget.has-restart:focus-within { border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); }
+.chat-usage-section.chat-unfinished-restart, .chat-usage-section.chat-unfinished-restart:first-child { gap: .45rem; margin: .2rem 0 .1rem; padding: .6rem .7rem .45rem; border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border-subtle)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-warning) 7%, transparent); }
+.chat-unfinished-restart-head { display: flex; align-items: center; gap: .4rem; min-width: 0; color: var(--color-warning-text); font-size: var(--font-size-md); font-weight: 600; }
+.chat-unfinished-restart-head .chat-unfinished-reason-icon { flex: none; margin-right: 0; color: var(--color-warning); }
+.chat-unfinished-restart-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-unfinished-restart-count { flex: none; color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 400; }
+.chat-unfinished-restart-note { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.4; }
+.chat-unfinished-countdown { display: block; height: 3px; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
+.chat-unfinished-countdown > span { display: block; height: 100%; background: var(--color-warning); transition: width 1s linear; }
+.chat-unfinished-restart-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.chat-unfinished-restart-actions .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
+.chat-unfinished-restart-actions .compact-action .app-icon { width: .85rem; height: .85rem; }
+.chat-unfinished-restart-actions .chat-unfinished-restart-primary { border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.chat-unfinished-restart-actions .chat-unfinished-restart-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-on-accent)); color: var(--color-on-accent); }
+.chat-unfinished-restart-dismiss { margin-left: auto; }
+.chat-unfinished-restart .chat-unfinished-list { margin-top: .1rem; }
+.chat-unfinished-detail.is-unknown { color: var(--color-warning-text); }
+.chat-unfinished-project { margin-left: .3rem; color: var(--color-text-muted); font-size: var(--font-size-xs); }
+
+/* Work a restart stopped elsewhere, above the composer: the shape of the navigation cue, a neutral
+   frame and the warning hue only on its mark, so it reads as news rather than as an error. */
+.navigation-cue.restart-cue { border-color: var(--color-border); color: var(--color-text); }
+.navigation-cue.restart-cue .chat-card-mark { color: var(--color-warning); }
+/* Its words are the news, so they wrap beside the actions instead of giving way to them. */
+.navigation-cue.restart-cue .navigation-cue-text { white-space: normal; }
+
 
 /* Schedule pickers: the calendar, the clock and the recurrence editor of ask_user and the schedule widget. */
 .date-picker { display: grid; gap: .4rem; justify-self: start; width: min(100%, 17rem); padding: .55rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }

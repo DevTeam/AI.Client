@@ -48,6 +48,7 @@ public sealed class RunStatusPresentation : IRunStatusPresentation
         { PendingApproval: not null } => "Waiting for tool approval",
         { PendingPrompt: not null } => "Waiting for your answer",
         { Status: ChatRunStatus.Paused } => "Queue paused - action required",
+        { Status: ChatRunStatus.Interrupted, Interruption: not null } => "Stopped by the restart - action required",
         { Status: ChatRunStatus.Interrupted } => "Run interrupted - action required",
         { Status: ChatRunStatus.Failed, RecoveryActions: { Count: > 0 } } => "Recovery action required",
         _ => null

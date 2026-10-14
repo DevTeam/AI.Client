@@ -22,4 +22,7 @@ public interface IWorkspaceLayoutService : IAsyncDisposable
 
     /// <summary>Scrolls the element with <paramref name="elementId"/> into its scroll box, as little as possible.</summary>
     Task RevealElementAsync(string elementId);
+
+    /// <summary>Scrolls the element with this id to the top of its scroller, so what follows it is in view too.</summary>
+    Task RevealElementAtTopAsync(string elementId);
 }

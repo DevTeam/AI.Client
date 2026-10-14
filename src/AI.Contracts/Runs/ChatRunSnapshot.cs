@@ -25,7 +25,11 @@ public sealed record ChatRunSnapshot(Guid ProjectId, Guid ChatId, Guid BranchId,
     // subtasks, routing and compaction included. In memory like Context; the ledger keeps the
     // durable copy.
     Usage.TurnTokenUsage? TurnUsage = null, string Kind = "conversation",
-    string InteractionSurface = "chat", bool ShowInMainRuns = true);
+    string InteractionSurface = "chat", bool ShowInMainRuns = true,
+    // Why an Interrupted run stopped: a restart or a crash of the Host, when, and the tool call it
+    // left without a result. Null for any other status, and for a run interrupted before the Host
+    // recorded it.
+    RunInterruption? Interruption = null);
 
 /// <summary>
 /// A bounded, self-contained tail of messages persisted while a run is active. Every append names

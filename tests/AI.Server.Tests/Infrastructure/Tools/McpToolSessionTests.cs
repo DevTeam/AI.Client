@@ -18,7 +18,7 @@ public sealed class McpToolSessionTests
     [InlineData(true, true)]
     [InlineData(false, false)]
     [InlineData(false, true)]
-    public async Task ShouldPreserveToolErrorsAndValidateSuccessfulResults(bool isError, bool structured)
+    public async Task ShouldPreserveToolErrorsAndReportMalformedSuccessfulResults(bool isError, bool structured)
     {
         var reply = new AppToolReply();
         var response = new CallToolResult
@@ -33,18 +33,18 @@ public sealed class McpToolSessionTests
             new ToolRunContext(Guid.Empty, Guid.Empty, Guid.Empty, true), TestContext.Current.CancellationToken);
         var tool = session.Tools.Single();
 
+        var result = await session.CallAsync(tool, "{}", null, TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeTrue();
+        result.ModelContent.ShouldContain("path belongs inside properties");
         if (isError)
-        {
-            var result = await session.CallAsync(tool, "{}", null, TestContext.Current.CancellationToken);
-            result.IsError.ShouldBeTrue();
-            result.ModelContent.ShouldContain("path belongs inside properties");
             result.StructuredContent.HasValue.ShouldBe(structured);
-        }
         else
         {
-            var error = await Should.ThrowAsync<InvalidOperationException>(() =>
-                session.CallAsync(tool, "{}", null, TestContext.Current.CancellationToken));
-            error.Message.ShouldContain("output schema");
+            // A malformed success is reported to the model rather than ending the turn.
+            result.ModelContent.ShouldContain("does not match its declared output schema");
+            result.ModelContent.ShouldContain(structured ? "the result:" : "no structured content");
+            result.StructuredContent.ShouldBeNull();
         }
     }
 

@@ -109,7 +109,7 @@ public sealed class McpToolSession : IToolSession
         var evaluation = BuildSchema(schema)
             .Evaluate(input, new EvaluationOptions { OutputFormat = OutputFormat.List });
         if (!evaluation.IsValid || canonical is null)
-            throw new ArgumentException("Tool arguments do not match the input schema. " + Explain(evaluation), nameof(arguments));
+            throw new ArgumentException("Tool arguments do not match the input schema. " + Explain(evaluation, "the arguments"), nameof(arguments));
         if (!_canonicalizePaths) return canonical.ToJsonString();
         // Canonicalize before approval so the user and the server judge the same path.
         foreach (var property in PathProperties)
@@ -192,11 +192,11 @@ public sealed class McpToolSession : IToolSession
     /// schema" tells a caller nothing it did not already suspect; the property that failed and why
     /// is what lets it fix the call instead of guessing.
     /// </summary>
-    private static string Explain(EvaluationResults evaluation)
+    private static string Explain(EvaluationResults evaluation, string root)
     {
         var problems = Failures(evaluation)
             .Select(detail => string.Join("; ", detail.Errors!.Select(error =>
-                $"{Where(detail.InstanceLocation)}: {error.Value}")))
+                $"{Where(detail.InstanceLocation, root)}: {error.Value}")))
             .Where(text => text.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .Take(5)
@@ -212,11 +212,19 @@ public sealed class McpToolSession : IToolSession
                 yield return failure;
     }
 
-    /// <summary>Names the offending property, or the argument object itself when the fault is at its root.</summary>
-    private static string Where(JsonPointer location)
+    /// <summary>Names the offending property, or the checked object itself when the fault is at its root.</summary>
+    private static string Where(JsonPointer location, string root)
     {
         var path = location.ToString();
-        return string.IsNullOrEmpty(path) || path == "/" ? "the arguments" : path.TrimStart('/').Replace('/', '.');
+        return string.IsNullOrEmpty(path) || path == "/" ? root : path.TrimStart('/').Replace('/', '.');
+    }
+
+    /// <summary>Why a successful result breaks the tool's output schema, or null when it does not.</summary>
+    private static string? OutputMismatch(JsonElement outputSchema, JsonElement? structured)
+    {
+        if (structured is not { } content) return "It returned no structured content.";
+        var evaluation = BuildSchema(outputSchema).Evaluate(content, new EvaluationOptions { OutputFormat = OutputFormat.List });
+        return evaluation.IsValid ? null : Explain(evaluation, "the result");
     }
 
     private static string Absolute(string? path)
@@ -253,11 +261,20 @@ public sealed class McpToolSession : IToolSession
             var rejection = new[] { ToolContent.OfText(error.Message) };
             return new ToolCallResult(rejection, null, null, true, _modelProjector.Project(rejection, null, true));
         }
+        var blocks = (result.Content ?? []).Select(Describe).ToArray();
         // MCP tool errors may contain only text; the output schema describes successful results.
         if (result.IsError != true && _descriptors[tool.OriginalName].OutputSchema is { } outputSchema
-            && (result.StructuredContent is not { } content || !BuildSchema(outputSchema).Evaluate(content).IsValid))
-            throw new InvalidOperationException("Tool result does not match the output schema.");
-        var blocks = (result.Content ?? []).Select(Describe).ToArray();
+            && OutputMismatch(outputSchema, result.StructuredContent) is { } mismatch)
+        {
+            // The tool ran and its effects stand; only its answer is malformed. That is the call's
+            // result rather than a broken transport, so the model is told what came back and why it
+            // cannot be trusted, and the turn goes on. The structured part is the faulty one and is
+            // left out; the text blocks are kept, since they are often all the model needs.
+            var faulty = blocks.Prepend(ToolContent.OfText(
+                "The tool ran, but its result does not match its declared output schema, so it may be incomplete. "
+                + $"{mismatch} Its effects have occurred; do not automatically repeat it.")).ToArray();
+            return new ToolCallResult(faulty, null, ToElement(result.Meta), true, _modelProjector.Project(faulty, null, true));
+        }
         return new ToolCallResult(blocks, result.StructuredContent, ToElement(result.Meta), result.IsError ?? false,
             _modelProjector.Project(blocks, result.StructuredContent, result.IsError ?? false));
     }

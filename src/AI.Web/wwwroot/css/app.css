@@ -8206,7 +8206,6 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     -webkit-mask: var(--mention-icon) center / contain no-repeat;
     mask: var(--mention-icon) center / contain no-repeat;
 }
-.markdown-content :is(a.mention-link, .file-link)::before { vertical-align: text-bottom; }
 /* A plain path wraps, and an inline-block icon is a break opportunity: the icon was left alone at
    the end of a line. An inline icon is part of the first word, so it moves along with it. */
 .markdown-content .file-link:not(.mention-link)::before {

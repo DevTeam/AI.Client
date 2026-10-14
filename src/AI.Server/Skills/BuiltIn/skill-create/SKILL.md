@@ -11,7 +11,7 @@ tools: ["app_read","ask_user","app_skills","skill_search"]
 
 Skill conventions:
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. Domains: chat, project, memory,
-  skill, instructions, code, git, devops, qa, mermaid, svg, settings, mcp, team; start a new domain only for a new area such as `doc`. The action
+  skill, instructions, code, git, devops, qa, debug, mermaid, svg, settings, mcp, team; start a new domain only for a new area such as `doc`. The action
   is a verb: create, rename, compact, fork, add, remove, review, save, edit, implement, fix, run.
 - `name` is the id in words with the first letter capitalized: `project-directory-add` becomes
   "Project directory add". An abbreviation keeps its official spelling: `qa-plan` becomes "QA plan",
@@ -35,7 +35,9 @@ Skill conventions:
   devops-infrastructure-change, devops-backup-verify, qa-plan, qa-acceptance-define, qa-cases-create,
   qa-exploratory-test, qa-ui-test, qa-api-test, qa-e2e-create, qa-regression-run,
   qa-test-data-prepare, qa-accessibility-review, qa-compatibility-test, qa-bug-report,
-  qa-failures-triage, qa-release-assess, mermaid-create, mermaid-create-flowchart,
+  qa-failures-triage, qa-release-assess, debug-logs-analyze, debug-trace-analyze,
+  debug-stacktrace-analyze, debug-dump-analyze, debug-logging-configure, mermaid-create,
+  mermaid-create-flowchart,
   mermaid-create-sequence, mermaid-create-class, mermaid-create-state, mermaid-create-er,
   mermaid-create-architecture, mermaid-create-gantt, mermaid-create-mindmap, mermaid-create-gitgraph,
   mermaid-edit, mermaid-fix, mermaid-review, mermaid-export, svg-create, svg-create-icon,

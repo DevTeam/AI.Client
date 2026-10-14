@@ -7,7 +7,7 @@ using Xunit;
 
 public class BuiltInSkillCatalogTests
 {
-    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "mermaid", "svg", "settings", "mcp", "app", "team"];
+    private static readonly string[] Domains = ["chat", "project", "memory", "skill", "instructions", "code", "git", "devops", "qa", "debug", "mermaid", "svg", "settings", "mcp", "app", "team"];
 
     // An abbreviation keeps its official spelling in the name (docs/27-skills.md, skill-create).
     private static readonly Dictionary<string, string> Abbreviations = new(StringComparer.Ordinal)
@@ -198,6 +198,38 @@ public class BuiltInSkillCatalogTests
         mermaid.Length.ShouldBe(14);
         foreach (var skill in mermaid)
             skill.Content.Contains("hard to read in the chat", StringComparison.Ordinal).ShouldBeTrue(skill.Id);
+    }
+
+    [Fact]
+    public void ShouldTakeTheCurrentTimeFromTheHostInEveryDebugSkill()
+    {
+        var debug = new BuiltInSkillCatalog().List()
+            .Where(skill => skill.Id.StartsWith("debug-", StringComparison.Ordinal)).ToArray();
+
+        debug.Select(skill => skill.Id).Order(StringComparer.Ordinal).ShouldBe(
+            ["debug-dump-analyze", "debug-logging-configure", "debug-logs-analyze", "debug-stacktrace-analyze", "debug-trace-analyze"]);
+        foreach (var skill in debug)
+        {
+            // A model's sense of the date is not evidence; relative windows need the real clock.
+            skill.Content.ShouldContain("[DateTimeOffset]::Now", customMessage: skill.Id);
+            skill.AllowedTools.ShouldNotBeNull().ShouldContain("process_run", skill.Id);
+            skill.AllowedTools.ShouldNotContain("write_file", skill.Id);
+        }
+
+        // Only the configure skill edits, and only after confirmation; the analyses change nothing.
+        foreach (var skill in debug.Where(skill => skill.Id != "debug-logging-configure"))
+        {
+            skill.Description.ShouldContain("changes nothing", customMessage: skill.Id);
+            skill.AllowedTools.ShouldNotBeNull().ShouldNotContain("edit_file", skill.Id);
+        }
+
+        var logs = debug.Single(skill => skill.Id == "debug-logs-analyze");
+        logs.Content.ShouldContain("Reconstruct the rolling set");
+        logs.Content.ShouldContain("Assess whether the logs were enough");
+        logs.Content.ShouldContain("debug-logging-configure");
+        var configure = debug.Single(skill => skill.Id == "debug-logging-configure");
+        configure.AllowedTools.ShouldNotBeNull().ShouldContain("edit_file");
+        configure.Content.ShouldContain("never stop, kill or restart a process this run did not start");
     }
 
     [Fact]

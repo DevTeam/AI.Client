@@ -39,7 +39,7 @@ application permissions, and every write still goes through tool approval.
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,
-  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `mermaid`, `svg`, `settings`, `mcp` and `team`; a new area gets a new domain. The
+  `project`, `memory`, `skill`, `instructions`, `code`, `git`, `devops`, `qa`, `debug`, `mermaid`, `svg`, `settings`, `mcp` and `team`; a new area gets a new domain. The
   action is a verb: create, rename, compact, fork, add, remove, review, save, edit, suggest,
   implement, fix, run, commit.
 - `name` is the id in words with the first letter capitalized (`project-directory-add` →
@@ -190,6 +190,11 @@ deletes a chat the user asked for by name.
 | `git-revert` | Undoes selected commits with new commits in agreed order; keeps a recovery ref and pauses at conflicts | commit picker, `process_run` |
 | `git-stash` | Saves local work or applies a selected stash, retaining the stash until restoration is verified | `process_run`, `ask_user` |
 | `git-manage-worktree` | Creates a local branch in an isolated worktree or removes a clean worktree while retaining its branch | `process_run`, directory checks, `ask_user` |
+| `debug-logs-analyze` (`/logs`) | Reads logs over a window resolved against the host's clock, including rolled and compressed files; reports the causal chain, gaps, and whether verbosity and retention were enough, with a targeted increase; changes nothing | file readers, `zip_read`, `process_run`, `trigger_wait`, `run_skill` |
+| `debug-trace-analyze` (`/trace`) | Finds the critical path and the failing or slow span in distributed or runtime traces, noting sampling gaps; changes nothing | file readers, `zip_read`, `process_run`, `run_skill` |
+| `debug-stacktrace-analyze` (`/stacktrace`) | Orders the exception chain, maps frames to the source of the revision that ran and explains the root cause with a suggested fix; changes nothing | file readers, `process_run`, `run_skill` |
+| `debug-dump-analyze` (`/dump`) | Analyzes crash, hang and memory dumps with installed debuggers and matching symbols; a new capture of a live process needs an explicit yes | file readers, `process_run`, `ask_user`, `run_skill` |
+| `debug-logging-configure` (`/log-level`) | Works out the effective levels, sinks and rolling policy, raises or restores chosen categories with matching retention after confirmation and records how to revert | file readers, `edit_file`, `process_run`, `trigger_wait`, `ask_user` |
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
 | `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
@@ -243,6 +248,30 @@ only task-owned records. Results identify the actual revision/environment and di
 failed, blocked and not-run checks. No discovered tests, an unavailable platform or a pending run
 is not a pass; a passing retry does not erase a flaky failure. Release readiness assesses evidence
 and risks without implicitly publishing, deploying or waiving a quality gate.
+
+Debug skills explain a failure from its evidence: logs, traces, stack traces and dumps. Each has its
+own SVG icon in the shared picker, and `debug` is a skill domain. They take "now" from the host
+clock through `process_run` rather than from the model's sense of the date, resolve relative
+windows ("last hour") against it with explicit offsets, and compare it with the newest entry, so a
+log that stopped writing is a finding rather than a quiet gap. Timestamps without an offset are
+attributed to the zone of the process that wrote them, and clock skew between machines is checked
+before correlating. Logs are read as a rolling set: the configured file template, numbered,
+date-stamped and compressed siblings ordered by the timestamps inside them, and the retention
+limits that may already have discarded part of the window. Reads stay bounded (search, then
+`head`/`tail` excerpts), and compressed files are expanded only into chat scratch.
+
+Every analysis ends with a verdict on whether the data was enough: the levels actually written per
+category, the effective minimum level after overrides, sampling, and the retention at the observed
+write rate. When it was not, the skill proposes the smallest increase: named categories, one level
+step, a duration, the expected volume, a retention change so the faster roll does not evict the
+evidence, the extra sensitive data and the revert. Only `debug-logging-configure` applies it, after
+an `ask_user` confirmation; it leaves the original value and end time beside the changed key,
+relies on reload-on-change where the framework has it, and never restarts a process it did not
+start. The analysis skills change nothing; dumps and traces stay local because they contain process
+memory and request data, and capturing a new dump or trace of a live process names the process and
+waits for an explicit yes. Missing debuggers, converters or symbols leave that part unverified
+instead of being installed. A cross-service incident still belongs to `devops-incident-diagnose`,
+and a fix to `code-bug-fix`.
 
 Mermaid skills return a complete fenced diagram in chat by default, editing documentation/source
 files only within the requested scope. Each has a dedicated SVG icon in the shared picker.

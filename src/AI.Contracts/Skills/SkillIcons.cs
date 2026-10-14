@@ -46,6 +46,7 @@ public static class SkillIcons
         "qa-plan", "qa-acceptance-define", "qa-cases-create", "qa-exploratory-test", "qa-ui-test",
         "qa-api-test", "qa-e2e-create", "qa-regression-run", "qa-test-data-prepare",
         "qa-accessibility-review", "qa-compatibility-test", "qa-bug-report", "qa-failures-triage", "qa-release-assess",
+        "debug-logs-analyze", "debug-trace-analyze", "debug-stacktrace-analyze", "debug-dump-analyze", "debug-logging-configure",
         "mermaid-create", "mermaid-create-flowchart", "mermaid-create-sequence", "mermaid-create-class",
         "mermaid-create-state", "mermaid-create-er", "mermaid-create-architecture", "mermaid-create-gantt",
         "mermaid-create-mindmap", "mermaid-create-gitgraph", "mermaid-edit", "mermaid-fix", "mermaid-review", "mermaid-export",

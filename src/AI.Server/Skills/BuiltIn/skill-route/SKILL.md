@@ -65,6 +65,12 @@ Choose:
   QA readiness assessment does not package or deploy a release. A request to fix reported defects
   switches to code-bug-fix or the matching implementation skill; planning/reporting alone does not
   authorize execution or code edits.
+  Diagnostic evidence uses the debug skills: application/system logs debug-logs-analyze,
+  distributed or performance traces debug-trace-analyze, a pasted or logged stack trace or exception
+  debug-stacktrace-analyze, crash/hang/memory dumps debug-dump-analyze, and changing log levels,
+  sinks or rolling/retention debug-logging-configure. An operational incident across services,
+  metrics and recent changes still uses devops-incident-diagnose, and a failing test qa-failures-triage.
+  A request to fix the diagnosed defect switches to code-bug-fix.
   Mermaid tasks use mermaid-create to select an appropriate diagram, or the specific
   mermaid-create-flowchart/sequence/class/state/er/architecture/gantt/mindmap/gitgraph skill
   (each suffix is a separate complete id, e.g. mermaid-create-sequence) when its type is known.

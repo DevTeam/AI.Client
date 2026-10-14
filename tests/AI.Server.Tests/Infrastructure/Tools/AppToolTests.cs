@@ -303,8 +303,8 @@ public sealed partial class AppToolTests
         var message = chat!.Messages.ShouldHaveSingleItem();
         message.Id.ShouldBe(operationId);
         message.Delivery.ShouldBe(MessageDelivery.Aside);
-        // The sender is the run that called the tool; the model cannot name another one.
-        message.Sender.ShouldBe(new MessageSender(fixture.ChatId, fixture.ChatId, "status"));
+        // The sender is the run that called the tool, project included even when it is the receiving one; the model cannot name another one.
+        message.Sender.ShouldBe(new MessageSender(fixture.ChatId, fixture.ChatId, "status", fixture.ProjectId));
     }
 
     [Fact]

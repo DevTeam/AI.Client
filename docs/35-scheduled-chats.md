@@ -204,7 +204,7 @@ day, across every project, the soonest first — the soonest of a requested run,
 occurrence, the dispatcher's own due rule. A row leads with how long is left (`now`, `~33s`, `~5m`,
 `~3h`, `~2d`) and opens the owning branch in its project, which keeps its fold; the chat's branches
 unfold under the row itself. The section folds, pages and is configured in
-Settings → Sidebar → Chats per section → Upcoming. It is absent while nothing is coming.
+Settings → Sidebar → Upcoming. It is absent while nothing is coming.
 
 ## From the message box
 

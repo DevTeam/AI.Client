@@ -74,17 +74,26 @@ The logic lives in `TurnLiveText` (one instance per transcript) and is covered b
 
 ### Activity line
 
-One muted line under the live text shows a concrete tool action or an approval wait. A model often ends its note with "…and run it:" and then streams the call's arguments for seconds; the line names the call being prepared or run.
+One muted line under the live text says what the turn is doing between its notes. A model often ends its note with "…and run it:" and then streams the call's arguments for seconds; the line names the call being prepared or run.
 
 | Run state | Line |
 | --- | --- |
-| A tool is running | `<tool title>  <detail>` — the last active call, as its tool row names it |
-| The model is streaming a call's arguments | `Preparing <tool title>…` |
+| A tool is running | `<tool title> · <count>  <detail>` — the last active call, as its tool row names it; the count only from the second call in a row |
+| The model is streaming a call's arguments | `<tool title> · <count>  preparing…` — the title stays the tool's own, so the next call of a series only moves the count |
+| Between steps: no call running or being prepared, no prose being written | `Thinking…` |
 | Waiting for tool approval | `Waiting for tool approval` |
-| The model is writing prose or waiting for the next step | no line |
+| The model is writing prose | no line: the note above shows it |
 | A question to the user, a rate-limit wait | no line: they have their own cards |
 
-The line has no glyph or animation. Its height stays reserved during a running turn so showing or hiding an action does not shift the text below it. It shows content only for the actions above and follows the run at once; it does not wait for the live text's reading delay. It is shown only while the turn is collapsed: expanded, the live tool rows say the same. The row itself no longer names the running tool, which would say the same thing twice.
+- **Series.** Calls of the same tool in a row are one series: the title stays and only the count and the detail change. A note from the model or any other tool starts a new series. The count covers the turn's calls since its last note (`ToolCalls` of its assistant messages), plus the calls running and the one being prepared.
+- **Hold.** Each state stays up at least 600 ms. What arrives meanwhile waits; when the time is up the latest is shown, skipping those in between. A series that flashed by during a pause is still shown, with its count, rather than skipped for the pause.
+- **Thinking.** `Thinking…` appears only after 400 ms without a call: between two calls in quick succession it would flash for a frame.
+- **Morph.** A change morphs instead of replacing the text (`js/textMorph.js`): the part the old and new text share, character by character, stays put; the rest dissolves into the new text through a slight blur while its width eases to fit, so whatever follows on the line glides along. The row's `Working for …` morphs the same way on each tick, so only the digits that change move. Off under reduced motion.
+- **Sheen.** The title of a call and `Thinking…` carry the in-progress sheen (see Stack of notes); a wait does not.
+- **Height.** The line is exactly one line tall for the whole running turn, empty or not, so nothing under it moves; both morph layers share one grid cell and one baseline.
+- **Assistive technology.** A visually hidden status names only the tool or the wait, so a count or a path changing is not read out; the visible text is hidden from it.
+
+Blazor renders the line empty and puts its state in `data-activity-*` attributes (and the row's text in `data-morph`); the script owns the text, so the renderer never diffs it. The line shows content only for the states above and does not wait for the live text's reading delay. It is shown only while the turn is collapsed: expanded, the live tool rows say the same. The row itself does not name the running tool, which would say the same thing twice.
 
 The start of a call comes from the stream: `ChatCompletionSseParser` raises `ToolCallsStarted` with `ToolCallName` as soon as the endpoint names the call, the agent reports it, and the dispatcher publishes it at once as `DraftToolCall`. It is cleared together with the draft, in the publication that lands the preamble.
 

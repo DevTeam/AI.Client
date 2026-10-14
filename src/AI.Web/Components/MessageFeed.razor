@@ -146,7 +146,10 @@
                         {
                             <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         }
-                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
+                        @* js/textMorph.js writes the text from data-morph, so a ticking timer morphs only the
+                           digits that change. *@
+                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)"
+                              data-morph="@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))"></span>
                         @* Only a finished turn says what it used: a figure ticking up beside the timer
                            would pull the eye away from the answer being written under it. *@
                         @if (ShowTurnTokens && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)
@@ -258,19 +261,17 @@
                 }
                 else if (entry.Activity is { } activity)
                 {
-                    @* Keep the activity slot's height stable while showing only concrete actions. *@
+                    @* The line keeps its height for the whole running turn. Its text is drawn by
+                       js/textMorph.js from these attributes: it holds each state for a moment, so
+                       calls that come and go quickly do not flicker, and morphs one into the next.
+                       Assistive technology hears only the tool's name, not its count or its path. *@
                     var activityKey = (entry.TurnId, "turn-activity");
-                    var idle = ReferenceEquals(activity, TurnActivity.None);
                     <div @key="activityKey" class="turn-activity"
-                         role="@(idle ? null : "status")" aria-hidden="@(idle ? "true" : null)">
-                        @if (!idle)
-                        {
-                            <span class="turn-activity-title @(activity.Waiting ? null : "text-sheen")">@activity.Title</span>
-                        }
-                        @if (activity.Detail is { Length: > 0 } activityDetail)
-                        {
-                            <span class="turn-activity-detail" title="@activityDetail">@activityDetail</span>
-                        }
+                         data-activity-kind="@activity.Kind" data-activity-title="@activity.Title"
+                         data-activity-count="@(activity.Count > 1 ? $" · {activity.Count}" : string.Empty)"
+                         data-activity-detail="@activity.Detail">
+                        <span class="turn-activity-title" aria-hidden="true"></span><span class="turn-activity-count" aria-hidden="true"></span><span class="turn-activity-detail" aria-hidden="true"></span>
+                        <span class="visually-hidden" role="status">@(activity.Kind is TurnActivity.Tool or TurnActivity.Waiting ? activity.Title : null)</span>
                     </div>
                 }
                 else if (entry.StreamingRun is { } streamingRun)
@@ -1453,9 +1454,18 @@
         bool LiveLeaving = false,
         TurnActivity? Activity = null);
 
-    private sealed record TurnActivity(string Title, string? Detail, bool Waiting = false)
+    /// <summary>
+    /// What the line under the running turn says: a tool with how many times in a row it has been
+    /// called, the model thinking between steps, a wait on the person, or nothing.
+    /// </summary>
+    private sealed record TurnActivity(string Kind, string Title, int Count = 0, string? Detail = null)
     {
-        public static TurnActivity None { get; } = new(string.Empty, null);
+        public const string Idle = "idle";
+        public const string Tool = "tool";
+        public const string Thinking = "thinking";
+        public const string Waiting = "waiting";
+
+        public static TurnActivity None { get; } = new(Idle, string.Empty);
     }
 
     /// <summary>The changes of the run in progress, until its receipt lands in the transcript.</summary>
@@ -1552,7 +1562,7 @@
                     {
                         AddLiveNotes(entries, turn, answerStreaming);
                         if (!answerStreaming)
-                            entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity() ?? TurnActivity.None, TurnId: turn.Id));
+                            entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity(turn) ?? TurnActivity.None, TurnId: turn.Id));
                     }
                     // Expanded, the notes are already there as themselves; only the step still in
                     // flight has nowhere else to appear.
@@ -1691,21 +1701,49 @@
         && draft.Trim().StartsWith(shown.Trim(), StringComparison.Ordinal);
 
     /// <summary>
-    /// The one line under the live text for tool activity or an approval wait. Questions and
-    /// rate-limit waits have their own cards.
+    /// The one line under the live text: the tool being called or prepared, "Thinking…" between
+    /// steps, or an approval wait. Questions and rate-limit waits have their own cards, and while
+    /// the model writes prose the note above already shows it, so the line is empty then.
     /// </summary>
-    private TurnActivity? GetTurnActivity()
+    private TurnActivity? GetTurnActivity(FeedTurn turn)
     {
         if (SelectedRun is not { Status: ChatRunStatus.Generating } run || run.PendingPrompt is not null || run.Wait is not null) return null;
-        if (run.PendingApproval is not null) return new TurnActivity("Waiting for tool approval", null, Waiting: true);
+        if (run.PendingApproval is not null) return new TurnActivity(TurnActivity.Waiting, "Waiting for tool approval");
         if (run.ActiveTools is { Count: > 0 } tools)
         {
             var call = Presentations.DescribeCall(tools[^1].Name, tools[^1].Arguments);
-            return new TurnActivity(call.Title, call.Detail);
+            return new TurnActivity(TurnActivity.Tool, call.Title, CountCallSeries(turn, run, tools[^1].Name), call.Detail);
         }
+        // The title stays the tool's own, so the next call of a series only moves the count.
         if (run.DraftToolCall is { } preparing)
-            return new TurnActivity($"Preparing {Presentations.DescribeCall(preparing, null).Title}…", null);
-        return null;
+            return new TurnActivity(TurnActivity.Tool, Presentations.DescribeCall(preparing, null).Title,
+                CountCallSeries(turn, run, preparing), "preparing…");
+        if (!string.IsNullOrWhiteSpace(run.DraftContent)) return null;
+        return new TurnActivity(TurnActivity.Thinking, "Thinking…");
+    }
+
+    /// <summary>
+    /// How many calls of <paramref name="name"/> the turn has made in a row, the one running or
+    /// being prepared included. A note from the model starts a new series, as does any other tool.
+    /// </summary>
+    private static int CountCallSeries(FeedTurn turn, ChatRunSnapshot run, string name)
+    {
+        var calls = new List<(string? Id, string Name)>();
+        foreach (var message in turn.IntermediateMessages.Where(message => message.Role == "Assistant"))
+        {
+            if (!string.IsNullOrWhiteSpace(message.Content)) calls.Clear();
+            calls.AddRange((message.ToolCalls ?? []).Select(call => ((string?)call.Id, call.Name)));
+        }
+        foreach (var active in run.ActiveTools ?? [])
+            if (!calls.Exists(call => call.Id == active.CallId)) calls.Add((active.CallId, active.Name));
+        if (run.DraftToolCall is { } preparing)
+        {
+            if (!string.IsNullOrWhiteSpace(run.DraftContent)) calls.Clear();
+            calls.Add((null, preparing));
+        }
+        var count = 0;
+        for (var index = calls.Count - 1; index >= 0 && calls[index].Name == name; index--) count++;
+        return count;
     }
 
     // Everything the live text is computed from that the transcript boundary does not already

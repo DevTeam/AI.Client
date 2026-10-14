@@ -687,7 +687,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             message.ToolCalls?.Select(call => new Contracts.Chat.ChatToolCall(
                 call.Id,
                 call.Name,
-                omitToolArguments ? string.Empty : call.Arguments)).ToArray(),
+                omitToolArguments ? CompactArguments(call) : call.Arguments)).ToArray(),
             message.ToolCallId,
             ToContract(message.WorkspaceChanges),
             contentOmitted,
@@ -701,6 +701,28 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         member is null ? null : new TeamMember(member.Name, member.Role, member.Color);
 
     private static BranchSettings? ToContract(ChatBranchSettings? settings) => BranchSettingsMapping.ToContract(settings);
+
+    /// <summary>
+    /// What a folded call keeps of its arguments: nothing, except the skill a <c>run_skill</c> call
+    /// ran, so the Skills widget can name it without loading the turn. Its parameters can carry
+    /// whole documents for a generic skill, so they stay with the turn's activity.
+    /// </summary>
+    private static string CompactArguments(ChatToolCall call)
+    {
+        if (call.Name != ToolRef.AppPrefix + "run_skill") return string.Empty;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(call.Arguments);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.TryGetProperty("skillId", out var skillId)
+                && skillId.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? System.Text.Json.JsonSerializer.Serialize(new { skillId = skillId.GetString() }) : string.Empty;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return string.Empty;
+        }
+    }
 
     private static bool? ToolResultErrorFlag(string content)
     {

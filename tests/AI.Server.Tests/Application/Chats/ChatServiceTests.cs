@@ -172,6 +172,29 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldKeepOnlyTheSkillIdOfAFoldedSkillRun()
+    {
+        var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000030"));
+        var callId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000031"));
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Describe", _now), _now);
+        chat.AddMessage(new ChatMessage(callId, userId, ChatMessageRole.Assistant, "", _now.AddSeconds(1),
+            toolCalls:
+            [
+                new ChatToolCall("call-1", "mcp_app__run_skill", "{\"skillId\":\"project-describe\",\"parameters\":{\"text\":\"large\"}}"),
+                new ChatToolCall("call-2", "mcp_other__run_skill", "{\"skillId\":\"x\"}")
+            ]), _now.AddSeconds(1));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 2));
+
+        var transcript = await CreateInstance().GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        var calls = transcript!.Messages.Single(message => message.Id == callId.Value).ToolCalls!;
+        calls[0].Arguments.ShouldBe("{\"skillId\":\"project-describe\"}");
+        calls[1].Arguments.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ShouldLoadTranscriptActivityAndToolResultInLayers()
     {
         var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000010"));

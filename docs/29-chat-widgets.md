@@ -448,6 +448,12 @@ Skill use on the visible branch (`ChatSkillsWidget`, `IChatSkillStatisticsCalcul
   `ActiveMessageId` is in it. A call from another server that happens to be named `run_skill` is
   not a skill run. `mcp_app__skill_search` calls are counted apart as searches: they find skills
   and run none.
+- **The skill id in a folded transcript.** The transcript the page loads leaves tool-call arguments
+  out until a turn's activity is opened, so a `run_skill` call would name no skill. The Host keeps
+  one exception (`ChatService.CompactArguments`): a folded `mcp_app__run_skill` call carries
+  `{"skillId": …}` alone. Its parameters, which can hold whole documents for a generic skill, still
+  wait for the activity. A skill the router loads before the model's first step (`route_…` call ids)
+  is persisted as the same call and counts as the assistant's run.
 - **Outcomes** cover only the assistant's runs; a skill from the slash list travels with the message
   and the turn that answers it is its result. Failed is a result status of `Failed` or `Cancelled`,
   or an error flag, refusals included. Skipped needs the result body (`status: Skipped`, such as a

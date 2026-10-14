@@ -46,7 +46,7 @@ The row no longer carries the model's text: a single truncated line of it was un
 
 ### Live text
 
-While the turn runs, the model's current text is shown under the row, streamed as it is written, in the muted voice of every note (see [Stack of notes](#stack-of-notes)). The final answer is not one of them: it streams in as its own message while the notes fold away.
+While the turn runs, the model's current text is shown under the row, streamed as it is written, in the muted voice of every note (see [Notes window](#notes-window)). The final answer is not one of them: it streams in as its own message while the notes window folds away.
 
 Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.DraftContent`, published by the server as the model streams, never persisted), else the text of the turn's latest intermediate assistant message.
 
@@ -57,18 +57,23 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
-- A new text surfaces from the row out of a soft blur (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animation and the settling motion off; the two-line shape stays.
+- A new text surfaces in place out of a soft blur (300 ms); growth of the same text is patched in place. `prefers-reduced-motion` turns the animations and the gliding off.
 
-#### Stack of notes
+#### Notes window
 
-The texts the turn has moved past stay under the row as a stack, newest at the bottom: **Settings → Chat → Notes while working** sets how many, 1 to 5, 3 by default (`ClientSettings.LiveNoteCount`, one value for every chat on this client). With 1 the row behaves as a single live text.
+The texts the turn has moved past stay under the row, newest at the bottom: **Settings → Chat → Notes while working** sets how many, 1 to 5, 3 by default (`ClientSettings.LiveNoteCount`, one value for every chat on this client). With 1 the window is a two-line teleprompter for the current text.
 
-- **Conveyor.** A new text enters at the bottom; the oldest one, pushed out, folds away upwards (its height, gap and opacity go to zero while it rises by half a line) and the notes below it rise into its place. It stays mounted only for that and is hidden from assistive technology meanwhile. Durations are `--duration-slow` with `--ease-emphasized`.
-- **One voice.** Every note, the newest included, is drawn in `--color-text-muted` at a slightly smaller size. They used to step back by age (`--color-text-subtle`, then `--color-text-faint`) and by whether they had led into a call, which gave the stack three or four greys and changed a note's colour and size under the reader as it aged. The newest is the one at the bottom, next to the activity line.
+The notes used to be a stack whose height changed with every note: the oldest folded away, the one before the newest settled to two lines and the new one dropped in from above, three height changes in different directions at once, so the stack and the activity line under it jerked on every step. They are now a window (`.live-notes`, sized by `js/liveNotes.js`):
+
+- **Height only grows.** The window is as tall as the newest notes, at most two lines per kept note plus the gaps between them, and never lower than it has been during the turn; it starts empty and grows with the first note. Lowering the setting is the one thing that shrinks it. So the activity line under it only ever moves down, smoothly, and stops for good once the window reaches its cap.
+- **One movement, always up.** Notes keep their own height; nothing folds or settles. The track is pinned to the bottom of the window: a line or a note arriving below is uncovered from beneath while the text above glides up (one `transform` and the window's height on the same curve, twice `--duration-slow` with `--ease-emphasized`), and a note dropped above moves nothing. A new note fades in in place rather than sliding in.
+- **N notes and what fits above.** The window is sized for the newest N notes, so they are shown whole when they are of usual length. A long newest note pushes the older ones up under the window's top edge, which dissolves into the row (`.is-overflowing`, a mask) instead of cutting the text. Older notes the live text still remembers (`.live-text.is-older`; `TurnLiveText` keeps enough of them to fill the tallest window with one-line notes) stay mounted above, so room the window keeps from a longer earlier note is filled rather than left blank, and a note is only ever unmounted out of sight.
+- **Rail.** A hairline on the left (`--color-border-subtle`) strings the notes together as steps, with a dot at the first line of each; the newest note's dot takes `--color-accent`.
+- **One voice.** Every note, the newest included, is drawn in `--color-text-muted` at a slightly smaller size. They used to step back by age (`--color-text-subtle`, then `--color-text-faint`) and by whether they had led into a call, which gave the stack three or four greys and changed a note's colour and size under the reader as it aged. The newest is the one at the bottom, next to the activity line, and the one with the accent dot.
 - **Writing.** While the model is still writing the newest note (the step in flight streams prose and has not started a call), a soft accent sheen runs through its words (`.live-text.is-writing`, a `background-clip: text` gradient on a 2.4 s loop); it stops the moment the step finishes or turns to a call. The same sheen (`.text-sheen`) runs through the row's "Working for …" while the model is busy and through the title of the activity line, and neither plays while the turn waits on the person (an approval, a question, a rate-limit wait). Links, code and other elements with their own background keep plain text. Off under reduced motion.
-- **Settling.** Age is told by shape instead: the newest note is shown whole; the ones behind it settle to two lines (`.live-text.is-settled`), the second line dissolving to say there is more; the oldest also fades in from the row above (`.is-oldest`), so the stack reads as text flowing out of the row. The settle animates its height where `calc-size()` is supported and clips at once elsewhere. Pointing at a settled note opens it whole, and the pointer also holds the stack still (see Hold).
-- **The answer.** When the final answer starts streaming, every note folds away the same way and the activity line goes, so the end of the turn is the last step of the conveyor rather than a drop.
-- **Opened mid-run.** A turn presented for the first time (the chat or branch opened while it runs) fills the stack from its earlier notes at once, without waiting for reading time. The transcript keeps the text of a branch's notes while its last turn has no answer, for this; the notes of answered turns are folded as before.
+- **Hold.** While the pointer is over the window, no new note replaces the newest (see Hold above).
+- **The answer.** When the final answer starts streaming, the window folds away upwards (its height and opacity go to zero, the text pinned to its bottom rising out of it) and the activity line goes.
+- **Opened mid-run.** A turn presented for the first time (the chat or branch opened while it runs) fills the window from its earlier notes at once, without waiting for reading time. The transcript keeps the text of a branch's notes while its last turn has no answer, for this; the notes of answered turns are folded as before.
 
 The logic lives in `TurnLiveText` (one instance per transcript) and is covered by `TurnLiveTextTests`.
 
@@ -89,7 +94,7 @@ One muted line under the live text says what the turn is doing between its notes
 - **Hold.** Each state stays up at least 600 ms. What arrives meanwhile waits; when the time is up the latest is shown, skipping those in between. A series that flashed by during a pause is still shown, with its count, rather than skipped for the pause.
 - **Thinking.** `Thinking…` appears only after 400 ms without a call: between two calls in quick succession it would flash for a frame.
 - **Morph.** A change morphs instead of replacing the text (`js/textMorph.js`): the part the old and new text share, character by character, stays put; the rest dissolves into the new text through a slight blur while its width eases to fit, so whatever follows on the line glides along. The row's `Working for …` morphs the same way on each tick, so only the digits that change move. Off under reduced motion.
-- **Sheen.** The title of a call and `Thinking…` carry the in-progress sheen (see Stack of notes); a wait does not.
+- **Sheen.** The title of a call and `Thinking…` carry the in-progress sheen (see Notes window); a wait does not.
 - **Height.** The line is exactly one line tall for the whole running turn, empty or not, so nothing under it moves; both morph layers share one grid cell and one baseline.
 - **Assistive technology.** A visually hidden status names only the tool or the wait, so a count or a path changing is not read out; the visible text is hidden from it.
 
@@ -234,7 +239,7 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 2. The row's text matches the table by turn state.
 3. Click on the row expands the intermediate items into today's view without changes.
 4. A running turn shows the model's current text in full under the row, streamed; a new text replaces it only after the reading delay (see [Live text](#live-text)).
-5. During generation the row shows `Working for …` and the growing time; the feed holds at most the configured number of live notes for the turn (see [Stack of notes](#stack-of-notes)), and one activity line under them.
+5. During generation the row shows `Working for …` and the growing time; the feed holds at most the configured number of live notes for the turn (see [Notes window](#notes-window)), and one activity line under them.
 6. A turn with no intermediate messages does not add a row.
 7. Stopped and failed turns show `Stopped after …` / `Failed after …`.
 8. The file changes card is visible with the turn collapsed.

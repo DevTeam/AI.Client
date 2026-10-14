@@ -6170,20 +6170,67 @@ textarea {
     }
 }
 
-/* The running turn's latest notes under its row, newest at the bottom. A new note surfaces out
-   of a soft blur as it rises from the row instead of snapping in. The fill mode is `backwards` so
-   that, once arrived, the note's own opacity and transform are free to carry it away again. */
-.workspace-message.live-text {
-    display: grid;
-    grid-template-rows: 1fr;
-    animation: live-note-arrive calc(var(--duration-slow) * 1.5) var(--ease-emphasized) backwards;
-    transition: grid-template-rows var(--duration-slow) var(--ease-emphasized),
-        margin-bottom var(--duration-slow) var(--ease-emphasized),
-        transform var(--duration-slow) var(--ease-emphasized),
+/* The running turn's latest notes under its row, newest at the bottom, in a window that never
+   shrinks during the turn (docs/18-compact-turn-view.md, "Notes window"). js/liveNotes.js sets
+   --live-notes-height: the newest notes' height, up to two lines per note the settings keep, and
+   never less than before. The track is pinned to the window's bottom, so a note dropped above
+   moves nothing; text arriving below is glided up by the script (one transform, always upwards)
+   while the window grows by the same amount on the same curve, so what is already there stays
+   put and the new line is uncovered beneath it. */
+.live-notes {
+    /* An empty window must not let its margins collapse through it, or its top would shift when
+       the first note gives it height. */
+    display: flow-root;
+    width: min(100%, 48rem);
+    margin: 0 auto 0.75rem;
+    transition: margin-bottom calc(var(--duration-slow) * 2) var(--ease-emphasized),
         opacity var(--duration-slow) ease;
 }
 
-.live-text-body { min-height: 0; }
+/* Before the first note the activity line sits right under the row, as it always has. */
+.live-notes.is-empty { margin-bottom: 0; }
+
+/* While the window's top edge cuts through a note, the top dissolves into the row above, so text
+   scrolling away fades out instead of being cut. The fade is a registered length so it eases in
+   and out rather than snapping. The mask's opaque stop is currentColor, an opaque text token;
+   only its alpha counts. */
+@property --live-notes-fade { syntax: "<length>"; inherits: false; initial-value: 0px; }
+
+.live-notes-window {
+    position: relative;
+    height: var(--live-notes-height, 0px);
+    overflow: clip;
+    mask-image: linear-gradient(to bottom, transparent, currentColor var(--live-notes-fade));
+    transition: height calc(var(--duration-slow) * 2) var(--ease-emphasized),
+        --live-notes-fade calc(var(--duration-slow) * 2) var(--ease-emphasized);
+}
+
+.live-notes-window.is-overflowing { --live-notes-fade: 1.5lh; }
+
+.live-notes-track {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    transition: transform calc(var(--duration-slow) * 2) var(--ease-emphasized);
+}
+
+/* The script puts the track back where the text was before it grew, without motion, and then
+   lets it glide. */
+.live-notes-track.is-snapping { transition: none; }
+
+/* The answer is streaming: the whole window folds away upwards, the track pinned to its bottom. */
+.live-notes.is-leaving {
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.live-notes.is-leaving .live-notes-window { height: 0; }
+
+/* A new note surfaces out of a soft blur in place; the window and the track carry all movement. */
+.workspace-message.live-text {
+    animation: live-note-arrive calc(var(--duration-slow) * 1.5) var(--ease-emphasized) backwards;
+}
 
 /* Every note is a remark on the way to the answer, so all of them, the newest included, read in
    one muted voice and one size. Shading them by age or by whether they led into a call gave the
@@ -6197,23 +6244,43 @@ textarea {
     from {
         opacity: 0;
         filter: blur(4px);
-        transform: translateY(-0.35rem);
     }
 }
 
-/* Age is told by shape, not colour: the newest note is shown whole, the ones behind it settle to
-   two lines whose second line dissolves, and the oldest also fades in from the row above, so the
-   stack reads as text flowing out of the row. Pointing at a settled note opens it again (the
-   pointer also holds the stack still). The mask's opaque stops are currentColor, an opaque text
-   token; only their alpha counts. Browsers without calc-size() clip at once, without motion. */
-.workspace-message.live-text.is-settled:not(:hover) .markdown-content {
-    max-height: 2lh;
-    overflow: clip;
-    mask-image: linear-gradient(to bottom, currentColor 1.1lh, transparent 2lh);
+/* In the window, notes keep their own height for good: nothing in it folds or settles. A rail on
+   the left strings them together as steps; the newest note's dot takes the accent. The dot sits
+   on the middle of the first line (1.38em is the note's 0.92em text at line-height 1.5). */
+.live-notes .live-text {
+    margin: 0 0 0.5rem;
+    padding-left: 1rem;
 }
 
-.workspace-message.live-text.is-oldest:not(:hover) .markdown-content {
-    mask-image: linear-gradient(to bottom, color-mix(in srgb, currentColor 35%, transparent), currentColor 1.1lh, transparent 2lh);
+.live-notes .live-text:last-child { margin-bottom: 0; }
+
+.live-notes .live-text::before,
+.live-notes .live-text:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 0.2rem;
+}
+
+.live-notes .live-text::before {
+    top: calc(0.69em - 0.15rem);
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 50%;
+    background: var(--color-border-strong);
+    transition: background-color var(--duration-fast) ease;
+}
+
+.live-notes .live-text.is-current::before { background: var(--color-accent); }
+
+.live-notes .live-text:not(:last-child)::after {
+    top: calc(0.69em + 0.35rem);
+    bottom: calc(-0.69em - 0.15rem);
+    width: 1px;
+    margin-left: calc(0.15rem - 0.5px);
+    background: var(--color-border-subtle);
 }
 
 /* A soft accent sheen running through words says "this is in progress": the running turn's
@@ -6245,36 +6312,11 @@ textarea {
     .workspace-message.live-text.is-writing .markdown-content { animation: none; background: none; -webkit-text-fill-color: currentColor; }
 }
 
-@supports (height: calc-size(auto, size)) {
-    .workspace-message.live-text .markdown-content {
-        interpolate-size: allow-keywords;
-        height: auto;
-        overflow: clip;
-        transition: height var(--duration-slow) var(--ease-emphasized);
-    }
-
-    .workspace-message.live-text.is-settled:not(:hover) .markdown-content {
-        max-height: none;
-        height: calc-size(auto, min(size, 2lh));
-    }
-}
-
-/* The note pushed out of the stack, and every note once the answer streams under them: it folds
-   away upwards and the notes below rise into its place. It stays mounted only for that. */
-.workspace-message.live-text.is-leaving {
-    grid-template-rows: 0fr;
-    margin-bottom: 0;
-    opacity: 0;
-    transform: translateY(-0.5rem);
-    animation: none;
-    pointer-events: none;
-}
-
-.workspace-message.live-text.is-leaving .live-text-body { overflow: hidden; }
-
 @media (prefers-reduced-motion: reduce) {
-    .workspace-message.live-text,
-    .workspace-message.live-text .markdown-content { animation: none; transition: none; }
+    .live-notes,
+    .live-notes-window,
+    .live-notes-track,
+    .workspace-message.live-text { animation: none; transition: none; }
 }
 
 /* Concrete tool activity or an approval wait under the running turn's text. */

@@ -13,8 +13,10 @@ public sealed class TurnLiveText : ITurnLiveText
     private static readonly TimeSpan MinReadingTime = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan MaxReadingTime = TimeSpan.FromSeconds(6);
 
-    // Enough for the largest stack the settings allow plus the note leaving it.
-    private const int KeptNotes = 8;
+    // The notes window is two lines tall per note the settings keep; older notes fill whatever room
+    // the newest leave in it. Enough one-line notes to fill the tallest window, plus one, so a note
+    // is only ever dropped out of sight above it.
+    private const int KeptNotes = 2 * AI.Web.Settings.ClientSettings.MaxLiveNoteCount + 2;
 
     private Guid? _turnId;
     private readonly List<LiveNote> _notes = [];

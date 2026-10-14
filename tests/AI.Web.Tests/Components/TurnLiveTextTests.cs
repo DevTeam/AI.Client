@@ -167,7 +167,8 @@ public sealed class TurnLiveTextTests
 
         var frame = _live.Present(_turn, texts, false, Start);
 
-        frame.Notes.Count.ShouldBe(8);
+        // Enough one-line notes to fill the tallest window (two lines per kept note), plus one.
+        frame.Notes.Count.ShouldBe(2 * AI.Web.Settings.ClientSettings.MaxLiveNoteCount + 2);
         frame.Text.ShouldBe("Note 20");
     }
 

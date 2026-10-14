@@ -240,23 +240,41 @@
                         <AppIcon Name="chevron-up" /><span>Hide steps</span>
                     </button>
                 }
+                else if (entry.LiveNotes is { } liveNotes)
+                {
+                    @* The running turn's latest notes, newest at the bottom, in a window whose height
+                       only grows during the turn; js/liveNotes.js sizes it and glides the track up as
+                       text arrives, so nothing around it moves. Notes are keyed by the note, not the
+                       turn: a new note mounts a fresh element, which plays the entry animation, while
+                       growth of the same text only patches it. *@
+                    var notesKey = (entry.TurnId, "live-notes");
+                    <div @key="notesKey" class="live-notes @(liveNotes.Count == 0 ? "is-empty" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
+                         data-live-limit="@entry.LiveNoteLimit"
+                         aria-hidden="@(entry.LiveLeaving ? "true" : null)"
+                         @onmouseenter="() => SetLiveTextHeld(true)"
+                         @onmouseleave="() => SetLiveTextHeld(false)">
+                        <div class="live-notes-window">
+                            <div class="live-notes-track">
+                                @foreach (var note in liveNotes)
+                                {
+                                    var liveKey = (entry.TurnId, "live-text", note.Id);
+                                    var current = note.Current && !entry.LiveLeaving;
+                                    <article @key="liveKey" id="@(current ? "message-live" : null)"
+                                             class="workspace-message assistant live-text streaming @(note.Current ? "is-current" : string.Empty) @(note.Writing && current ? "is-writing" : string.Empty) @(note.Older ? "is-older" : string.Empty)">
+                                        <StreamingMarkdown Html="@RenderLiveMarkdown(note.Text)" />
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
                 else if (entry.LiveText is { } liveText)
                 {
-                    @* What the running turn is saying right now, in full, under the few notes before
-                       it. Keyed by the note, not the turn: a new note mounts a fresh element, which
-                       is what plays the entry animation, while growth of the same text only patches
-                       it, and a note that ages or is pushed out keeps its element, so the class
-                       change is what fades it and folds it away. *@
+                    @* The draft of the step in flight at the end of an expanded running turn. *@
                     var liveKey = (entry.TurnId, "live-text", entry.LiveVersion);
-                    var current = entry.LiveAge == 0 && !entry.LiveLeaving;
-                    <article @key="liveKey" id="@(current ? "message-live" : null)"
-                             class="workspace-message assistant live-text streaming @(entry.LiveAge > 0 ? "is-settled" : string.Empty) @(entry.LiveOldest ? "is-oldest" : string.Empty) @(entry.LiveWriting && !entry.LiveLeaving ? "is-writing" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
-                             aria-hidden="@(entry.LiveLeaving ? "true" : null)"
-                             @onmouseenter="() => SetLiveTextHeld(true)"
-                             @onmouseleave="() => SetLiveTextHeld(false)">
-                        <div class="live-text-body">
-                            <StreamingMarkdown Html="@RenderLiveMarkdown(liveText)" />
-                        </div>
+                    <article @key="liveKey" id="message-live"
+                             class="workspace-message assistant live-text streaming @(entry.LiveWriting ? "is-writing" : string.Empty)">
+                        <StreamingMarkdown Html="@RenderLiveMarkdown(liveText)" />
                     </article>
                 }
                 else if (entry.Activity is { } activity)
@@ -1448,11 +1466,17 @@
         ChatRunSnapshot? StreamingRun = null,
         string? LiveText = null,
         int LiveVersion = 0,
-        int LiveAge = 0,
-        bool LiveOldest = false,
         bool LiveWriting = false,
+        IReadOnlyList<LiveNoteView>? LiveNotes = null,
+        int LiveNoteLimit = 0,
         bool LiveLeaving = false,
         TurnActivity? Activity = null);
+
+    /// <summary>
+    /// One note in the running turn's window: the newest, one being written, or one older than the
+    /// notes the settings keep, which only fills spare room above them.
+    /// </summary>
+    private readonly record struct LiveNoteView(int Id, string Text, bool Current, bool Writing, bool Older);
 
     /// <summary>
     /// What the line under the running turn says: a tool with how many times in a row it has been
@@ -1671,24 +1695,26 @@
     }
 
     /// <summary>
-    /// The newest notes as a stack: up to <see cref="LiveNoteCount"/> of them, plus the one that
-    /// has just been pushed out, kept mounted so it can fold away instead of vanishing. Notes behind
-    /// the newest settle to two lines, and the oldest of them dissolves into the row above. While
-    /// the answer streams, every note folds away under it.
+    /// The turn's notes in one window, sized for the newest <see cref="LiveNoteCount"/> of them. The
+    /// older ones the live text still remembers stay mounted above: the window never shrinks during
+    /// the turn, so they fill whatever room the newest leave, under its dissolving top edge, and one
+    /// is unmounted only far above it rather than vanishing in sight. The window is there from the
+    /// start of the turn, empty, so the first note grows it. While the answer streams, the whole
+    /// window folds away under it.
     /// </summary>
     private void AddLiveNotes(List<RenderedFeedEntry> entries, FeedTurn turn, bool answerStreaming)
     {
         var notes = _liveFrame.Notes;
         var count = Math.Clamp(LiveNoteCount, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
-        for (var index = Math.Max(0, notes.Count - count - 1); index < notes.Count; index++)
+        var shown = new List<LiveNoteView>();
+        for (var index = 0; index < notes.Count; index++)
         {
             var note = notes[index];
             var age = notes.Count - 1 - index;
-            entries.Add(new RenderedFeedEntry(LiveText: note.Text, LiveVersion: note.Id, TurnId: turn.Id,
-                LiveAge: age, LiveOldest: age > 0 && age == Math.Min(count, notes.Count) - 1,
-                LiveWriting: age == 0 && IsBeingWritten(note.Text),
-                LiveLeaving: answerStreaming || age >= count));
+            shown.Add(new LiveNoteView(note.Id, note.Text, Current: age == 0,
+                Writing: age == 0 && IsBeingWritten(note.Text), Older: age >= count));
         }
+        entries.Add(new RenderedFeedEntry(LiveNotes: shown, LiveNoteLimit: count, LiveLeaving: answerStreaming, TurnId: turn.Id));
     }
 
     /// <summary>

@@ -6333,7 +6333,8 @@ textarea {
    "Working for …", the tool it is calling now, and the newest note while the model is still
    writing it. It stops the moment the work does. The words take the gradient
    (background-clip: text) over their own colour, so a hover that changes the colour still shows.
-   It loops like a spinner, so it keeps its own timing (see the regulation's exceptions). */
+   It loops like a spinner, so it keeps its own timing (see the regulation's exceptions), and like
+   a spinner it plays under reduced motion too: it is the only sign that the turn is at work. */
 .text-sheen,
 .workspace-message.live-text.is-writing .markdown-content {
     background: linear-gradient(100deg, currentColor 44%, var(--color-accent) 50%, currentColor 56%) 0 0 / 250% 100%;
@@ -6351,11 +6352,6 @@ textarea {
 @keyframes text-sheen {
     from { background-position: 100% 0; }
     to { background-position: 0% 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .text-sheen,
-    .workspace-message.live-text.is-writing .markdown-content { animation: none; background: none; -webkit-text-fill-color: currentColor; }
 }
 
 @media (prefers-reduced-motion: reduce) {

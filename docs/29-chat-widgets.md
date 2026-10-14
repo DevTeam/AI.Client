@@ -16,6 +16,7 @@ Current widgets:
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Tokens, cost and where they went, with the compacting actions for a filling window |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
+| `chat-skills` | Skills | `skill` | `ChatSkillsWidget` | Skills started from the slash list and run by the assistant, split by who started them, with run outcomes, skill searches and a click that shows each skill's latest use |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch, grouped by tool, with the most recent paths |
@@ -433,6 +434,46 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
 - **Live data.** The headline says so far during a running or paused turn. Draft calls with
   arguments still streaming are not counted until recorded or executing. No durations are inferred
   from message timestamps, which do not measure tool execution time.
+
+## Skills widget
+
+Skill use on the visible branch (`ChatSkillsWidget`, `IChatSkillStatisticsCalculator`).
+
+- **Scope.** Whole chat or last turn, split where a turn starts (`ChatMessageView.StartsTurn`); the
+  running turn says "so far".
+- **Two sources, one count.** A user message whose `Resources` carry a `Skill` — the slash list or a
+  schedule's run message — is one use "from you", once per skill per message. A `mcp_app__run_skill`
+  call is one use "by the assistant", counted once by call id and paired with its result within the
+  turn, like the Tools widget; active invocations join the last turn only when the snapshot's
+  `ActiveMessageId` is in it. A call from another server that happens to be named `run_skill` is
+  not a skill run. `mcp_app__skill_search` calls are counted apart as searches: they find skills
+  and run none.
+- **Outcomes** cover only the assistant's runs; a skill from the slash list travels with the message
+  and the turn that answers it is its result. Failed is a result status of `Failed` or `Cancelled`,
+  or an error flag, refusals included. Skipped needs the result body (`status: Skipped`, such as a
+  playbook loaded again with the same parameters); the transcript usually leaves the body out and
+  keeps only `ToolResultIsError`, so a clean result without its body is Succeeded, and the tooltip
+  says so. Running, Awaiting result, No result and Unknown result follow the Tools widget's rules.
+- **Names, icons and kinds** come from the project's effective skills (`ISkillApi.ListAsync`, the
+  list the slash command uses, loaded by `Home` with the chat's usage). A skill the list does not
+  know keeps the name stored with its message, or else its id, and shows no kind.
+- **Layout.** Scope switch; uses and distinct skills; a two-tone bar of uses from you (solid
+  `--color-accent-strong`) and by the assistant (a 40% mix of it) with a legend that states both
+  counts and the searches; the outcome grid when the assistant ran any; Most used, sorted by uses
+  then name, six shown with Show more. A row is a button with the skill's icon on an accent tile,
+  its name, a meta line — kind (Playbook, Isolated, Built-in code), uses from you, by the
+  assistant, failures in the danger text colour, "running" — the count, and a 3px track that
+  splits the row's uses in the same two tones against the most used skill. A running skill rings
+  its tile in `--color-generating`. A click shows the newest message in scope that used the skill
+  (`OnSelectMessage` → `ScrollToTurnAsync`). In the whole-chat scope the footer shows turns with
+  skills.
+- **Empty states.** "Skills appear here once you start one from the slash list or the assistant
+  runs one."; in the last-turn scope with data elsewhere, "The last turn used no skills."; when the
+  assistant only searched, how many times it searched and that it ran none.
+- **Folded summary.** Uses, then failures when there are any, else the only skill's name or the
+  number of skills.
+- **What is not counted.** A playbook's steps are the assistant's ordinary tool calls and appear in
+  the Tools widget; skills run inside subtasks are not in this branch's transcript.
 
 ## Performance widget
 

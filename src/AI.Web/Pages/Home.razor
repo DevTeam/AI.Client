@@ -951,6 +951,13 @@
                                          Messages="@widgetMessages"
                                          Run="@widgetRun" />
                         break;
+                    case ChatWidgetCatalog.ChatSkills:
+                        <ChatSkillsWidget Widget="@widget"
+                                          Messages="@widgetMessages"
+                                          Run="@widgetRun"
+                                          Skills="@_composerSkills"
+                                          OnSelectMessage="ScrollToTurnAsync" />
+                        break;
                     case ChatWidgetCatalog.ChatPerformance:
                         <ChatPerformanceWidget Widget="@widget"
                                               ChatUsage="@widgetUsage"
@@ -3881,6 +3888,20 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedProject is not { } project || _selectedChat is not { } chat) return;
         _usageChatId = chat.Id;
         if (await ChatUsage.RefreshAsync(project.Id, chat.Id, CancellationToken.None)) await InvokeAsync(StateHasChanged);
+        // The Skills widget names and draws skills from the same list the slash command offers.
+        if (_composerSkillsProjectId != project.Id)
+        {
+            try
+            {
+                _composerSkills = await SkillApi.ListAsync(project.Id, CancellationToken.None);
+                _composerSkillsProjectId = project.Id;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (HttpRequestException)
+            {
+                // Without the list the widget falls back to the names stored with the messages.
+            }
+        }
     }
 
     private bool _compactingHistory;

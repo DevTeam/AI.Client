@@ -1,0 +1,183 @@
+@using AI.Contracts.Skills
+@inject IChatSkillStatisticsCalculator Calculator
+@* The skills the visible branch used: those a message carried from the slash list and those the
+   assistant ran with run_skill, added up per skill. Two-tone bars split each count by who started
+   the skill; the words beside them say the same. A row shows the newest message that used it. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-skills-widget">
+    @if (_hasAny) { <ChatWidgetScopeSwitch Value="_scope" ValueChanged="SetScope" /> }
+    @if (_stats.Uses == 0)
+    {
+        <p class="chat-usage-empty">@(_stats.Searches > 0
+            ? $"The assistant searched for skills {Times(_stats.Searches)} but ran none{(_scope == ChatWidgetScope.LastTurn ? " in the last turn" : "")}."
+            : _scope == ChatWidgetScope.LastTurn && _hasAny
+                ? "The last turn used no skills."
+                : "Skills appear here once you start one from the slash list or the assistant runs one.")</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Skill uses on the visible branch in the selected scope: messages that carried a skill and skill runs the assistant started, including runs still in progress">@_stats.Uses</span>
+                <span class="chat-usage-muted">@(_stats.Uses == 1 ? "use" : "uses")@(_stats.IsRunning ? " so far" : null)</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Distinct skills used in the selected scope">@_stats.Skills.Count @(_stats.Skills.Count == 1 ? "skill" : "skills")</span>
+            </div>
+            <div class="chat-skills-split" aria-hidden="true">
+                @if (_stats.Requested > 0) { <span class="is-requested" style="flex-grow: @_stats.Requested"></span> }
+                @if (_stats.ByAssistant > 0) { <span class="is-assistant" style="flex-grow: @_stats.ByAssistant"></span> }
+            </div>
+            <div class="chat-usage-legend">
+                @if (_stats.Requested > 0)
+                {
+                    <span title="Messages that started a skill from the slash list, or a schedule's run message"><i class="chat-skills-swatch is-requested" aria-hidden="true"></i><b>@_stats.Requested</b> from you</span>
+                }
+                @if (_stats.ByAssistant > 0)
+                {
+                    <span title="Skills the assistant ran on its own with run_skill"><i class="chat-skills-swatch is-assistant" aria-hidden="true"></i><b>@_stats.ByAssistant</b> by the assistant</span>
+                }
+                @if (_stats.Searches > 0)
+                {
+                    <span title="Times the assistant searched the skill catalog; a search finds skills and runs none"><span class="chat-skills-search" aria-hidden="true"><AppIcon Name="search" /></span><b>@_stats.Searches</b> @(_stats.Searches == 1 ? "search" : "searches")</span>
+                }
+            </div>
+        </div>
+        @if (_stats.ByAssistant > 0)
+        {
+            <div class="chat-usage-section">
+                <dl class="chat-usage-grid">
+                    @foreach (var outcome in Enum.GetValues<ChatSkillOutcome>())
+                    {
+                        if (_stats.Count(outcome) is > 0 and var count)
+                        {
+                            <dt title="@OutcomeTitle(outcome)">@OutcomeLabel(outcome)</dt>
+                            <dd title="@OutcomeTitle(outcome)" class="@(outcome == ChatSkillOutcome.Failed ? "chat-skills-failed" : null)">@count</dd>
+                        }
+                    }
+                </dl>
+            </div>
+        }
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading"><span>Most used</span><span class="chat-usage-muted">uses</span></div>
+            <ul class="chat-skills-list">
+                @foreach (var skill in _showAll ? _stats.Skills : _stats.Skills.Take(VisibleSkills))
+                {
+                    <li @key="skill.Id">
+                        <button class="chat-skills-row @(skill.IsRunning ? "is-running" : null)" type="button"
+                                title="@($"{skill.Id} · click to show its latest use")" disabled="@(skill.LatestMessageId is null)"
+                                @onclick="() => ShowLatestAsync(skill)">
+                            <span class="chat-skills-tile" aria-hidden="true"><SkillIcon Icon="@skill.Icon" /></span>
+                            <span class="chat-skills-body">
+                                <span class="chat-skills-name">@skill.Name</span>
+                                <span class="chat-skills-meta chat-usage-muted">
+                                    @if (KindLabel(skill.Kind) is { } kind) { <span title="@KindTitle(skill.Kind)">@kind</span> }
+                                    @if (skill.Requested > 0) { <span>@skill.Requested from you</span> }
+                                    @if (skill.ByAssistant > 0) { <span>@skill.ByAssistant by the assistant</span> }
+                                    @if (skill.Failed > 0) { <span class="chat-skills-failed" title="Runs whose result reports an error, a failure or a cancellation">@skill.Failed failed</span> }
+                                    @if (skill.IsRunning) { <span title="A run of this skill has not returned yet">running</span> }
+                                </span>
+                            </span>
+                            <span class="chat-skills-figure" title="@($"Uses of {skill.Name} in the selected scope")">@skill.Uses</span>
+                            <span class="chat-skills-track" aria-hidden="true">
+                                @if (skill.Requested > 0) { <span class="is-requested" style="flex-grow: @skill.Requested"></span> }
+                                @if (skill.ByAssistant > 0) { <span class="is-assistant" style="flex-grow: @skill.ByAssistant"></span> }
+                                @if (_stats.Skills[0].Uses > skill.Uses) { <i style="flex-grow: @(_stats.Skills[0].Uses - skill.Uses)"></i> }
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (_stats.Skills.Count > VisibleSkills)
+            {
+                <button class="chat-usage-link chat-skills-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Skills.Count - VisibleSkills} more")</button>
+            }
+        </div>
+        @if (_scope == ChatWidgetScope.Chat)
+        {
+            <div class="chat-usage-section chat-usage-footnote">
+                <span title="Turns that used at least one skill, out of all turns on the visible branch">In @_stats.TurnsWithSkills of @_stats.Turns @(_stats.Turns == 1 ? "turn" : "turns")</span>
+            </div>
+        }
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleSkills = 6;
+    [Parameter, EditorRequired] public ChatWidgetContext Widget { get; set; } = null!;
+    [Parameter] public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+    [Parameter] public ChatRunSnapshot? Run { get; set; }
+
+    /// <summary>The project's effective skills, for names, icons and kinds.</summary>
+    [Parameter] public IReadOnlyList<SkillDefinition> Skills { get; set; } = [];
+
+    [Parameter] public EventCallback<Guid> OnSelectMessage { get; set; }
+    private ChatWidgetScope _scope = ChatWidgetScope.Chat;
+    private ChatSkillStatistics _stats = ChatSkillStatistics.Empty;
+    private bool _hasAny;
+    private bool _showAll;
+
+    private bool _statisticsInitialized;
+    private IReadOnlyList<ChatMessageView> _statisticsMessages = [];
+    private ChatRunSnapshot? _statisticsRun;
+    private IReadOnlyList<SkillDefinition> _statisticsSkills = [];
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsMessages, Messages)
+            && ReferenceEquals(_statisticsRun, Run)
+            && ReferenceEquals(_statisticsSkills, Skills)) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsMessages = Messages;
+        _statisticsRun = Run;
+        _statisticsSkills = Skills;
+    }
+    private void SetScope(ChatWidgetScope scope)
+    {
+        _scope = scope;
+        _showAll = false;
+        Refresh();
+    }
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Messages, Run, Skills, _scope);
+        var whole = _scope == ChatWidgetScope.Chat ? _stats : Calculator.Calculate(Messages, Run, Skills, ChatWidgetScope.Chat);
+        _hasAny = whole.Uses > 0 || whole.Searches > 0;
+    }
+    private Task ShowLatestAsync(ChatSkillStatistic skill) =>
+        skill.LatestMessageId is { } id ? OnSelectMessage.InvokeAsync(id) : Task.CompletedTask;
+    private string? GetSummary() => _stats.Uses == 0 ? null
+        : $"{_stats.Uses} {(_stats.Uses == 1 ? "use" : "uses")}" + (_stats.Count(ChatSkillOutcome.Failed) is > 0 and var failed
+            ? $" · {failed} failed"
+            : _stats.Skills.Count == 1 ? $" · {_stats.Skills[0].Name}" : $" · {_stats.Skills.Count} skills");
+    private static string Times(int count) => count == 1 ? "once" : $"{count} times";
+    private static string? KindLabel(string? kind) => kind switch
+    {
+        SkillKinds.Playbook => "Playbook", SkillKinds.Generic => "Isolated", SkillKinds.Executor => "Built-in code", _ => null
+    };
+    private static string? KindTitle(string? kind) => kind switch
+    {
+        SkillKinds.Playbook => "Hands its instructions to the assistant, which follows them with its own permission-checked tools",
+        SkillKinds.Generic => "Runs in an isolated model call without tools and returns JSON",
+        SkillKinds.Executor => "Runs code bundled with the application",
+        _ => null
+    };
+    private static string OutcomeLabel(ChatSkillOutcome outcome) => outcome switch
+    {
+        ChatSkillOutcome.Succeeded => "Succeeded", ChatSkillOutcome.Skipped => "Skipped",
+        ChatSkillOutcome.Failed => "Failed", ChatSkillOutcome.Running => "Running",
+        ChatSkillOutcome.AwaitingResult => "Awaiting result", ChatSkillOutcome.Unknown => "Unknown result",
+        _ => "No result"
+    };
+    private static string OutcomeTitle(ChatSkillOutcome outcome) => outcome switch
+    {
+        ChatSkillOutcome.Succeeded => "Runs whose stored result reports no error; a skipped repeat counts here while its result body is not loaded",
+        ChatSkillOutcome.Skipped => "Runs the application skipped, such as a playbook loaded again with the same parameters",
+        ChatSkillOutcome.Failed => "Runs whose result reports an error, a failure or a cancellation, including refused calls",
+        ChatSkillOutcome.Running => "The Host is running this skill",
+        ChatSkillOutcome.AwaitingResult => "This running turn has not saved a result for the run yet",
+        ChatSkillOutcome.Unknown => "The result is incomplete or its error status is unavailable",
+        _ => "The turn ended without a stored result for the run"
+    };
+}

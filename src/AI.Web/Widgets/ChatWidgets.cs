@@ -30,6 +30,7 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
     public const string ChatUsage = "chat-usage";
     public const string ChatFiles = "chat-files";
     public const string ChatTools = "chat-tools";
+    public const string ChatSkills = "chat-skills";
     public const string ChatPerformance = "chat-performance";
     public const string ChatSubtasks = "chat-subtasks";
     public const string ChatKnowledge = "chat-knowledge";
@@ -49,6 +50,7 @@ public sealed class ChatWidgetCatalog(IAppNavigationTargets targets) : IChatWidg
         new(ChatUsage, "Usage", "gauge", targets.Find("widgets." + ChatUsage)!.Hint!),
         new(ChatFiles, "Files", "diff", targets.Find("widgets." + ChatFiles)!.Hint!),
         new(ChatTools, "Tools", "tool", targets.Find("widgets." + ChatTools)!.Hint!),
+        new(ChatSkills, "Skills", "skill", targets.Find("widgets." + ChatSkills)!.Hint!),
         new(ChatPerformance, "Performance", "timer", targets.Find("widgets." + ChatPerformance)!.Hint!),
         new(ChatSubtasks, "Subtasks", "fork", targets.Find("widgets." + ChatSubtasks)!.Hint!),
         new(ChatKnowledge, "Knowledge", "book", targets.Find("widgets." + ChatKnowledge)!.Hint!),

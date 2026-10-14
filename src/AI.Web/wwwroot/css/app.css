@@ -9238,6 +9238,63 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-tools-list small.chat-tools-errors { text-align: right; font-size: var(--font-size-xs); }
 .chat-tools-more { align-self: flex-start; }
 
+/* Skills widget: the skills the branch used, each on the accent tile its icon wears in the slash
+   list. Two tones split every count by who started the skill — the solid accent for uses from the
+   person, a lighter mix of it for the assistant's own runs — and the legend and meta words say the
+   same, so the tone never carries the meaning alone. A run still in progress rings its tile in the
+   neutral generating colour the rest of the app uses for running work. */
+.chat-skills-split { display: flex; gap: 2px; height: .35rem; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
+.chat-skills-widget .is-requested { background: var(--color-accent-strong); }
+.chat-skills-widget .is-assistant { background: color-mix(in srgb, var(--color-accent-strong) 40%, transparent); }
+.chat-skills-swatch { display: inline-block; flex: none; width: .5rem; height: .5rem; border-radius: 2px; }
+.chat-skills-search { display: inline-flex; color: var(--color-text-muted); }
+.chat-skills-search > .app-icon { width: .8rem; height: .8rem; }
+.chat-skills-list { display: grid; gap: .1rem; margin: 0 -.35rem; padding: 0; list-style: none; }
+.chat-skills-row {
+    display: grid;
+    grid-template-columns: 1.65rem minmax(0, 1fr) auto;
+    grid-template-areas: "tile body figure" "tile track track";
+    align-items: center;
+    gap: .3rem .55rem;
+    width: 100%;
+    padding: .4rem .35rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--duration-fast) ease;
+}
+.chat-skills-row:hover:not(:disabled), .chat-skills-row:focus-visible { background: var(--color-fill-hover); outline: none; }
+.chat-skills-row:disabled { cursor: default; }
+.chat-skills-tile {
+    display: inline-flex;
+    grid-area: tile;
+    align-self: start;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-bg);
+    color: var(--color-accent);
+    transition: background-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.chat-skills-tile > .app-icon { width: .95rem; height: .95rem; }
+.chat-skills-row:hover:not(:disabled) .chat-skills-tile, .chat-skills-row:focus-visible .chat-skills-tile { background: var(--color-accent-bg-hover); }
+.chat-skills-row.is-running .chat-skills-tile { box-shadow: 0 0 0 1px var(--color-generating); }
+.chat-skills-body { display: flex; grid-area: body; flex-direction: column; gap: .05rem; min-width: 0; }
+.chat-skills-name { overflow: hidden; font-size: var(--font-size-md); line-height: 1.2rem; text-overflow: ellipsis; white-space: nowrap; }
+.chat-skills-meta { display: flex; flex-wrap: wrap; font-size: var(--font-size-xs); }
+.chat-skills-meta > span { white-space: nowrap; }
+.chat-skills-meta > span + span::before { content: "\00b7"; margin: 0 .35rem; color: var(--color-text-faint); }
+.chat-skills-figure { grid-area: figure; align-self: start; color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; line-height: 1.2rem; text-align: right; white-space: nowrap; }
+.chat-skills-track { display: flex; grid-area: track; gap: 1px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
+.chat-skills-failed { color: var(--color-danger-text); font-variant-numeric: tabular-nums; }
+.chat-skills-more { justify-self: start; margin-top: .3rem; font-size: var(--font-size-sm); }
+
 /* Where the model's view of the chat begins: a quiet rule with the summary behind a toggle. */
 .history-checkpoint-mark { width: min(100%, 48rem); margin: .2rem auto 1.1rem; color: var(--color-text-faint); font-size: var(--font-size-sm); }
 .history-checkpoint-line { display: flex; align-items: center; gap: .6rem; }

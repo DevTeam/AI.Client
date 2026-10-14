@@ -17,6 +17,7 @@ public sealed class ChatWidgetRefreshTests
 {
     [Theory]
     [InlineData("Tools")]
+    [InlineData("Skills")]
     [InlineData("Knowledge")]
     [InlineData("Files")]
     [InlineData("Performance")]
@@ -62,6 +63,10 @@ public sealed class ChatWidgetRefreshTests
         "Tools" => Create<ChatToolsWidget, IChatToolStatisticsCalculator, ChatToolStatistics>(
             c => c.Calculate(It.IsAny<IReadOnlyList<ChatMessageView>>(), It.IsAny<ChatRunSnapshot?>(), It.IsAny<ChatWidgetScope>()),
             new ChatToolStatistics([], new Dictionary<ChatToolOutcome, int>(), 0, 0, 0, false)),
+        "Skills" => Create<ChatSkillsWidget, IChatSkillStatisticsCalculator, ChatSkillStatistics>(
+            c => c.Calculate(It.IsAny<IReadOnlyList<ChatMessageView>>(), It.IsAny<ChatRunSnapshot?>(),
+                It.IsAny<IReadOnlyList<AI.Contracts.Skills.SkillDefinition>>(), It.IsAny<ChatWidgetScope>()),
+            ChatSkillStatistics.Empty),
         "Knowledge" => Create<ChatKnowledgeWidget, IChatKnowledgeStatisticsCalculator, ChatKnowledgeStatistics>(
             c => c.Calculate(It.IsAny<IReadOnlyList<ChatMessageView>>(), It.IsAny<ChatRunSnapshot?>(), It.IsAny<ChatWidgetScope>()),
             ChatKnowledgeStatistics.Empty),

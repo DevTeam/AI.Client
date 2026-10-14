@@ -110,6 +110,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatWidgetLayout>()
             .Root<IChatFileStatisticsCalculator>()
             .Root<IChatToolStatisticsCalculator>()
+            .Root<IChatSkillStatisticsCalculator>()
             .Root<IChatPerformanceCalculator>()
             .Root<IChatKnowledgeStatisticsCalculator>()
             .Root<IChatSubtaskStatisticsCalculator>()
@@ -153,6 +154,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
             .Transient<DesktopUnreadCountPublisher>()
+            .Transient<ChatSkillStatisticsCalculator>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

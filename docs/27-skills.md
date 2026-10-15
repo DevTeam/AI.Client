@@ -87,6 +87,7 @@ deletes a chat the user asked for by name.
 | `chat-tool-risk-assess` | Judges one pending tool call for the chat's "Approve for me" mode (executor); see [security](06-security.md#chat-approval-mode) | — |
 | `chat-compact` | Summarizes the chat and continues in a new chat that starts from the summary, and opens it | `app_chats`, `app_runs`, `app_navigate` |
 | `chat-context-compact` (`/compact`) | Replaces the finished work of the current turn with a model-only summary, or undoes it | `context_compact` |
+| `chat-plan` (`/plan`, `/todo`) | Lays out a weighted plan for a multi-step task and moves it as the work goes; see [plans](37-chat-plans.md) | `plan_update` |
 | `chat-fork` | Starts a branch from an earlier user message with a new prompt, and opens it | `app_runs` Fork, `app_chats` RenameBranch, `app_navigate` |
 | `chat-summary` | Summarizes this or another chat; read-only, the safe example for testing skills | `app_read` |
 | `chat-branch-cleanup` | Deletes branches the user picks; never the main or current branch | `app_chats` DeleteBranch |

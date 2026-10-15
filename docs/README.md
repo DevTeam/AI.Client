@@ -39,6 +39,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 33. [Asides and team messages](34-asides-and-team-messages.md)
 34. [Extensible chat kinds](32-chat-kinds.md)
 35. [Scheduled chats](35-scheduled-chats.md)
+36. [Chat plans](37-chat-plans.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 

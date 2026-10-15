@@ -31,6 +31,17 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldExposeThePlanPlaybookWithItsTool()
+    {
+        var plan = new BuiltInSkillCatalog().GetById("chat-plan").ShouldNotBeNull();
+
+        plan.Kind.ShouldBe(SkillKinds.Playbook);
+        plan.Aliases.ShouldBe(["plan", "todo"]);
+        plan.AllowedTools.ShouldBe(["plan_update"]);
+        plan.Content.ShouldContain("Weight each step 1–10");
+    }
+
+    [Fact]
     public void ShouldExposeBundledChatRenameInstructions()
     {
         var catalog = new BuiltInSkillCatalog();

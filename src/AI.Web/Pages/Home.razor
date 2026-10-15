@@ -509,6 +509,10 @@
             OnDiscardRun="DiscardCommandAsync">
         </MessageFeed>
         <div class="composer-dock">
+        @if (GetLivePlan() is { } dockedPlan)
+        {
+            <ChatPlanCard @key="@("plan-" + GetSelectedRunBranchId())" Plan="@dockedPlan" Live="true" ExpandUpward="true" />
+        }
         @if (GetLiveTurnChanges() is { } dockedChanges)
         {
             <WorkspaceChanges @key="@GetSelectedRun()?.ActiveMessageId"
@@ -4703,6 +4707,21 @@ else if (_guideInvitation is { } guideInvitation)
     private ChatRunSnapshot? GetRun(Guid chatId, Guid branchId) => RunState.Runs.GetValueOrDefault(new RunKey(chatId, branchId));
     private ChatRunSnapshot? GetBranchRun(Guid chatId, BranchTreeItem branch) => GetRun(chatId, branch.RootId);
     private ChatRunSnapshot? GetSelectedRun() => _selectedChat is not null ? GetRun(_selectedChat.Id, GetSelectedRunBranchId()) : null;
+    /// <summary>
+    /// The plan of the branch's run while the run works, above the composer: one the run moved, or
+    /// one an earlier turn left unfinished that the run is expected to continue. The turn's own
+    /// card in the transcript takes over when the run stops.
+    /// </summary>
+    private AI.Contracts.Plans.ChatPlan? GetLivePlan()
+    {
+        if (_selectedChat is null || GetSelectedRun() is not { Status: ChatRunStatus.Generating or ChatRunStatus.Paused })
+            return null;
+        return Feed.LatestPlan(GetWidgetMessages(_selectedChat)) is { } sighting
+               && (sighting.InLastTurn || sighting.Plan.Steps.Any(step => !step.IsFinished))
+            ? sighting.Plan
+            : null;
+    }
+
     /// <summary>Show live changes above the composer until the turn's receipt appears in the feed.</summary>
     private AI.Contracts.Workspace.WorkspaceChangeSet? GetLiveTurnChanges()
     {

@@ -41,3 +41,6 @@ public readonly record struct ToolInvocation(
 
 /// <summary>A completed context checkpoint shown only among expanded intermediate steps.</summary>
 public readonly record struct ContextCheckpoint(string CallId, int CoveredMessages);
+
+/// <summary>The newest plan along a chain, and whether the chain's last turn is the one that set it.</summary>
+public readonly record struct PlanSighting(AI.Contracts.Plans.ChatPlan Plan, bool InLastTurn);

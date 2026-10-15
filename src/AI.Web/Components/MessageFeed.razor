@@ -214,6 +214,11 @@
                                       Review="@(DiffReviews?.GetValueOrDefault(entry.ChangesMessage.Id))"
                                       OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
                 }
+                else if (entry.Plan is { } turnPlan)
+                {
+                    var planKey = (entry.TurnId, "plan");
+                    <ChatPlanCard @key="planKey" Plan="@turnPlan" ExpandUpward="true" />
+                }
                 else if (entry.ActiveTools is { Count: > 0 } activeTools)
                 {
                     var activeToolsKey = (entry.TurnId, "active-tools");
@@ -1492,7 +1497,8 @@
         IReadOnlyList<LiveNoteView>? LiveNotes = null,
         int LiveNoteLimit = 0,
         bool LiveLeaving = false,
-        TurnActivity? Activity = null);
+        TurnActivity? Activity = null,
+        AI.Contracts.Plans.ChatPlan? Plan = null);
 
     /// <summary>
     /// One note in the running turn's window: the newest, one being written, or one older than the
@@ -1655,6 +1661,13 @@
             if (turn.FinalAnswer is { } answer)
             {
                 entries.Add(new RenderedFeedEntry(Item: answer));
+            }
+
+            // Where the turn left the plan it moved. The run's own card is docked above the
+            // composer until the turn ends; the record of it then stays with the answer.
+            if (!IsPlanDocked(turn) && Feed.LatestPlan(messages) is { } turnPlan)
+            {
+                entries.Add(new RenderedFeedEntry(Plan: turnPlan.Plan, TurnId: turn.Id));
             }
         }
 
@@ -2022,6 +2035,11 @@
         if (turn.Id is not { } id) return false;
         return GetLastTurnId() == id;
     }
+
+    /// <summary>The current turn of a run still at work: its plan is the card above the composer.</summary>
+    private bool IsPlanDocked(FeedTurn turn) =>
+        IsCurrentTurn(turn) && turn.FinalAnswer is null
+        && SelectedRun?.Status is ChatRunStatus.Generating or ChatRunStatus.Paused;
 
     private bool IsRunningTurn(FeedTurn turn) =>
         IsCurrentTurn(turn) && turn.FinalAnswer is null

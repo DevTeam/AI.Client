@@ -78,4 +78,7 @@ public interface IChatFeedProjection
 
     /// <summary>Successful model-only context checkpoints recorded by this tool group.</summary>
     IReadOnlyList<ContextCheckpoint> CheckpointsOf(IReadOnlyList<ChatMessageView> group);
+
+    /// <summary>The newest plan among <paramref name="messages"/>, oldest message first; null when none set one.</summary>
+    PlanSighting? LatestPlan(IReadOnlyList<ChatMessageView> messages);
 }

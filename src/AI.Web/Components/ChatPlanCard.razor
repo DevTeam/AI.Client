@@ -1,0 +1,190 @@
+@* The model's plan for the task in hand: one line with the step in progress and a progress bar by
+   default, the steps with their notes and times when opened. Docked above the composer while the
+   run works through it; the turn keeps its final state under the answer. *@
+@using AI.Contracts.Plans
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+@if (Plan is { Steps.Count: > 0 } plan)
+{
+    var now = DateTimeOffset.UtcNow;
+    var progress = ChatPlanProgress.Of(plan, now);
+    var current = progress.Current is { } index ? plan.Steps[index] : null;
+    <section class="chat-plan chat-summary-card @(ExpandUpward ? "opens-upward" : null) @(_showDetails ? "is-expanded" : "is-collapsed") @(Live ? "is-live" : null)"
+             aria-label="Plan">
+        <div class="chat-summary-top">
+            <button class="chat-summary-toggle chat-card-header" type="button" aria-expanded="@_showDetails" aria-controls="@_detailsId" @ref="_header"
+                    title="@(_showDetails ? "Collapse the plan" : "Show the plan's steps")" @onclick="ToggleDetails">
+                <span class="chat-summary-icon chat-card-mark" aria-hidden="true"><AppIcon Name="list-checks" /></span>
+                <span class="chat-summary-title chat-card-title">
+                    @if (current is not null)
+                    {
+                        @current.Title
+                    }
+                    else
+                    {
+                        @(plan.Title ?? "Plan") <span class="chat-plan-outcome">· @Outcome(plan)</span>
+                    }
+                </span>
+                <span class="chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
+            </button>
+            <span class="chat-card-header-actions chat-plan-figures">
+                @if (Live && progress.Remaining is { } remaining)
+                {
+                    <span class="chat-plan-eta" title="Time left at the pace so far">~@FormatDuration(remaining) left</span>
+                }
+                <span class="chat-plan-count" title="Steps completed">@progress.Completed/@progress.Total</span>
+                <span class="chat-plan-percent" title="Progress by the estimated share of each step">@progress.Percent%</span>
+            </span>
+            <span class="chat-plan-track" role="progressbar" aria-label="Plan progress" aria-valuemin="0" aria-valuemax="100"
+                  aria-valuenow="@progress.Percent"><span style="--plan-progress: @Fraction(progress)"></span></span>
+        </div>
+        <div class="chat-summary-details" id="@_detailsId" aria-hidden="@(!_showDetails)" inert="@(!_showDetails)">
+            <div class="chat-summary-details-inner">
+                @if (plan.Title is { } title && current is not null)
+                {
+                    <div class="chat-plan-title">@title</div>
+                }
+                <ol class="chat-plan-steps">
+                    @for (var stepIndex = 0; stepIndex < plan.Steps.Count; stepIndex++)
+                    {
+                        var step = plan.Steps[stepIndex];
+                        <li @key="stepIndex" class="chat-plan-step is-@StatusClass(step.Status)">
+                            <span class="chat-plan-mark" title="@StatusLabel(step.Status)" aria-label="@StatusLabel(step.Status)">
+                                @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
+                                else if (step.Status == ChatPlanStepStatus.Failed) { <AppIcon Name="x" /> }
+                            </span>
+                            <span class="chat-plan-step-text">
+                                <span class="chat-plan-step-title">@step.Title</span>
+                                @if (step.Note is { } note)
+                                {
+                                    <span class="chat-plan-step-note">@note</span>
+                                }
+                            </span>
+                            <span class="chat-plan-step-meta">
+                                @if (step.Status == ChatPlanStepStatus.InProgress && step.Progress > 0)
+                                {
+                                    <span class="chat-plan-step-progress">@step.Progress%</span>
+                                }
+                                @if (step.Duration(now) is { } duration && (step.IsFinished || Live))
+                                {
+                                    <span class="chat-plan-step-time" title="@(step.IsFinished ? "Time taken" : "Time so far")">@FormatDuration(duration)</span>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ol>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public ChatPlan? Plan { get; set; }
+
+    /// <summary>The plan of a run still in progress: its clock runs and it estimates the time left.</summary>
+    [Parameter] public bool Live { get; set; }
+
+    /// <summary>Shows details above a docked card while keeping its header in place.</summary>
+    [Parameter] public bool ExpandUpward { get; set; }
+
+    private readonly string _detailsId = $"chat-plan-details-{Guid.NewGuid():N}";
+    private bool _showDetails;
+    private ElementReference _header;
+    private IJSObjectReference? _summaryModule;
+    private double? _headerTop;
+    private PeriodicTimer? _clock;
+
+    protected override void OnParametersSet()
+    {
+        // The step times and the estimate move with the clock between plan updates, so a live card
+        // redraws itself; a settled one shows fixed times and needs no timer.
+        if (Live && _clock is null)
+        {
+            _clock = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            _ = TickAsync(_clock);
+        }
+        else if (!Live && _clock is not null)
+        {
+            _clock.Dispose();
+            _clock = null;
+        }
+    }
+
+    private async Task TickAsync(PeriodicTimer clock)
+    {
+        try
+        {
+            while (await clock.WaitForNextTickAsync()) await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private async Task ToggleDetails()
+    {
+        if (ExpandUpward)
+        {
+            _summaryModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/chatSummary.js");
+            _headerTop = await _summaryModule.InvokeAsync<double?>("captureHeader", _header);
+        }
+        _showDetails = !_showDetails;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_headerTop is not { } top || _summaryModule is null) return;
+        _headerTop = null;
+        await _summaryModule.InvokeVoidAsync("restoreHeader", _header, top);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _clock?.Dispose();
+        if (_summaryModule is not null)
+        {
+            try { await _summaryModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private static string Fraction(ChatPlanProgress progress) =>
+        Math.Clamp(progress.Fraction, 0, 1).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Outcome(ChatPlan plan)
+    {
+        var failed = plan.Steps.Count(step => step.Status == ChatPlanStepStatus.Failed);
+        var skipped = plan.Steps.Count(step => step.Status == ChatPlanStepStatus.Skipped);
+        if (failed == 0 && skipped == 0) return "done";
+        var parts = new List<string>(2);
+        if (failed > 0) parts.Add($"{failed} failed");
+        if (skipped > 0) parts.Add($"{skipped} skipped");
+        return string.Join(", ", parts);
+    }
+
+    private static string StatusClass(ChatPlanStepStatus status) => status switch
+    {
+        ChatPlanStepStatus.InProgress => "in-progress",
+        ChatPlanStepStatus.Completed => "completed",
+        ChatPlanStepStatus.Skipped => "skipped",
+        ChatPlanStepStatus.Failed => "failed",
+        _ => "pending"
+    };
+
+    private static string StatusLabel(ChatPlanStepStatus status) => status switch
+    {
+        ChatPlanStepStatus.InProgress => "In progress",
+        ChatPlanStepStatus.Completed => "Completed",
+        ChatPlanStepStatus.Skipped => "Skipped",
+        ChatPlanStepStatus.Failed => "Failed",
+        _ => "Pending"
+    };
+
+    /// <summary>Whole units at the scale of the span: "40s", "12m", "1h 5m".</summary>
+    public static string FormatDuration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        if (span.TotalMinutes < 1) return $"{(int)span.TotalSeconds}s";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m";
+        return span.Minutes == 0 ? $"{(int)span.TotalHours}h" : $"{(int)span.TotalHours}h {span.Minutes}m";
+    }
+}

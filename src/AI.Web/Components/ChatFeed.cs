@@ -317,4 +317,20 @@ public sealed class ChatFeed : IChatFeedProjection
         }
         return checkpoints;
     }
+
+    /// <summary>
+    /// The server reads the plan out of each plan result (<see cref="ChatMessageView.Plan"/>), so
+    /// this needs no result bodies: the newest one along the chain is the branch's plan.
+    /// </summary>
+    public PlanSighting? LatestPlan(IReadOnlyList<ChatMessageView> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        var inLastTurn = true;
+        for (var index = messages.Count - 1; index >= 0; index--)
+        {
+            if (messages[index].Plan is { } plan) return new PlanSighting(plan, inLastTurn);
+            if (messages[index].StartsTurn) inLastTurn = false;
+        }
+        return null;
+    }
 }

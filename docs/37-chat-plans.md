@@ -7,8 +7,8 @@ steps, each with an estimated share of the work, and an overall progress measure
 
 ## Model
 
-A plan (`AI.Contracts.Plans.ChatPlan`) has an optional title, its steps and the time it was last
-changed. A step (`ChatPlanStep`) has:
+A plan (`AI.Contracts.Plans.ChatPlan`) has an optional title, its steps, the time it was last
+changed and its working clock at that time (`Clock`). A step (`ChatPlanStep`) has:
 
 | Field | Set by | Meaning |
 | --- | --- | --- |
@@ -17,23 +17,51 @@ changed. A step (`ChatPlanStep`) has:
 | `Status` | model | `Pending`, `InProgress`, `Completed`, `Skipped` or `Failed` |
 | `Progress` | model | How far an in-progress step has come, 0–99; a completed step is 100 |
 | `Note` | model | One line: what is happening, or why the step was skipped or failed |
-| `StartedAt`, `FinishedAt` | application | Stamped when the status changes |
+| `Minutes` | model | The working time it is expected to take; it can be revised when it proves wrong |
+| `StartedAt`, `FinishedAt` | application | Stamped by the wall clock when the status changes |
+| `StartedClock`, `FinishedClock` | application | The same moments on the plan's working clock |
+
+### The working clock
+
+Step times and the forecast measure work, not waiting. The plan's working clock runs only while a
+run works on the branch: it stands still while the run waits for the person (a tool approval, an
+`ask_user` question) and between turns. On the Host, `IChatPlans` keeps it for the run: it goes on
+from the plan's `Clock` when the run begins, and `ChatAgent` stops it around every wait for a person
+(`TurnDeadline.WhileWaitingForAPersonAsync`, which already stops the turn's own deadline there).
+Each plan update stores the reading. Between updates the page runs the clock on itself
+(`ChatPlanClock`): from the last update, or from the start of the turn for a plan an earlier turn
+left, holding it while the run snapshot shows a pending approval, a question or a pause. The next
+update brings the Host's reading. Steps stamped before plans had a clock are put on it by their wall
+times, counted back from the last update.
 
 A step moved straight from `Pending` to `Completed` or `Failed` was worked on since the plan's
 previous change, so its start is the later of that change and the last earlier finish of another
 step. A step laid out as already finished, or skipped before it began, has no start and shows no
 time, rather than a measured-looking "0s".
 
-`ChatPlanProgress.Of(plan, now)` measures the plan:
+`ChatPlanProgress.Of(plan, clock)` measures the plan at a moment on its working clock:
 
 - **Fraction** is done weight over the weight still in the plan. A completed step counts its whole
   weight, an in-progress one `weight × progress`. Skipped and failed steps leave the measure, so a
   plan that dropped a step still reaches 100%.
 - **Completed / Total** counts steps, not weight: "2 of 5 steps done".
 - **Current** is the step in progress, or the first one waiting.
-- **Elapsed** runs from the first start to now, or to the last change of a finished plan.
-- **Remaining** applies the pace so far (elapsed time per unit of done weight) to the weight left.
-  It is shown only while a run is in progress and some weight is done.
+- **Elapsed** is working time from the first start to now, or to the last step's end once finished.
+- **Steps** gives each step its time spent and its expected time, and whether it is well over
+  (`IsOver`: half as long again as expected, and at least a minute more).
+- **Remaining** is the sum of the expected time still to go. The forecast starts from the model's
+  estimates and moves towards what the work actually takes: the estimates are multiplied by how
+  much longer or shorter the completed steps ran than theirs, trusted as far as the plan has come
+  (`1 - f + f * taken / estimated`, with `f` the done fraction). A step without an estimate takes
+  its weight at the plan's pace, measured on the completed steps, else the estimated steps' time
+  per weight, else the running step's own reported share. A running step has left the larger of
+  its expected time minus the time spent and what its reported progress leaves of it, so running
+  over does not make it "done". With nothing to go on yet, there is no forecast.
+- **RemainingLow / RemainingHigh** widen the forecast by `0.15 + 0.5 * (1 - f)`, and by 0.2 more
+  while no step has been completed: wide on estimates alone, narrow near the end.
+
+A finished step is held to the model's own estimate, so its time against the estimate shows how the
+estimate went.
 
 ## Storage
 
@@ -54,9 +82,10 @@ the history stays the record.
 ## Tool
 
 `mcp_app__plan_update` (`AppPlanTool`) takes either `steps`, laying out a new plan that replaces the
-current one, or `updates`, moving steps of the current plan by number; never both. Laying out again
-keeps the times of steps whose titles stay the same. The application stamps the times, computes the
-progress and returns the plan with `percent`, `completed` and `total`.
+current one, or `updates`, moving steps of the current plan by number; never both. Each step can
+carry `minutes`, its expected working time; an update can revise it. Laying out again keeps the
+times of steps whose titles stay the same. The application stamps the times on both clocks,
+computes the progress and returns the plan with `percent`, `completed` and `total`.
 
 It runs without approval (`ToolDefaultDecision`), is always among the offered tools
 (`AdaptiveContextPolicy` core tools), and is available in every chat kind that allows it.
@@ -66,10 +95,13 @@ It runs without approval (`ToolDefaultDecision`), is always among the offered to
 `ChatPlanCard` is a summary card on the shared `chat-summary-card` shell, collapsed by default.
 
 - **Collapsed** it is one line: the step in progress (or the plan's title and how it ended), the
-  completed count ("2/5"), the percentage and, for a live plan, the estimated time left; a hairline
-  track along the header's bottom edge fills by the weighted progress.
+  completed count ("2/5"), the percentage and, for a live plan, the forecast as a range ("8-15m
+  left", with the likely finish by the clock in its tooltip), or "Waiting for you" while the run
+  waits; a hairline track along the header's bottom edge fills by the weighted progress.
 - **Expanded** it lists every step with a status mark, its title, its note, the reported progress
-  of the step in progress and its time.
+  of the step in progress and its time: taken for a finished step, "4m / ~5m" for the step in
+  progress, "~5m" expected for a waiting one. A step well over its expected time shows it in the
+  warning text colour.
 - **Above the composer** (`Home.razor`, `composer-dock`), while the branch's run is generating or
   paused, the card shows the branch's plan if the current turn moved it or an earlier turn left it
   unfinished. It opens upward like the live file-changes card, and its clock ticks every second.
@@ -94,6 +126,9 @@ plan set aside by an earlier turn; see [Chat widgets](29-chat-widgets.md#plan-wi
   progress, several moves per call, every step finished before the final answer, and what to do
   when the next message is another task.
 - Before every model step `ChatAgent` adds the trailing instruction `run.plan` with the unfinished
-  plan: each step's status, weight, progress and note, and how to keep it current. A finished plan
+  plan: the work left, each step's status, weight, estimate, progress, time so far and note, and how
+  to keep it current. When the step in progress is well over its expected time, it adds that the
+  model should say in a note what holds it up and re-estimate it, or revise the plan, and ask the
+  user if the approach itself is in doubt. A finished plan
   removes it. This keeps the plan in front of the model when its last result is far back,
   compacted away or in an earlier turn.

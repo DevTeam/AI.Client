@@ -11,17 +11,26 @@ public class ChatPlanTests
 {
     private static readonly DateTimeOffset Start = new(2026, 10, 15, 9, 0, 0, TimeSpan.Zero);
 
+    /// <summary>A moment <paramref name="minutes"/> into the plan, with nothing waited for: both clocks agree.</summary>
+    private static ChatPlanMoment At(double minutes) => new(Start.AddMinutes(minutes), minutes * 60);
+
+    private static ChatPlanStep Step(string title, int weight, ChatPlanStepStatus status = ChatPlanStepStatus.Pending,
+        int progress = 0, double? minutes = null, double? from = null, double? to = null) =>
+        new(title, weight, status, progress, Minutes: minutes,
+            StartedAt: from is { } a ? Start.AddMinutes(a) : null, FinishedAt: to is { } b ? Start.AddMinutes(b) : null,
+            StartedClock: from * 60, FinishedClock: to * 60);
+
     [Fact]
-    public void ShouldMeasureProgressInWeightIncludingTheShareOfTheCurrentStep()
+    public void ShouldMeasureProgressInWeightAndForecastAtThePaceOfTheCompletedSteps()
     {
         var plan = new ChatPlan(null,
         [
-            new("Study", 2, ChatPlanStepStatus.Completed, 100, StartedAt: Start, FinishedAt: Start.AddMinutes(10)),
-            new("Build", 4, ChatPlanStepStatus.InProgress, 50, StartedAt: Start.AddMinutes(10)),
-            new("Verify", 2)
-        ], Start.AddMinutes(10));
+            Step("Study", 2, ChatPlanStepStatus.Completed, 100, from: 0, to: 10),
+            Step("Build", 4, ChatPlanStepStatus.InProgress, 50, from: 10),
+            Step("Verify", 2)
+        ], Start.AddMinutes(10), 600);
 
-        var progress = ChatPlanProgress.Of(plan, Start.AddMinutes(20));
+        var progress = ChatPlanProgress.Of(plan, 1200);
 
         progress.Fraction.ShouldBe(0.5);
         progress.Percent.ShouldBe(50);
@@ -30,7 +39,13 @@ public class ChatPlanTests
         progress.Current.ShouldBe(1);
         progress.IsFinished.ShouldBeFalse();
         progress.Elapsed.ShouldBe(TimeSpan.FromMinutes(20));
+        // 300 s per unit of weight: Build is due 20 min and has used 10, Verify 10.
         progress.Remaining.ShouldBe(TimeSpan.FromMinutes(20));
+        progress.RemainingLow.ShouldBe(TimeSpan.FromMinutes(12));
+        progress.RemainingHigh.ShouldBe(TimeSpan.FromMinutes(28));
+        progress.Steps[0].ShouldBe(new ChatPlanStepTiming(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), false));
+        progress.Steps[1].ShouldBe(new ChatPlanStepTiming(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(20), false));
+        progress.Steps[2].ShouldBe(new ChatPlanStepTiming(null, TimeSpan.FromMinutes(10), false));
     }
 
     [Fact]
@@ -38,12 +53,12 @@ public class ChatPlanTests
     {
         var plan = new ChatPlan(null,
         [
-            new("Study", 1, ChatPlanStepStatus.Completed, 100, StartedAt: Start, FinishedAt: Start.AddMinutes(5)),
-            new("Optional", 5, ChatPlanStepStatus.Skipped),
-            new("Broken", 3, ChatPlanStepStatus.Failed, 30, StartedAt: Start.AddMinutes(5), FinishedAt: Start.AddMinutes(6))
-        ], Start.AddMinutes(6));
+            Step("Study", 1, ChatPlanStepStatus.Completed, 100, from: 0, to: 5),
+            Step("Optional", 5, ChatPlanStepStatus.Skipped),
+            Step("Broken", 3, ChatPlanStepStatus.Failed, 30, from: 5, to: 6)
+        ], Start.AddMinutes(6), 360);
 
-        var progress = ChatPlanProgress.Of(plan, Start.AddHours(1));
+        var progress = ChatPlanProgress.Of(plan, 3600);
 
         progress.Percent.ShouldBe(100);
         progress.Completed.ShouldBe(1);
@@ -54,51 +69,116 @@ public class ChatPlanTests
     }
 
     [Fact]
-    public void ShouldNotEstimateTheRemainingTimeBeforeAnyWorkIsDone()
+    public void ShouldForecastFromTheEstimatesBeforeAnyWorkIsDoneWithAWideRange()
     {
-        var plan = new ChatPlan(null, [new("Study", 1, ChatPlanStepStatus.InProgress, StartedAt: Start), new("Build")], Start);
+        var plan = new ChatPlan(null,
+        [
+            Step("Study", 1, ChatPlanStepStatus.InProgress, minutes: 5, from: 0),
+            Step("Build", 3, minutes: 15)
+        ], Start, 0);
 
-        var progress = ChatPlanProgress.Of(plan, Start.AddMinutes(3));
+        var progress = ChatPlanProgress.Of(plan, 60);
 
         progress.Percent.ShouldBe(0);
-        progress.Current.ShouldBe(0);
-        progress.Remaining.ShouldBeNull();
+        progress.Remaining.ShouldBe(TimeSpan.FromMinutes(20));
+        progress.RemainingLow.ShouldBe(TimeSpan.FromMinutes(3));
+        progress.RemainingHigh.ShouldBe(TimeSpan.FromMinutes(37));
     }
 
     [Fact]
-    public void ShouldStampTimesWhenStatusesChange()
+    public void ShouldCorrectTheEstimatesByHowTheFinishedStepsWentAsFarAsThePlanHasCome()
     {
-        var plan = ChatPlanEditor.Replace(null, " Fix ", [new("Study", 2, ChatPlanStepStatus.InProgress), new("Build", 20)], Start);
+        var plan = new ChatPlan(null,
+        [
+            Step("Study", 1, ChatPlanStepStatus.Completed, 100, minutes: 5, from: 0, to: 10),
+            Step("Build", 1, minutes: 10)
+        ], Start.AddMinutes(10), 600);
+
+        var progress = ChatPlanProgress.Of(plan, 600);
+
+        // Twice the estimate, trusted halfway: one and a half times the next estimate.
+        progress.Remaining.ShouldBe(TimeSpan.FromMinutes(15));
+        progress.Steps[0].ShouldBe(new ChatPlanStepTiming(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(5), true));
+    }
+
+    [Fact]
+    public void ShouldFlagAStepRunningWellOverItsExpectedTime()
+    {
+        var plan = new ChatPlan(null, [Step("Build", 1, ChatPlanStepStatus.InProgress, 20, minutes: 2, from: 0)], Start, 0);
+
+        var early = ChatPlanProgress.Of(plan, 150);
+        var late = ChatPlanProgress.Of(plan, 600);
+
+        early.Steps[0].IsOver.ShouldBeFalse();
+        late.Steps[0].IsOver.ShouldBeTrue();
+        // Over its time, what it reports still to do stands.
+        late.Remaining.ShouldBe(TimeSpan.FromSeconds(96));
+    }
+
+    [Fact]
+    public void ShouldStampTimesOnBothClocksWhenStatusesChange()
+    {
+        var plan = ChatPlanEditor.Replace(null, " Fix ",
+            [new("Study", 2, ChatPlanStepStatus.InProgress), new("Build", 20, Minutes: 7)], At(0));
 
         plan.Title.ShouldBe("Fix");
         plan.Steps[0].StartedAt.ShouldBe(Start);
+        plan.Steps[0].StartedClock.ShouldBe(0);
         plan.Steps[1].Weight.ShouldBe(10);
+        plan.Steps[1].Minutes.ShouldBe(7);
         plan.Steps[1].StartedAt.ShouldBeNull();
 
         plan = ChatPlanEditor.Update(plan,
         [
             new(1, ChatPlanStepStatus.Completed),
             new(2, ChatPlanStepStatus.InProgress, 40, "Writing the parser")
-        ], Start.AddMinutes(7));
+        ], At(7));
 
-        plan.Steps[0].ShouldBe(new ChatPlanStep("Study", 2, ChatPlanStepStatus.Completed, 100, null, Start, Start.AddMinutes(7)));
+        plan.Steps[0].ShouldBe(new ChatPlanStep("Study", 2, ChatPlanStepStatus.Completed, 100, null, Start, Start.AddMinutes(7),
+            null, 0, 420));
         plan.Steps[1].ShouldBe(new ChatPlanStep("Build", 10, ChatPlanStepStatus.InProgress, 40, "Writing the parser",
-            Start.AddMinutes(7)));
+            Start.AddMinutes(7), null, 7, 420));
         plan.UpdatedAt.ShouldBe(Start.AddMinutes(7));
+        plan.Clock.ShouldBe(420);
 
-        plan = ChatPlanEditor.Update(plan, [new(2, Progress: 120)], Start.AddMinutes(8));
+        plan = ChatPlanEditor.Update(plan, [new(2, Progress: 120, Minutes: 12)], At(8));
         plan.Steps[1].Progress.ShouldBe(99);
-        plan.Steps[1].StartedAt.ShouldBe(Start.AddMinutes(7));
+        plan.Steps[1].Minutes.ShouldBe(12);
+        plan.Steps[1].StartedClock.ShouldBe(420);
+    }
+
+    [Fact]
+    public void ShouldLeaveTimeSpentWaitingOutOfAStep()
+    {
+        var plan = ChatPlanEditor.Replace(null, null, [new("Ask and build", Status: ChatPlanStepStatus.InProgress)], At(0));
+
+        // Ten minutes by the wall clock, five of them waiting for the person.
+        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Completed)], new ChatPlanMoment(Start.AddMinutes(10), 300));
+
+        plan.Steps[0].Spent(plan, plan.Clock).ShouldBe(TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public void ShouldPutStepsStampedBeforeTheWorkingClockOnIt()
+    {
+        var legacy = new ChatPlan(null,
+            [new ChatPlanStep("Study", Status: ChatPlanStepStatus.InProgress, StartedAt: Start.AddMinutes(4))],
+            Start.AddMinutes(10), 100);
+
+        legacy.Steps[0].Spent(legacy, 100).ShouldBe(TimeSpan.FromMinutes(6));
+        var plan = ChatPlanEditor.Update(legacy, [new(1, ChatPlanStepStatus.Completed)],
+            new ChatPlanMoment(Start.AddMinutes(11), 160));
+        plan.Steps[0].Spent(plan, plan.Clock).ShouldBe(TimeSpan.FromMinutes(7));
     }
 
     [Fact]
     public void ShouldKeepTheTimesOfStepsARewrittenPlanKeeps()
     {
-        var plan = ChatPlanEditor.Replace(null, "Fix", [new("Study", Status: ChatPlanStepStatus.Completed), new("Build")], Start);
+        var plan = ChatPlanEditor.Replace(null, "Fix", [new("Study", Status: ChatPlanStepStatus.Completed), new("Build")], At(0));
 
         plan = ChatPlanEditor.Replace(plan, null,
             [new("study", Status: ChatPlanStepStatus.Completed), new("Build", 3, ChatPlanStepStatus.InProgress), new("Docs")],
-            Start.AddMinutes(4));
+            At(4));
 
         plan.Title.ShouldBe("Fix");
         plan.Steps[0].Title.ShouldBe("study");
@@ -106,42 +186,43 @@ public class ChatPlanTests
         plan.Steps[0].StartedAt.ShouldBeNull();
         plan.Steps[0].FinishedAt.ShouldBe(Start);
         plan.Steps[1].StartedAt.ShouldBe(Start.AddMinutes(4));
+        plan.Steps[1].StartedClock.ShouldBe(240);
     }
 
     [Fact]
     public void ShouldTimeAStepFinishedStraightFromWaitingFromThePlansPreviousChange()
     {
         var plan = ChatPlanEditor.Replace(null, null,
-            [new("Study", Status: ChatPlanStepStatus.InProgress), new("Find"), new("Build"), new("Docs")], Start);
-        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Completed)], Start.AddMinutes(5));
+            [new("Study", Status: ChatPlanStepStatus.InProgress), new("Find"), new("Build"), new("Docs")], At(0));
+        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Completed)], At(5));
 
         plan = ChatPlanEditor.Update(plan,
             [new(2, ChatPlanStepStatus.Completed), new(3, ChatPlanStepStatus.Failed), new(4, ChatPlanStepStatus.Skipped)],
-            Start.AddMinutes(7));
+            At(7));
 
-        plan.Steps[1].Duration(Start.AddMinutes(7)).ShouldBe(TimeSpan.FromMinutes(2));
-        plan.Steps[2].Duration(Start.AddMinutes(7)).ShouldBe(TimeSpan.FromMinutes(2));
+        plan.Steps[1].Spent(plan, plan.Clock).ShouldBe(TimeSpan.FromMinutes(2));
+        plan.Steps[2].Spent(plan, plan.Clock).ShouldBe(TimeSpan.FromMinutes(2));
         plan.Steps[3].StartedAt.ShouldBeNull();
-        plan.Steps[3].Duration(Start.AddMinutes(7)).ShouldBeNull();
+        plan.Steps[3].Spent(plan, plan.Clock).ShouldBeNull();
     }
 
     [Fact]
     public void ShouldRejectStepsOutsideThePlan()
     {
-        var plan = ChatPlanEditor.Replace(null, null, [new("Study")], Start);
+        var plan = ChatPlanEditor.Replace(null, null, [new("Study")], At(0));
 
-        Should.Throw<ArgumentException>(() => ChatPlanEditor.Update(plan, [new(2, ChatPlanStepStatus.Completed)], Start))
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Update(plan, [new(2, ChatPlanStepStatus.Completed)], At(0)))
             .Message.ShouldContain("steps 1–1");
-        Should.Throw<ArgumentException>(() => ChatPlanEditor.Replace(null, null, [], Start));
-        Should.Throw<ArgumentException>(() => ChatPlanEditor.Replace(null, null, [new(" ")], Start));
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Replace(null, null, [], At(0)));
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Replace(null, null, [new(" ")], At(0)));
     }
 
     [Fact]
     public void ShouldClearTheTimesOfAStepPutBackToPending()
     {
-        var plan = ChatPlanEditor.Replace(null, null, [new("Study", Status: ChatPlanStepStatus.InProgress, Progress: 30)], Start);
+        var plan = ChatPlanEditor.Replace(null, null, [new("Study", Status: ChatPlanStepStatus.InProgress, Progress: 30)], At(0));
 
-        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Pending)], Start.AddMinutes(1));
+        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Pending)], At(1));
 
         plan.Steps[0].ShouldBe(new ChatPlanStep("Study"));
     }
@@ -149,8 +230,8 @@ public class ChatPlanTests
     [Fact]
     public void ShouldReadTheNewestSuccessfulPlanAlongTheBranch()
     {
-        var first = ChatPlanEditor.Replace(null, "First", [new("Study")], Start);
-        var second = ChatPlanEditor.Update(first, [new(1, ChatPlanStepStatus.Completed)], Start.AddMinutes(1));
+        var first = ChatPlanEditor.Replace(null, "First", [new("Study")], At(0));
+        var second = ChatPlanEditor.Update(first, [new(1, ChatPlanStepStatus.Completed)], At(1));
         var user = new ChatMessage(new ChatMessageId(Guid.NewGuid()), null, ChatMessageRole.User, "Fix it", Start);
         var call1 = Call(user, "c1");
         var result1 = Result(call1, "c1", Envelope(first));

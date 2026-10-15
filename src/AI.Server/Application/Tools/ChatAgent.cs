@@ -100,6 +100,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         using var instructionScope = instructions.Begin(run);
         var plansAllowed = servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
         using var planScope = plansAllowed ? await plans.BeginAsync(run, token) : null;
+        // Waiting for the person stops the plan's working clock as it stops the turn's deadline.
+        if (plansAllowed) deadline.PersonWait = () => plans.WaitForPerson(run);
         instructions.Upsert(run, new ModelInstruction("run.finishing", behavior.FinishingInstruction ?? FinishingInstruction,
             1_000, ModelInstructionLifetime.Run, Required: true,
             CompactContent: behavior.CompactFinishingInstruction ?? (behavior.FinishingInstruction is null ? CompactFinishingInstruction : null)));
@@ -776,25 +778,42 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Remove(run, PlanKey);
             return;
         }
-        var progress = ChatPlanProgress.Of(plan, clock.UtcNow);
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var progress = ChatPlanProgress.Of(plan, plans.Now(run).Clock);
         var text = new StringBuilder("Current plan")
             .Append(plan.Title is { } title ? $" \"{title}\"" : "")
-            .Append(System.Globalization.CultureInfo.InvariantCulture, $", {progress.Percent}% done (mcp_app__plan_update):");
+            .Append(invariant, $", {progress.Percent}% done")
+            .Append(progress.Remaining is { } left ? $", about {Took(left)} of work left" : "")
+            .Append(" (mcp_app__plan_update):");
+        string? over = null;
         for (var index = 0; index < plan.Steps.Count; index++)
         {
             var step = plan.Steps[index];
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"\n{index + 1}. [{step.Status}] {step.Title} (weight {step.Weight}");
-            if (step.Status == ChatPlanStepStatus.InProgress) text.Append(System.Globalization.CultureInfo.InvariantCulture, $", {step.Progress}%");
+            var timing = progress.Steps[index];
+            text.Append(invariant, $"\n{index + 1}. [{step.Status}] {step.Title} (weight {step.Weight}");
+            if (step.Minutes is { } minutes) text.Append(invariant, $", estimated {minutes:0.#} min");
+            if (step.Status == ChatPlanStepStatus.InProgress)
+                text.Append(invariant, $", {step.Progress}%").Append(timing.Spent is { } spent ? $", {Took(spent)} so far" : "");
             text.Append(')');
             if (step.Note is { } note) text.Append(" - ").Append(note);
+            if (step.Status == ChatPlanStepStatus.InProgress && timing is { IsOver: true, Spent: { } took, Expected: { } expected })
+                over = $"Step {index + 1} has taken {Took(took)} against about {Took(expected)} expected. Say in a note what is "
+                    + "holding it up and give it new minutes, or lay out a revised plan; if the approach itself is in doubt, "
+                    + "ask the user before going on.";
         }
         text.Append("\nKeep it current as you work: mark a step InProgress when you start it, report the progress of a long "
             + "step, and mark it Completed as soon as it is done, or Skipped or Failed with a note. Several moves go in one call. "
             + "If the user's latest message is a different task, lay out a new plan for it, or skip the remaining steps.");
+        if (over is not null) text.Append('\n').Append(over);
         instructions.Upsert(run, new ModelInstruction(PlanKey, text.ToString(),
             // Trailing: the plan moves with the work, and a change here must not cost the cached conversation.
             875, ModelInstructionLifetime.Run, ModelInstructionPlacement.Trailing));
     }
+
+    /// <summary>Whole minutes, or seconds under one: the model needs the scale, and finer would change every step.</summary>
+    private static string Took(TimeSpan time) => time.TotalMinutes < 1
+        ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{(int)time.TotalSeconds}s")
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{(int)Math.Round(time.TotalMinutes)} min");
 
     private const string PlanKey = "run.plan";
 
@@ -943,9 +962,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             Reschedule();
         }
 
+        /// <summary>Anything else that stops while the turn waits for a person: the plan's working clock.</summary>
+        public Func<IDisposable>? PersonWait { get; set; }
+
         public async Task<T> WhileWaitingForAPersonAsync<T>(Func<Task<T>> wait)
         {
             var started = Environment.TickCount64;
+            using var paused = PersonWait?.Invoke();
             try
             {
                 return await wait();

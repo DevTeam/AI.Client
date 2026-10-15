@@ -1,7 +1,6 @@
 namespace AI.Mcp.App;
 
 using AI.Application.Plans;
-using AI.Application.Projects;
 using AI.Application.Tools;
 using AI.Contracts.Plans;
 using ModelContextProtocol.Protocol;
@@ -13,11 +12,11 @@ using ModelContextProtocol.Server;
 /// the next run reads back. The run's working copy only spares each call a read of the whole chat.
 /// </summary>
 [McpServerToolType]
-public sealed class AppPlanTool(IChatPlans plans, IClock clock) : IAppTool
+public sealed class AppPlanTool(IChatPlans plans) : IAppTool
 {
-    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(plans, clock, run, reply).Create();
+    public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(plans, run, reply).Create();
 
-    private sealed class Session(IChatPlans plans, IClock clock, ToolRunContext run, IAppToolReply reply)
+    private sealed class Session(IChatPlans plans, ToolRunContext run, IAppToolReply reply)
     {
         public McpServerTool Create() => McpServerTool.Create(Execute,
             new McpServerToolCreateOptions
@@ -26,12 +25,15 @@ public sealed class AppPlanTool(IChatPlans plans, IClock clock) : IAppTool
                 Description = "The plan the user watches while you work on a task of three or more steps. Pass 'steps' "
                               + "to lay out a new plan, replacing the current one: each step has a short imperative 'title' "
                               + "(at most ~7 words), a 'weight' 1-10 estimating its share of the work relative to the other "
-                              + "steps, and optionally a 'status' and a 'note'. Pass 'updates' to move the current plan: "
+                              + "steps, 'minutes' estimating the working time it needs, and optionally a 'status' and a "
+                              + "'note'. Pass 'updates' to move the current plan: "
                               + "'step' is the step's number from 1, with a new 'status' (Pending, InProgress, Completed, "
-                              + "Skipped, Failed), a 'progress' 0-100 estimating how far an in-progress step has come, and "
-                              + "an optional one-line 'note' (what is happening, or why a step was skipped or failed). "
+                              + "Skipped, Failed), a 'progress' 0-100 estimating how far an in-progress step has come, "
+                              + "an optional one-line 'note' (what is happening, or why a step was skipped or failed), and "
+                              + "new 'minutes' when a step's estimate proved wrong. "
                               + "Keep exactly one step InProgress while working; finish the plan by completing or skipping "
-                              + "every step. The application stamps the times and computes the overall progress."
+                              + "every step. The application stamps the times, leaving out time spent waiting for the user, "
+                              + "and computes the overall progress and the time left."
             });
 
         [McpServerTool(Name = ChatPlanResults.ToolName, ReadOnly = false, Destructive = false, Idempotent = false,
@@ -44,7 +46,7 @@ public sealed class AppPlanTool(IChatPlans plans, IClock clock) : IAppTool
             {
                 if (steps is { Length: > 0 } && updates is { Length: > 0 })
                     throw new ArgumentException("Pass either 'steps' for a new plan or 'updates' for the current one, not both.");
-                var now = clock.UtcNow;
+                var now = plans.Now(run);
                 var plan = steps is { Length: > 0 }
                     ? ChatPlanEditor.Replace(current, title, steps, now)
                     : updates is { Length: > 0 }
@@ -54,7 +56,7 @@ public sealed class AppPlanTool(IChatPlans plans, IClock clock) : IAppTool
                 if (!plans.TrySet(run, current, plan))
                     throw new InvalidOperationException(
                         "The plan changed in a call made at the same time, or the run has ended. Read the result of that call and update again.");
-                var progress = ChatPlanProgress.Of(plan, now);
+                var progress = ChatPlanProgress.Of(plan, now.Clock);
                 return reply.Reply(new ChatPlanToolResult(plan, progress.Percent, progress.Completed, progress.Total,
                     progress.IsFinished
                         ? "The plan is finished."
@@ -62,7 +64,7 @@ public sealed class AppPlanTool(IChatPlans plans, IClock clock) : IAppTool
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
             {
-                var progress = current is null ? null : ChatPlanProgress.Of(current, clock.UtcNow);
+                var progress = current is null ? null : ChatPlanProgress.Of(current, plans.Now(run).Clock);
                 return reply.Reply(new ChatPlanToolResult(null, progress?.Percent ?? 0, progress?.Completed ?? 0,
                     progress?.Total ?? 0, "The plan was not changed. Correct the call and try again.", error.Message), true);
             }

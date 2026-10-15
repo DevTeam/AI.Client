@@ -122,6 +122,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<AI.Contracts.Chats.IChatTeamRosterCalculator>()
             .Root<IChatUnfinishedStatisticsCalculator>()
             .Root<IChatPlanStatisticsCalculator>()
+            .Root<IChatPlanClock>()
             .Root<IChatSchedulePresentation>()
             .Root<IChatScheduleApi>()
             .Root<AI.Contracts.Schedules.IScheduleCalendar>()
@@ -157,6 +158,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<DesktopUnreadCountPublisher>()
             .Transient<ChatSkillStatisticsCalculator>()
             .Transient<ChatPlanStatisticsCalculator>()
+            // Remembers the waits it saw since the open plan last changed.
+            .Singleton<ChatPlanClock>()
+            .Bind<TimeProvider>().To(_ => TimeProvider.System)
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

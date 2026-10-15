@@ -24,19 +24,25 @@ same turn. Write step titles in the user's language.
    files is 1–2, a focused change 3–5, a broad change or a long test run 6–10. The bar moves by
    weight, so an honest weight keeps it honest; do not give every step the same weight unless they
    really are alike.
-4. Call `plan_update` once with all `steps`, the first one `InProgress`, and a short `title`
+4. Estimate each step's working time in `minutes`: the time you expect to spend on it, tool runs
+   included, not the time the user may take to answer. A guess is fine; the application corrects
+   the forecast by how the finished steps actually went and shows the user the time left.
+5. Call `plan_update` once with all `steps`, the first one `InProgress`, and a short `title`
    for the task. Then start the work.
-5. Move the plan as the work moves, putting several changes in one `updates` call:
+6. Move the plan as the work moves, putting several changes in one `updates` call:
    - mark a step `Completed` as soon as it is done and the next one `InProgress` in the same call;
    - during a long step, report `progress` 0–100 when it has clearly advanced (a quarter, a half),
      not after every tool call;
    - `Skipped` a step that turned out unnecessary and `Failed` one that cannot be done, each with a
      one-line `note` saying why;
    - when the work shows the plan was wrong, lay out a corrected plan with `steps`: steps that keep
-     their titles keep their times.
-6. Before the final answer, every step is `Completed`, `Skipped` or `Failed`. Do not repeat the
+     their titles keep their times;
+   - when a step takes much longer than you estimated, the plan reminder says so: give it new
+     `minutes` with a note on what is holding it up, or revise the plan, and ask the user if the
+     approach itself is in doubt.
+7. Before the final answer, every step is `Completed`, `Skipped` or `Failed`. Do not repeat the
    plan in the answer; report the outcome, and name any failed or skipped step and what it leaves
    undone.
-7. When the user's next message continues the same task, keep moving the same plan. When it is a
+8. When the user's next message continues the same task, keep moving the same plan. When it is a
    different task, lay out a new plan for it, or mark the remaining steps `Skipped` if the new task
    needs none.

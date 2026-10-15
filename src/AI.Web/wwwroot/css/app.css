@@ -7929,6 +7929,8 @@ textarea {
 .chat-plan-step-note { color: var(--color-text-subtle); font-size: var(--font-size-sm); line-height: 1.35; overflow-wrap: anywhere; }
 .chat-plan-step-meta { display: flex; gap: .45rem; padding-top: .1rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chat-plan-step-progress { color: var(--color-accent-text); }
+/* A step well over its expected time says so in the status colour; the words carry it, not the colour alone. */
+.chat-plan-step.is-over .chat-plan-step-time { color: var(--color-warning-text); }
 .workspace-review-action { flex: 0 0 auto; }
 .workspace-undo-action, .review-workspace-undo { display: inline-flex; align-items: center; gap: .3rem; }
 .workspace-undo-action .app-icon, .review-workspace-undo .app-icon { width: .9rem; height: .9rem; }
@@ -9503,7 +9505,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 /* Plan widget (ChatPlanWidget.razor). The plan's bar is one segment per step still in the plan, as
    wide as the step's share of the work and filled as far as the step has come; the gaps show where
-   one step ends. A row's track is that step's own progress, so a done step is full. */
+   one step ends. A row's track is the step's time against what it was expected to take: accent up to
+   the expectation, warning past it. */
 .chat-plan-widget-title { color: var(--color-text-secondary); font-size: var(--font-size-md); }
 .chat-plan-widget-bar { display: flex; gap: 2px; height: .35rem; overflow: hidden; border-radius: var(--radius-2xs); }
 .chat-plan-widget-segment { flex-basis: 0; min-width: 2px; border-radius: 1px; background: linear-gradient(to right, var(--color-accent-strong) calc(var(--step-done, 0) * 100%), var(--color-fill) 0); }
@@ -9511,6 +9514,9 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-plan-widget-step .chat-widget-row-label { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .chat-plan-widget-step.is-skipped .chat-widget-row-label { color: var(--color-text-subtle); text-decoration: line-through; }
 .chat-plan-widget-step.is-failed .chat-widget-row-label { color: var(--color-danger-text); }
+.chat-widget-row-track > .chat-plan-widget-over { background: var(--color-warning); }
+.chat-plan-widget-step.is-over .chat-widget-row-figure,
+.chat-plan-widget-over-text { color: var(--color-warning-text); }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
 .chat-tools-errors { color: var(--color-danger-text); font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -35,12 +35,12 @@ public sealed class ChatPlanCardRenderingTests
         html.ShouldContain("62%");
         html.ShouldContain("aria-valuenow=\"62\"");
         html.ShouldContain("--plan-progress: 0.625");
-        html.ShouldContain("class=\"chat-plan-step is-skipped\"");
+        html.ShouldContain("class=\"chat-plan-step is-skipped ");
         html.ShouldContain("No tests cover it");
         html.ShouldContain(" inert");
         // A settled card has no clock running: no estimate, and the in-progress step has no time yet.
         html.ShouldNotContain("left</span>");
-        html.ShouldContain("<span class=\"chat-plan-step-time\" title=\"Time taken\">2m</span>");
+        html.ShouldContain("<span class=\"chat-plan-step-time\" title=\"Working time taken; about 2m expected\">2m</span>");
     }
 
     [Fact]
@@ -52,6 +52,27 @@ public sealed class ChatPlanCardRenderingTests
 
         html.ShouldContain("Fix <span class=\"chat-plan-outcome\">· 1 failed</span>");
         html.ShouldContain("100%");
+    }
+
+    [Fact]
+    public async Task ShouldForecastALivePlanAndSayWhenAStepRunsOverOrTheRunWaits()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var plan = new ChatPlan("Fix",
+        [
+            new("Study", 1, ChatPlanStepStatus.InProgress, 50, Minutes: 2, StartedAt: now.AddMinutes(-10), StartedClock: 0),
+            new("Build", 1, Minutes: 5)
+        ], now, 600);
+
+        var working = await RenderAsync(plan, live: true);
+        var waiting = await RenderAsync(plan, live: true, waiting: true);
+
+        working.ShouldContain("left</span>");
+        working.ShouldContain("class=\"chat-plan-step is-in-progress is-over\"");
+        working.ShouldContain(">10m / ~2m</span>");
+        working.ShouldContain(">~5m</span>");
+        waiting.ShouldContain("Waiting for you");
+        waiting.ShouldNotContain("left</span>");
     }
 
     [Theory]
@@ -78,7 +99,7 @@ public sealed class ChatPlanCardRenderingTests
         feed.LatestPlan([Message("User"), Message("Assistant")]).ShouldBeNull();
     }
 
-    private static async Task<string> RenderAsync(ChatPlan plan)
+    private static async Task<string> RenderAsync(ChatPlan plan, bool live = false, bool waiting = false)
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
@@ -90,7 +111,13 @@ public sealed class ChatPlanCardRenderingTests
         return await renderer.Dispatcher.InvokeAsync(async () =>
         {
             var component = await renderer.RenderComponentAsync<ChatPlanCard>(ParameterView.FromDictionary(
-                new Dictionary<string, object?> { [nameof(ChatPlanCard.Plan)] = plan }));
+                new Dictionary<string, object?>
+                {
+                    [nameof(ChatPlanCard.Plan)] = plan,
+                    [nameof(ChatPlanCard.Live)] = live,
+                    [nameof(ChatPlanCard.WorkingSince)] = live ? plan.UpdatedAt : null,
+                    [nameof(ChatPlanCard.Waiting)] = waiting
+                }));
             return component.ToHtmlString();
         });
     }

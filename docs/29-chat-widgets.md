@@ -844,19 +844,25 @@ is described in [Chat plans](37-chat-plans.md).
     come, so the weights are shown once, where they add up to the whole and to the percentage.
     Skipped and failed steps have no segment: they left the measure.
   - **Rows.** One per step, in order: a status mark on the tile, the title on up to two lines, the
-    status (and the time so far of the step in progress during a run), and the note as a line of its
-    own. The figure on the right depends on the status, so it is never read as progress when it is
-    not: a done or failed step shows its time, the step in progress its own progress, a waiting step
-    its share of the plan, muted and marked "≈". The bar under a row is the step's own progress: a
-    done step is full whatever it weighed, a waiting or skipped one empty. The step in progress is
-    the current row. Rows open nothing and have no locate button: a step is not a message.
-  - **Why not the weight under each row.** It was: a done step with a weight of 15% showed a bar
-    15% full, which read as a step done to 15%.
-  - **Footer.** The plan's elapsed time and, while the branch's run works, the estimate of the time
-    left at the pace so far.
+    status (with the reported progress of the step in progress, and "over its estimate" in the
+    warning text colour when it is), and the note as a line of its own. The figure on the right is
+    the step's time, as in the chat card: taken for a finished step, "4m / ~5m" for the step in
+    progress during a run, "~5m" expected for a waiting step; with nothing to expect yet, a waiting
+    step shows its share of the plan, muted and marked "≈". The bar under a row is the step's time
+    against what it was expected to take: accent up to the expectation and the rest of it empty;
+    past it the track is the time taken, accent for the expected part and warning for the rest.
+    Waiting and skipped steps, and steps with nothing expected, have no bar. The step in progress
+    is the current row. Rows open nothing and have no locate button: a step is not a message.
+  - **Why the bar is time.** Under each row it once showed the step's weight, which read as a done
+    step at 15%, and then the step's own progress, which repeated its status mark and figure. Time
+    against the expectation is what the row has no other way to show.
+  - **Footer.** The plan's working time and, while the branch's run works, the forecast as a range
+    ("about 8-15m left", the likely finish by the clock in its tooltip), or "waiting for you" while
+    the run waits for the person.
 - **No scope switch.** A branch has one plan; "last turn" would only hide it.
-- **Clock.** While the run works, the widget recomputes every second, so the times and the estimate
-  move between plan updates; otherwise it computes once per change of the branch.
+- **Clock.** Times are on the plan's working clock (see [Chat plans](37-chat-plans.md#the-working-clock)).
+  While the run works, the widget recomputes every second, so the times and the forecast move
+  between plan updates; otherwise it computes once per change of the branch.
 - **Empty state.** "When the assistant works through a task of several steps, its plan and progress
   appear here."
 - **Folded summary.** `P% · completed/total`.

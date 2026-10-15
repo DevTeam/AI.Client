@@ -3,10 +3,10 @@
 @implements IDisposable
 @* The plan of the visible branch (docs/37-chat-plans.md). The plan's bar is made of its steps, each
    as wide as its share of the work and filled as far as it has come, so the weights are seen once,
-   where they add up to the whole. A step's own row says only how far that step has come: a done step
-   is full whatever it weighed. The plan stays here between turns, so a task the assistant set aside
-   can still be read; the chat card shows it only while a run works on it and under the turn that
-   moved it. *@
+   where they add up to the whole. A step's row is about its time: what it took or has taken against
+   what it was expected to, with a bar that fills towards that time and turns to the warning colour
+   past it. The plan stays here between turns, so a task the assistant set aside can still be read;
+   the chat card shows it only while a run works on it and under the turn that moved it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-plan-widget">
     @if (_stats is not { Plan: { } plan, Progress: { } progress })
     {
@@ -38,8 +38,9 @@
                 @foreach (var entry in _stats.Steps)
                 {
                     var step = entry.Step;
+                    var timing = entry.Timing;
                     <ChatWidgetRow @key="entry.Number" Widget="@Widget" Current="@(progress.Current == entry.Number - 1 && !progress.IsFinished)"
-                                   Class="@($"chat-plan-widget-step is-{ChatPlanCard.StatusClass(step.Status)}")"
+                                   Class="@($"chat-plan-widget-step is-{ChatPlanCard.StatusClass(step.Status)} {(timing.IsOver ? "is-over" : null)}")"
                                    OpenTitle="@StepTitle(entry)" Note="@NoteOf(step)">
                         <Tile>
                             <span class="chat-plan-mark is-@ChatPlanCard.StatusClass(step.Status)" aria-label="@ChatPlanCard.StatusLabel(step.Status)">
@@ -50,17 +51,22 @@
                         <Name>@step.Title</Name>
                         <Details>
                             <span>@ChatPlanCard.StatusLabel(step.Status)</span>
-                            @if (step.Status == ChatPlanStepStatus.InProgress && IsGenerating && step.Duration(_now) is { } running)
+                            @if (step.Status == ChatPlanStepStatus.InProgress && step.Progress > 0)
                             {
-                                <span title="Time so far">@ChatPlanCard.FormatDuration(running)</span>
+                                <span title="How far this step has come, by the assistant's estimate">@step.Progress% done</span>
+                            }
+                            @if (timing.IsOver)
+                            {
+                                <span class="chat-plan-widget-over-text">over its estimate</span>
                             }
                         </Details>
                         <Figure>@Figure(entry)</Figure>
                         <Bar>
-                            @if (step.Status != ChatPlanStepStatus.Skipped && entry.Done > 0)
+                            @if (TimeBar(step, timing) is var (within, over, rest))
                             {
-                                <span style="flex-grow: @Share(entry.Done)"></span>
-                                @if (entry.Done < 1) { <i style="flex-grow: @Share(1 - entry.Done)"></i> }
+                                @if (within > 0) { <span style="flex-grow: @Share(within)"></span> }
+                                @if (over > 0) { <span class="chat-plan-widget-over" style="flex-grow: @Share(over)"></span> }
+                                @if (rest > 0) { <i style="flex-grow: @Share(rest)"></i> }
                             }
                         </Bar>
                     </ChatWidgetRow>
@@ -71,10 +77,14 @@
         @if (progress.Elapsed is { } elapsed)
         {
             <div class="chat-usage-section chat-usage-footnote">
-                <span title="From the first step's start to now, or to the plan's last change once it is finished">@ChatPlanCard.FormatDuration(elapsed) @(progress.IsFinished ? "in all" : "so far")</span>
-                @if (IsGenerating && progress.Remaining is { } remaining)
+                <span title="Working time from the first step's start; time spent waiting for you is not counted">@ChatPlanCard.FormatDuration(elapsed) @(progress.IsFinished ? "in all" : "so far")</span>
+                @if (IsGenerating && Waiting)
                 {
-                    <span class="chat-usage-muted" title="The weight still to do at the pace so far; the weights are the assistant's estimates">about @ChatPlanCard.FormatDuration(remaining) left</span>
+                    <span class="chat-usage-muted" title="The plan's clock stands still while the run waits for you">waiting for you</span>
+                }
+                else if (IsGenerating && progress is { RemainingLow: { } low, RemainingHigh: { } high })
+                {
+                    <span class="chat-usage-muted" title="@ChatPlanCard.FinishTitle(low, high)">about @ChatPlanCard.FormatRange(low, high) left</span>
                 }
             </div>
         }
@@ -93,14 +103,17 @@
     [Parameter]
     public bool IsGenerating { get; set; }
 
+    /// <summary>True while that run waits for the person: the clock stands still.</summary>
+    [Parameter]
+    public bool Waiting { get; set; }
+
     private ChatPlanStatistics _stats = ChatPlanStatistics.Empty;
-    private IReadOnlyList<ChatMessageView>? _statisticsMessages;
-    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+    private (IReadOnlyList<ChatMessageView> Messages, bool Generating, bool Waiting)? _computedFor;
     private PeriodicTimer? _clock;
 
     protected override void OnParametersSet()
     {
-        if (!ReferenceEquals(_statisticsMessages, Messages)) Refresh();
+        if (_computedFor != (Messages, IsGenerating, Waiting)) Refresh();
         if (IsGenerating && _clock is null)
         {
             _clock = new PeriodicTimer(TimeSpan.FromSeconds(1));
@@ -110,7 +123,6 @@
         {
             _clock.Dispose();
             _clock = null;
-            Refresh();
         }
     }
 
@@ -126,9 +138,8 @@
 
     private void Refresh()
     {
-        _now = DateTimeOffset.UtcNow;
-        _stats = Calculator.Calculate(Messages, _now);
-        _statisticsMessages = Messages;
+        _stats = Calculator.Calculate(Messages, IsGenerating, Waiting);
+        _computedFor = (Messages, IsGenerating, Waiting);
     }
 
     public void Dispose() => _clock?.Dispose();
@@ -138,23 +149,35 @@
         : null;
 
     /// <summary>
-    /// What the row's right edge says depends on where the step stands: a done or failed step how long
-    /// it took, the step in progress how far it has come, a waiting one its share of the plan, muted and
-    /// marked as an estimate so it is not read as progress.
+    /// The step's time as the card shows it; a waiting step with nothing to forecast from shows its
+    /// share of the plan instead, muted and marked as an estimate so it is not read as progress.
     /// </summary>
-    private RenderFragment? Figure(ChatPlanStepEntry entry) => entry.Step.Status switch
+    private RenderFragment? Figure(ChatPlanStepEntry entry) =>
+        ChatPlanCard.TimeOf(entry.Step, entry.Timing, IsGenerating) is { } time
+            ? @<span title="@ChatPlanCard.TimeTitle(entry.Step, entry.Timing)">@time</span>
+            : entry.Step.Status == ChatPlanStepStatus.Pending
+                ? @<span class="chat-usage-muted" title="This step's estimated share of the plan's work">≈@Percent(entry.Share)</span>
+                : null;
+
+    /// <summary>
+    /// A step's time against what it was expected to take, as parts of the track: the time within the
+    /// expectation, the time past it, and what is left of it. The track is the expected time, or the
+    /// time taken once that is longer. A waiting or skipped step, or one with nothing expected, has none.
+    /// </summary>
+    private static (double Within, double Over, double Left)? TimeBar(ChatPlanStep step, ChatPlanStepTiming timing)
     {
-        ChatPlanStepStatus.InProgress => @<span title="How far this step has come, by the assistant's estimate">@entry.Step.Progress%</span>,
-        ChatPlanStepStatus.Pending => @<span class="chat-usage-muted" title="This step's estimated share of the plan's work">≈@Percent(entry.Share)</span>,
-        _ when entry.Step.Duration(_now) is { } duration => @<span title="Time taken">@ChatPlanCard.FormatDuration(duration)</span>,
-        _ => null
-    };
+        if (step.Status is ChatPlanStepStatus.Pending or ChatPlanStepStatus.Skipped
+            || timing is not { Spent: { } spent, Expected: { TotalSeconds: > 0 } expected }) return null;
+        if (spent <= expected) return (spent / expected, 0, 1 - spent / expected);
+        return (expected / spent, 1 - expected / spent, 0);
+    }
 
     private static RenderFragment? NoteOf(ChatPlanStep step) => step.Note is { } note ? @<text>@note</text> : null;
 
     private static string StepTitle(ChatPlanStepEntry entry) =>
         $"Step {entry.Number}: {entry.Step.Title}"
-        + (entry.Share > 0 ? $"\nAbout {Percent(entry.Share)} of the plan's work (weight {entry.Step.Weight})" : string.Empty);
+        + (entry.Share > 0 ? $"\nAbout {Percent(entry.Share)} of the plan's work (weight {entry.Step.Weight})" : string.Empty)
+        + (entry.Step.Minutes is { } minutes ? $"\nEstimated by the assistant at {minutes:0.#} min" : string.Empty);
 
     private static string SegmentTitle(ChatPlanStepEntry entry) =>
         $"{entry.Number}. {entry.Step.Title} · {Percent(entry.Share)} of the plan, {Percent(entry.Done)} done";
@@ -163,5 +186,4 @@
         Math.Max(0, value).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string Percent(double share) => $"{(int)Math.Round(Math.Clamp(share, 0d, 1d) * 100)}%";
-
 }

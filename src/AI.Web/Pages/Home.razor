@@ -511,7 +511,9 @@
         <div class="composer-dock">
         @if (GetLivePlan() is { } dockedPlan)
         {
-            <ChatPlanCard @key="@("plan-" + GetSelectedRunBranchId())" Plan="@dockedPlan" Live="true" ExpandUpward="true" />
+            <ChatPlanCard @key="@("plan-" + GetSelectedRunBranchId())" Plan="@dockedPlan" Live="true" ExpandUpward="true"
+                          WorkingSince="@GetWidgetMessages(_selectedChat!).LastOrDefault(message => message.StartsTurn)?.CreatedAt"
+                          Waiting="@IsWaitingForPerson(GetSelectedRun())" />
         }
         @if (GetLiveTurnChanges() is { } dockedChanges)
         {
@@ -965,7 +967,8 @@
                     case ChatWidgetCatalog.ChatPlan:
                         <ChatPlanWidget Widget="@widget"
                                         Messages="@widgetMessages"
-                                        IsGenerating="@(widgetRun?.Status is ChatRunStatus.Generating or ChatRunStatus.Paused)" />
+                                        IsGenerating="@(widgetRun?.Status is ChatRunStatus.Generating or ChatRunStatus.Paused)"
+                                        Waiting="@IsWaitingForPerson(widgetRun)" />
                         break;
                     case ChatWidgetCatalog.ChatContext:
                         <ChatContextWidget Widget="@widget"
@@ -4726,6 +4729,10 @@ else if (_guideInvitation is { } guideInvitation)
             ? sighting.Plan
             : null;
     }
+
+    /// <summary>The run stands waiting for the person: an approval, a question, or a pause. The plan's clock stops.</summary>
+    private static bool IsWaitingForPerson(ChatRunSnapshot? run) =>
+        run is { PendingApproval: not null } or { PendingPrompt: not null } or { Status: ChatRunStatus.Paused };
 
     /// <summary>Show live changes above the composer until the turn's receipt appears in the feed.</summary>
     private AI.Contracts.Workspace.WorkspaceChangeSet? GetLiveTurnChanges()

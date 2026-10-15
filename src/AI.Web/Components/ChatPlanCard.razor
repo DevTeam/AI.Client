@@ -3,12 +3,12 @@
    run works through it; the turn keeps its final state under the answer. *@
 @using AI.Contracts.Plans
 @inject IJSRuntime JsRuntime
+@inject IChatPlanClock PlanClock
 @implements IAsyncDisposable
 
 @if (Plan is { Steps.Count: > 0 } plan)
 {
-    var now = DateTimeOffset.UtcNow;
-    var progress = ChatPlanProgress.Of(plan, now);
+    var progress = ChatPlanProgress.Of(plan, Live ? PlanClock.Now(plan, WorkingSince ?? plan.UpdatedAt, Waiting) : plan.Clock);
     var current = progress.Current is { } index ? plan.Steps[index] : null;
     <section class="chat-plan chat-summary-card @(ExpandUpward ? "opens-upward" : null) @(_showDetails ? "is-expanded" : "is-collapsed") @(Live ? "is-live" : null)"
              aria-label="Plan">
@@ -29,9 +29,13 @@
                 <span class="chat-summary-chevron" aria-hidden="true"><AppIcon Name="chevron-down" /></span>
             </button>
             <span class="chat-card-header-actions chat-plan-figures">
-                @if (Live && progress.Remaining is { } remaining)
+                @if (Live && Waiting)
                 {
-                    <span class="chat-plan-eta" title="Time left at the pace so far">~@FormatDuration(remaining) left</span>
+                    <span class="chat-plan-eta" title="The plan's clock stands still while the run waits for you">Waiting for you</span>
+                }
+                else if (Live && progress is { RemainingLow: { } low, RemainingHigh: { } high })
+                {
+                    <span class="chat-plan-eta" title="@FinishTitle(low, high)">@FormatRange(low, high) left</span>
                 }
                 <span class="chat-plan-count" title="Steps completed">@progress.Completed/@progress.Total</span>
                 <span class="chat-plan-percent" title="Progress by the estimated share of each step">@progress.Percent%</span>
@@ -49,7 +53,8 @@
                     @for (var stepIndex = 0; stepIndex < plan.Steps.Count; stepIndex++)
                     {
                         var step = plan.Steps[stepIndex];
-                        <li @key="stepIndex" class="chat-plan-step is-@StatusClass(step.Status)">
+                        var timing = progress.Steps[stepIndex];
+                        <li @key="stepIndex" class="chat-plan-step is-@StatusClass(step.Status) @(timing.IsOver ? "is-over" : null)">
                             <span class="chat-plan-mark is-@StatusClass(step.Status)" title="@StatusLabel(step.Status)" aria-label="@StatusLabel(step.Status)">
                                 @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
                                 else if (step.Status == ChatPlanStepStatus.Failed) { <AppIcon Name="x" /> }
@@ -66,9 +71,9 @@
                                 {
                                     <span class="chat-plan-step-progress">@step.Progress%</span>
                                 }
-                                @if (step.Duration(now) is { } duration && (step.IsFinished || Live))
+                                @if (TimeOf(step, timing, Live) is { } time)
                                 {
-                                    <span class="chat-plan-step-time" title="@(step.IsFinished ? "Time taken" : "Time so far")">@FormatDuration(duration)</span>
+                                    <span class="chat-plan-step-time" title="@TimeTitle(step, timing)">@time</span>
                                 }
                             </span>
                         </li>
@@ -87,6 +92,12 @@
 
     /// <summary>Shows details above a docked card while keeping its header in place.</summary>
     [Parameter] public bool ExpandUpward { get; set; }
+
+    /// <summary>When the live run began; the clock of a plan an earlier turn left goes on from here.</summary>
+    [Parameter] public DateTimeOffset? WorkingSince { get; set; }
+
+    /// <summary>The live run is waiting for the person: the clock stands still and no forecast is given.</summary>
+    [Parameter] public bool Waiting { get; set; }
 
     private readonly string _detailsId = $"chat-plan-details-{Guid.NewGuid():N}";
     private bool _showDetails;
@@ -178,6 +189,52 @@
         ChatPlanStepStatus.Failed => "Failed",
         _ => "Pending"
     };
+
+    /// <summary>
+    /// A step's time as it stands: what a finished step took, what the step in progress has taken
+    /// against what it was expected to, what a waiting step is expected to take.
+    /// </summary>
+    public static string? TimeOf(ChatPlanStep step, ChatPlanStepTiming timing, bool live) => step.Status switch
+    {
+        ChatPlanStepStatus.Pending => timing.Expected is { } expected ? "~" + FormatDuration(expected) : null,
+        ChatPlanStepStatus.Skipped => null,
+        ChatPlanStepStatus.InProgress when !live => null,
+        ChatPlanStepStatus.InProgress => timing.Spent is { } spent
+            ? FormatDuration(spent) + (timing.Expected is { } expected ? " / ~" + FormatDuration(expected) : null)
+            : null,
+        _ => timing.Spent is { } took ? FormatDuration(took) : null
+    };
+
+    public static string TimeTitle(ChatPlanStep step, ChatPlanStepTiming timing)
+    {
+        var expected = timing.Expected is { } expect ? $"about {FormatDuration(expect)} expected" : "no estimate";
+        var title = step.Status switch
+        {
+            ChatPlanStepStatus.Pending => "Expected working time",
+            ChatPlanStepStatus.InProgress => $"Working time so far; {expected}",
+            _ => $"Working time taken; {expected}"
+        };
+        return timing.IsOver ? title + ". Well over the estimate." : title;
+    }
+
+    /// <summary>A forecast as a range in whole minutes, "8–15m", or one figure when the range is that narrow.</summary>
+    public static string FormatRange(TimeSpan low, TimeSpan high)
+    {
+        var from = (int)Math.Floor(low.TotalMinutes);
+        var to = (int)Math.Ceiling(high.TotalMinutes);
+        if (to <= 1) return "~1m";
+        if (from < 1) return to >= 60 ? $"up to {FormatDuration(high)}" : $"up to {to}m";
+        if (to >= 60) return $"{FormatDuration(low)}–{FormatDuration(high)}";
+        return from >= to ? $"~{to}m" : $"{from}–{to}m";
+    }
+
+    /// <summary>When the forecast says the plan should be done, by this device's clock.</summary>
+    public static string FinishTitle(TimeSpan low, TimeSpan high)
+    {
+        var now = DateTimeOffset.Now;
+        return $"Likely done between {now.Add(low):t} and {now.Add(high):t}: the estimates, corrected by how the "
+            + "finished steps went; time spent waiting for you is not counted";
+    }
 
     /// <summary>Whole units at the scale of the span: "40s", "12m", "1h 5m".</summary>
     public static string FormatDuration(TimeSpan span)

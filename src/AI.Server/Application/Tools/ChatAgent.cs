@@ -492,12 +492,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
                         ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
-                    var policy = await PolicyAsync(projectId, chatId, branchId, tool, token);
+                    var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
                     if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
                     {
                         var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                         var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
                         input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
+                        // The program the rules were checked against is the one that starts: a
+                        // bare name is pinned to the file PATH found for it, and the card shows that.
+                        if (policy.Command?.Check.Command.ExecutablePath is { } executable) input["executable"] = executable;
                         arguments = input.ToJsonString();
                     }
                     var count = counts.GetValueOrDefault(call.Name) + 1;
@@ -518,7 +521,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     {
                         var activeCall = new ToolActivity(call.Id, call.Name, arguments);
                         await activity(activeCall, token);
-                        var current = await PolicyAsync(projectId, chatId, branchId, tool, token);
+                        var current = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
                         if (current.Decision == "Deny") result = Error("Policy changed before execution. Submit a new invocation.");
                         else
                         {
@@ -974,6 +977,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
     private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool, CancellationToken token) =>
         policies.ResolveAsync(projectId, chatId, branchId, tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
+
+    private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool,
+        string arguments, CancellationToken token) =>
+        policies.ResolveAsync(projectId, chatId, branchId, tool.ServerId, tool.OriginalName, tool.SchemaHash, arguments, token);
 
     // The history keeps the whole result, host metadata included; the model is sent a projection
     // without it, so a third-party server cannot smuggle anything into context through _meta.

@@ -1029,7 +1029,7 @@ public sealed class ChatRunDispatcher(
                 // grants the tool there has answered just as clearly, and expects the call they
                 // were looking at to proceed — so the standing policy is re-read while waiting.
                 var policy = await policies.ResolveAsync(runtime.State.ProjectId, runtime.State.ChatId, branchId,
-                    tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
+                    tool.ServerId, tool.OriginalName, tool.SchemaHash, arguments, token);
                 if (policy.Decision == "Allow") return ToolApprovalAction.Allow;
                 if (policy.Decision == "Deny") return ToolApprovalAction.Deny;
                 // Switching the chat's mode while the card waits answers it too: Full access lets the

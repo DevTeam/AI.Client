@@ -8,15 +8,11 @@ using Xunit;
 
 public sealed class CommandParserTests
 {
-    private static readonly IPath Paths = new SystemPath();
-    private static readonly string Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "command-rules"));
-    private static readonly string Project = Path.Combine(Root, "project");
-    private static readonly string Tools = Path.Combine(Root, "tools");
-    private static readonly string Git = Path.Combine(Tools, OperatingSystem.IsWindows() ? "git.exe" : "git");
-    private static readonly string Dotnet = Path.Combine(Tools, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
-    private static readonly string Pwsh = Path.Combine(Tools, OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh");
-    private static readonly string LocalGit = Path.Combine(Project, OperatingSystem.IsWindows() ? "git.exe" : "git");
-    private static readonly IReadOnlyList<CommandGrant> Grants = [new(Project, true)];
+    private static readonly IPath Paths = TestPrograms.Paths;
+    private static readonly string Root = TestPrograms.Root;
+    private static readonly string Project = TestPrograms.Project;
+    private static readonly string LocalGit = TestPrograms.LocalGit;
+    private static readonly IReadOnlyList<CommandGrant> Grants = TestPrograms.Grants;
 
     [Theory]
     [InlineData("git", new[] { "status", "--porcelain" }, "git status --porcelain")]
@@ -120,7 +116,7 @@ public sealed class CommandParserTests
     [Fact]
     public async Task ShouldLeaveCallsThatNameNoProgram()
     {
-        var parser = new CommandParser(new Locator(), Paths);
+        var parser = TestPrograms.Parser();
 
         (await parser.ParseAsync("""{"arguments":["status"]}""", CancellationToken.None)).ShouldBeNull();
         (await parser.ParseAsync("[]", CancellationToken.None)).ShouldBeNull();
@@ -138,21 +134,6 @@ public sealed class CommandParserTests
             arguments,
             workingDirectory = workingDirectory == "" ? Project : workingDirectory
         });
-        return (await new CommandParser(new Locator(), Paths).ParseAsync(json, CancellationToken.None)).ShouldNotBeNull();
-    }
-
-    /// <summary>A PATH holding git, dotnet and pwsh in one tools directory, and a stray git in the project.</summary>
-    private sealed class Locator : IExecutableLocator
-    {
-        private static readonly string[] Files = [Git, Dotnet, Pwsh, LocalGit];
-
-        public Task<string?> LocateAsync(string executable, string? workingDirectory, CancellationToken cancellationToken)
-        {
-            if (Paths.IsFullyQualified(executable))
-                return Task.FromResult(Files.FirstOrDefault(file => string.Equals(file, executable, Paths.Comparison)));
-            var name = CommandNames.Normalize(executable, Paths.IsCaseSensitive);
-            return Task.FromResult(new[] { Git, Dotnet, Pwsh }
-                .FirstOrDefault(file => CommandNames.Normalize(file, Paths.IsCaseSensitive) == name));
-        }
+        return (await TestPrograms.Parser().ParseAsync(json, CancellationToken.None)).ShouldNotBeNull();
     }
 }

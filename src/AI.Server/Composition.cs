@@ -69,6 +69,8 @@ internal sealed class Composition
             .Transient<CompositeToolSessionFactory>()
             // The dispatcher of scheduled chats owns one loop and the schedules it last read.
             .Singleton<ChatScheduler>()
+            // Command rules share one document and its write gate.
+            .Singleton<JsonCommandRuleRepository>()
             .Singleton<ChatKindPolicyRegistry>()
             .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
             .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
@@ -110,7 +112,7 @@ internal sealed class Composition
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 ChatTemporaryDirectory,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
-                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser>()
+                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService>()
             .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.

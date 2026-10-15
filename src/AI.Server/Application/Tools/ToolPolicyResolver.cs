@@ -4,13 +4,16 @@ using Chats;
 using Projects;
 using Settings;
 using AI.Contracts.Settings;
+using Commands;
 
 /// <summary>What the layered policies add up to for one tool in one chat.</summary>
+/// <param name="Command">What the command rules made of a <c>process_run</c> call, when they were asked.</param>
 public sealed record EffectiveToolPolicy(
     string Decision,
     int MaxCalls,
     string MaxCallsScope,
-    long TimeoutSeconds);
+    long TimeoutSeconds,
+    CommandEvaluation? Command = null);
 
 /// <summary>
 /// Works out whether a tool may run, asks first, or is refused. Chat overrides project, project
@@ -23,9 +26,27 @@ public sealed record EffectiveToolPolicy(
 /// user grants the tool from settings instead of from the prompt.
 /// </remarks>
 public sealed class ToolPolicyResolver(IProjectService projects, IChatService chats, IGlobalSettingsRepository settings,
-    IToolDefaultDecision defaults, IChatBranchSettingsResolver branchSettings)
+    IToolDefaultDecision defaults, IChatBranchSettingsResolver branchSettings, ICommandRuleService commands)
     : IToolPolicyResolver
 {
+    /// <summary>
+    /// The tool's own policy is the outer bound: a denied tool stays denied. Inside it a matching
+    /// command rule decides — it can allow a call the tool would ask about, or ask about or refuse
+    /// one the tool would allow.
+    /// </summary>
+    public async Task<EffectiveToolPolicy> ResolveAsync(Guid projectId, Guid chatId, Guid branchId,
+        Guid serverId, string name, string schemaHash, string? arguments, CancellationToken cancellationToken)
+    {
+        var policy = await ResolveAsync(projectId, chatId, branchId, serverId, name, schemaHash, cancellationToken);
+        if (arguments is null || serverId != DefaultMcpServer.Id || name != ProcessRun
+            || policy.Decision == "Deny")
+            return policy;
+        var evaluation = await commands.EvaluateAsync(projectId, chatId, arguments, cancellationToken);
+        return policy with { Decision = evaluation?.Decision ?? policy.Decision, Command = evaluation };
+    }
+
+    public const string ProcessRun = "process_run";
+
     public async Task<EffectiveToolPolicy> ResolveAsync(
         Guid projectId, Guid chatId, Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
         => await ResolveAsync(projectId, chatId, chatId, serverId, name, schemaHash, cancellationToken);

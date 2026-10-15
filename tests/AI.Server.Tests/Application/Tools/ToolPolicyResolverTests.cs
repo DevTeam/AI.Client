@@ -4,6 +4,7 @@ using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
 using AI.Application.Tools;
+using AI.Application.Tools.Commands;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
@@ -35,7 +36,7 @@ public sealed class ToolPolicyResolverTests
         settings.Setup(repository => repository.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => global);
         var resolver = new ToolPolicyResolver(projects.Object, chats.Object, settings.Object, new ToolDefaultDecision(),
-            new ChatBranchSettingsResolver());
+            new ChatBranchSettingsResolver(), Mock.Of<ICommandRuleService>());
 
         async Task<string> DecisionAsync(string toolName = name) =>
             (await resolver.ResolveAsync(projectId, chatId, serverId, toolName, schema, CancellationToken.None)).Decision;

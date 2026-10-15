@@ -1,12 +1,11 @@
 // Text that changes in place without jumping. The part the old and the new text share stays where
 // it is; the rest dissolves into the new text while its width eases to fit, so whatever follows on
-// the line glides along instead of jumping. Used for the running turn's "Working for …" (each tick
-// morphs only the digits that change) and for the activity line under it (docs/18-compact-turn-view.md).
+// the line glides along instead of jumping. Used for the activity line under the running turn
+// (docs/18-compact-turn-view.md).
 //
-// Blazor renders these elements empty and puts the text in attributes, so this script owns their
-// children and the renderer never diffs them:
-//   [data-morph]                  the element shows that text, morphing on every change;
-//   .turn-activity[data-activity-*] the line's title, count and detail, held for a moment each.
+// Blazor renders the line empty and puts its state in .turn-activity[data-activity-*] attributes
+// (the title, count and detail, held for a moment each), so this script owns its children and the
+// renderer never diffs them.
 (() => {
     // Matches the transitions of .text-morph-tail in app.css; the layers are folded back into plain
     // text once they have played, so the resting DOM is just the text again.
@@ -140,9 +139,7 @@
 
     const visit = node => {
         if (!(node instanceof Element)) return;
-        if (node.matches("[data-morph]")) morph(node, node.dataset.morph);
         if (node.matches(".turn-activity[data-activity-kind]")) updateActivity(node);
-        for (const element of node.querySelectorAll("[data-morph]")) morph(element, element.dataset.morph);
         for (const line of node.querySelectorAll(".turn-activity[data-activity-kind]")) updateActivity(line);
     };
 
@@ -153,8 +150,6 @@
             for (const record of records) {
                 if (record.type === "childList") {
                     for (const node of record.addedNodes) visit(node);
-                } else if (record.attributeName === "data-morph") {
-                    morph(record.target, record.target.dataset.morph);
                 } else {
                     lines.add(record.target);
                 }
@@ -165,7 +160,7 @@
             subtree: true,
             childList: true,
             attributes: true,
-            attributeFilter: ["data-morph", "data-activity-kind", "data-activity-title", "data-activity-count", "data-activity-detail"],
+            attributeFilter: ["data-activity-kind", "data-activity-title", "data-activity-count", "data-activity-detail"],
         });
     };
 

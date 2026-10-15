@@ -146,10 +146,7 @@
                         {
                             <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         }
-                        @* js/textMorph.js writes the text from data-morph, so a ticking timer morphs only the
-                           digits that change. *@
-                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)"
-                              data-morph="@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))"></span>
+                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
                         @* Only a finished turn says what it used: a figure ticking up beside the timer
                            would pull the eye away from the answer being written under it. *@
                         @if (ShowTurnTokens && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)

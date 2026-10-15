@@ -1,0 +1,71 @@
+@inject IGlobalSettingsApi GlobalSettingsApi
+@inject INotificationService Notifications
+
+@* Adds a command rule for process_run. Shared by the global tool settings and the project's permissions drawer. *@
+@* A group, not a form: the global settings already wrap it in one, and forms do not nest. *@
+<div class="command-rule-form" role="group" aria-label="New command rule">
+    <input aria-label="Command pattern" placeholder="git diff *" spellcheck="false" autocomplete="off"
+           maxlength="2000" value="@_pattern" @oninput="e => _pattern = e.Value?.ToString() ?? string.Empty"
+           @onkeydown="OnKeyDownAsync" disabled="@_saving" />
+    <select aria-label="Decision for the new command rule" @bind="_decision" disabled="@_saving">
+        <option value="Allow">Allow</option><option value="Ask">Ask</option><option value="Deny">Deny</option>
+    </select>
+    @if (Scopes.Count > 1)
+    {
+        <select aria-label="Where the new command rule applies" @bind="ChosenScope" disabled="@_saving">
+            @foreach (var (value, label) in Scopes)
+            {
+                <option value="@value">@label</option>
+            }
+        </select>
+    }
+    <button type="button" title="Save this command rule" disabled="@(_saving || string.IsNullOrWhiteSpace(_pattern))" @onclick="AddAsync">Add</button>
+</div>
+@if (_error is not null) { <p class="error" role="alert">@_error</p> }
+<p class="command-rule-hint">The program's name, then its arguments word by word. <code>*</code> or <code>?</code> inside a word is a mask; a lone <code>*</code> at the end allows any further arguments. A Deny always wins; otherwise the most specific rule decides.</p>
+
+@code {
+    /// <summary>The scopes the rule may be saved in, as value and label; the first is preselected.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<(string Value, string Label)> Scopes { get; set; } = [];
+    [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public Guid? ChatId { get; set; }
+    [Parameter] public EventCallback<CommandRule> Saved { get; set; }
+
+    private string _pattern = string.Empty;
+    private string _decision = "Allow";
+    private string? _scope;
+    private bool _saving;
+    private string? _error;
+
+    private string ChosenScope
+    {
+        get => _scope ?? (Scopes.Count > 0 ? Scopes[0].Value : CommandRule.Global);
+        set => _scope = value;
+    }
+
+    /// <summary>Enter adds the rule; a settings form around this group already refuses to submit.</summary>
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !string.IsNullOrWhiteSpace(_pattern) && !_saving) await AddAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        var scope = ChosenScope;
+        _saving = true;
+        _error = null;
+        try
+        {
+            var rule = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(scope,
+                scope == CommandRule.Global ? null : ProjectId, scope == CommandRule.Chat ? ChatId : null,
+                _pattern.Trim(), _decision), CancellationToken.None);
+            _pattern = string.Empty;
+            Notifications.ShowSuccess("Command rule saved.");
+            await Saved.InvokeAsync(rule);
+        }
+        // The Host explains a pattern it refuses ("A command pattern starts with the program's name…").
+        catch (InvalidOperationException error) { _error = error.Message; }
+        catch (HttpRequestException) { _error = "The command rule could not be saved."; }
+        finally { _saving = false; }
+    }
+}

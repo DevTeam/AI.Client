@@ -1,0 +1,84 @@
+@inject IGlobalSettingsApi GlobalSettingsApi
+@inject INotificationService Notifications
+
+@* The global command rules for process_run. They are saved as they change, apart from the settings form's Save. *@
+<section class="settings-group" aria-labelledby="command-rules-heading">
+    <h3 id="command-rules-heading">Command rules</h3>
+    <p class="settings-note">Decide process_run calls by the program they start, inside the process_run default above. These apply to every project and are saved at once; a project adds its own in its tool permissions.</p>
+    @if (_rules.Count > 0)
+    {
+        <div class="settings-card">
+            @foreach (var rule in _rules.OrderBy(item => item.Pattern, StringComparer.Ordinal))
+            {
+                <div class="settings-row mcp-tool-row">
+                    <span class="settings-row-text"><code class="settings-row-label mcp-tool-title">@rule.Pattern</code></span>
+                    <select class="mcp-tool-decision is-@rule.Decision.ToLowerInvariant()" aria-label="Decision for @rule.Pattern"
+                            title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it"
+                            value="@rule.Decision" disabled="@_saving" @onchange="e => ChangeAsync(rule, e.Value?.ToString())">
+                        <option value="Ask">Ask</option><option value="Allow">Allow</option><option value="Deny">Deny</option>
+                    </select>
+                    <button class="icon-action" type="button" title="Remove this command rule" aria-label="Remove command rule @rule.Pattern"
+                            disabled="@_saving" @onclick="() => RemoveAsync(rule)"><AppIcon Name="trash" /></button>
+                </div>
+            }
+        </div>
+    }
+    else if (_loaded)
+    {
+        <p class="empty-hint">No global command rules. Every process_run call follows the tool's default.</p>
+    }
+    @if (_error is not null) { <p class="error" role="alert">@_error</p> }
+    <CommandRuleForm Scopes="@GlobalScope" Saved="SavedAsync" />
+</section>
+
+@code {
+    private static readonly IReadOnlyList<(string Value, string Label)> GlobalScope = [(CommandRule.Global, "Every project")];
+    private IReadOnlyList<CommandRule> _rules = [];
+    private bool _loaded;
+    private bool _saving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Without a project or chat the Host answers with the global rules only.
+            _rules = await GlobalSettingsApi.GetCommandRulesAsync(null, null, CancellationToken.None) ?? [];
+            _loaded = true;
+        }
+        catch (HttpRequestException) { _error = "Command rules could not be loaded."; }
+    }
+
+    private Task SavedAsync(CommandRule rule)
+    {
+        _rules = CommandRuleList.Replace(_rules, rule);
+        return Task.CompletedTask;
+    }
+
+    private async Task ChangeAsync(CommandRule rule, string? decision)
+    {
+        if (decision is not ("Allow" or "Ask" or "Deny") || decision == rule.Decision) return;
+        await RunAsync(async () =>
+        {
+            _rules = CommandRuleList.Replace(_rules, await GlobalSettingsApi.AddCommandRuleAsync(
+                new CreateCommandRuleRequest(CommandRule.Global, null, null, rule.Pattern, decision), CancellationToken.None));
+            Notifications.ShowSuccess("Command rule updated.");
+        }, "The command rule could not be saved.");
+    }
+
+    private Task RemoveAsync(CommandRule rule) => RunAsync(async () =>
+    {
+        await GlobalSettingsApi.RemoveCommandRuleAsync(rule.Id, CancellationToken.None);
+        _rules = _rules.Where(item => item.Id != rule.Id).ToArray();
+        Notifications.ShowSuccess("Command rule removed.");
+    }, "The command rule could not be removed.");
+
+    private async Task RunAsync(Func<Task> change, string failure)
+    {
+        _saving = true;
+        _error = null;
+        try { await change(); }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException) { _error = failure; }
+        finally { _saving = false; }
+    }
+}

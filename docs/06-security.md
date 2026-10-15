@@ -163,7 +163,11 @@ since it would read back as a mask. The Host computes the offered patterns and a
 them, so a client cannot widen what the person saw. Remembering "Any process_run call" saves a
 policy for the whole tool, as before.
 
-Rules are listed and removed in the permissions drawer beside the tool permissions, read with
+Global rules are written in the global tool settings, on the Tools page of the built-in server
+below the `process_run` default: added with a pattern and a decision, changed and removed. A
+project's tool permissions do the same for the project's rules and can also add a global one. A
+chat's and a branch's tool permissions only list the rules that apply and reset the chat's own; the
+chat's rules come from its approval cards. Rules are read with
 `app_read` `CommandRules`, changed with `app_security` `SetCommandRule` and `RemoveCommandRule`, and
 served at `/api/settings/command-rules`.
 

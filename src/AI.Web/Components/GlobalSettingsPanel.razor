@@ -468,6 +468,11 @@
                                             }
                                         </div>
                                     }
+                                    @* process_run is decided further by the command it runs; the global rules live beside its default. *@
+                                    @if (server.Id == DefaultMcpServer.Id)
+                                    {
+                                        <GlobalCommandRules />
+                                    }
                                 }
                             </form>
                         }

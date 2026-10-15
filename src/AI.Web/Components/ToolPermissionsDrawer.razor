@@ -61,7 +61,7 @@
             }
         }
         @* Command rules refine process_run by what it starts; they sit beside the tool's own permission. *@
-        @if (!_loading)
+        @if (!_loading && (Scope == "Project" || VisibleRules.Count > 0))
         {
             <section class="permissions-group">
                 <h3 title="Rules for the programs process_run starts; a matching rule decides inside the tool's own permission"><AppIcon Name="tool" />Command rules</h3>
@@ -71,13 +71,13 @@
                         <div>
                             <div class="permission-item-title">
                                 <code>@rule.Pattern</code>
-                                @if (!OwnsRule(rule))
+                                @if (!EditsRule(rule))
                                 {
                                     <span class="permission-decision" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it">@rule.Decision</span>
                                 }
                             </div>
                             <p><span title="@($"This rule comes from {rule.Scope.ToLowerInvariant()} command rules; a Deny wins, otherwise the most specific pattern decides")">@rule.Scope</span></p>
-                            @if (OwnsRule(rule))
+                            @if (EditsRule(rule))
                             {
                                 <select aria-label="Decision for @rule.Pattern" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it"
                                         value="@rule.Decision" disabled="@_saving" @onchange="e => ChangeRuleAsync(rule, e.Value?.ToString())">
@@ -91,19 +91,11 @@
                         }
                     </div>
                 }
-                <form class="command-rule-form" @onsubmit="AddRuleAsync" @onsubmit:preventDefault="true">
-                    <input aria-label="Command pattern" placeholder="git diff *" spellcheck="false" autocomplete="off"
-                           maxlength="2000" value="@_newPattern" @oninput="e => _newPattern = e.Value?.ToString() ?? string.Empty" disabled="@_saving" />
-                    <select aria-label="Decision for the new command rule" @bind="_newDecision" disabled="@_saving">
-                        <option value="Allow">Allow</option><option value="Ask">Ask</option><option value="Deny">Deny</option>
-                    </select>
-                    <select aria-label="Where the new command rule applies" @bind="NewScope" disabled="@_saving">
-                        <option value="@RuleScope">@(RuleScope == CommandRule.Chat ? "This chat" : "This project")</option>
-                        <option value="@CommandRule.Global">Every project</option>
-                    </select>
-                    <button type="submit" title="Save this command rule" disabled="@(_saving || string.IsNullOrWhiteSpace(_newPattern))">Add</button>
-                </form>
-                <p class="command-rule-hint">The program's name, then its arguments word by word. <code>*</code> or <code>?</code> inside a word is a mask; a lone <code>*</code> at the end allows any further arguments. A Deny always wins; otherwise the most specific rule decides.</p>
+                @* Rules are written in the global tool settings and for a project; a chat and its branches only show and reset them. *@
+                @if (Scope == "Project")
+                {
+                    <CommandRuleForm Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
+                }
             </section>
         }
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }
@@ -231,56 +223,48 @@
     private static bool Same(McpToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
     private static bool Same(ToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
 
-    /// <summary>A branch has no command rules of its own; it shows and edits its chat's.</summary>
+    /// <summary>A branch has no command rules of its own; it shows and resets its chat's.</summary>
     private string RuleScope => Scope == "Branch" ? CommandRule.Chat : Scope;
+    private static readonly IReadOnlyList<(string Value, string Label)> ProjectRuleScopes =
+        [(CommandRule.Project, "This project"), (CommandRule.Global, "Every project")];
     private IReadOnlyList<CommandRule> VisibleRules => _rules
         .Where(rule => _showAll || rule.Scope == RuleScope)
         .OrderBy(rule => rule.Scope == CommandRule.Chat ? 0 : rule.Scope == CommandRule.Project ? 1 : 2)
         .ThenBy(rule => rule.Pattern, StringComparer.Ordinal)
         .ToArray();
-    /// <summary>
-    /// The drawer's own rules, and global ones: settings have no other place that lists them, so
-    /// a global rule saved from a card is removed where it shows.
-    /// </summary>
-    private bool OwnsRule(CommandRule rule) => rule.Scope == RuleScope || rule.Scope == CommandRule.Global;
+    /// <summary>The drawer resets the rules of its own scope; global ones belong to the global tool settings.</summary>
+    private bool OwnsRule(CommandRule rule) => rule.Scope == RuleScope;
 
-    private string _newPattern = string.Empty;
-    private string _newDecision = "Allow";
-    private string? _newScopeChoice;
-    private string NewScope
+    /// <summary>Only a project's rules have their decision changed here; a chat's are shown and reset.</summary>
+    private bool EditsRule(CommandRule rule) => Scope == "Project" && OwnsRule(rule);
+
+    private async Task RuleSavedAsync(CommandRule rule)
     {
-        get => _newScopeChoice ?? RuleScope;
-        set => _newScopeChoice = value;
+        _rules = CommandRuleList.Replace(_rules, rule);
+        await Changed.InvokeAsync();
     }
 
-    private Task AddRuleAsync() => SaveRuleAsync(NewScope, _newPattern, _newDecision, "Command rule saved.", () => _newPattern = string.Empty);
-
     /// <summary>Saving the same scope and pattern again replaces the rule, which is how its decision changes.</summary>
-    private Task ChangeRuleAsync(CommandRule rule, string? decision) => decision is "Allow" or "Ask" or "Deny" && decision != rule.Decision
-        ? SaveRuleAsync(rule.Scope, rule.Pattern, decision, "Command rule updated.", null)
-        : Task.CompletedTask;
-
-    private async Task SaveRuleAsync(string scope, string pattern, string decision, string message, Action? saved)
+    private async Task ChangeRuleAsync(CommandRule rule, string? decision)
     {
+        if (decision is not ("Allow" or "Ask" or "Deny") || decision == rule.Decision) return;
         _saving = true;
         _error = null;
         try
         {
-            var rule = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(scope,
-                scope == CommandRule.Global ? null : ProjectId, scope == CommandRule.Chat ? ChatId : null,
-                pattern.Trim(), decision), CancellationToken.None);
-            _rules = _rules.Where(item => !(item.Scope == rule.Scope && item.ProjectId == rule.ProjectId
-                    && item.ChatId == rule.ChatId && item.Pattern == rule.Pattern))
-                .Append(rule).ToArray();
-            saved?.Invoke();
-            Notifications.ShowSuccess(message);
+            var saved = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(rule.Scope, rule.ProjectId,
+                rule.ChatId, rule.Pattern, decision), CancellationToken.None);
+            _rules = CommandRuleList.Replace(_rules, saved);
+            Notifications.ShowSuccess("Command rule updated.");
             await Changed.InvokeAsync();
         }
-        // The Host explains a pattern it refuses ("A command pattern starts with the program's name…").
-        catch (InvalidOperationException error) { _error = error.Message; }
-        catch (HttpRequestException) { _error = "The command rule could not be saved."; }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = "The command rule could not be saved.";
+        }
         finally { _saving = false; }
     }
+
 
     private async Task RemoveRuleAsync(CommandRule rule)
     {

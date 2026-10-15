@@ -78,7 +78,7 @@ The dark theme is the complete base on `:root`; every other theme inherits from 
 dark (base) ─┬─ darkblue    surfaces, fills, text and borders shifted towards blue
              ├─ gray        surfaces, fills and borders lifted to neutral grey
              └─ light family (light, lightgray)
-                  └─ lightgray   surfaces, fills and borders a hair darker
+                  └─ lightgray   surfaces, fills and borders pulled to grey, faint text a step darker
 ```
 
 A selector that means "a light theme" names both light themes: `:root:is([data-theme="light"], [data-theme="lightgray"])`. Script that needs the same answer reads the computed `color-scheme` of `<html>` instead of comparing theme names (see the Mermaid configuration in `index.html`).

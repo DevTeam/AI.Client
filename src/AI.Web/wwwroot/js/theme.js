@@ -13,7 +13,7 @@
 
     // The browser chrome colour cannot come from CSS: this script runs before the stylesheet,
     // so these mirror --color-bg of each theme in app.css.
-    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101720", gray: "#212121", lightgray: "#f2f2f2" };
+    const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101720", gray: "#212121", lightgray: "#dedede" };
 
     function render() {
         const root = document.documentElement;

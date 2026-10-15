@@ -30,7 +30,7 @@
                 </ResourceDictionary>
                 <!-- The page's light grey palette (app.css), for the chrome it cannot paint. -->
                 <ResourceDictionary x:Key="{x:Static desktop:DesktopThemes.LightGray}">
-                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F2F2F2" />
+                    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#DEDEDE" />
                     <SolidColorBrush x:Key="StatusTitleBrush" Color="#1F1F1F" />
                     <SolidColorBrush x:Key="StatusDetailBrush" Color="#5C5C5C" />
                 </ResourceDictionary>

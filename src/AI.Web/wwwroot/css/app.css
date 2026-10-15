@@ -113,7 +113,7 @@
    it and a theme block below lists only what it changes:
      dark (base) ─┬─ darkblue: surfaces, fills, text and borders shifted towards blue
                   ├─ gray: surfaces, fills and borders lifted to neutral grey
-                  └─ light (light and lightgray) ── lightgray: surfaces, fills and borders a hair darker
+                  └─ light (light and lightgray) ── lightgray: surfaces, fills and borders pulled to grey
    Accent and status colours belong to the accent the user picked: they are written once per family
    (dark, light) so that switching between themes of one family never recolours them. Non-blue
    accents derive every --color-accent-* token from one swatch further down. */
@@ -356,26 +356,29 @@
     --scrim-scale: 0.55;
 }
 
-/* Light grey (Settings → Theme): the light family with every surface pulled a hair darker than
-   pure white, so the workspace reads as soft grey paper rather than glassy white. */
+/* Light grey (Settings → Theme): the light family with every surface pulled down to a clearly
+   grey tone, so the workspace reads as grey paper rather than white. text-faint and
+   text-disabled step down with it so they keep their contrast on the darker surfaces. */
 :root[data-theme="lightgray"] {
-    --color-bg-sunken: #ececec;
-    --color-bg-inset: #efefef;
-    --color-bg: #f2f2f2;
-    --color-surface: #f5f5f5;
-    --color-surface-raised: #f8f8f8;
-    --color-fill: #e8e8e8;
-    --color-fill-hover: #e1e1e1;
-    --color-fill-active: #dadada;
-    --color-fill-strong: #d0d0d0;
-    --color-fill-stronger: #c2c2c2;
-    --color-border-subtle: #e3e3e3;
-    --color-border: #d6d6d6;
-    --color-border-strong: #c5c5c5;
-    --color-border-stronger: #a8a8a8;
-    --color-accent-bg: #e7eef9;
-    --color-accent-bg-hover: #d8e4f5;
-    --color-accent-bg-active: #c9d9ee;
+    --color-bg-sunken: #d4d4d4;
+    --color-bg-inset: #d9d9d9;
+    --color-bg: #dedede;
+    --color-surface: #e2e2e2;
+    --color-surface-raised: #e6e6e6;
+    --color-fill: #d2d2d2;
+    --color-fill-hover: #cbcbcb;
+    --color-fill-active: #c4c4c4;
+    --color-fill-strong: #bababa;
+    --color-fill-stronger: #adadad;
+    --color-text-faint: #5e5e5e;
+    --color-text-disabled: #8f8f8f;
+    --color-border-subtle: #cfcfcf;
+    --color-border: #c0c0c0;
+    --color-border-strong: #b0b0b0;
+    --color-border-stronger: #949494;
+    --color-accent-bg: #d3dae5;
+    --color-accent-bg-hover: #c4d0e1;
+    --color-accent-bg-active: #b5c5da;
 }
 
 /* Accent colour (Settings → Accent color). js/theme.js puts data-accent on <html>. Blue is the

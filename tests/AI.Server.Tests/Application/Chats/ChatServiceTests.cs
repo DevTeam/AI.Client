@@ -197,6 +197,40 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldCarryThePlanOfAFoldedPlanResult()
+    {
+        var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000040"));
+        var callId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000041"));
+        var planId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000042"));
+        var readId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000043"));
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Fix", _now), _now);
+        chat.AddMessage(new ChatMessage(callId, userId, ChatMessageRole.Assistant, "", _now.AddSeconds(1),
+            toolCalls:
+            [
+                new ChatToolCall("call-1", "mcp_app__plan_update", "{\"steps\":[]}"),
+                new ChatToolCall("call-2", "mcp_app__app_read", "{}")
+            ]), _now.AddSeconds(1));
+        const string plan = "{\"isError\":false,\"structuredContent\":{\"plan\":{\"title\":\"Fix\",\"steps\":"
+            + "[{\"title\":\"Study\",\"weight\":2,\"status\":\"InProgress\",\"progress\":30}],"
+            + "\"updatedAt\":\"2026-08-12T12:00:02Z\"}}}";
+        chat.AddMessage(new ChatMessage(planId, callId, ChatMessageRole.Tool, plan, _now.AddSeconds(2), toolCallId: "call-1"),
+            _now.AddSeconds(2));
+        chat.AddMessage(new ChatMessage(readId, planId, ChatMessageRole.Tool, plan, _now.AddSeconds(3), toolCallId: "call-2"),
+            _now.AddSeconds(3));
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 2));
+
+        var transcript = await CreateInstance().GetTranscriptAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        var result = transcript!.Messages.Single(message => message.Id == planId.Value);
+        result.ContentOmitted.ShouldBeTrue();
+        var step = result.Plan.ShouldNotBeNull().Steps.ShouldHaveSingleItem();
+        step.ShouldBe(new AI.Contracts.Plans.ChatPlanStep("Study", 2, AI.Contracts.Plans.ChatPlanStepStatus.InProgress, 30));
+        transcript.Messages.Single(message => message.Id == readId.Value).Plan.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ShouldLoadTranscriptActivityAndToolResultInLayers()
     {
         var userId = new ChatMessageId(Guid.Parse("019f0000-0000-7000-8000-000000000010"));

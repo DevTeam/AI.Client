@@ -114,6 +114,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 
         // The expanded feed needs the small checkpoint result to decide whether compaction
         // actually applied. Other tool output remains lazy, even when the turn is expanded.
+        var planCalls = Plans.ChatPlanHistory.PlanCallIds(branch);
         var compactCallIds = branch.Skip(start + 1).Take(end - start - 1)
             .SelectMany(message => message.ToolCalls ?? [])
             .Where(call => ToolRef.Parse(call.Name) is { IsApp: true, Name: "context_compact" })
@@ -122,7 +123,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var messages = branch
             .Skip(start + 1)
             .Take(end - start - 1)
-            .Select(message => ToView(message, omitToolResultContent:
+            .Select(message => ToView(message, planCalls, omitToolResultContent:
                 message.Role != ChatMessageRole.Tool
                 || message.ToolCallId is not { } callId
                 || !compactCallIds.Contains(callId)
@@ -574,26 +575,30 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             parent.ParentHeadMessageId?.Value);
     }
 
-    private ChatDetails ToDetails(ChatThread chat, long revision) => new(
-        chat.Id.Value,
-        chat.ProjectId.Value,
-        chat.Title,
-        chat.CreatedAt,
-        chat.UpdatedAt,
-        revision,
-        chat.ConnectionId?.Value,
-        chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message)).ToArray(),
-        chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
-            branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
-            ToContract(branch.Settings))).ToArray(),
-        chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
-            policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
-            policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
-        chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
-        chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
-        KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
-        KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion,
-        chat.ReasoningEffort);
+    private ChatDetails ToDetails(ChatThread chat, long revision)
+    {
+        var planCalls = Plans.ChatPlanHistory.PlanCallIds(chat.Messages);
+        return new(
+            chat.Id.Value,
+            chat.ProjectId.Value,
+            chat.Title,
+            chat.CreatedAt,
+            chat.UpdatedAt,
+            revision,
+            chat.ConnectionId?.Value,
+            chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message, planCalls)).ToArray(),
+            chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
+                branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
+                ToContract(branch.Settings))).ToArray(),
+            chat.ToolPolicies.Select(policy => new ToolPolicySettings(policy.Tool.ServerId.Value, policy.Tool.Name,
+                policy.Tool.SchemaHash, policy.Decision.ToString(), policy.MaxCallsPerRun,
+                policy.Timeout is { } timeout ? checked((long)timeout.TotalSeconds) : null)).ToArray(),
+            chat.AutoTitlePending, chat.ArchivedAt, chat.ArchiveOperationId, ToContract(chat.ApprovalMode),
+            chat.Kind.Value, chat.KindState, KindPolicies.TryResolve(chat.Kind)?.Behavior.InteractionSurface ?? "unsupported",
+            KindPolicies.TryResolve(chat.Kind)?.Behavior.AllowChatNavigation ?? false,
+            KindPolicies.TryResolve(chat.Kind)?.Behavior.ShowInMainRuns ?? false, chat.KindStateVersion,
+            chat.ReasoningEffort);
+    }
 
     // Also the answer to a change of the chat's settings (connection, approval mode, titles, tool
     // policies): the page may keep it as the open chat, and the full chat carries every tool
@@ -610,6 +615,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             .Select(message => message.ParentId!.Value)
             .ToHashSet();
         var unansweredNotes = GetUnansweredTurnNotes(messages, branchHeads);
+        var planCalls = Plans.ChatPlanHistory.PlanCallIds(messages);
 
         var projected = messages.Select(message =>
         {
@@ -619,7 +625,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
             // The feed renders each completed turn's file-change receipt from the transcript.
             // Keep it even when the message body is folded; the live run stops carrying it on completion.
-            return ToView(message, omitContent: !keepContent, omitToolArguments: true);
+            return ToView(message, planCalls, omitContent: !keepContent, omitToolArguments: true);
         }).ToArray();
 
         return new ChatDetails(
@@ -671,6 +677,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
 
     private static ChatMessageView ToView(
         ChatMessage message,
+        HashSet<string>? planCalls = null,
         bool omitContent = false,
         bool omitToolArguments = false,
         bool omitToolResultContent = false)
@@ -694,7 +701,10 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             ResourceReferences.ToContract(message.Resources),
             message.Role == ChatMessageRole.Tool ? ToolResultErrorFlag(message.Content) : null,
             (MessageDelivery)message.Delivery,
-            message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null);
+            message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null,
+            message is { Role: ChatMessageRole.Tool, ToolCallId: { } callId } && planCalls?.Contains(callId) == true
+                ? Contracts.Plans.ChatPlanResults.TryRead(message.Content)
+                : null);
     }
 
     private static TeamMember? ToContract(ChatBranchMember? member) =>

@@ -16,7 +16,10 @@ public sealed record ChatMessageView(
     // without an explicit error flag, or for messages that are not tool results.
     bool? ToolResultIsError = null,
     MessageDelivery Delivery = MessageDelivery.Turn,
-    MessageSender? Sender = null)
+    MessageSender? Sender = null,
+    // The plan a plan tool result set, read on the server so the page has it whether or not the
+    // result's body was sent; null for every other message.
+    Plans.ChatPlan? Plan = null)
 {
     /// <summary>Whether this message opens a turn; see docs/34-asides-and-team-messages.md.</summary>
     [System.Text.Json.Serialization.JsonIgnore]

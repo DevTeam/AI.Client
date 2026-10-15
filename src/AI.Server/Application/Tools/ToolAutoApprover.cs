@@ -3,7 +3,9 @@ namespace AI.Application.Tools;
 using System.Text.Json;
 using AI.Application.Chats;
 using AI.Application.Skills;
+using AI.Application.Tools.Commands;
 using AI.Contracts.Chats;
+using AI.Contracts.Settings;
 
 /// <param name="Allowed">True when the call may run without asking the person.</param>
 /// <param name="Reason">
@@ -30,7 +32,7 @@ public interface IToolAutoApprover
 }
 
 public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
-    IChatBranchSettingsResolver branchSettings) : IToolAutoApprover
+    IChatBranchSettingsResolver branchSettings, ICommandRuleService commands) : IToolAutoApprover
 {
     public async Task<ToolApprovalMode> ModeAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken) =>
         (await chats.GetAsync(projectId, chatId, cancellationToken))?.ApprovalMode ?? ToolApprovalMode.Ask;
@@ -64,6 +66,25 @@ public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
         };
         if (descriptor.DisplayName != tool.OriginalName) parameters["tool_title"] = descriptor.DisplayName;
         if (descriptor.Description is { Length: > 0 } description) parameters["tool_description"] = description;
+        // What the call starts, as the application itself read it: unlike the server's annotations,
+        // these findings are the Host's own and can be relied on.
+        var evaluation = tool.ServerId == DefaultMcpServer.Id && tool.OriginalName == ToolPolicyResolver.ProcessRun
+            ? await commands.EvaluateAsync(projectId, chatId, arguments, cancellationToken)
+            : null;
+        if (evaluation is not null)
+        {
+            var command = evaluation.Check.Command;
+            parameters["command"] = JsonSerializer.Serialize(new
+            {
+                display = command.Display,
+                program = command.ExecutablePath,
+                installed = command.OnPath,
+                interpreter = command.IsInterpreter,
+                destructive = command.IsDestructive,
+                warnings = evaluation.Check.Warnings,
+                rule = evaluation.Rule is { } rule ? $"{rule.Decision} {rule.Pattern} ({rule.Scope.ToLowerInvariant()})" : null
+            });
+        }
         if (descriptor.Annotations is { } annotations)
             parameters["annotations"] = JsonSerializer.Serialize(new
             {
@@ -80,8 +101,10 @@ public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
         var reason = output.TryGetProperty("reason", out var text) && text.ValueKind == JsonValueKind.String
             ? text.GetString()
             : null;
+        // A rule that asks about this command is the person saying they want to be asked; no
+        // assessment overrides it. Its advice is still shown on the card.
         var allowed = output.TryGetProperty("decision", out var decision) && decision.ValueKind == JsonValueKind.String
-            && decision.GetString() == "allow";
+            && decision.GetString() == "allow" && evaluation?.Rule?.Decision != "Ask";
         return new ToolAutoApproval(allowed, reason);
     }
 }

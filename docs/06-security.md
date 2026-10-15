@@ -83,10 +83,89 @@ turns, with the text taken from the skill catalog rather than from the call), wh
 lists the tool among its `allowed-tools`, the project's directory grants, the tool's description and
 annotations (as unverified hints) and the exact arguments, all passed as data. A step of the
 active playbook counts as asked for by the user; it never lifts the rules on secrets, paths outside
-the project, uploads, deletion or history rewrites. Switching the mode while a card
+the project, uploads, deletion or history rewrites. For a `process_run` call it also sees the
+command as the Host parsed it, with the guard's findings and the command rule that matched (see
+[Command rules](#command-rules)); a rule that asks about the command is never overridden by the
+assessment. Switching the mode while a card
 waits answers it: Full access lets the call through, and "Approve for me" gets one assessment.
 Background subtasks, which have nobody to ask, run what the parent chat's mode would allow and
 refuse the rest. A chat not created yet keeps the mode picked in its composer and is created with it.
+
+## Command rules
+
+`process_run` starts any program, so one permission for the whole tool is either too broad or asks
+about every `git status`. Command rules decide its calls by what they run. A rule is a pattern, a
+decision (`Allow`, `Ask`, `Deny`) and a scope (global, project or chat); they are stored in
+`command-rules.json` beside `settings.json`, apart from chats and projects.
+
+```text
+git status *              Allow   project
+git diff *                Allow   global
+dotnet test *             Allow   project
+git push *                Ask     project
+git push --force *        Deny    global
+pwsh -NoProfile -File scripts/check.ps1   Allow   project
+```
+
+**Reading the call.** The Host parses the call before any rule is checked
+(`Application/Tools/Commands`):
+
+- The program is resolved through PATH, as `process_run` would start it, and named the way rules
+  name it: the file name without `.exe`, in lower case where names ignore case. `GIT.EXE`,
+  `C:\Program Files\Git\cmd\git.exe` and `git` are all `git`. The call then runs the resolved file,
+  so what was checked is what starts.
+- Git's own options before the subcommand (`-C`, `-c`, `--git-dir`, …) are set apart from the
+  subcommand and its arguments, which are what patterns match. A forced push is spelled one way:
+  `push -f`, `push -uf` and a `+refspec` all carry `--force`.
+- Every argument that names a path, including the values of `-C`, `--git-dir`, `--work-tree` and
+  `--output`, is resolved against the working directory.
+
+**Matching.** A pattern is the program's name, then words compared one by one with the subcommand
+and its arguments. A word matches one argument exactly, or as a mask when it holds `*` or `?`, which
+stand for characters inside that one argument (`--force*`). A lone `*` as the last word matches any
+further arguments, none included; without it the command must end where the pattern does. A word
+with a space is written in double quotes, with a quote inside doubled. There are no regular
+expressions, and no masks in the program's name.
+
+**Deciding.** Inside the tool's own policy — a denied `process_run` stays denied — a matching rule
+decides:
+
+1. a matching `Deny` wins;
+2. otherwise the most specific pattern: more words matched exactly, then a pattern without the
+   trailing `*`, then more literal characters;
+3. between equally specific patterns the narrower scope: chat, then project, then global.
+
+With no matching rule the tool's own policy applies. Two kinds of command are allowed only by a
+pattern that spells them exactly: a shell, script host or launcher (`pwsh`, `bash`, `cmd`, `python`,
+`node`, `npx`, `env`, a `.cmd` or `.ps1` file, …), whose arguments are a program of their own, and a
+command that can discard work or rewrite history (`push --force`, `reset --hard`, `clean -f`,
+`branch -D`, `checkout -- .`, `restore`, `rebase`, …). A broader `Allow` does not reach them; a `Deny`
+or `Ask` does.
+
+**The guard.** An `Allow` never lets a call through unasked when the guard stops it; the call is
+asked about instead, with the reason on the card:
+
+- the program is not found, or the file is not the one PATH finds for its name (a `git.exe` in the
+  project), or it lies inside the project or the working directory;
+- an option makes the program run other commands: git's `-c`, `--config-env`, `--exec-path`,
+  `--upload-pack`, `--receive-pack`, `--exec`, and `clone -u`;
+- the call gives no working directory, or a working directory or a path outside the project's
+  directory grants.
+
+The repository's own configuration is trusted: an alias or a hook defined in `.git/config` runs
+under a rule that allows the command which triggers it.
+
+**Remembering from the card.** The approval card of a `process_run` call shows the parsed command
+and the guard's findings. Its Allow menu offers to remember the subcommand (`git log *`, preselected),
+the exact command, or the whole program, for the chat, the project or every project; a shell or a
+destructive command is offered only as itself, and an argument holding `*` or `?` offers no pattern,
+since it would read back as a mask. The Host computes the offered patterns and accepts only one of
+them, so a client cannot widen what the person saw. Remembering "Any process_run call" saves a
+policy for the whole tool, as before.
+
+Rules are listed and removed in the permissions drawer beside the tool permissions, read with
+`app_read` `CommandRules`, changed with `app_security` `SetCommandRule` and `RemoveCommandRule`, and
+served at `/api/settings/command-rules`.
 
 ## Directory grants
 

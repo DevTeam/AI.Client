@@ -8,6 +8,7 @@ using AI.Application.Projects;
 using AI.Application.Settings;
 using AI.Application.Skills;
 using AI.Application.Tools;
+using AI.Application.Tools.Commands;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
@@ -27,6 +28,7 @@ public class ChatToolRiskAssessSkillTests
     private ToolApprovalMode _mode = ToolApprovalMode.Auto;
     private IReadOnlyList<ChatMessageView>? _messages;
     private IReadOnlyList<string> _playbookTools = ["read_file"];
+    private CommandEvaluation? _evaluation;
 
     [Fact]
     public async Task ShouldAllowACallTheModelFindsLowRisk()
@@ -188,6 +190,49 @@ public class ChatToolRiskAssessSkillTests
             .ShouldBe(["Message 0", "Message 2"]);
     }
 
+    [Fact]
+    public async Task ShouldPassTheParsedCommandOfAProcessRunCall()
+    {
+        _evaluation = Evaluation(null);
+
+        await CreateApprover("""{"decision":"ask","risk":"high","reason":"Force push."}""")
+            .DecideAsync(_projectId, _chatId, _chatId, ProcessTool(), "{}", TestContext.Current.CancellationToken);
+
+        using var input = Input();
+        var command = input.RootElement.GetProperty("command");
+        command.GetProperty("display").GetString().ShouldBe("git push --force origin main");
+        command.GetProperty("destructive").GetBoolean().ShouldBeTrue();
+        command.GetProperty("warnings").EnumerateArray().ShouldHaveSingleItem().GetString()
+            .ShouldBe("It can discard work or rewrite history.");
+        command.GetProperty("rule").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task ShouldNotAllowACommandARuleAsksAbout()
+    {
+        _evaluation = Evaluation("Ask");
+
+        var result = await CreateApprover("""{"decision":"allow","risk":"low","reason":"Pushes the branch."}""")
+            .DecideAsync(_projectId, _chatId, _chatId, ProcessTool(), "{}", TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new ToolAutoApproval(false, "Pushes the branch."));
+        using var input = Input();
+        input.RootElement.GetProperty("command").GetProperty("rule").GetString().ShouldBe("Ask git push * (project)");
+    }
+
+    [Fact]
+    public async Task ShouldNotAskTheCommandRulesAboutAnotherTool()
+    {
+        _evaluation = Evaluation("Ask");
+
+        var result = await CreateApprover("""{"decision":"allow","risk":"low","reason":"Reads a file."}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        result.Allowed.ShouldBeTrue();
+        using var input = Input();
+        input.RootElement.TryGetProperty("command", out _).ShouldBeFalse();
+    }
+
     private static ChatMessageView[] SkillHistory(string result, string followUp, string skillId = "release-notes")
     {
         var now = DateTimeOffset.UtcNow;
@@ -261,8 +306,30 @@ public class ChatToolRiskAssessSkillTests
         var catalog = Catalog();
         var skill = new ChatToolRiskAssessSkill(catalog, new SkillGuide(catalog), chats.Object, projects.Object, settings.Object, secrets.Object,
             completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
+        var commands = new Mock<ICommandRuleService>();
+        commands.Setup(item => item.EvaluateAsync(_projectId, _chatId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _evaluation);
         return new ToolAutoApprover(chats.Object, new SkillRunner(catalog, null!, chatToolRiskAssessSkill: skill),
-            new ChatBranchSettingsResolver());
+            new ChatBranchSettingsResolver(), commands.Object);
+    }
+
+    private static AgentTool ProcessTool()
+    {
+        var schema = JsonSerializer.SerializeToElement(new { type = "object" });
+        var descriptor = new ToolDescriptor("mcp_built_in__process_run", "process_run", "Run process", "Runs a program.",
+            schema, null, new ToolAnnotations(null, false, true, false, true), [], null);
+        return new AgentTool(new ChatToolDefinition("mcp_built_in__process_run", "Runs a program.", schema), descriptor,
+            DefaultMcpServer.Id, "process_run", "hash");
+    }
+
+    private static CommandEvaluation Evaluation(string? ruleDecision)
+    {
+        var command = new ParsedCommand("git", @"C:\Git\git.exe", true, [], ["push", "--force", "origin", "main"],
+            @"C:\work", [], false, [], true);
+        var rule = ruleDecision is null ? null : new CommandRule(Guid.CreateVersion7(), CommandRule.Project, null, null,
+            "git push *", ruleDecision, DateTimeOffset.UtcNow);
+        return new CommandEvaluation(new CommandCheck(command, ["It can discard work or rewrite history."], false, true),
+            rule, ruleDecision, ["git push --force origin main"]);
     }
 
     private async IAsyncEnumerable<ChatCompletionChunk> Respond(ChatCompletionRequest request, string answer,

@@ -117,6 +117,7 @@ public sealed class ChatToolRiskAssessSkill(
                     description = Text(parameters, "tool_description") is { } description ? Clip(description, 2_000) : null,
                     annotations = Json(Text(parameters, "annotations"))
                 },
+                command = Json(Text(parameters, "command")),
                 arguments = Clip(Text(parameters, "arguments") ?? "{}", 12_000)
             }, InputOptions))
         };

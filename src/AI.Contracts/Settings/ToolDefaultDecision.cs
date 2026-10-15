@@ -12,7 +12,7 @@ public sealed class ToolDefaultDecision : IToolDefaultDecision
             return "Allow";
 
         if (serverId == AppMcpServer.Id && name is
-            "app_read" or "tool_search" or "skill_search" or "ask_user" or "app_navigate")
+            "app_read" or "tool_search" or "skill_search" or "ask_user" or "app_navigate" or "plan_update")
             return "Allow";
 
         return "Ask";

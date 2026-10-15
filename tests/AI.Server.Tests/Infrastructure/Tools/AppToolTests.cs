@@ -267,6 +267,51 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldLayOutAndMoveThePlanOfTheRun()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var run = new ToolRunContext(fixture.ProjectId, fixture.ChatId, fixture.ChatId, true);
+        using var scope = await fixture.Plans.BeginAsync(run, TestContext.Current.CancellationToken);
+
+        var missing = await AppFixture.CallAsync(session, "plan_update",
+            new { updates = new[] { new { step = 1, status = "Completed" } } }, expectError: true);
+        missing.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("no plan yet");
+
+        var laid = await AppFixture.CallAsync(session, "plan_update", new
+        {
+            title = "Fix the parser",
+            steps = new object[]
+            {
+                new { title = "Study the parser", weight = 1, status = "InProgress" },
+                new { title = "Write the fix", weight = 3 }
+            }
+        });
+        laid.GetProperty("total").GetInt32().ShouldBe(2);
+        laid.GetProperty("plan").GetProperty("steps")[0].GetProperty("status").GetString().ShouldBe("InProgress");
+
+        var moved = await AppFixture.CallAsync(session, "plan_update", new
+        {
+            updates = new object[]
+            {
+                new { step = 1, status = "Completed" },
+                new { step = 2, status = "InProgress", progress = 50, note = "Halfway" }
+            }
+        });
+        moved.GetProperty("percent").GetInt32().ShouldBe(62);
+        moved.GetProperty("completed").GetInt32().ShouldBe(1);
+        var plan = fixture.Plans.Current(run).ShouldNotBeNull();
+        plan.Title.ShouldBe("Fix the parser");
+        plan.Steps[1].Note.ShouldBe("Halfway");
+        plan.Steps[1].StartedAt.ShouldNotBeNull();
+
+        var outside = await AppFixture.CallAsync(session, "plan_update",
+            new { updates = new[] { new { step = 3, status = "Completed" } } }, expectError: true);
+        outside.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("steps 1–2");
+        fixture.Plans.Current(run).ShouldBeSameAs(plan);
+    }
+
+    [Fact]
     public async Task ShouldDiscoverEveryToolOverTheInProcessTransport()
     {
         await using var fixture = await AppFixture.CreateAsync();
@@ -274,7 +319,7 @@ public sealed partial class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "ask_user", "context_compact", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "ask_user", "context_compact", "plan_update", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");
@@ -1578,6 +1623,8 @@ public sealed partial class AppToolTests
         public ChangeWatch WatchChanges() => new(_composition.Changes);
 
         public IAppNavigationSignal Navigation => _composition.Navigation;
+
+        public AI.Application.Plans.IChatPlans Plans => _composition.Plans;
 
         public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }

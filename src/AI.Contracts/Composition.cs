@@ -46,6 +46,7 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppSkillPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AskUserPresentationAdapter>()
             .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppNavigatePresentationAdapter>()
+            .Bind<IToolPresentationAdapter>(Tag.Unique).To<AppPlanPresentationAdapter>()
             .Transient<ToolPresentations, ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver,
                 ToolDefaultDecision,
                 UnifiedDiff, Chats.ChatTeamRosterCalculator, Schedules.ScheduleCalendar, Schedules.ScheduleDescriptions>();

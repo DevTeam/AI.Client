@@ -270,7 +270,7 @@ public sealed partial class AdaptiveContextPolicy(
 
     private long Tokens(string text, string? model) => tokenEstimator.ForModel(model).EstimateMessages([new ChatCompletionMessage("system", text)]);
     private static bool Core(AgentTool tool) => tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal)
-        && tool.OriginalName is "ask_user" or "tool_search";
+        && tool.OriginalName is "ask_user" or "tool_search" or "plan_update";
     private static ModelInstructionPlacement Position(ModelInstruction item) => item.Placement == ModelInstructionPlacement.Standing
         ? ModelInstructionPlacement.Standing : item.Lifetime != ModelInstructionLifetime.Run ? ModelInstructionPlacement.Trailing : item.Placement;
     private static IEnumerable<string> Words(string? text) => string.IsNullOrWhiteSpace(text) ? []

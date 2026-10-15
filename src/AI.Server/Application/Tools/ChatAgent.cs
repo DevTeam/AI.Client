@@ -16,6 +16,8 @@ using Contracts.Instructions;
 using Contracts.Skills;
 using Skills;
 using Usage;
+using Plans;
+using Contracts.Plans;
 using Contracts.Usage;
 using System.Text;
 using System.Text.Json;
@@ -38,7 +40,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies) : IChatAgent
+    IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -96,6 +98,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             request.KindStateVersion, overlayPromptsAllowed);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
+        var plansAllowed = servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
+        using var planScope = plansAllowed ? await plans.BeginAsync(run, token) : null;
         instructions.Upsert(run, new ModelInstruction("run.finishing", behavior.FinishingInstruction ?? FinishingInstruction,
             1_000, ModelInstructionLifetime.Run, Required: true,
             CompactContent: behavior.CompactFinishingInstruction ?? (behavior.FinishingInstruction is null ? CompactFinishingInstruction : null)));
@@ -295,6 +299,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     970, ModelInstructionLifetime.Request));
             if (behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
+            if (plansAllowed) UpsertPlan(run);
             var composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             var pendingTools = toolCatalog.ConsumePinned(run);
             var selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
@@ -757,6 +762,41 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     }
 
     private const string ActiveSkillKey = "run.active-skill";
+
+    /// <summary>
+    /// Shows the model its unfinished plan before every step. The plan's last result can be far back
+    /// in a long turn, or compacted away, or in an earlier turn; without it the model forgets to move
+    /// the plan, and the bar the user watches stops while the work goes on. A finished plan needs
+    /// nothing more, and a follow-up on another task is told how to let it go.
+    /// </summary>
+    private void UpsertPlan(ToolRunContext run)
+    {
+        if (plans.Current(run) is not { } plan || plan.Steps.All(step => step.IsFinished))
+        {
+            instructions.Remove(run, PlanKey);
+            return;
+        }
+        var progress = ChatPlanProgress.Of(plan, clock.UtcNow);
+        var text = new StringBuilder("Current plan")
+            .Append(plan.Title is { } title ? $" \"{title}\"" : "")
+            .Append(System.Globalization.CultureInfo.InvariantCulture, $", {progress.Percent}% done (mcp_app__plan_update):");
+        for (var index = 0; index < plan.Steps.Count; index++)
+        {
+            var step = plan.Steps[index];
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"\n{index + 1}. [{step.Status}] {step.Title} (weight {step.Weight}");
+            if (step.Status == ChatPlanStepStatus.InProgress) text.Append(System.Globalization.CultureInfo.InvariantCulture, $", {step.Progress}%");
+            text.Append(')');
+            if (step.Note is { } note) text.Append(" - ").Append(note);
+        }
+        text.Append("\nKeep it current as you work: mark a step InProgress when you start it, report the progress of a long "
+            + "step, and mark it Completed as soon as it is done, or Skipped or Failed with a note. Several moves go in one call. "
+            + "If the user's latest message is a different task, lay out a new plan for it, or skip the remaining steps.");
+        instructions.Upsert(run, new ModelInstruction(PlanKey, text.ToString(),
+            // Trailing: the plan moves with the work, and a change here must not cost the cached conversation.
+            875, ModelInstructionLifetime.Run, ModelInstructionPlacement.Trailing));
+    }
+
+    private const string PlanKey = "run.plan";
 
     /// <summary>
     /// Asks the <c>skill-route</c> skill about the message that starts this turn, and pins the tools

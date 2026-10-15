@@ -38,6 +38,7 @@ internal sealed partial class AppToolsComposition
             .Root<IToolSessionFactory>(nameof(Sessions))
             .Root<IAppDataChangeSignal>(nameof(Changes))
             .Root<IAppNavigationSignal>(nameof(Navigation))
+            .Root<AI.Application.Plans.IChatPlans>(nameof(Plans))
 #pragma warning disable DIW000 // These arguments intentionally replace production edge bindings.
             .Arg<IUserPromptBroker>("broker")
             .Arg<IConnectionModelsResolver>("modelsResolver");

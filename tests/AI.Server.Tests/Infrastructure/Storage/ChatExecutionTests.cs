@@ -174,6 +174,36 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task UnfinishedPlanShouldBeShownToTheModelInTheNextTurn()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        fixture.Tools.OfferPlan = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Fix the parser"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__plan_update", "{}")];
+        first.Answer.SetResult("");
+
+        // The page gets the plan with the result, though the result's body stays behind.
+        var published = await fixture.WaitAsync(run => run.MessageDelta?.Appends.Any(append => append.Message.ToolCallId == "call-1") == true);
+        var result = published.MessageDelta!.Appends.Single(append => append.Message.ToolCallId == "call-1").Message;
+        result.ContentOmitted.ShouldBeTrue();
+        result.Plan.ShouldNotBeNull().Steps.Count.ShouldBe(2);
+        (await fixture.NextCallAsync()).Answer.SetResult("Studying it.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Go on"));
+        var next = await fixture.NextCallAsync();
+
+        var reminder = next.Request.ContextMessages![^1].ForModel;
+        reminder.ShouldContain("Current plan \"Fix\", 16% done (mcp_app__plan_update):", Case.Sensitive);
+        reminder.ShouldContain("1. [InProgress] Study (weight 2, 40%)", Case.Sensitive);
+        reminder.ShouldContain("2. [Pending] Build (weight 3)", Case.Sensitive);
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2895,6 +2925,13 @@ public sealed partial class ChatExecutionTests
             AppMcpServer.Id, "run_skill", "schema");
 
         public bool OfferRunSkill { get; set; }
+        public bool OfferPlan { get; set; }
+
+        /// <summary>Stands in for plan_update, offered only to a test that set <see cref="OfferPlan"/>.</summary>
+        private static readonly AgentTool PlanUpdate = new(
+            new ChatToolDefinition("mcp_app__plan_update", "Plan", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_app__plan_update", "plan_update", "Plan", JsonSerializer.Deserialize<JsonElement>("{}")),
+            AppMcpServer.Id, "plan_update", "schema");
         public bool OfferToolSearch { get; set; }
 
         private static readonly AgentTool ToolSearch = new(
@@ -2908,7 +2945,7 @@ public sealed partial class ChatExecutionTests
         public IReadOnlyList<AgentTool> Tools =>
             [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
-                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>()];
+                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
         public IUserPromptBroker? Broker { get; set; }
@@ -2941,6 +2978,10 @@ public sealed partial class ChatExecutionTests
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");
+            if (tool.OriginalName == "plan_update")
+                return _codec.Read("{\"structuredContent\":{\"plan\":{\"title\":\"Fix\",\"steps\":[{\"title\":\"Study\","
+                    + "\"weight\":2,\"status\":\"InProgress\",\"progress\":40},{\"title\":\"Build\",\"weight\":3}],"
+                    + "\"updatedAt\":\"2026-10-15T09:00:00Z\"},\"percent\":16,\"completed\":0,\"total\":2,\"guidance\":\"\"}}");
             if (tool.OriginalName == "run_skill")
             {
                 SkillRuns.Add(arguments);

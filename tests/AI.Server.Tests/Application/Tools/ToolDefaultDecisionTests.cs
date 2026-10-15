@@ -30,6 +30,7 @@ public sealed class ToolDefaultDecisionTests
     [InlineData("skill_search")]
     [InlineData("ask_user")]
     [InlineData("app_navigate")]
+    [InlineData("plan_update")]
     public void AppReadAndNavigationToolsRunWithoutApproval(string name) =>
         _defaults.GetDecision(AppMcpServer.Id, name).ShouldBe("Allow");
 

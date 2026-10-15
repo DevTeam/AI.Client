@@ -156,7 +156,7 @@ internal sealed class Composition
                 AppGuideEndpoints, ScheduleEndpoints>(Tag.Unique)
             .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
                 AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
-                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppScheduleTool,
+                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppScheduleTool, AppPlanTool,
                 DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
             .Transient<AppToolSessionFactory>(Tag.Type)
             .Transient((

@@ -1081,6 +1081,37 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task RememberedCommandShouldBeSavedAsACommandRuleOfTheOfferedPattern()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run",
+            """{"executable":"git","arguments":["log","--oneline"]}""")];
+        first.Answer.SetResult("");
+        var pending = (await fixture.WaitAsync(run => run.PendingApproval is not null)).PendingApproval!;
+
+        var command = pending.Command.ShouldNotBeNull();
+        command.Display.ShouldBe("git log --oneline");
+        command.Options.ShouldBe(["git log *", "git log --oneline", "git *"]);
+        command.Warnings.ShouldNotBeEmpty();
+        // A pattern the card did not offer is refused, so a client cannot widen what was shown.
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.Id, ToolApprovalAction.AllowForProject, "git * *"), CancellationToken.None))
+            .ShouldBeFalse();
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.Id, ToolApprovalAction.AllowForProject, "git log *"), CancellationToken.None))
+            .ShouldBeTrue();
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var rule = (await fixture.CommandRules.ListAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None))
+            .ShouldHaveSingleItem();
+        (rule.Scope, rule.ProjectId, rule.Pattern, rule.Decision).ShouldBe(("Project", (Guid?)fixture.ProjectId, "git log *", "Allow"));
+        (await fixture.GetProjectAsync())!.ToolPolicies.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task FullAccessShouldRunAskToolsWithoutACardButKeepDeny()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2588,6 +2619,7 @@ public sealed partial class ChatExecutionTests
         public IWorkspaceChangeTracker Workspace { get; }
         public IChatService Chats => _composition.Chats;
         public IChatRunDispatcher Dispatcher => _composition.Dispatcher;
+        public AI.Application.Tools.Commands.ICommandRuleService CommandRules => _composition.CommandRules;
         public IChatContextBuilder Context => _composition.Context;
         public AI.Application.Instructions.IStandingInstructions StandingInstructions =>
             _composition.Standing;

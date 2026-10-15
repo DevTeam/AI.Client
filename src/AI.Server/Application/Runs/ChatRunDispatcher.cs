@@ -3,6 +3,7 @@ namespace AI.Application.Runs;
 
 using Chat;
 using Tools;
+using Tools.Commands;
 using Chats;
 using Projects;
 using Settings;
@@ -36,7 +37,7 @@ public sealed class ChatRunDispatcher(
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
     Func<IChatKindPolicyRegistry> kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus,
     IChatTemporaryDirectory temporaryDirectory, IChatBranchSettingsResolver branchSettings,
-    IChatScheduleStore scheduleStore)
+    IChatScheduleStore scheduleStore, ICommandRuleService commandRules)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -963,6 +964,19 @@ public sealed class ChatRunDispatcher(
             case ToolApprovalAction.Allow:
             case ToolApprovalAction.Deny:
                 break;
+            // A remembered command is saved as a rule for that command, never as the whole tool:
+            // and only a pattern the card offered, so a client cannot widen what the person saw.
+            case ToolApprovalAction.AllowForChat or ToolApprovalAction.AllowForProject or ToolApprovalAction.AllowGlobally
+                when decision.Pattern is { } pattern:
+                if (approval.Command?.Options.Contains(pattern, StringComparer.Ordinal) != true) return false;
+                var request = decision.Action switch
+                {
+                    ToolApprovalAction.AllowForChat => new CreateCommandRuleRequest(CommandRule.Chat, projectId, chatId, pattern, "Allow"),
+                    ToolApprovalAction.AllowForProject => new CreateCommandRuleRequest(CommandRule.Project, projectId, null, pattern, "Allow"),
+                    _ => new CreateCommandRuleRequest(CommandRule.Global, null, null, pattern, "Allow")
+                };
+                await commandRules.AddAsync(request, token);
+                break;
             case ToolApprovalAction.AllowForChat:
                 var chat = await chats.GetAsync(projectId, chatId, token);
                 var chatExisting = chat?.ToolPolicies?.SingleOrDefault(item => item.ServerId == approval.ServerId
@@ -1010,11 +1024,15 @@ public sealed class ChatRunDispatcher(
         if (runtime.State.Queue.FirstOrDefault(item => item.Id == runtime.ActiveMessageId)?.Interactive == false)
             return ToolApprovalAction.Deny;
         var mode = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
+        var command = (await policies.ResolveAsync(projectId, chatId, branchId, tool.ServerId, tool.OriginalName,
+            tool.SchemaHash, arguments, token)).Command;
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
         using (await synchronization.EnterAsync(runtime.State.ChatId, token))
         {
             runtime.PendingApproval = new ToolApproval(ids.Create(), tool.ServerId, tool.OriginalName,
-                tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize, automatic.Reason);
+                tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize, automatic.Reason,
+                command is null ? null : new CommandApproval(command.Check.Command.Display, command.Options,
+                    command.Check.Warnings, command.Rule?.Decision == "Ask" ? command.Rule.Pattern : null));
             runtime.Approval = completion;
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);

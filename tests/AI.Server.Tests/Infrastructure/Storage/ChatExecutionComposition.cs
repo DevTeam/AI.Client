@@ -8,6 +8,7 @@ using AI.Application.Projects;
 using AI.Application.Runs;
 using AI.Application.Settings;
 using AI.Application.Tools;
+using AI.Application.Tools.Commands;
 using AI.Application.Workspace;
 using AI.Contracts.Tools;
 using AI.Application.Instructions;
@@ -44,6 +45,7 @@ internal sealed partial class ChatExecutionComposition
             .Root<IChatScheduleService>(nameof(Schedules))
             .Root<IScheduledChatPass>(nameof(SchedulePass))
             .Root<IGuideChats>(nameof(Guides))
+            .Root<ICommandRuleService>(nameof(CommandRules))
 #pragma warning disable DIW000 // These arguments intentionally replace production edge bindings.
             .Arg<IToolSessionFactory>("tools")
             .Arg<IWorkspaceChangeTracker>("workspace")

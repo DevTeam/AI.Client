@@ -68,6 +68,34 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
                ?? throw new InvalidOperationException("Global settings response is empty.");
     }
 
+    public async Task<IReadOnlyList<CommandRule>> GetCommandRulesAsync(Guid? projectId, Guid? chatId,
+        CancellationToken cancellationToken)
+    {
+        var query = string.Join('&', new[]
+        {
+            projectId is { } project ? $"projectId={project}" : null,
+            chatId is { } chat ? $"chatId={chat}" : null
+        }.OfType<string>());
+        var url = query.Length == 0 ? "api/settings/command-rules" : $"api/settings/command-rules?{query}";
+        return await httpClient.GetFromJsonAsync<CommandRule[]>(url, cancellationToken) ?? [];
+    }
+
+    public async Task<CommandRule> AddCommandRuleAsync(CreateCommandRuleRequest request, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync("api/settings/command-rules", request, cancellationToken);
+        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<CommandRule>(cancellationToken)
+            ?? throw new InvalidOperationException("Command rule response is empty.");
+    }
+
+    public async Task RemoveCommandRuleAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.DeleteAsync($"api/settings/command-rules/{id}", cancellationToken);
+        // Already gone is what the caller wanted.
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            await ThrowRefusalAsync(response, cancellationToken);
+    }
+
     public Task SetConnectionCredentialAsync(Guid id, string? value, CancellationToken cancellationToken) =>
         SetSecretAsync($"api/settings/connections/{id}/credential", value, cancellationToken);
 

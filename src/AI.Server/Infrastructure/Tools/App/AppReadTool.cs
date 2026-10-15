@@ -9,6 +9,7 @@ using AI.Application.Resources;
 using AI.Application.Settings;
 using AI.Application.Skills;
 using AI.Application.Tools;
+using AI.Application.Tools.Commands;
 using AI.Contracts.Chats;
 using AI.Contracts.Settings;
 using System.Text.Json;
@@ -74,6 +75,12 @@ public enum AppResource
 
     /// <summary>Declared MCP tools and default decisions of one enabled server selected by resourceId; calls no tools.</summary>
     McpTools,
+
+    /// <summary>
+    /// Command rules for the programs process_run starts: the global ones, and those of projectId and chatId
+    /// (the current project and chat by default).
+    /// </summary>
+    CommandRules,
 }
 
 [McpServerToolType]
@@ -92,6 +99,7 @@ public sealed class AppReadTool(
     Func<IToolSessionFactory> toolSessions,
     IToolDefaultDecision toolDefaults,
     IChatBranchSettingsResolver branchSettings,
+    ICommandRuleService commandRules,
     IAppToolReply reply) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
@@ -116,6 +124,8 @@ public sealed class AppReadTool(
                               + "The result includes names, schema hashes, annotations and default decisions. "
                               + "Project, Chat and Settings list saved overrides only; an absent rule uses the tool's default decision. "
                               + "A server policy of Ask does not make all its tools Ask. "
+                              + "'CommandRules' lists the rules that decide process_run calls by the command they run, "
+                              + "global and of the current project and chat. "
                               + "Discovery connects to that server but calls no tools and grants no directory access. "
                               + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "
                               + "'Memory' lists the user's and the project's long-term memory; pass resourceId for one entry or "
@@ -179,10 +189,10 @@ public sealed class AppReadTool(
         {
             if (resource is AppResource.Project or AppResource.Chats or AppResource.Chat or AppResource.Messages
                 or AppResource.Resources or AppResource.Reviews or AppResource.Review or AppResource.Memory
-                or AppResource.Instructions or AppResource.Skills)
+                or AppResource.Instructions or AppResource.Skills or AppResource.CommandRules)
                 projectId ??= run.ProjectId == Guid.Empty ? null : run.ProjectId;
             // Chat-scoped reads of the project the run is in default to the run's own chat.
-            if (resource is AppResource.Chat or AppResource.Messages or AppResource.Reviews
+            if (resource is AppResource.Chat or AppResource.Messages or AppResource.Reviews or AppResource.CommandRules
                 && projectId == run.ProjectId && run.ChatId != Guid.Empty)
                 chatId ??= run.ChatId;
             // A read of the run's own chat describes the settings of the branch the run is on.
@@ -324,6 +334,9 @@ public sealed class AppReadTool(
             }
             case AppResource.Settings:
                 return Paging.Page("Settings", [await settings.GetAsync(cancellationToken)], cursor, limit, reply.Json);
+            case AppResource.CommandRules:
+                return Paging.Page("CommandRules", await commandRules.ListAsync(projectId, chatId, cancellationToken),
+                    cursor, limit, reply.Json);
             case AppResource.ConnectionModels:
             {
                 // A stored key may only go to its stored endpoint. Never combine an arbitrary

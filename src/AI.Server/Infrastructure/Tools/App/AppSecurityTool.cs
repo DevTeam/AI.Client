@@ -4,6 +4,7 @@ using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
 using AI.Application.Tools;
+using AI.Application.Tools.Commands;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
 using ModelContextProtocol.Protocol;
@@ -71,13 +72,31 @@ public enum SecurityOperation
 
     /// <summary>Store an MCP server's credential. Needs 'serverId' and 'secret'.</summary>
     SetMcpCredential,
+
+    /// <summary>
+    /// Save a rule for the programs process_run starts. Needs 'commandRule'; a Project rule also 'projectId', a Chat
+    /// rule 'projectId' and 'chatId'. A rule with the same scope and pattern is replaced.
+    /// </summary>
+    SetCommandRule,
+
+    /// <summary>Remove one command rule by 'ruleId' (its id from app_read CommandRules).</summary>
+    RemoveCommandRule,
 }
+
+/// <param name="Scope">Global, Project or Chat.</param>
+/// <param name="Pattern">
+/// The program's name, then words matched one by one against its arguments: a word matches one argument exactly, or
+/// as a mask with * and ? inside it; a lone trailing * matches any further arguments. Example: 'git diff *'.
+/// </param>
+/// <param name="Decision">Allow, Ask or Deny.</param>
+public sealed record CommandRulePayload(string Scope, string Pattern, string Decision);
 
 [McpServerToolType]
 public sealed class AppSecurityTool(
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsService settings,
+    ICommandRuleService commandRules,
     IAppWrites writes,
     IAppToolReply reply) : IAppTool
 {
@@ -99,7 +118,10 @@ public sealed class AppSecurityTool(
                           + "must be a fresh UUID per distinct change. Use AddDirectoryGrant to grant one directory in your project; "
                           + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants. "
                           + "A branch inherits tool policies from its parent branch and the chat; SetBranchToolPolicy overrides one for "
-                          + "a branch and the branches below it, RemoveBranchToolPolicy makes it inherit again."
+                          + "a branch and the branches below it, RemoveBranchToolPolicy makes it inherit again. "
+                          + "SetCommandRule decides process_run calls by the program and arguments they run ('git diff *'), "
+                          + "inside the tool's own policy: a matching Deny wins, otherwise the most specific pattern. "
+                          + "RemoveCommandRule drops one by 'ruleId'."
         });
 
     [McpServerTool(Name = "app_security", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
@@ -124,6 +146,8 @@ public sealed class AppSecurityTool(
         string? name = null,
         string? schemaHash = null,
         string? secret = null,
+        CommandRulePayload? commandRule = null,
+        Guid? ruleId = null,
         CancellationToken cancellationToken = default) =>
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
@@ -151,6 +175,8 @@ public sealed class AppSecurityTool(
             SecurityOperation.RemoveGlobalToolPolicy => RemoveGlobalToolPolicyAsync(builder, serverId, name, schemaHash, cancellationToken),
             SecurityOperation.SetConnectionCredential => SetCredentialAsync(builder, serverId, secret, true, cancellationToken),
             SecurityOperation.SetMcpCredential => SetCredentialAsync(builder, serverId, secret, false, cancellationToken),
+            SecurityOperation.SetCommandRule => SetCommandRuleAsync(builder, projectId, chatId, commandRule, cancellationToken),
+            SecurityOperation.RemoveCommandRule => RemoveCommandRuleAsync(builder, ruleId, cancellationToken),
             _ => throw new ArgumentException("Unknown operation.", nameof(operation)),
         });
 
@@ -381,6 +407,23 @@ public sealed class AppSecurityTool(
             ? builder.Applied(secret is null ? $"Cleared the {subject}'s credential." : $"Stored a credential for the {subject}.")
             : builder.Failed($"No {subject} with that id.");
     }
+
+    private async Task<AppWriteResult> SetCommandRuleAsync(AppWriteBuilder builder, Guid? projectId, Guid? chatId,
+        CommandRulePayload? payload, CancellationToken cancellationToken)
+    {
+        var rule = Required(payload, "commandRule");
+        var saved = await commandRules.AddAsync(new CreateCommandRuleRequest(rule.Scope,
+            rule.Scope == CommandRule.Global ? null : projectId, rule.Scope == CommandRule.Chat ? chatId : null,
+            rule.Pattern, rule.Decision), cancellationToken);
+        return builder.Applied($"Set '{saved.Pattern}' to {saved.Decision} ({saved.Scope.ToLowerInvariant()}).",
+            current: Element(saved, reply.Json));
+    }
+
+    private async Task<AppWriteResult> RemoveCommandRuleAsync(AppWriteBuilder builder, Guid? ruleId,
+        CancellationToken cancellationToken) =>
+        await commandRules.RemoveAsync(Required(ruleId, nameof(ruleId)), cancellationToken)
+            ? builder.Applied("Removed one command rule.")
+            : builder.Failed("No command rule with that id.");
 
     private static ToolPolicySettings Policy(ToolPolicyPayload payload) => new(
         payload.ServerId, payload.Name, payload.SchemaHash, payload.Decision, payload.MaxCallsPerRun, payload.TimeoutSeconds);

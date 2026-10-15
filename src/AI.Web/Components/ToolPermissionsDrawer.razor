@@ -21,7 +21,7 @@
         {
             <p class="empty-hint">Loading permissions…</p>
         }
-        else if (VisiblePolicies.Count == 0)
+        else if (VisiblePolicies.Count == 0 && VisibleRules.Count == 0)
         {
             <div class="permissions-empty"><AppIcon Name="tool" /><strong>@(_showAll ? "No tools available" : "No overrides")</strong><p>@(_showAll ? "No effective tool permissions could be listed." : "Tools use inherited permissions; select All effective to see them.")</p></div>
         }
@@ -59,6 +59,26 @@
                     }
                 </section>
             }
+            @* Command rules refine process_run by what it starts; they sit beside the tool's own permission. *@
+            @if (VisibleRules.Count > 0)
+            {
+                <section class="permissions-group">
+                    <h3 title="Rules for the programs process_run starts; a matching rule decides inside the tool's own permission"><AppIcon Name="tool" />Command rules</h3>
+                    @foreach (var rule in VisibleRules)
+                    {
+                        <div class="permission-item">
+                            <div>
+                                <div class="permission-item-title"><code>@rule.Pattern</code><span class="permission-decision" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it">@rule.Decision</span></div>
+                                <p><span title="@($"This rule comes from {rule.Scope.ToLowerInvariant()} command rules; a Deny wins, otherwise the most specific pattern decides")">@rule.Scope</span></p>
+                            </div>
+                            @if (OwnsRule(rule))
+                            {
+                                <button class="icon-action" type="button" title="@($"Remove this {rule.Scope.ToLowerInvariant()} command rule")" aria-label="Remove command rule @rule.Pattern" disabled="@_saving" @onclick="() => RemoveRuleAsync(rule)"><AppIcon Name="reset" /></button>
+                            }
+                        </div>
+                    }
+                </section>
+            }
         }
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }
     </div>
@@ -85,6 +105,7 @@
     private ProjectDetails? _project;
     private ChatDetails? _chat;
     private IReadOnlyList<McpToolInfo> _builtInTools = [];
+    private IReadOnlyList<CommandRule> _rules = [];
     private bool _showAll;
     private bool _loading;
     private bool _saving;
@@ -120,6 +141,7 @@
             _chat = ChatId is { } chatId
                 ? await ChatHistoryApi.GetTranscriptAsync(ProjectId, chatId, CancellationToken.None) : null;
             _builtInTools = await GlobalSettingsApi.GetDefaultToolsAsync(CancellationToken.None);
+            _rules = await GlobalSettingsApi.GetCommandRulesAsync(ProjectId, ChatId, CancellationToken.None);
         }
         catch (HttpRequestException) { _error = "Permissions could not be loaded."; }
         finally { _loading = false; }
@@ -182,6 +204,38 @@
         ?? _chat?.ToolPolicies?.FirstOrDefault(policy => Same(policy, item))?.Decision ?? ProjectFallback(item);
     private static bool Same(McpToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
     private static bool Same(ToolPolicySettings left, ToolPolicySettings right) => left.ServerId == right.ServerId && left.Name == right.Name && left.SchemaHash == right.SchemaHash;
+
+    /// <summary>A branch has no command rules of its own; it shows and edits its chat's.</summary>
+    private string RuleScope => Scope == "Branch" ? CommandRule.Chat : Scope;
+    private IReadOnlyList<CommandRule> VisibleRules => _rules
+        .Where(rule => _showAll || rule.Scope == RuleScope)
+        .OrderBy(rule => rule.Scope == CommandRule.Chat ? 0 : rule.Scope == CommandRule.Project ? 1 : 2)
+        .ThenBy(rule => rule.Pattern, StringComparer.Ordinal)
+        .ToArray();
+    /// <summary>
+    /// The drawer's own rules, and global ones: settings have no other place that lists them, so
+    /// a global rule saved from a card is removed where it shows.
+    /// </summary>
+    private bool OwnsRule(CommandRule rule) => rule.Scope == RuleScope || rule.Scope == CommandRule.Global;
+
+    private async Task RemoveRuleAsync(CommandRule rule)
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            await GlobalSettingsApi.RemoveCommandRuleAsync(rule.Id, CancellationToken.None);
+            _rules = _rules.Where(item => item.Id != rule.Id).ToArray();
+            Notifications.ShowSuccess("Command rule removed.");
+            await Changed.InvokeAsync();
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
+        {
+            _error = "The command rule could not be removed.";
+            Notifications.ShowError(_error);
+        }
+        finally { _saving = false; }
+    }
 
     private async Task ResetAsync(ViewPolicy policy)
     {

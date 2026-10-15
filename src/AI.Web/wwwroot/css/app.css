@@ -5857,6 +5857,12 @@ textarea {
 .tool-approval-menu button { display: grid; gap: .15rem; margin: 0; padding: .55rem .65rem; border-color: transparent; background: transparent; text-align: left; }
 .tool-approval-menu button:hover { background: var(--color-fill-active); }
 .tool-approval-menu button span { color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.tool-approval-menu:has(.tool-approval-scope) { width: min(22rem, calc(100vw - 2rem)); }
+.tool-approval-scope { display: grid; gap: .3rem; min-width: 0; margin: 0 0 .25rem; padding: .45rem .65rem .6rem; border: 0; border-bottom: 1px solid var(--color-border); }
+.tool-approval-scope legend { padding: 0 0 .2rem; color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 600; }
+.tool-approval-scope label { display: flex; align-items: center; gap: .45rem; min-width: 0; color: var(--color-text); font-size: var(--font-size-md); cursor: pointer; }
+.tool-approval-scope input { flex: none; width: auto; margin: 0; padding: 0; accent-color: var(--color-accent-strong); cursor: pointer; }
+.tool-approval-scope code { min-width: 0; font-family: var(--font-mono); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
 .tool-approval-global-confirm { display: grid; gap: .55rem; padding: .65rem; border-top: 1px solid var(--color-border); font-size: var(--font-size-md); }
 .tool-approval-global-confirm > div { display: flex; justify-content: flex-end; gap: .4rem; }
 .tool-approval-global-confirm > div button { display: block; width: auto; padding: .4rem .55rem; }

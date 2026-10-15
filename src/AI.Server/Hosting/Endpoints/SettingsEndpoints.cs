@@ -2,10 +2,12 @@ namespace AI.Server.Hosting.Endpoints;
 
 using Application.Settings;
 using Application.Tools;
+using Application.Tools.Commands;
 using Contracts.Settings;
 using AI.Infrastructure.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
 public sealed class SettingsEndpoints : IEndpointModule
@@ -58,6 +60,16 @@ public sealed class SettingsEndpoints : IEndpointModule
             policy.ServerId == serverId
                 ? Results.Ok(await service.SetToolPolicyAsync(policy, token))
                 : Results.BadRequest("Tool policy server id does not match the URL."));
+
+        // Command rules: the global ones, and those of the project and chat when they are named.
+        routes.MapGet("/api/settings/command-rules", (Guid? projectId, Guid? chatId, [FromServices] ICommandRuleService service,
+            CancellationToken token) => service.ListAsync(projectId, chatId, token));
+
+        routes.MapPost("/api/settings/command-rules", (CreateCommandRuleRequest request, [FromServices] ICommandRuleService service,
+            CancellationToken token) => service.AddAsync(request, token));
+
+        routes.MapDelete("/api/settings/command-rules/{id:guid}", async (Guid id, [FromServices] ICommandRuleService service,
+            CancellationToken token) => await service.RemoveAsync(id, token) ? Results.NoContent() : Results.NotFound());
 
         routes.MapPut(
             "/api/settings/chat-automation",

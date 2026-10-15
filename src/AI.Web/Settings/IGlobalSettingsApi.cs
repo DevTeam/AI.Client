@@ -20,6 +20,11 @@ public interface IGlobalSettingsApi
     Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
     Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken);
 
+    /// <summary>The global command rules, and those of the project and chat when they are given.</summary>
+    Task<IReadOnlyList<CommandRule>> GetCommandRulesAsync(Guid? projectId, Guid? chatId, CancellationToken cancellationToken);
+    Task<CommandRule> AddCommandRuleAsync(CreateCommandRuleRequest request, CancellationToken cancellationToken);
+    Task RemoveCommandRuleAsync(Guid id, CancellationToken cancellationToken);
+
     /// <summary>
     /// Asks the endpoint typed into the connection editor for the models it serves. Returns an
     /// empty array when the endpoint answers with no models; throws

@@ -195,6 +195,7 @@ internal sealed class AspNetComposition
             .Root<IHistoryCheckpointService>()
             .Root<IChatHistoryCompaction>()
             .Root<IGlobalSettingsService>()
+            .Root<ICommandRuleService>()
             .Root<IConnectionImageProbe>()
             .Root<IChatEndpoint>()
             .Root<IChatRunDispatcher>()

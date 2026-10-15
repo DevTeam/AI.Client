@@ -3331,6 +3331,29 @@ div.chat-tip-head { cursor: default; }
     border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
 }
 
+/* === Answers to ask_user (docs/19-ask-user.md) === */
+
+/* The person's reply to a question keeps their bubble: each question small and quiet, the answer
+   under it in the reply's own weight. */
+.user-answer .message-body { display: grid; gap: 0.5rem; }
+.user-answer-item { display: grid; gap: 0.15rem; min-width: 0; }
+.user-answer-item + .user-answer-item { padding-top: 0.5rem; border-top: 1px solid var(--color-user-bubble-border); }
+.user-answer-question { display: flex; align-items: baseline; gap: 0.4rem; margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.user-answer .user-prompt-chip { background: var(--color-user-bubble-inset); }
+.user-answer-value { margin: 0; color: var(--color-text-strong); font-size: var(--message-font-size); font-weight: 600; overflow-wrap: anywhere; }
+.user-answer-value.is-path { font-family: var(--font-mono); font-size: var(--font-size-md); font-weight: 400; }
+.user-answer-value.is-open { color: var(--color-text-subtle); font-weight: 400; }
+
+/* Nothing was said: the bubble's place stays, dashed and empty like an aside, with what happened
+   instead in one line. */
+.user-answer.is-unanswered .message-body { border-style: dashed; background: transparent; }
+.user-answer-status { display: flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--color-text-muted); font-size: var(--font-size-md); }
+.user-answer-status .app-icon { flex: none; width: 0.9rem; height: 0.9rem; }
+.user-answer.is-declined .message-body { border-color: var(--color-danger-border); }
+.user-answer.is-declined .user-answer-status { color: var(--color-danger-text); }
+.user-answer.is-expired .message-body { border-color: color-mix(in srgb, var(--color-warning) 55%, transparent); }
+.user-answer.is-expired .user-answer-status { color: var(--color-warning-text); }
+
 /* A message another branch's run sent is not the person's: it leaves their side of the
    transcript and reads as a card of that branch. */
 .workspace-message.user.from-branch {

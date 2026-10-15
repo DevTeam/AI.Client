@@ -158,7 +158,8 @@ The card sits at the end of the feed, where the confirmation card sits, and for 
 | Markdown | inline subset in the question text (emphasis, code, links). Options and descriptions are always plain text: they are button captions |
 | "Other" | a field next to the option; typing text selects it. With zero options, the card looks like a regular input with the question as its heading |
 | Attention | an "attention required" marker in the chat list, the same one a confirmation uses. No system notifications or sound |
-| Trace | a tool-call row through `AskUserPresentationAdapter`: "Scope: Only the changed module", expands to details. An answer with no selection is `Warning`: the model decided on its own (or, for `declined`, stopped), and that is worth finding later |
+| Reply | the answer is the person's reply, so the feed shows it as their bubble under the steps that asked it, and keeps it when the turn's steps are folded, like an aside. Each question is small and muted, its answer under it; picked paths and values are monospace; a question left open says "Left to the assistant". With nothing answered the bubble is dashed with one line instead: left to the assistant (`dismissed`), declined (danger), no answer in time (warning). `interrupted` and `invalid` questions never reached the person and have no bubble. The server reads it into `ChatMessageView.UserAnswer` (`AskUserAnswers.TryRead`), as it reads the plan, because the compact transcript and run snapshots carry neither the call's arguments nor the result's body |
+| Trace | a tool-call row through `AskUserPresentationAdapter`: "Scope: Only the changed module", expands to the questions and answers without the raw arguments or the model's guidance. An answer with no selection is `Warning`: the model decided on its own (or, for `declined`, stopped), and that is worth finding later |
 | Language | English, like the whole UI. The model writes the question text in the conversation's language |
 
 `RunStateService` does not count the time spent waiting for a question as generation time, so the "model is thinking" indicator does not lie while the person is reading.
@@ -188,6 +189,7 @@ Symmetric to `awaiting_approval` / `session approve`.
 | `Server/Infrastructure/Tools/*` | context pass-through through three factories |
 | `Server/Infrastructure/Tools/App/AppAskUserTool.cs` | tool, validation, position-to-text conversion |
 | `Contracts/Tools/AskUserPresentationAdapter.cs` | transcript row |
+| `Contracts/Tools/AskUserAnswers.cs`, `Server/Application/Chats/ChatService.cs`, `Web/Components/AskUserAnswerCard.razor` | the person's reply in the feed |
 | `Server/Hosting/Endpoints/RunEndpoints.cs` | `POST /api/projects/{p}/chats/{c}/prompts/answer?branchId=…` |
 | `Web/Components/UserPromptCard.razor`, `MessageFeed.razor`, `Pages/Home.razor`, `Runs/*`, `Markdown/*`, `css` | card, composer, attention marker, inline markdown |
 | `Cli/*` | `awaiting_answer`, `session answer` |

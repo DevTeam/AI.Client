@@ -1,0 +1,59 @@
+@* What the person said back to a question from the assistant. It is their reply, so it keeps the
+   user bubble on the user's side of the feed instead of hiding in the tool row that asked it, and
+   it stays when the turn's steps are folded away, like anything else the person added to a turn.
+   With no answer it keeps the bubble's place drawn dashed, as an aside is: something was decided
+   at that point, but not in their words. *@
+@using AI.Contracts.Tools
+
+<article class="workspace-message user user-answer @OutcomeClass" aria-label="Your answer">
+    <div class="message-body">
+        @if (Status is { } status)
+        {
+            <p class="user-answer-status"><AppIcon Name="@status.Icon" />@status.Text</p>
+        }
+        else
+        {
+            @foreach (var item in Answer.Answers)
+            {
+                <div class="user-answer-item">
+                    <p class="user-answer-question">
+                        @if (item.Label is { Length: > 0 } label && Answer.Answers.Count > 1)
+                        {
+                            <span class="user-prompt-chip">@label</span>
+                        }
+                        <span>@item.Question</span>
+                    </p>
+                    @if (item.Answer.Length == 0)
+                    {
+                        <p class="user-answer-value is-open">Left to the assistant</p>
+                    }
+                    else
+                    {
+                        <p class="user-answer-value @(item.IsPath ? "is-path" : string.Empty)">@item.Answer</p>
+                    }
+                </div>
+            }
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter] [EditorRequired] public AskUserAnswer Answer { get; set; } = default!;
+
+    private bool Answered => Answer.Answers.Any(item => item.Answer.Length > 0);
+
+    // Only a reply with nothing in it collapses to one line; a partial answer is still an answer.
+    private (string Icon, string Text)? Status => Answered ? null : Answer.Outcome switch
+    {
+        "declined" => ("x", "You declined the question; the assistant stopped"),
+        "expired" => ("clock", "No answer in time; the assistant decided"),
+        _ => ("sparkles", "You left it to the assistant"),
+    };
+
+    private string OutcomeClass => Answered ? string.Empty : Answer.Outcome switch
+    {
+        "declined" => "is-unanswered is-declined",
+        "expired" => "is-unanswered is-expired",
+        _ => "is-unanswered",
+    };
+}

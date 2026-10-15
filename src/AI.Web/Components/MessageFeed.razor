@@ -214,6 +214,11 @@
                                       Review="@(DiffReviews?.GetValueOrDefault(entry.ChangesMessage.Id))"
                                       OnReview="OnReviewChanges" OnReviewChanged="OnDiffReviewChanged" />
                 }
+                else if (entry.AnswerMessage is { UserAnswer: { } userAnswer } answerMessage)
+                {
+                    var answerKey = (answerMessage.Id, "user-answer");
+                    <AskUserAnswerCard @key="answerKey" Answer="@userAnswer" />
+                }
                 else if (entry.Plan is { } turnPlan)
                 {
                     var planKey = (entry.TurnId, "plan");
@@ -1498,7 +1503,8 @@
         int LiveNoteLimit = 0,
         bool LiveLeaving = false,
         TurnActivity? Activity = null,
-        AI.Contracts.Plans.ChatPlan? Plan = null);
+        AI.Contracts.Plans.ChatPlan? Plan = null,
+        ChatMessageView? AnswerMessage = null);
 
     /// <summary>
     /// One note in the running turn's window: the newest, one being written, or one older than the
@@ -1578,27 +1584,36 @@
                 {
                     var visibleCount = Math.Min(GetExpandedTurnItemLimit(turn.Id!.Value), turn.IntermediateItems.Count);
                     visibleIntermediateItems = turn.IntermediateItems.Take(visibleCount).ToArray();
+                    // The person's answer to a question follows the steps that asked it.
                     entries.AddRange(visibleIntermediateItems
-                        .Select((item, index) => new RenderedFeedEntry(
-                            Item: item,
-                            RevealIndex: index % ExpandedTurnBatchSize,
-                            IsExpandedIntermediate: true)));
-                    // File-change receipts from later chunks stay visible while the detailed
-                    // blocks are mounted over several frames.
+                        .SelectMany((item, index) => ChatFeed.MessagesOf(item)
+                            .Where(message => message.UserAnswer is not null)
+                            .Select(message => new RenderedFeedEntry(AnswerMessage: message))
+                            .Prepend(new RenderedFeedEntry(
+                                Item: item,
+                                RevealIndex: index % ExpandedTurnBatchSize,
+                                IsExpandedIntermediate: true))));
+                    // File-change receipts and answers from later chunks stay visible while the
+                    // detailed blocks are mounted over several frames.
                     entries.AddRange(turn.IntermediateItems.Skip(visibleCount)
                         .SelectMany(ChatFeed.MessagesOf)
-                        .Where(message => message.WorkspaceChanges is { IsEmpty: false })
-                        .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.UserAnswer is not null)
+                        .Select(message => message.UserAnswer is not null
+                            ? new RenderedFeedEntry(AnswerMessage: message)
+                            : new RenderedFeedEntry(ChangesMessage: message)));
                 }
                 else
                 {
                     // The message itself is folded, not its durable workspace receipt, nor what the
-                    // person added to the turn: that is theirs, not the model's work.
+                    // person added to the turn or answered in it: that is theirs, not the model's work.
                     entries.AddRange(turn.IntermediateMessages
-                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.Delivery == MessageDelivery.InTurn)
+                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.Delivery == MessageDelivery.InTurn
+                                          || message.UserAnswer is not null)
                         .Select(message => message.Delivery == MessageDelivery.InTurn
                             ? new RenderedFeedEntry(Item: new FeedItem(message, null))
-                            : new RenderedFeedEntry(ChangesMessage: message)));
+                            : message.UserAnswer is not null
+                                ? new RenderedFeedEntry(AnswerMessage: message)
+                                : new RenderedFeedEntry(ChangesMessage: message)));
                 }
 
                 // The final answer arriving as StreamingContent is shown below as it is; the live

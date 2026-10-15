@@ -200,6 +200,51 @@ public sealed class AppToolPresentationTests
             && fact.Value == "Portable binary");
         presentation.Facts.ShouldContain(fact => fact.Label == "Where should its files go?"
             && fact.Value == "No answer");
+        presentation.Body.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldReadThePersonsAnswerForTheirReplyCard()
+    {
+        var answer = AskUserAnswers.TryRead("""
+            {"questions":[
+                {"id":"install","label":"Install","text":"How should the server be installed?"},
+                {"id":"location","label":"Location","text":"Where should its files go?"},
+                {"id":"tests","label":"Tests","text":"Run the tests?"}]}
+            """, """
+            {"isError":false,"structuredContent":{"outcome":"answered","answers":[
+                {"id":"install","selected":["Portable binary"]},
+                {"id":"location","selected":[],"paths":["D:\\MCP"]}]}}
+            """).ShouldNotBeNull();
+
+        answer.Outcome.ShouldBe("answered");
+        answer.Answers.ShouldBe([
+            new AskUserAnswerItem("Install", "How should the server be installed?", "Portable binary", false),
+            new AskUserAnswerItem("Location", "Where should its files go?", "D:\\MCP", true),
+            new AskUserAnswerItem("Tests", "Run the tests?", "", false)]);
+    }
+
+    [Fact]
+    public void ShouldNotRepeatAnOptionValueItsLabelAlreadySays()
+    {
+        var answer = AskUserAnswers.TryRead("""
+            {"questions":[{"id":"version","text":"Which version?"},{"id":"date","text":"When?"}]}
+            """, """
+            {"isError":false,"structuredContent":{"outcome":"answered","answers":[
+                {"id":"version","selected":["v0.0.29-rc (Recommended)"],"values":["v0.0.29-rc"]},
+                {"id":"date","selected":["Tomorrow"],"values":["2026-10-16"]}]}}
+            """).ShouldNotBeNull();
+
+        answer.Answers.Select(item => item.Answer).ShouldBe(["v0.0.29-rc (Recommended)", "Tomorrow, 2026-10-16"]);
+    }
+
+    [Theory]
+    [InlineData("interrupted")]
+    [InlineData("invalid")]
+    public void ShouldShowNoReplyForAQuestionNobodySaw(string outcome)
+    {
+        AskUserAnswers.TryRead("""{"questions":[{"id":"a","text":"Which?"}]}""",
+            $$$"""{"isError":false,"structuredContent":{"outcome":"{{{outcome}}}","answers":[]}}""").ShouldBeNull();
     }
 
     private static ToolCallResult Structured(string json, bool isError = false)

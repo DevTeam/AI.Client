@@ -115,6 +115,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         // The expanded feed needs the small checkpoint result to decide whether compaction
         // actually applied. Other tool output remains lazy, even when the turn is expanded.
         var planCalls = Plans.ChatPlanHistory.PlanCallIds(branch);
+        var askUserCalls = AskUserCalls(branch);
         var compactCallIds = branch.Skip(start + 1).Take(end - start - 1)
             .SelectMany(message => message.ToolCalls ?? [])
             .Where(call => ToolRef.Parse(call.Name) is { IsApp: true, Name: "context_compact" })
@@ -123,7 +124,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         var messages = branch
             .Skip(start + 1)
             .Take(end - start - 1)
-            .Select(message => ToView(message, planCalls, omitToolResultContent:
+            .Select(message => ToView(message, planCalls, askUserCalls, omitToolResultContent:
                 message.Role != ChatMessageRole.Tool
                 || message.ToolCallId is not { } callId
                 || !compactCallIds.Contains(callId)
@@ -578,6 +579,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     private ChatDetails ToDetails(ChatThread chat, long revision)
     {
         var planCalls = Plans.ChatPlanHistory.PlanCallIds(chat.Messages);
+        var askUserCalls = AskUserCalls(chat.Messages);
         return new(
             chat.Id.Value,
             chat.ProjectId.Value,
@@ -586,7 +588,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.UpdatedAt,
             revision,
             chat.ConnectionId?.Value,
-            chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message, planCalls)).ToArray(),
+            chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message, planCalls, askUserCalls)).ToArray(),
             chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
                 branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
                 ToContract(branch.Settings))).ToArray(),
@@ -616,6 +618,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             .ToHashSet();
         var unansweredNotes = GetUnansweredTurnNotes(messages, branchHeads);
         var planCalls = Plans.ChatPlanHistory.PlanCallIds(messages);
+        var askUserCalls = AskUserCalls(messages);
 
         var projected = messages.Select(message =>
         {
@@ -625,7 +628,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
                 && (branchHeads.Contains(message.Id) || followedByUser.Contains(message.Id));
             // The feed renders each completed turn's file-change receipt from the transcript.
             // Keep it even when the message body is folded; the live run stops carrying it on completion.
-            return ToView(message, planCalls, omitContent: !keepContent, omitToolArguments: true);
+            return ToView(message, planCalls, askUserCalls, omitContent: !keepContent, omitToolArguments: true);
         }).ToArray();
 
         return new ChatDetails(
@@ -678,6 +681,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
     private static ChatMessageView ToView(
         ChatMessage message,
         HashSet<string>? planCalls = null,
+        Dictionary<string, string>? askUserCalls = null,
         bool omitContent = false,
         bool omitToolArguments = false,
         bool omitToolResultContent = false)
@@ -704,8 +708,19 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             message.Sender is { } sender ? new MessageSender(sender.ChatId, sender.BranchId, sender.Intent, sender.ProjectId) : null,
             message is { Role: ChatMessageRole.Tool, ToolCallId: { } callId } && planCalls?.Contains(callId) == true
                 ? Contracts.Plans.ChatPlanResults.TryRead(message.Content)
+                : null,
+            message is { Role: ChatMessageRole.Tool, ToolCallId: { } askId }
+            && askUserCalls?.TryGetValue(askId, out var askArguments) == true
+                ? AskUserAnswers.TryRead(askArguments, message.Content)
                 : null);
     }
+
+    /// <summary>The arguments of the <c>ask_user</c> calls among <paramref name="messages"/>, by call id.</summary>
+    private static Dictionary<string, string> AskUserCalls(IEnumerable<ChatMessage> messages) => messages
+        .SelectMany(message => message.ToolCalls ?? [])
+        .Where(call => AskUserAnswers.IsAskUserCall(call.Name))
+        .GroupBy(call => call.Id, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.First().Arguments, StringComparer.Ordinal);
 
     private static TeamMember? ToContract(ChatBranchMember? member) =>
         member is null ? null : new TeamMember(member.Name, member.Role, member.Color);

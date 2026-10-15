@@ -8,7 +8,7 @@ using System.Text.Json;
 /// </summary>
 public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
 {
-    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "ask_user" };
+    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { AskUserAnswers.ToolName };
 
     protected override string Prefix => ToolRef.AppPrefix;
 
@@ -78,7 +78,9 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
             // the model was given, and the person meant to leave them open.
             ToolResultSeverity.Ok,
             facts,
-            Text(structured, "guidance"));
+            // The guidance is the model's next step once the person has answered; the answer itself
+            // is the person's reply card.
+            null);
     }
 
     private static JsonElement? Question(JsonElement? questions, string? id)
@@ -92,24 +94,7 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
 
     private static string? Label(JsonElement? question) => Text(question, "label") ?? Text(question, "text");
 
-    /// <summary>Selected labels and free text read as one answer, because that is how it was given.</summary>
-    private static string Chosen(JsonElement answer)
-    {
-        var parts = new List<string>();
-        if (answer.TryGetProperty("selected", out var selected) && selected.ValueKind == JsonValueKind.Array)
-            parts.AddRange(selected.EnumerateArray()
-                .Where(item => item.ValueKind == JsonValueKind.String)
-                .Select(item => item.GetString()!)
-                .Where(item => item.Length > 0));
-        if (Text(answer, "other") is { Length: > 0 } other) parts.Add(other);
-        // A recurrence reads in words; its JSON is for the model.
-        var described = answer.TryGetProperty("valueDescriptions", out var words) && words.ValueKind == JsonValueKind.Array;
-        foreach (var property in new[] { "paths", described ? "valueDescriptions" : "values" })
-            if (answer.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array)
-                parts.AddRange(values.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
-                    .Select(item => item.GetString()!).Where(item => item.Length > 0));
-        return string.Join(", ", parts);
-    }
+    private static string Chosen(JsonElement answer) => AskUserAnswers.Chosen(answer).Text;
 
     private static string? Clip(string? text, int length) =>
         text is not { Length: > 0 } ? null : text.Length <= length ? text : text[..(length - 1)] + "…";

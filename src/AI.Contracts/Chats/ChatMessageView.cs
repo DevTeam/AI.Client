@@ -19,7 +19,9 @@ public sealed record ChatMessageView(
     MessageSender? Sender = null,
     // The plan a plan tool result set, read on the server so the page has it whether or not the
     // result's body was sent; null for every other message.
-    Plans.ChatPlan? Plan = null)
+    Plans.ChatPlan? Plan = null,
+    // The person's reply to an ask_user result, read on the server like the plan; null otherwise.
+    Tools.AskUserAnswer? UserAnswer = null)
 {
     /// <summary>Whether this message opens a turn; see docs/34-asides-and-team-messages.md.</summary>
     [System.Text.Json.Serialization.JsonIgnore]

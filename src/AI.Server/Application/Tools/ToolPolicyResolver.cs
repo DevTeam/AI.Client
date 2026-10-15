@@ -38,10 +38,8 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
         Guid serverId, string name, string schemaHash, string? arguments, CancellationToken cancellationToken)
     {
         var policy = await ResolveAsync(projectId, chatId, branchId, serverId, name, schemaHash, cancellationToken);
-        if (arguments is null || serverId != DefaultMcpServer.Id || name != ProcessRun
-            || policy.Decision == "Deny")
-            return policy;
-        var evaluation = await commands.EvaluateAsync(projectId, chatId, arguments, cancellationToken);
+        if (arguments is null || !commands.Decides(serverId, name) || policy.Decision == "Deny") return policy;
+        var evaluation = await commands.EvaluateAsync(projectId, chatId, name, arguments, cancellationToken);
         return policy with { Decision = evaluation?.Decision ?? policy.Decision, Command = evaluation };
     }
 

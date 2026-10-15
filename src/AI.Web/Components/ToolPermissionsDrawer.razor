@@ -64,7 +64,7 @@
         @foreach (var tool in RuleTools)
         {
             var toolRules = VisibleRules.Where(rule => rule.Tool == tool).ToArray();
-            if (_loading || (Scope != "Project" && toolRules.Length == 0)) continue;
+            if (_loading || toolRules.Length == 0) continue;
             <section class="permissions-group">
                 <h3 title="@($"Rules for what {tool} runs; a matching rule decides inside the tool's own permission")"><AppIcon Name="tool" />Command rules · <code>@tool</code></h3>
                 @foreach (var rule in toolRules)
@@ -93,11 +93,14 @@
                         }
                     </div>
                 }
-                @* Rules are written in the global tool settings and for a project; a chat and its branches only show and reset them. *@
-                @if (Scope == "Project")
-                {
-                    <CommandRuleForm Tool="@tool" Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
-                }
+            </section>
+        }
+        @* Rules are written in the global tool settings and for a project; a chat and its branches only show and reset them. *@
+        @if (!_loading && Scope == "Project")
+        {
+            <section class="permissions-group">
+                <h3 title="A rule decides calls of one tool by what they run or change, inside the tool's own permission"><AppIcon Name="plus" />Add a command rule</h3>
+                <CommandRuleForm Tools="@CommandRule.Tools" Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
             </section>
         }
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }

@@ -35,8 +35,8 @@ public sealed class CommandRuleServiceTests
         ids.Setup(item => item.Create()).Returns(Guid.CreateVersion7);
         var clock = new Mock<IClock>();
         clock.Setup(item => item.UtcNow).Returns(() => DateTimeOffset.UtcNow);
-        _service = new CommandRuleService(_repository, projects.Object, TestPrograms.Parser(), TestPrograms.Paths,
-            ids.Object, clock.Object);
+        _service = new CommandRuleService(_repository, projects.Object,
+            new ToolRuleProfiles(TestPrograms.Parser(), TestPrograms.Paths), ids.Object, clock.Object);
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public sealed class CommandRuleServiceTests
         (await ResolveAsync()).ShouldBe("Ask");
         var policy = await resolver.ResolveAsync(_projectId, _chatId, _chatId, DefaultMcpServer.Id,
             ToolPolicyResolver.ProcessRun, "hash", arguments, CancellationToken.None);
-        policy.Command.ShouldNotBeNull().Check.Command.ExecutablePath.ShouldBe(TestPrograms.Git);
+        ((ParsedCommand)policy.Command.ShouldNotBeNull().Subject.Value).ExecutablePath.ShouldBe(TestPrograms.Git);
         (await resolver.ResolveAsync(_projectId, _chatId, _chatId, DefaultMcpServer.Id, "read_file", "hash", arguments,
             CancellationToken.None)).Command.ShouldBeNull();
     }
@@ -188,7 +188,7 @@ public sealed class CommandRuleServiceTests
     private async Task<string?> DecideAsync(params string[] arguments) => (await EvaluateAsync("git", arguments)).Decision;
 
     private async Task<CommandEvaluation> EvaluateAsync(string executable, string[] arguments) =>
-        (await _service.EvaluateAsync(_projectId, _chatId, Arguments(executable, arguments), CancellationToken.None))
+        (await _service.EvaluateAsync(_projectId, _chatId, CommandRule.ProcessRun, Arguments(executable, arguments), CancellationToken.None))
         .ShouldNotBeNull();
 
     private static string Arguments(string executable, string[] arguments) =>

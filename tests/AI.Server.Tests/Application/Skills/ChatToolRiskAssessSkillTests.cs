@@ -201,7 +201,7 @@ public class ChatToolRiskAssessSkillTests
         using var input = Input();
         var command = input.RootElement.GetProperty("command");
         command.GetProperty("display").GetString().ShouldBe("git push --force origin main");
-        command.GetProperty("destructive").GetBoolean().ShouldBeTrue();
+        command.GetProperty("details").GetProperty("destructive").GetBoolean().ShouldBeTrue();
         command.GetProperty("warnings").EnumerateArray().ShouldHaveSingleItem().GetString()
             .ShouldBe("It can discard work or rewrite history.");
         command.GetProperty("rule").ValueKind.ShouldBe(JsonValueKind.Null);
@@ -307,7 +307,8 @@ public class ChatToolRiskAssessSkillTests
         var skill = new ChatToolRiskAssessSkill(catalog, new SkillGuide(catalog), chats.Object, projects.Object, settings.Object, secrets.Object,
             completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
         var commands = new Mock<ICommandRuleService>();
-        commands.Setup(item => item.EvaluateAsync(_projectId, _chatId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        commands.Setup(item => item.Decides(DefaultMcpServer.Id, "process_run")).Returns(true);
+        commands.Setup(item => item.EvaluateAsync(_projectId, _chatId, "process_run", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _evaluation);
         return new ToolAutoApprover(chats.Object, new SkillRunner(catalog, null!, chatToolRiskAssessSkill: skill),
             new ChatBranchSettingsResolver(), commands.Object);
@@ -328,8 +329,9 @@ public class ChatToolRiskAssessSkillTests
             @"C:\work", [], false, [], true);
         var rule = ruleDecision is null ? null : new CommandRule(Guid.CreateVersion7(), CommandRule.Project, null, null,
             "git push *", ruleDecision, DateTimeOffset.UtcNow);
-        return new CommandEvaluation(new CommandCheck(command, ["It can discard work or rewrite history."], false, true),
-            rule, ruleDecision, ["git push --force origin main"]);
+        var subject = new RuleSubject(command.Display, ["It can discard work or rewrite history."], false, true,
+            ["git push --force origin main"], command, null, new { destructive = command.IsDestructive });
+        return new CommandEvaluation(subject, rule, ruleDecision);
     }
 
     private async IAsyncEnumerable<ChatCompletionChunk> Respond(ChatCompletionRequest request, string answer,

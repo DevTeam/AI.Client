@@ -49,8 +49,23 @@ public sealed class ToolPermissionsDrawerRenderingTests
     {
         var html = await RenderDrawerAsync("Project", null, []);
 
-        html.ShouldContain("Command rules");
+        html.ShouldContain("Add a command rule");
         html.ShouldContain("class=\"command-rule-form\"");
+        // One form for every tool rules decide, the tool chosen in it.
+        html.ShouldContain("aria-label=\"Tool the new rule decides\"");
+        html.ShouldContain("<option value=\"write_file\">write_file</option>");
+    }
+
+    [Fact]
+    public async Task GlobalToolSettingsShouldTakePathsForAFileTool()
+    {
+        var html = await RenderAsync<GlobalCommandRules>(Services([], null, null),
+            new Dictionary<string, object?> { [nameof(GlobalCommandRules.Tool)] = "write_file" });
+
+        html.ShouldContain("placeholder=\"docs/**\"");
+        html.ShouldContain("aria-label=\"Path pattern\"");
+        html.ShouldContain("stands for any number of folders");
+        html.ShouldNotContain("Tool the new rule decides");
     }
 
     [Theory]

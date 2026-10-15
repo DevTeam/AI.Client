@@ -77,7 +77,7 @@ public enum AppResource
     McpTools,
 
     /// <summary>
-    /// Command rules for the programs process_run starts: the global ones, and those of projectId and chatId
+    /// Command rules for process_run and the file tools: the global ones, and those of projectId and chatId
     /// (the current project and chat by default).
     /// </summary>
     CommandRules,
@@ -124,7 +124,7 @@ public sealed class AppReadTool(
                               + "The result includes names, schema hashes, annotations and default decisions. "
                               + "Project, Chat and Settings list saved overrides only; an absent rule uses the tool's default decision. "
                               + "A server policy of Ask does not make all its tools Ask. "
-                              + "'CommandRules' lists the rules that decide process_run calls by the command they run, "
+                              + "'CommandRules' lists the rules that decide calls of process_run and the file tools by what they run or change, "
                               + "global and of the current project and chat. "
                               + "Discovery connects to that server but calls no tools and grants no directory access. "
                               + "Omitted chatId for 'Chat', 'Messages' and 'Reviews' means the current chat. "

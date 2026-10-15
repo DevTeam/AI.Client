@@ -152,37 +152,7 @@ public sealed class CommandPattern
     }
 
     private static bool WordMatches(string word, string token) =>
-        IsMask(word) ? Wildcard(word, token) : string.Equals(word, token, StringComparison.Ordinal);
-
-    /// <summary>
-    /// <c>*</c> for any run of characters and <c>?</c> for one, with no escapes. Linear in practice:
-    /// it only ever backs up to the last star.
-    /// </summary>
-    private static bool Wildcard(string mask, string text)
-    {
-        int m = 0, t = 0, star = -1, resume = 0;
-        while (t < text.Length)
-        {
-            if (m < mask.Length && (mask[m] == '?' || mask[m] != '*' && mask[m] == text[t]))
-            {
-                m++;
-                t++;
-            }
-            else if (m < mask.Length && mask[m] == '*')
-            {
-                star = m++;
-                resume = t;
-            }
-            else if (star >= 0)
-            {
-                m = star + 1;
-                t = ++resume;
-            }
-            else return false;
-        }
-        while (m < mask.Length && mask[m] == '*') m++;
-        return m == mask.Length;
-    }
+        IsMask(word) ? Masks.Matches(word, token, ignoreCase: false) : string.Equals(word, token, StringComparison.Ordinal);
 }
 
 /// <summary>How rules and commands name a program.</summary>

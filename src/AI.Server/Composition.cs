@@ -112,7 +112,7 @@ internal sealed class Composition
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 ChatTemporaryDirectory,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
-                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService>()
+                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles>()
             .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.

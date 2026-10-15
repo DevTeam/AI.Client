@@ -94,9 +94,17 @@ refuse the rest. A chat not created yet keeps the mode picked in its composer an
 ## Command rules
 
 `process_run` starts any program, so one permission for the whole tool is either too broad or asks
-about every `git status`. Command rules decide its calls by what they run. A rule is a pattern, a
-decision (`Allow`, `Ask`, `Deny`) and a scope (global, project or chat); they are stored in
-`command-rules.json` beside `settings.json`, apart from chats and projects.
+about every `git status`. Command rules decide its calls by what they run, and the file tools' calls
+by the paths they change. A rule is a tool, a pattern, a decision (`Allow`, `Ask`, `Deny`) and a
+scope (global, project or chat); they are stored in `command-rules.json` beside `settings.json`,
+apart from chats and projects.
+
+Deciding, scoping, storing and showing rules are the same for every tool. What differs lives in the
+tool's rule profile (`IToolRuleProfile`): how its patterns are written, how a call of it reads
+(`RuleSubject`: what it does, its warnings, whether the guard stops an Allow, whether only an exact
+pattern may allow it, what the card offers to remember), and whether the call runs pinned to what
+was checked. `ToolRuleProfiles` lists the profiles, and `CommandRule.Tools` names the same tools for
+the web; a new tool takes rules by adding a profile there.
 
 ```text
 git status *              Allow   project
@@ -173,6 +181,32 @@ chat's and a branch's tool permissions only list the rules that apply and reset 
 chat's rules come from its approval cards. Rules are read with
 `app_read` `CommandRules`, changed with `app_security` `SetCommandRule` and `RemoveCommandRule`, and
 served at `/api/settings/command-rules`.
+
+### Path rules for the file tools
+
+`write_file`, `edit_file`, `create_directory`, `move_file`, `delete_file`, `delete_directory`,
+`zip_create` and `zip_extract` take rules by the paths they change (for a move both paths, for an
+archive the file or folder it writes; paths a call only reads are not matched).
+
+```text
+write_file      docs/**          Allow   project
+edit_file       src/**/*.cs      Allow   project
+delete_file     build/out.log    Allow   project
+write_file      deploy/**        Deny    global
+```
+
+- **Pattern.** A path below the project's directories, with `/` between folders (`\` is read as
+  `/`): `*` and `?` mask characters inside one name, `**` as a whole part stands for any number of
+  folders, none included. A full path (`C:/work/notes.md`) matches only there. `.` and `..` parts
+  are refused. Names compare without case where the file system ignores it.
+- **Matching.** A path is matched by its parts below the directory grant that holds it. A call that
+  names several paths needs all of them to match an `Allow` or `Ask`, and any one to match a `Deny`.
+- **Guard.** An `Allow` never lets a call through unasked when it changes a path outside the
+  project's directory grants, anything under `.git` (hooks and config can make git run code), or a
+  file that may hold secrets (`.env`, `.env.*`, `.ssh`, `.aws`, `.npmrc`, `id_rsa*`, `*.pem`,
+  `*.key`, …). A deletion is allowed only by its exact path.
+- **Card.** It offers the folder with everything below it (`src/app/**`, preselected), the exact
+  path and the whole project (`**`); a deletion only its exact path.
 
 ## Directory grants
 

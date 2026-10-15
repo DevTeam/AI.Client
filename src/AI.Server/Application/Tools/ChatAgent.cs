@@ -493,14 +493,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                     var arguments = session!.ValidateArguments(tool, call.Arguments);
                     var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
+                    // What the rules were checked against is what runs: process_run's bare program
+                    // name is pinned to the file PATH found for it, and the card shows that.
+                    if (policy.Command?.Subject.Arguments is { } pinned) arguments = pinned;
                     if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
                     {
                         var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                         var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
                         input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
-                        // The program the rules were checked against is the one that starts: a
-                        // bare name is pinned to the file PATH found for it, and the card shows that.
-                        if (policy.Command?.Check.Command.ExecutablePath is { } executable) input["executable"] = executable;
                         arguments = input.ToJsonString();
                     }
                     var count = counts.GetValueOrDefault(call.Name) + 1;

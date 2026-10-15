@@ -66,25 +66,19 @@ public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
         };
         if (descriptor.DisplayName != tool.OriginalName) parameters["tool_title"] = descriptor.DisplayName;
         if (descriptor.Description is { Length: > 0 } description) parameters["tool_description"] = description;
-        // What the call starts, as the application itself read it: unlike the server's annotations,
+        // What the call does, as the application itself read it: unlike the server's annotations,
         // these findings are the Host's own and can be relied on.
-        var evaluation = tool.ServerId == DefaultMcpServer.Id && tool.OriginalName == ToolPolicyResolver.ProcessRun
-            ? await commands.EvaluateAsync(projectId, chatId, arguments, cancellationToken)
+        var evaluation = commands.Decides(tool.ServerId, tool.OriginalName)
+            ? await commands.EvaluateAsync(projectId, chatId, tool.OriginalName, arguments, cancellationToken)
             : null;
         if (evaluation is not null)
-        {
-            var command = evaluation.Check.Command;
             parameters["command"] = JsonSerializer.Serialize(new
             {
-                display = command.Display,
-                program = command.ExecutablePath,
-                installed = command.OnPath,
-                interpreter = command.IsInterpreter,
-                destructive = command.IsDestructive,
-                warnings = evaluation.Check.Warnings,
-                rule = evaluation.Rule is { } rule ? $"{rule.Decision} {rule.Pattern} ({rule.Scope.ToLowerInvariant()})" : null
+                display = evaluation.Subject.Display,
+                warnings = evaluation.Subject.Warnings,
+                rule = evaluation.Rule is { } rule ? $"{rule.Decision} {rule.Pattern} ({rule.Scope.ToLowerInvariant()})" : null,
+                details = evaluation.Subject.Details
             });
-        }
         if (descriptor.Annotations is { } annotations)
             parameters["annotations"] = JsonSerializer.Serialize(new
             {

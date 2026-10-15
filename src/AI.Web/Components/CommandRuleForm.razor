@@ -1,12 +1,21 @@
 @inject IGlobalSettingsApi GlobalSettingsApi
 @inject INotificationService Notifications
 
-@* Adds a command rule for process_run. Shared by the global tool settings and the project's permissions drawer. *@
+@* Adds a command rule. Shared by the global tool settings and the project's permissions drawer. *@
 @* A group, not a form: the global settings already wrap it in one, and forms do not nest. *@
 <div class="command-rule-form" role="group" aria-label="New command rule">
-    <input aria-label="Command pattern" placeholder="git diff *" spellcheck="false" autocomplete="off"
-           maxlength="2000" value="@_pattern" @oninput="e => _pattern = e.Value?.ToString() ?? string.Empty"
-           @onkeydown="OnKeyDownAsync" disabled="@_saving" />
+    <input aria-label="@(IsPath ? "Path pattern" : "Command pattern")" placeholder="@(IsPath ? "docs/**" : "git diff *")"
+           spellcheck="false" autocomplete="off" maxlength="2000" value="@_pattern"
+           @oninput="e => _pattern = e.Value?.ToString() ?? string.Empty" @onkeydown="OnKeyDownAsync" disabled="@_saving" />
+    @if (Tools is { Count: > 1 })
+    {
+        <select aria-label="Tool the new rule decides" @bind="ChosenTool" disabled="@_saving">
+            @foreach (var tool in Tools)
+            {
+                <option value="@tool">@tool</option>
+            }
+        </select>
+    }
     <select aria-label="Decision for the new command rule" @bind="_decision" disabled="@_saving">
         <option value="Allow">Allow</option><option value="Ask">Ask</option><option value="Deny">Deny</option>
     </select>
@@ -22,13 +31,22 @@
     <button type="button" title="Save this command rule" disabled="@(_saving || string.IsNullOrWhiteSpace(_pattern))" @onclick="AddAsync">Add</button>
 </div>
 @if (_error is not null) { <p class="error" role="alert">@_error</p> }
-<p class="command-rule-hint">The program's name, then its arguments word by word. <code>*</code> or <code>?</code> inside a word is a mask; a lone <code>*</code> at the end allows any further arguments. A Deny always wins; otherwise the most specific rule decides.</p>
+@if (IsPath)
+{
+    <p class="command-rule-hint">A path below the project, with <code>/</code> between folders: <code>*</code> or <code>?</code> inside a name is a mask, <code>**</code> stands for any number of folders. A full path matches only there. A call that names several paths needs all of them for Allow and any one for Deny. A Deny always wins; otherwise the most specific rule decides.</p>
+}
+else
+{
+    <p class="command-rule-hint">The program's name, then its arguments word by word. <code>*</code> or <code>?</code> inside a word is a mask; a lone <code>*</code> at the end allows any further arguments. A Deny always wins; otherwise the most specific rule decides.</p>
+}
 
 @code {
     /// <summary>The scopes the rule may be saved in, as value and label; the first is preselected.</summary>
     [Parameter, EditorRequired] public IReadOnlyList<(string Value, string Label)> Scopes { get; set; } = [];
-    /// <summary>The tool whose calls the new rule decides.</summary>
-    [Parameter, EditorRequired] public string Tool { get; set; } = CommandRule.ProcessRun;
+    /// <summary>The tool whose calls the new rule decides, or the one preselected when <see cref="Tools"/> offers a choice.</summary>
+    [Parameter] public string Tool { get; set; } = CommandRule.ProcessRun;
+    /// <summary>Tools to choose from; one or none means the rule is for <see cref="Tool"/>.</summary>
+    [Parameter] public IReadOnlyList<string>? Tools { get; set; }
     [Parameter] public Guid? ProjectId { get; set; }
     [Parameter] public Guid? ChatId { get; set; }
     [Parameter] public EventCallback<CommandRule> Saved { get; set; }
@@ -36,6 +54,7 @@
     private string _pattern = string.Empty;
     private string _decision = "Allow";
     private string? _scope;
+    private string? _tool;
     private bool _saving;
     private string? _error;
 
@@ -44,6 +63,14 @@
         get => _scope ?? (Scopes.Count > 0 ? Scopes[0].Value : CommandRule.Global);
         set => _scope = value;
     }
+
+    private string ChosenTool
+    {
+        get => _tool ?? Tool;
+        set => _tool = value;
+    }
+
+    private bool IsPath => CommandRule.IsPathTool(ChosenTool);
 
     /// <summary>Enter adds the rule; a settings form around this group already refuses to submit.</summary>
     private async Task OnKeyDownAsync(KeyboardEventArgs args)
@@ -60,7 +87,7 @@
         {
             var rule = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(scope,
                 scope == CommandRule.Global ? null : ProjectId, scope == CommandRule.Chat ? ChatId : null,
-                _pattern.Trim(), _decision, Tool), CancellationToken.None);
+                _pattern.Trim(), _decision, ChosenTool), CancellationToken.None);
             _pattern = string.Empty;
             Notifications.ShowSuccess("Command rule saved.");
             await Saved.InvokeAsync(rule);

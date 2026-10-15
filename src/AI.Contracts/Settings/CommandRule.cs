@@ -29,8 +29,18 @@ public sealed record CommandRule(
 
     public const string ProcessRun = "process_run";
 
-    /// <summary>The built-in tools whose calls command rules can decide.</summary>
-    public static readonly IReadOnlyList<string> Tools = [ProcessRun];
+    /// <summary>
+    /// The built-in tools whose calls command rules can decide: process_run by the command it runs,
+    /// the file tools by the paths they change.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Tools =
+    [
+        ProcessRun, "write_file", "edit_file", "create_directory", "move_file", "delete_file", "delete_directory",
+        "zip_create", "zip_extract"
+    ];
+
+    /// <summary>Whether the tool's rules are paths rather than commands.</summary>
+    public static bool IsPathTool(string tool) => tool != ProcessRun;
 }
 
 public sealed record CreateCommandRuleRequest(string Scope, Guid? ProjectId, Guid? ChatId, string Pattern, string Decision,

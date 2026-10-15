@@ -85,11 +85,13 @@ public enum SecurityOperation
 
 /// <param name="Scope">Global, Project or Chat.</param>
 /// <param name="Pattern">
-/// The program's name, then words matched one by one against its arguments: a word matches one argument exactly, or
-/// as a mask with * and ? inside it; a lone trailing * matches any further arguments. Example: 'git diff *'.
+/// For process_run, the program's name, then words matched one by one against its arguments: a word matches one
+/// argument exactly, or as a mask with * and ? inside it; a lone trailing * matches any further arguments, as in
+/// 'git diff *'. For a file tool, a path below the project with / between folders, * and ? inside a name and ** for
+/// any number of folders, as in 'docs/**'.
 /// </param>
 /// <param name="Decision">Allow, Ask or Deny.</param>
-/// <param name="Tool">The built-in tool the rule decides; process_run, the only one so far, when omitted.</param>
+/// <param name="Tool">The built-in tool the rule decides: process_run when omitted, or a file tool such as write_file.</param>
 public sealed record CommandRulePayload(string Scope, string Pattern, string Decision, string? Tool = null);
 
 [McpServerToolType]
@@ -120,8 +122,10 @@ public sealed class AppSecurityTool(
                           + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants. "
                           + "A branch inherits tool policies from its parent branch and the chat; SetBranchToolPolicy overrides one for "
                           + "a branch and the branches below it, RemoveBranchToolPolicy makes it inherit again. "
-                          + "SetCommandRule decides process_run calls by the program and arguments they run ('git diff *'), "
-                          + "inside the tool's own policy: a matching Deny wins, otherwise the most specific pattern. "
+                          + "SetCommandRule decides calls of one built-in tool, inside its own policy: process_run by the program and "
+                          + "arguments it runs ('git diff *'), the file tools (write_file, edit_file, create_directory, move_file, "
+                          + "delete_file, delete_directory, zip_create, zip_extract) by the paths they change, below the project "
+                          + "('docs/**'). A matching Deny wins, otherwise the most specific pattern. "
                           + "RemoveCommandRule drops one by 'ruleId'."
         });
 

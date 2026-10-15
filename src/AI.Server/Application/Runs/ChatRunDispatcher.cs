@@ -1031,8 +1031,8 @@ public sealed class ChatRunDispatcher(
         {
             runtime.PendingApproval = new ToolApproval(ids.Create(), tool.ServerId, tool.OriginalName,
                 tool.SchemaHash, arguments, timeout, position.Index, position.BatchSize, automatic.Reason,
-                command is null ? null : new CommandApproval(command.Check.Command.Display, command.Options,
-                    command.Check.Warnings, command.Rule?.Decision == "Ask" ? command.Rule.Pattern : null));
+                command is null ? null : new CommandApproval(command.Subject.Display, command.Subject.Options,
+                    command.Subject.Warnings, command.Rule?.Decision == "Ask" ? command.Rule.Pattern : null));
             runtime.Approval = completion;
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);

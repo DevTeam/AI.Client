@@ -38,6 +38,12 @@
     [Parameter, EditorRequired] public RenderFragment Name { get; set; } = null!;
     [Parameter] public RenderFragment? Details { get; set; }
 
+    /// <summary>
+    /// A sentence of its own under the details, wrapping as it needs: the details line is cut to fit
+    /// beside its separators, which would clip the start of every wrapped line of prose.
+    /// </summary>
+    [Parameter] public RenderFragment? Note { get; set; }
+
     /// <summary>The row's count, right-aligned beside its name.</summary>
     [Parameter] public RenderFragment? Figure { get; set; }
 
@@ -86,6 +92,7 @@
         <span class="chat-widget-row-body">
             <span class="chat-widget-row-name"><span class="chat-widget-row-label">@Name</span>@if ((IsOpenable || Href is not null) && LeavesChat) { <AppIcon Name="arrow-up-right" Class="chat-widget-row-away" /> }</span>
             @if (Details is not null) { <span class="chat-widget-row-meta chat-usage-muted">@Details</span> }
+            @if (Note is not null) { <span class="chat-widget-row-note chat-usage-muted">@Note</span> }
         </span>
         @if (Figure is not null) { <span class="chat-widget-row-figure">@Figure</span> }
         @if (Bar is not null) { <span class="chat-widget-row-track" aria-hidden="true">@Bar</span> }

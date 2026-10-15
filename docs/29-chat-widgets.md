@@ -111,6 +111,9 @@ branches — and every row behaves the same, whichever widget it is in (`ChatWid
   A row whose subject is not tied to messages (a model's answers are recorded per request) has none.
 - **Nothing to open.** A row with nowhere to go — an `@diff` reference — is not a button: no hover,
   no pointer, and its tile is neutral instead of accent, so whether a row opens shows at rest.
+- **Details and note.** `Details` is one line of short facts joined by dots; it is cut to fit
+  beside its separators, so prose never goes there. A sentence — the plan step's note — goes in
+  `Note`, a line of its own under the details that wraps as it needs.
 - **Keyboard.** Tab reaches the row and then its locate button; Enter opens or locates.
 - **Touch.** The locate button is always shown, as the widget header's buttons are.
 
@@ -253,7 +256,7 @@ widget description and full summary through a tooltip.
 | `ChatWidgetRail` | `src/AI.Web/Components/ChatWidgetRail.razor` | The column: header, menu, list, reordering, empty state |
 | `ChatWidget` | `src/AI.Web/Components/ChatWidget.razor` | The shell: handle, folding title, `Summary`, `HeaderActions`, hide |
 | `ChatWidgetScopeSwitch` | `src/AI.Web/Components/ChatWidgetScopeSwitch.razor` | The shared scope switch (`Value` / `ValueChanged`) |
-| `ChatWidgetRow` | `src/AI.Web/Components/ChatWidgetRow.razor` | One list row: `Tile`, `Name`, `Details`, `Figure`, `Bar`; opens a `Resource`, an app `Link`, a web `Href` or `OnOpen`; locates `Uses` |
+| `ChatWidgetRow` | `src/AI.Web/Components/ChatWidgetRow.razor` | One list row: `Tile`, `Name`, `Details`, `Note`, `Figure`, `Bar`; opens a `Resource`, an app `Link`, a web `Href` or `OnOpen`; locates `Uses` |
 | `ChatWidgetActions` | `src/AI.Web/Widgets/ChatWidgets.cs` | What rows ask of the page, carried in `ChatWidgetContext.Actions`: `ShowMessage`, `OpenResource`, `Navigate` |
 | `chatWidgets.js` | `src/AI.Web/wwwroot/js/chatWidgets.js` | Pointer reordering by the handle |
 | Client settings | `src/AI.Web/Settings/ClientSettings.cs` | `ChatWidgetsOpen`, `ChatWidgets` |
@@ -836,12 +839,19 @@ is described in [Chat plans](37-chat-plans.md).
   be read; the chat's own card is shown only during a run and under the turn that moved the plan.
 - **What it shows.**
   - **Headline.** The weighted progress as a percentage, "done" or "finished", and "N of M steps"
-    on the right; the plan's title under it, then a bar filled by the same progress.
-  - **Rows.** One per step, in order: a status mark on the tile, the title, the status (with the
-    reported progress of a step in progress), its time and its note; on the right the step's share
-    of the whole plan by weight. The bar under a row is that share: the done part in the accent,
-    the rest of the step's weight a shade over the fill. The step in progress is the current row.
-    Rows open nothing and have no locate button: a step is not a message.
+    on the right; the plan's title under it, then the plan's bar. The bar is one segment per step
+    still in the plan, as wide as the step's share of the work and filled as far as the step has
+    come, so the weights are shown once, where they add up to the whole and to the percentage.
+    Skipped and failed steps have no segment: they left the measure.
+  - **Rows.** One per step, in order: a status mark on the tile, the title on up to two lines, the
+    status (and the time so far of the step in progress during a run), and the note as a line of its
+    own. The figure on the right depends on the status, so it is never read as progress when it is
+    not: a done or failed step shows its time, the step in progress its own progress, a waiting step
+    its share of the plan, muted and marked "≈". The bar under a row is the step's own progress: a
+    done step is full whatever it weighed, a waiting or skipped one empty. The step in progress is
+    the current row. Rows open nothing and have no locate button: a step is not a message.
+  - **Why not the weight under each row.** It was: a done step with a weight of 15% showed a bar
+    15% full, which read as a step done to 15%.
   - **Footer.** The plan's elapsed time and, while the branch's run works, the estimate of the time
     left at the pace so far.
 - **No scope switch.** A branch has one plan; "last turn" would only hide it.

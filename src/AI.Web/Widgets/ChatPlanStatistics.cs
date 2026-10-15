@@ -6,7 +6,10 @@ using Components;
 
 /// <summary>One step of the plan with its place in the whole.</summary>
 /// <param name="Number">The step's number from one, as the model refers to it.</param>
-/// <param name="Share">The step's weight over the weight of every step, 0–1; dropped steps keep theirs, so the rows add up.</param>
+/// <param name="Share">
+/// The step's weight over the weight still in the plan, 0–1, the measure the plan's progress uses:
+/// a skipped or failed step has none, so the shares of the others add up to the whole plan.
+/// </param>
 /// <param name="Done">How much of the step is done, 0–1: all of a completed step, the reported part of one in progress.</param>
 public sealed record ChatPlanStepEntry(int Number, ChatPlanStep Step, double Share, double Done);
 
@@ -37,9 +40,9 @@ public sealed class ChatPlanStatisticsCalculator(IChatFeedProjection feed) : ICh
         ArgumentNullException.ThrowIfNull(branch);
         if (feed.LatestPlan(branch) is not { } sighting) return ChatPlanStatistics.Empty;
         var plan = sighting.Plan;
-        var total = plan.Steps.Sum(step => Math.Max(1, step.Weight));
+        var total = plan.Steps.Where(step => !step.IsDropped).Sum(step => Math.Max(1, step.Weight));
         var steps = plan.Steps.Select((step, index) => new ChatPlanStepEntry(index + 1, step,
-            total == 0 ? 0 : Math.Max(1, step.Weight) / (double)total,
+            total == 0 || step.IsDropped ? 0 : Math.Max(1, step.Weight) / (double)total,
             step.Status switch
             {
                 ChatPlanStepStatus.Completed => 1,

@@ -1,10 +1,12 @@
 @using AI.Contracts.Plans
 @inject IChatPlanStatisticsCalculator Calculator
 @implements IDisposable
-@* The plan of the visible branch (docs/37-chat-plans.md): how far it has come by weight, and every
-   step with its share of the work, its status, note and time. The plan stays here between turns,
-   so a task the assistant set aside can still be read; the chat card shows it only while a run
-   works on it and under the turn that moved it. *@
+@* The plan of the visible branch (docs/37-chat-plans.md). The plan's bar is made of its steps, each
+   as wide as its share of the work and filled as far as it has come, so the weights are seen once,
+   where they add up to the whole. A step's own row says only how far that step has come: a done step
+   is full whatever it weighed. The plan stays here between turns, so a task the assistant set aside
+   can still be read; the chat card shows it only while a run works on it and under the turn that
+   moved it. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-plan-widget">
     @if (_stats is not { Plan: { } plan, Progress: { } progress })
     {
@@ -23,8 +25,11 @@
                 <div class="chat-plan-widget-title">@title</div>
             }
             <div class="chat-plan-widget-bar" role="progressbar" aria-label="Plan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progress.Percent">
-                <span style="flex-grow: @Share(progress.Fraction)"></span>
-                <i style="flex-grow: @Share(1 - progress.Fraction)"></i>
+                @foreach (var entry in _stats.Steps.Where(entry => entry.Share > 0))
+                {
+                    <span @key="entry.Number" class="chat-plan-widget-segment" title="@SegmentTitle(entry)"
+                          style="flex-grow: @Share(entry.Share); --step-done: @Share(entry.Done)"></span>
+                }
             </div>
         </div>
 
@@ -35,27 +40,28 @@
                     var step = entry.Step;
                     <ChatWidgetRow @key="entry.Number" Widget="@Widget" Current="@(progress.Current == entry.Number - 1 && !progress.IsFinished)"
                                    Class="@($"chat-plan-widget-step is-{ChatPlanCard.StatusClass(step.Status)}")"
-                                   OpenTitle="@StepTitle(entry)">
+                                   OpenTitle="@StepTitle(entry)" Note="@NoteOf(step)">
                         <Tile>
                             <span class="chat-plan-mark is-@ChatPlanCard.StatusClass(step.Status)" aria-label="@ChatPlanCard.StatusLabel(step.Status)">
                                 @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
                                 else if (step.Status == ChatPlanStepStatus.Failed) { <AppIcon Name="x" /> }
                             </span>
                         </Tile>
-                        <Name><span class="chat-widget-row-label">@step.Title</span></Name>
+                        <Name>@step.Title</Name>
                         <Details>
-                            <span>@ChatPlanCard.StatusLabel(step.Status)@(step.Status == ChatPlanStepStatus.InProgress && step.Progress > 0 ? $" {step.Progress}%" : null)</span>
-                            @if (step.Duration(_now) is { } duration && (step.IsFinished || IsGenerating))
+                            <span>@ChatPlanCard.StatusLabel(step.Status)</span>
+                            @if (step.Status == ChatPlanStepStatus.InProgress && IsGenerating && step.Duration(_now) is { } running)
                             {
-                                <span>@ChatPlanCard.FormatDuration(duration)</span>
+                                <span title="Time so far">@ChatPlanCard.FormatDuration(running)</span>
                             }
-                            @if (step.Note is { } note) { <span class="chat-plan-widget-note">@note</span> }
                         </Details>
-                        <Figure><span title="The step's estimated share of the whole plan">@Percent(entry.Share)</span></Figure>
+                        <Figure>@Figure(entry)</Figure>
                         <Bar>
-                            @if (entry.Done > 0) { <span style="flex-grow: @Share(entry.Share * entry.Done)"></span> }
-                            @if (entry.Done < 1) { <i class="chat-plan-widget-weight" style="flex-grow: @Share(entry.Share * (1 - entry.Done))"></i> }
-                            @if (entry.Share < 1) { <i style="flex-grow: @Share(1 - entry.Share)"></i> }
+                            @if (step.Status != ChatPlanStepStatus.Skipped && entry.Done > 0)
+                            {
+                                <span style="flex-grow: @Share(entry.Done)"></span>
+                                @if (entry.Done < 1) { <i style="flex-grow: @Share(1 - entry.Done)"></i> }
+                            }
                         </Bar>
                     </ChatWidgetRow>
                 }
@@ -131,9 +137,27 @@
         ? $"{progress.Percent}% · {progress.Completed}/{progress.Total}"
         : null;
 
+    /// <summary>
+    /// What the row's right edge says depends on where the step stands: a done or failed step how long
+    /// it took, the step in progress how far it has come, a waiting one its share of the plan, muted and
+    /// marked as an estimate so it is not read as progress.
+    /// </summary>
+    private RenderFragment? Figure(ChatPlanStepEntry entry) => entry.Step.Status switch
+    {
+        ChatPlanStepStatus.InProgress => @<span title="How far this step has come, by the assistant's estimate">@entry.Step.Progress%</span>,
+        ChatPlanStepStatus.Pending => @<span class="chat-usage-muted" title="This step's estimated share of the plan's work">≈@Percent(entry.Share)</span>,
+        _ when entry.Step.Duration(_now) is { } duration => @<span title="Time taken">@ChatPlanCard.FormatDuration(duration)</span>,
+        _ => null
+    };
+
+    private static RenderFragment? NoteOf(ChatPlanStep step) => step.Note is { } note ? @<text>@note</text> : null;
+
     private static string StepTitle(ChatPlanStepEntry entry) =>
-        $"Step {entry.Number}: {entry.Step.Title}\nWeight {entry.Step.Weight}, {Percent(entry.Share)} of the plan"
-        + (entry.Step.Note is { } note ? $"\n{note}" : string.Empty);
+        $"Step {entry.Number}: {entry.Step.Title}"
+        + (entry.Share > 0 ? $"\nAbout {Percent(entry.Share)} of the plan's work (weight {entry.Step.Weight})" : string.Empty);
+
+    private static string SegmentTitle(ChatPlanStepEntry entry) =>
+        $"{entry.Number}. {entry.Step.Title} · {Percent(entry.Share)} of the plan, {Percent(entry.Done)} done";
 
     private static string Share(double value) =>
         Math.Max(0, value).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);

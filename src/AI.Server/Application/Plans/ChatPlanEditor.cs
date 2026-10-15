@@ -48,7 +48,7 @@ public static class ChatPlanEditor
                 ? kept with { Title = stepTitle }
                 : new ChatPlanStep(stepTitle);
             start = start with { Weight = Weight(input.Weight), Note = Text(input.Note, MaxNoteLength) };
-            result.Add(Transition(start, input.Status, input.Progress, now));
+            result.Add(Transition(start, input.Status, input.Progress, null, now));
         }
         return new ChatPlan(Text(title, MaxTitleLength) ?? Text(previous?.Title, MaxTitleLength), result, now);
     }
@@ -66,14 +66,27 @@ public static class ChatPlanEditor
                 throw new ArgumentException($"Step {update.Step} does not exist; the plan has steps 1–{steps.Length}.");
             var step = steps[update.Step - 1];
             if (update.Note is not null) step = step with { Note = Text(update.Note, MaxNoteLength) };
-            steps[update.Step - 1] = Transition(step, update.Status ?? step.Status, update.Progress, now);
+            steps[update.Step - 1] = Transition(step, update.Status ?? step.Status, update.Progress,
+                WorkedSince(current, now), now);
         }
         return current with { Steps = steps, UpdatedAt = now };
     }
 
-    private static ChatPlanStep Transition(ChatPlanStep step, ChatPlanStepStatus status, int? progress, DateTimeOffset now)
+    /// <summary>
+    /// When the work on a step that finishes without ever being reported in progress can have begun:
+    /// after the plan's previous change and after the last step that finished before this call. Null
+    /// when nothing earlier is known, so the step shows no time rather than a made-up "0s".
+    /// </summary>
+    private static DateTimeOffset? WorkedSince(ChatPlan plan, DateTimeOffset now) =>
+        plan.Steps.Select(step => step.FinishedAt).Append(plan.UpdatedAt).Where(at => at < now).Max();
+
+    private static ChatPlanStep Transition(ChatPlanStep step, ChatPlanStepStatus status, int? progress,
+        DateTimeOffset? since, DateTimeOffset now)
     {
         var changed = step.Status != status;
+        // A step that finishes straight from waiting was worked on since the plan last moved; with
+        // nothing earlier known, or already finished without a start, it has none, and so no duration.
+        var start = step.StartedAt ?? (step.Status == ChatPlanStepStatus.Pending ? since : null);
         return status switch
         {
             ChatPlanStepStatus.Pending => step with { Status = status, Progress = 0, StartedAt = null, FinishedAt = null },
@@ -86,14 +99,14 @@ public static class ChatPlanEditor
             },
             ChatPlanStepStatus.Completed => step with
             {
-                Status = status, Progress = 100, StartedAt = step.StartedAt ?? now,
+                Status = status, Progress = 100, StartedAt = start,
                 FinishedAt = changed || step.FinishedAt is null ? now : step.FinishedAt
             },
-            // A step dropped before it began has no duration to show.
+            // A step skipped before it began has no duration to show; one that failed was tried.
             _ => step with
             {
                 Status = status, Progress = Math.Clamp(progress ?? step.Progress, 0, 100),
-                StartedAt = step.StartedAt ?? (step.Status == ChatPlanStepStatus.Pending ? null : now),
+                StartedAt = status == ChatPlanStepStatus.Skipped && step.Status == ChatPlanStepStatus.Pending ? null : start,
                 FinishedAt = changed || step.FinishedAt is null ? now : step.FinishedAt
             }
         };

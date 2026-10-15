@@ -19,6 +19,11 @@ changed. A step (`ChatPlanStep`) has:
 | `Note` | model | One line: what is happening, or why the step was skipped or failed |
 | `StartedAt`, `FinishedAt` | application | Stamped when the status changes |
 
+A step moved straight from `Pending` to `Completed` or `Failed` was worked on since the plan's
+previous change, so its start is the later of that change and the last earlier finish of another
+step. A step laid out as already finished, or skipped before it began, has no start and shows no
+time, rather than a measured-looking "0s".
+
 `ChatPlanProgress.Of(plan, now)` measures the plan:
 
 - **Fraction** is done weight over the weight still in the plan. A completed step counts its whole

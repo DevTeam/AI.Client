@@ -102,9 +102,27 @@ public class ChatPlanTests
 
         plan.Title.ShouldBe("Fix");
         plan.Steps[0].Title.ShouldBe("study");
-        plan.Steps[0].StartedAt.ShouldBe(Start);
+        // Laid out as already done, it never had a start to measure from.
+        plan.Steps[0].StartedAt.ShouldBeNull();
         plan.Steps[0].FinishedAt.ShouldBe(Start);
         plan.Steps[1].StartedAt.ShouldBe(Start.AddMinutes(4));
+    }
+
+    [Fact]
+    public void ShouldTimeAStepFinishedStraightFromWaitingFromThePlansPreviousChange()
+    {
+        var plan = ChatPlanEditor.Replace(null, null,
+            [new("Study", Status: ChatPlanStepStatus.InProgress), new("Find"), new("Build"), new("Docs")], Start);
+        plan = ChatPlanEditor.Update(plan, [new(1, ChatPlanStepStatus.Completed)], Start.AddMinutes(5));
+
+        plan = ChatPlanEditor.Update(plan,
+            [new(2, ChatPlanStepStatus.Completed), new(3, ChatPlanStepStatus.Failed), new(4, ChatPlanStepStatus.Skipped)],
+            Start.AddMinutes(7));
+
+        plan.Steps[1].Duration(Start.AddMinutes(7)).ShouldBe(TimeSpan.FromMinutes(2));
+        plan.Steps[2].Duration(Start.AddMinutes(7)).ShouldBe(TimeSpan.FromMinutes(2));
+        plan.Steps[3].StartedAt.ShouldBeNull();
+        plan.Steps[3].Duration(Start.AddMinutes(7)).ShouldBeNull();
     }
 
     [Fact]

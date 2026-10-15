@@ -9404,6 +9404,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-widget-row-meta { display: flex; flex-wrap: wrap; margin-left: -.8rem; clip-path: inset(0 0 0 .8rem); font-size: var(--font-size-xs); }
 .chat-widget-row-meta > span { white-space: nowrap; }
 .chat-widget-row-meta > span::before { content: "\00b7"; display: inline-block; width: .8rem; color: var(--color-text-faint); text-align: center; }
+/* A note of the row's own (ChatWidgetRow Note) wraps freely under the details line. */
+.chat-widget-row-note { font-size: var(--font-size-xs); line-height: 1.35; overflow-wrap: anywhere; }
 .chat-widget-row-figure { grid-area: figure; align-self: start; color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; line-height: 1.2rem; text-align: right; white-space: nowrap; }
 .chat-widget-row-track { display: flex; grid-area: track; gap: 1px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--color-fill); }
 .chat-widget-row-track > span { min-width: 0; border-radius: inherit; background: var(--color-accent-strong); }
@@ -9499,16 +9501,16 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-widget-row-track > .chat-files-bar-added { background: var(--color-success); }
 .chat-widget-row-track > .chat-files-bar-removed { background: var(--color-danger); }
 
-/* Plan widget (ChatPlanWidget.razor). The plan's bar fills by weighted progress; a step's track is
-   its share of the plan, the done part in the accent and the rest of its weight a shade over the fill. */
+/* Plan widget (ChatPlanWidget.razor). The plan's bar is one segment per step still in the plan, as
+   wide as the step's share of the work and filled as far as the step has come; the gaps show where
+   one step ends. A row's track is that step's own progress, so a done step is full. */
 .chat-plan-widget-title { color: var(--color-text-secondary); font-size: var(--font-size-md); }
-.chat-plan-widget-bar { display: flex; gap: 1px; height: .35rem; overflow: hidden; border-radius: var(--radius-2xs); background: var(--color-fill); }
-.chat-plan-widget-bar > span { flex-basis: 0; background: var(--color-accent-strong); }
-.chat-plan-widget-bar > i { flex-basis: 0; }
-.chat-widget-row-track > .chat-plan-widget-weight { background: var(--color-fill-strong); }
+.chat-plan-widget-bar { display: flex; gap: 2px; height: .35rem; overflow: hidden; border-radius: var(--radius-2xs); }
+.chat-plan-widget-segment { flex-basis: 0; min-width: 2px; border-radius: 1px; background: linear-gradient(to right, var(--color-accent-strong) calc(var(--step-done, 0) * 100%), var(--color-fill) 0); }
+.chat-plan-widget-step .chat-widget-row-name { align-items: flex-start; }
+.chat-plan-widget-step .chat-widget-row-label { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .chat-plan-widget-step.is-skipped .chat-widget-row-label { color: var(--color-text-subtle); text-decoration: line-through; }
 .chat-plan-widget-step.is-failed .chat-widget-row-label { color: var(--color-danger-text); }
-.chat-widget-row-meta > .chat-plan-widget-note { white-space: normal; }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
 .chat-tools-errors { color: var(--color-danger-text); font-variant-numeric: tabular-nums; white-space: nowrap; }

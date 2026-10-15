@@ -15,6 +15,7 @@ using Application.Resources;
 using Application.Settings;
 using Application.Skills;
 using Application.Tools;
+using Application.Tools.Commands;
 using Application.Workspace;
 using Application.Usage;
 using AI.Contracts.FileSystem;
@@ -109,7 +110,7 @@ internal sealed class Composition
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 ChatTemporaryDirectory,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
-                TextFilePreviewFormat, WorkspaceUndoGuard>()
+                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser>()
             .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)
             // Instruction composition, context planning, credentials and usage accounting.

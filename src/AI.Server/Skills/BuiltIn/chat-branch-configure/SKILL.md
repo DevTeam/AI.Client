@@ -46,7 +46,10 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    `inherit` follows the selected connection, and `approvalMode` needs a value.
    For one tool's rule on this branch use `app_security` `SetBranchToolPolicy` (a `toolPolicy` with
    the exact `serverId`, `name` and `schemaHash` from `app_read` resource=McpTools, decision, limits)
-   or `RemoveBranchToolPolicy` to inherit it again; never give `app_security` itself `Allow`. Check
+   or `RemoveBranchToolPolicy` to inherit it again; never give `app_security` itself `Allow`. Command
+   rules (by the command `process_run` runs or the paths a file tool changes) have no branch level:
+   say that a chat rule applies on every branch of the chat, and for one use `app_security`
+   `SetCommandRule` with scope `Chat` only when the user accepts that. Check
    `applied` and `error`; on an uncertain result read before retrying with the same `operationId`.
 6. Read the branch again with `app_read` resource=Chat and its `branchId` and report in one or two
    lines in the user's language: each changed value, whether it is now set on the branch or

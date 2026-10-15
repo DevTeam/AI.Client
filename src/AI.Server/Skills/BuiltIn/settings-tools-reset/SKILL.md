@@ -3,7 +3,7 @@ id: settings-tools-reset
 name: Settings tools reset
 icon: shield
 kind: playbook
-description: Reset selected MCP tool permission overrides in a requested branch, chat, project or global scope to inherited policies; use when the user requests reset, not recommended configuration.
+description: Reset selected MCP tool permission overrides and command rules in a requested branch, chat, project or global scope to inherited policies; use when the user requests reset, not recommended configuration.
 parameters: {"type":"object","properties":{"scope":{"type":"string","enum":["branch","chat","project","global"]},"servers":{"type":"array","items":{"type":"string"}},"tools":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}
 tools: ["app_read","app_security","ask_user"]
 ---
@@ -17,10 +17,16 @@ tools: ["app_read","app_security","ask_user"]
    use `ask_user` to request the missing selection. Dismissal or no answer leaves policies unchanged.
    No tool discovery is needed: existing records supply serverId, name and schemaHash, including
    obsolete schemas and disabled servers. Never remove policies from another scope.
+   Read `app_read` resource=CommandRules too: command rules decide `process_run` by command and
+   the file tools by path, at global, project or chat scope. A reset of all overrides in a global,
+   project or chat scope includes that scope's command rules; with names, include the rules of the
+   named tools or the exact patterns the user named. A branch has no command rules of its own: a
+   branch reset leaves the chat's rules, and says that they still apply on the branch.
 2. Work out the fallback before removing each override. A branch inherits its parent branches,
    nearest first, then the chat; chat inherits project then global;
    project inherits global; global falls back to Ask, 56535 calls and 600 seconds. Decision,
    limit and timeout inherit independently, and disabled/denied servers remain denied.
+   Without a command rule the tool's own policy, or a broader rule still standing, decides the call.
    Reset can increase access: if removing Deny exposes Allow/Ask, or removes tighter limits,
    explain the exact effect and ask only when that increase was not already authorized by the
    user's request. Do not interpret an unanswered question as permission.
@@ -28,7 +34,8 @@ tools: ["app_read","app_security","ask_user"]
    `app_security` RemoveBranchToolPolicy (projectId, chatId and branchId), RemoveChatToolPolicy
    (projectId and chatId), RemoveProjectToolPolicy (projectId)
    or RemoveGlobalToolPolicy as appropriate, with its exact serverId, name and schemaHash and a
-   fresh operationId per distinct removal. Use these narrow operations, never whole-document
+   fresh operationId per distinct removal. Remove each selected command rule with `app_security`
+   RemoveCommandRule and its `ruleId`. Use these narrow operations, never whole-document
    replacements. Check Applied and Error; stop on refusal. On an uncertain outcome read before
    retrying, reusing operationId for the same payload; do not loop on failures.
 4. Read the affected scope again to verify removal. Report reset overrides, inherited decisions

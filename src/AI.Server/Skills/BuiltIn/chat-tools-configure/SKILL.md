@@ -5,7 +5,7 @@ icon: shield
 kind: playbook
 description: Automatically choose and apply recommended MCP tool permissions for the chat scope, including call limits and timeouts; use when the user requests chat tool permission setup.
 parameters: {"type":"object","properties":{"servers":{"type":"array","items":{"type":"string"},"description":"Exact MCP server names supplied by the user; omitted means all servers in this scope"},"tools":{"type":"array","items":{"type":"string"},"description":"Exact original tool names supplied by the user; omitted means all declared tools of the selected servers"}},"additionalProperties":false}
-tools: ["app_read","app_security","ask_user"]
+tools: ["app_read","app_security","ask_user","run_skill"]
 ---
 
 Configure the chat scope only. The request to configure recommended permissions authorizes
@@ -57,6 +57,13 @@ user's language. Use another scope only when the user explicitly requested it.
    limits and user-requested tighter timeouts unless the request requires changing them. Replace
    earlier recommended 120-second timeouts with the 600-second default. Timeouts must be
    1..86400 seconds and call limits positive integers. Explain exceptional limits briefly.
+   Command rules refine `process_run` and the file tools that change paths (`write_file`,
+   `edit_file`, `create_directory`, `move_file`, `delete_file`, `delete_directory`, `zip_create`,
+   `zip_extract`) inside their own policy, by the command a call runs or the paths it changes. Keep
+   these tools at the recommendation above (normally Ask); never raise one to Allow because its
+   prompts are frequent. When the user names particular commands or paths to allow, ask about or
+   forbid, leave those to `run_skill` id=settings-rules-configure with their words as `request` and
+   this scope as `scope`, instead of a policy for the whole tool. This setup creates no command rules on its own.
 4. Re-read the relevant policy documents before writing and use the latest values. Skip identical
    policies and changes no longer needed. Do not save a chat rule when the inherited project or
    global rule, or discovered default, already supplies the recommended decision and default

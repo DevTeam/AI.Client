@@ -128,6 +128,30 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldManageCommandRulesThroughOneSkillThatTheToolSkillsHandOver()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        var rules = catalog.GetById("settings-rules-configure").ShouldNotBeNull();
+        rules.Kind.ShouldBe(SkillKinds.Playbook);
+        rules.AllowedTools.ShouldBe(["app_read", "app_security", "ask_user"]);
+        rules.Content.ShouldContain("SetCommandRule");
+        rules.Content.ShouldContain("RemoveCommandRule");
+        rules.Content.ShouldContain("resource=CommandRules");
+        // A rule is only as wide as asked for; an Allow needs the person's word.
+        rules.Content.ShouldContain("Prefer the narrowest pattern");
+
+        foreach (var id in new[] { "settings-tools-configure", "project-tools-configure", "chat-tools-configure" })
+        {
+            var configure = catalog.GetById(id).ShouldNotBeNull();
+            configure.Content.ShouldContain("run_skill` id=settings-rules-configure", customMessage: id);
+            configure.Content.ShouldContain("never raise one to Allow because its", customMessage: id);
+            configure.AllowedTools.ShouldNotBeNull().ShouldContain("run_skill", id);
+        }
+        catalog.GetById("settings-tools-reset").ShouldNotBeNull().Content.ShouldContain("RemoveCommandRule");
+        catalog.GetById("chat-branch-configure").ShouldNotBeNull().Content.ShouldContain("have no branch level");
+    }
+
+    [Fact]
     public void ShouldNeverOfferToDeleteTheChatFromAPlaybookThatRunsInIt()
     {
         var skills = new BuiltInSkillCatalog().List();

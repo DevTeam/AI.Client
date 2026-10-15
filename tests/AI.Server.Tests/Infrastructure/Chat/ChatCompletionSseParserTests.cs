@@ -126,13 +126,15 @@ public class ChatCompletionSseParserTests
     public async Task ShouldKeepAStreamAliveWhileTheModelReasonsBetweenTextAndAToolCall()
     {
         var pipe = new System.IO.Pipelines.Pipe();
+        // Gaps of 50ms against a one-second timeout: a loaded machine stretches a short delay several
+        // times over, and with 300ms it now and then stretched one past the timeout.
         var parser = new ChatCompletionSseParser(new ChatCompletionUsageReader(),
-            new ChatTransportPolicy(streamIdleTimeout: TimeSpan.FromMilliseconds(300)));
+            new ChatTransportPolicy(streamIdleTimeout: TimeSpan.FromSeconds(1)));
         var writing = Task.Run(async () =>
         {
             await Write(pipe, """data: {"choices":[{"delta":{"content":"Creating the files now."}}]}""");
             // Thinking for well past the idle timeout, in deltas the parser does not show.
-            for (var step = 0; step < 12; step++)
+            for (var step = 0; step < 30; step++)
             {
                 await Task.Delay(50, TestContext.Current.CancellationToken);
                 await Write(pipe, """data: {"choices":[{"delta":{"reasoning_content":"..."}}]}""");

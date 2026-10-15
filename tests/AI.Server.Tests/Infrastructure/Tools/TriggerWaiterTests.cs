@@ -90,6 +90,12 @@ public sealed class TriggerWaiterTests
         result.MemoryBytes!.Value.ShouldBeGreaterThan(1);
     }
 
+    /// <remarks>
+    /// The test ends the process itself rather than waiting for it to exit on its own: a child that
+    /// sleeps for a second also has to start, and PowerShell alone takes most of two seconds to do
+    /// that on an idle machine and far longer under a full test run, which used to miss the window.
+    /// What is under test is that the waiter notices an exit, not how long a shell takes to start.
+    /// </remarks>
     [Fact]
     public async Task ShouldObserveProcessExit()
     {
@@ -100,23 +106,31 @@ public sealed class TriggerWaiterTests
         };
         if (OperatingSystem.IsWindows())
         {
-            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 1" })
+            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60" })
                 start.ArgumentList.Add(argument);
         }
         else
         {
             start.ArgumentList.Add("-c");
-            start.ArgumentList.Add("sleep 1");
+            start.ArgumentList.Add("sleep 60");
         }
 
         using var process = System.Diagnostics.Process.Start(start)!;
         try
         {
             var waiter = new TriggerWaiter(new PathGuard(new Grants()));
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var result = await waiter.WaitAsync([
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var pending = waiter.WaitAsync([
                 new TriggerCondition("process_exit", ProcessId: process.Id)
-            ], 4000, timeout.Token);
+            ], 20000, timeout.Token);
+            // Still running after the waiter has looked once: an exit before it started would not
+            // show that it watches for one.
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            pending.IsCompleted.ShouldBeFalse();
+
+            process.Kill(entireProcessTree: true);
+            var result = await pending;
+
             result.Outcome.ShouldBe("triggered");
             result.ProcessId.ShouldBe(process.Id);
         }

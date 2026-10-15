@@ -5976,6 +5976,13 @@ textarea {
 .permission-item p { margin-top: .25rem; }
 .permissions-empty { display: grid; justify-items: center; gap: .35rem; padding: 2.5rem 1rem; color: var(--color-text-subtle); text-align: center; }
 .permissions-empty .app-icon { width: 1.4rem; height: 1.4rem; }
+.command-rule-form { display: flex; flex-wrap: wrap; gap: .4rem; align-items: stretch; margin: .2rem 0 0; }
+.command-rule-form input { flex: 1 1 100%; min-width: 0; padding: .5rem .6rem; font-family: var(--font-mono); font-size: var(--font-size-md); }
+.command-rule-form select { flex: 1 1 auto; min-height: 0; padding: .4rem .5rem; font-size: var(--font-size-md); }
+.command-rule-form button { flex: none; padding: .4rem .9rem; }
+.permission-item select { min-height: 0; margin-top: .45rem; padding: .3rem .45rem; font-size: var(--font-size-md); }
+.command-rule-hint { color: var(--color-text-subtle); font-size: var(--font-size-sm); line-height: 1.45; }
+.command-rule-hint code { font-family: var(--font-mono); }
 .permissions-drawer > footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1.2rem; border-top: 1px solid var(--color-border); }
 .permissions-reset-all { color: var(--color-danger-text); }
 .project-menu .menu-count, .chat-menu .menu-count { margin-left: auto; }

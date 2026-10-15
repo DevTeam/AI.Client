@@ -6241,7 +6241,10 @@ textarea {
        the first note gives it height. */
     display: flow-root;
     width: min(100%, 48rem);
-    margin: 0 auto 0.75rem;
+    /* The activity line below pulls itself up by 0.35rem and has almost no leading, while the
+       row above keeps its own box around the text; 1.35rem leaves the notes as far from the
+       activity line as from the row. */
+    margin: 0 auto 1.35rem;
     transition: margin-bottom calc(var(--duration-slow) * 2) var(--ease-emphasized),
         opacity var(--duration-slow) ease;
 }

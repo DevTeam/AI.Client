@@ -186,7 +186,10 @@ public sealed class SkillRunner(ISkillCatalog catalog, [Tag("chat-rename")] ISki
             + "including the \"(Recommended)\" suffix, are examples to translate. Anything the instructions have you "
             + "show the user, such as a report, is part of your final answer; a closing line they ask for goes after "
             + "it and never replaces it. The user's follow-ups on the same task continue these instructions from the step "
-            + "you reached; when the instructions name another skill for the next part of the work, run that skill.",
+            + "you reached; when the instructions name another skill for the next part of the work, run that skill. "
+            + "When following them takes three or more steps of real work and mcp_app__plan_update is among your tools, "
+            + "lay those steps out with it before the first one, weighted by their share of the work, and move the plan "
+            + "as each step starts and ends; a plan of an earlier, different task is replaced.",
             invocation.CurrentChatId, Output: output);
     }
 }

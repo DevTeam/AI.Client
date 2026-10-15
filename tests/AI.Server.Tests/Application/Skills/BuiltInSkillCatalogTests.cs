@@ -36,7 +36,7 @@ public class BuiltInSkillCatalogTests
         var plan = new BuiltInSkillCatalog().GetById("chat-plan").ShouldNotBeNull();
 
         plan.Kind.ShouldBe(SkillKinds.Playbook);
-        plan.Aliases.ShouldBe(["plan", "todo"]);
+        plan.Aliases.ShouldBe(["todo", "progress"]);
         plan.AllowedTools.ShouldBe(["plan_update"]);
         plan.Content.ShouldContain("Weight each step 1–10");
     }

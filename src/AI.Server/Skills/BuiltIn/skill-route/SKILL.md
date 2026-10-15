@@ -38,6 +38,10 @@ Choose:
   An explicit request to create or remove a Git worktree outside an active team uses
   git-manage-worktree. Do not route ordinary code changes to it merely because the repository
   already contains worktrees; team-assemble owns the team workspace choice.
+  chat-plan is the progress checklist the assistant keeps for itself while it works; every other
+  skill already keeps one, so never route a task to chat-plan in place of the skill that does the
+  work. Choose it alone only when the message asks to track or show progress, or for a to-do list of
+  the work it is about to do. A request to plan a change without doing it uses code-plan or qa-plan.
   For code tasks, prefer a specific available skill over code-feature-implement: planning uses
   code-plan, source explanations code-explain, behavior-preserving structural changes code-refactor,
   adding tests code-tests-add, compiler/analyzer diagnostics code-build-fix, correctness review

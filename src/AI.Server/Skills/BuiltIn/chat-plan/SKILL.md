@@ -3,8 +3,8 @@ id: chat-plan
 name: Chat plan
 icon: list-checks
 kind: playbook
-aliases: ["plan", "todo"]
-description: Lay out a weighted plan for a multi-step task and keep its progress current in the chat while doing the work.
+aliases: ["todo", "progress"]
+description: Keep a visible progress checklist with weighted steps while doing a multi-step task in this turn; not for planning a change without doing it.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The task to plan, only when it differs from the user's latest message"}},"additionalProperties":false}
 tools: ["plan_update"]
 ---

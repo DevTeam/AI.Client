@@ -91,6 +91,9 @@ public sealed class AppSkillsToolTests
         var output = playbook.StructuredContent!.Value.GetProperty("output");
         output.GetProperty("kind").GetString().ShouldBe("playbook");
         output.GetProperty("context").GetProperty("chatId").GetGuid().ShouldBe(chatId);
+        // Every playbook of several steps keeps the plan the user watches, without each saying so.
+        playbook.StructuredContent.Value.GetProperty("message").GetString()
+            .ShouldNotBeNull().ShouldContain("lay those steps out with it before the first one");
     }
 
     [Fact]

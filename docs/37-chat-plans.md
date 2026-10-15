@@ -80,7 +80,12 @@ plan set aside by an earlier turn; see [Chat widgets](29-chat-widgets.md#plan-wi
 
 - The standing prompt's application tools guide says to lay out a plan for a task of three or more
   steps and to keep it moving.
-- The `chat-plan` playbook (`/plan`, `/todo`) says how: 3–8 steps, honest weights, one step in
+- The result of loading any playbook (`SkillRunner`) says to lay a playbook of three or more steps
+  out as a plan before its first step, so the built-in playbooks keep one without each repeating it.
+- `skill-route` never routes a task to `chat-plan` in place of the skill that does the work; it
+  picks it only for a request to track progress or for a to-do list. Planning a change without
+  doing it stays with `code-plan` and `qa-plan`.
+- The `chat-plan` playbook (`/todo`, `/progress`) says how: 3–8 steps, honest weights, one step in
   progress, several moves per call, every step finished before the final answer, and what to do
   when the next message is another task.
 - Before every model step `ChatAgent` adds the trailing instruction `run.plan` with the unfinished

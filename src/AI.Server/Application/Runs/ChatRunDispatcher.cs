@@ -971,9 +971,9 @@ public sealed class ChatRunDispatcher(
                 if (approval.Command?.Options.Contains(pattern, StringComparer.Ordinal) != true) return false;
                 var request = decision.Action switch
                 {
-                    ToolApprovalAction.AllowForChat => new CreateCommandRuleRequest(CommandRule.Chat, projectId, chatId, pattern, "Allow"),
-                    ToolApprovalAction.AllowForProject => new CreateCommandRuleRequest(CommandRule.Project, projectId, null, pattern, "Allow"),
-                    _ => new CreateCommandRuleRequest(CommandRule.Global, null, null, pattern, "Allow")
+                    ToolApprovalAction.AllowForChat => new CreateCommandRuleRequest(CommandRule.Chat, projectId, chatId, pattern, "Allow", approval.Name),
+                    ToolApprovalAction.AllowForProject => new CreateCommandRuleRequest(CommandRule.Project, projectId, null, pattern, "Allow", approval.Name),
+                    _ => new CreateCommandRuleRequest(CommandRule.Global, null, null, pattern, "Allow", approval.Name)
                 };
                 await commandRules.AddAsync(request, token);
                 break;

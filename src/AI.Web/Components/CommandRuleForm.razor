@@ -27,6 +27,8 @@
 @code {
     /// <summary>The scopes the rule may be saved in, as value and label; the first is preselected.</summary>
     [Parameter, EditorRequired] public IReadOnlyList<(string Value, string Label)> Scopes { get; set; } = [];
+    /// <summary>The tool whose calls the new rule decides.</summary>
+    [Parameter, EditorRequired] public string Tool { get; set; } = CommandRule.ProcessRun;
     [Parameter] public Guid? ProjectId { get; set; }
     [Parameter] public Guid? ChatId { get; set; }
     [Parameter] public EventCallback<CommandRule> Saved { get; set; }
@@ -58,7 +60,7 @@
         {
             var rule = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(scope,
                 scope == CommandRule.Global ? null : ProjectId, scope == CommandRule.Chat ? ChatId : null,
-                _pattern.Trim(), _decision), CancellationToken.None);
+                _pattern.Trim(), _decision, Tool), CancellationToken.None);
             _pattern = string.Empty;
             Notifications.ShowSuccess("Command rule saved.");
             await Saved.InvokeAsync(rule);

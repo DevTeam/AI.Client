@@ -163,8 +163,11 @@ since it would read back as a mask. The Host computes the offered patterns and a
 them, so a client cannot widen what the person saw. Remembering "Any process_run call" saves a
 policy for the whole tool, as before.
 
-Global rules are written in the global tool settings, on the Tools page of the built-in server
-below the `process_run` default: added with a pattern and a decision, changed and removed. A
+Each rule names the tool it decides (`Tool`, `process_run` when absent); `process_run` is the only
+one so far, and every place that lists or writes rules groups them by tool so that others can join.
+Global rules are written in the global tool settings: on the Tools page of the built-in server,
+expanding a tool that takes rules shows them beside its limits, where they are added with a pattern
+and a decision, changed and removed, and saved at once rather than with the settings' Save. A
 project's tool permissions do the same for the project's rules and can also add a global one. A
 chat's and a branch's tool permissions only list the rules that apply and reset the chat's own; the
 chat's rules come from its approval cards. Rules are read with

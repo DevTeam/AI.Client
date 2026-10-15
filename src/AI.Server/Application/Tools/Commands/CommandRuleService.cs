@@ -54,6 +54,9 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         ArgumentNullException.ThrowIfNull(request);
         if (!Decisions.Contains(request.Decision, StringComparer.Ordinal))
             throw new ArgumentException("A command rule decides Allow, Ask or Deny.", nameof(request));
+        if (!CommandRule.Tools.Contains(request.Tool, StringComparer.Ordinal))
+            throw new ArgumentException($"Command rules can decide calls of {string.Join(", ", CommandRule.Tools)} only.",
+                nameof(request));
         var (projectId, chatId) = request.Scope switch
         {
             CommandRule.Global => ((Guid?)null, (Guid?)null),
@@ -64,10 +67,11 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         };
         if (!CommandPattern.TryParse(request.Pattern, paths.IsCaseSensitive, out var pattern, out var error))
             throw new ArgumentException(error, nameof(request));
-        var rule = new CommandRule(ids.Create(), request.Scope, projectId, chatId, pattern!.Text, request.Decision, clock.UtcNow);
+        var rule = new CommandRule(ids.Create(), request.Scope, projectId, chatId, pattern!.Text, request.Decision, clock.UtcNow,
+            request.Tool);
         await repository.UpdateAsync(rules => rules
-            .Where(item => !(item.Scope == rule.Scope && item.ProjectId == rule.ProjectId && item.ChatId == rule.ChatId
-                             && item.Pattern == rule.Pattern))
+            .Where(item => !(item.Tool == rule.Tool && item.Scope == rule.Scope && item.ProjectId == rule.ProjectId
+                             && item.ChatId == rule.ChatId && item.Pattern == rule.Pattern))
             .Append(rule)
             .ToArray(), cancellationToken);
         return rule;
@@ -93,6 +97,7 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
             ?? [];
         var check = CommandGuard.Check(command, grants, paths);
         var matching = (await ListAsync(projectId, chatId, cancellationToken))
+            .Where(rule => rule.Tool == CommandRule.ProcessRun)
             .Select(rule => (Rule: rule, Pattern: CommandPattern.TryParse(rule.Pattern, paths.IsCaseSensitive, out var pattern, out _)
                 ? pattern : null))
             .Where(item => item.Pattern is not null && item.Pattern.Matches(command)

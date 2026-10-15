@@ -89,7 +89,8 @@ public enum SecurityOperation
 /// as a mask with * and ? inside it; a lone trailing * matches any further arguments. Example: 'git diff *'.
 /// </param>
 /// <param name="Decision">Allow, Ask or Deny.</param>
-public sealed record CommandRulePayload(string Scope, string Pattern, string Decision);
+/// <param name="Tool">The built-in tool the rule decides; process_run, the only one so far, when omitted.</param>
+public sealed record CommandRulePayload(string Scope, string Pattern, string Decision, string? Tool = null);
 
 [McpServerToolType]
 public sealed class AppSecurityTool(
@@ -414,7 +415,7 @@ public sealed class AppSecurityTool(
         var rule = Required(payload, "commandRule");
         var saved = await commandRules.AddAsync(new CreateCommandRuleRequest(rule.Scope,
             rule.Scope == CommandRule.Global ? null : projectId, rule.Scope == CommandRule.Chat ? chatId : null,
-            rule.Pattern, rule.Decision), cancellationToken);
+            rule.Pattern, rule.Decision, rule.Tool ?? CommandRule.ProcessRun), cancellationToken);
         return builder.Applied($"Set '{saved.Pattern}' to {saved.Decision} ({saved.Scope.ToLowerInvariant()}).",
             current: Element(saved, reply.Json));
     }

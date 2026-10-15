@@ -84,7 +84,8 @@ public sealed class ToolPermissionsDrawerRenderingTests
         IReadOnlyList<CommandRule> rules =
             [new(Guid.CreateVersion7(), CommandRule.Global, null, null, "git push --force *", "Deny", Now)];
 
-        var html = await RenderAsync<GlobalCommandRules>(Services(rules, null, null), []);
+        var html = await RenderAsync<GlobalCommandRules>(Services(rules, null, null),
+            new Dictionary<string, object?> { [nameof(GlobalCommandRules.Tool)] = CommandRule.ProcessRun });
 
         html.ShouldContain("Command rules");
         html.ShouldContain("aria-label=\"Decision for git push --force *\"");

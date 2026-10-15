@@ -60,12 +60,14 @@
                 </section>
             }
         }
-        @* Command rules refine process_run by what it starts; they sit beside the tool's own permission. *@
-        @if (!_loading && (Scope == "Project" || VisibleRules.Count > 0))
+        @* Command rules refine a tool by what a call runs; one section per tool, beside the tools' own permissions. *@
+        @foreach (var tool in RuleTools)
         {
+            var toolRules = VisibleRules.Where(rule => rule.Tool == tool).ToArray();
+            if (_loading || (Scope != "Project" && toolRules.Length == 0)) continue;
             <section class="permissions-group">
-                <h3 title="Rules for the programs process_run starts; a matching rule decides inside the tool's own permission"><AppIcon Name="tool" />Command rules</h3>
-                @foreach (var rule in VisibleRules)
+                <h3 title="@($"Rules for what {tool} runs; a matching rule decides inside the tool's own permission")"><AppIcon Name="tool" />Command rules · <code>@tool</code></h3>
+                @foreach (var rule in toolRules)
                 {
                     <div class="permission-item">
                         <div>
@@ -94,7 +96,7 @@
                 @* Rules are written in the global tool settings and for a project; a chat and its branches only show and reset them. *@
                 @if (Scope == "Project")
                 {
-                    <CommandRuleForm Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
+                    <CommandRuleForm Tool="@tool" Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
                 }
             </section>
         }
@@ -225,6 +227,8 @@
 
     /// <summary>A branch has no command rules of its own; it shows and resets its chat's.</summary>
     private string RuleScope => Scope == "Branch" ? CommandRule.Chat : Scope;
+    /// <summary>The tools that take command rules, and any other a saved rule names.</summary>
+    private IEnumerable<string> RuleTools => CommandRule.Tools.Concat(_rules.Select(rule => rule.Tool)).Distinct(StringComparer.Ordinal);
     private static readonly IReadOnlyList<(string Value, string Label)> ProjectRuleScopes =
         [(CommandRule.Project, "This project"), (CommandRule.Global, "Every project")];
     private IReadOnlyList<CommandRule> VisibleRules => _rules
@@ -253,7 +257,7 @@
         try
         {
             var saved = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(rule.Scope, rule.ProjectId,
-                rule.ChatId, rule.Pattern, decision), CancellationToken.None);
+                rule.ChatId, rule.Pattern, decision, rule.Tool), CancellationToken.None);
             _rules = CommandRuleList.Replace(_rules, saved);
             Notifications.ShowSuccess("Command rule updated.");
             await Changed.InvokeAsync();

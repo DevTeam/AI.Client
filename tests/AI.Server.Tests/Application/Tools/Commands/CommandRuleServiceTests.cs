@@ -118,6 +118,22 @@ public sealed class CommandRuleServiceTests
         (await _service.RemoveAsync(replaced.Id, CancellationToken.None)).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task ShouldRefuseARuleForAToolCommandRulesDoNotDecide()
+    {
+        await Should.ThrowAsync<ArgumentException>(() => _service.AddAsync(
+            new CreateCommandRuleRequest(CommandRule.Global, null, null, "git *", "Allow", "cs_run"), CancellationToken.None));
+    }
+
+    [Fact]
+    public void ShouldReadARuleSavedBeforeRulesNamedTheirToolAsAProcessRunRule()
+    {
+        var rule = JsonSerializer.Deserialize<CommandRule>(
+            """{"Id":"01a13ecf-386a-75e6-8d82-810fb2d2e4ac","Scope":"Global","Pattern":"git *","Decision":"Allow","CreatedAt":"2026-10-15T00:00:00Z"}""");
+
+        rule.ShouldNotBeNull().Tool.ShouldBe(CommandRule.ProcessRun);
+    }
+
     [Theory]
     [InlineData(CommandRule.Global, "git *", "Maybe")]
     [InlineData(CommandRule.Global, "* status", "Allow")]

@@ -464,14 +464,14 @@
                                                         <label>Calls per run<input type="number" min="1" max="2147483647" title="Maximum invocations of this tool in one run; empty leaves this limit unset" aria-invalid="@Invalid(limitProblems, CallsField)" @bind="policy.MaxCallsPerRun" /><SettingsFieldError Message="@limitProblems.GetValueOrDefault(CallsField)" /></label>
                                                         <label>Timeout, sec<input type="number" min="1" max="@McpToolPolicySettings.MaxTimeoutSeconds" title="Timeout for one call, in seconds; progress renews the wait, and execution tools also apply it to their run" aria-invalid="@Invalid(limitProblems, TimeoutField)" @bind="policy.TimeoutSeconds" /><SettingsFieldError Message="@limitProblems.GetValueOrDefault(TimeoutField)" /></label>
                                                     </div>
+                                                    @* A tool that takes command rules is decided further by what a call runs; its global rules open with its limits. *@
+                                                    @if (server.Id == DefaultMcpServer.Id && CommandRule.Tools.Contains(policy.Name))
+                                                    {
+                                                        <div class="mcp-tool-command-rules"><GlobalCommandRules Tool="@policy.Name" /></div>
+                                                    }
                                                 }
                                             }
                                         </div>
-                                    }
-                                    @* process_run is decided further by the command it runs; the global rules live beside its default. *@
-                                    @if (server.Id == DefaultMcpServer.Id)
-                                    {
-                                        <GlobalCommandRules />
                                     }
                                 }
                             </form>

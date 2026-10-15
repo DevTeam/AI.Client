@@ -1612,7 +1612,14 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .mcp-tool-limits { gap: .75rem; padding-left: 1.4rem; background: var(--color-bg-inset); border-top: 1px solid var(--color-border-subtle); }
 .mcp-tool-limits > label { display: flex; flex: 1; align-items: center; gap: .5rem; color: var(--color-text-secondary); font-size: var(--font-size-md); white-space: nowrap; }
 .mcp-tool-limits > label > input { flex: 1; min-width: 0; }
-.settings-card > .mcp-tool-row + .mcp-tool-row, .settings-card > .mcp-tool-limits + .mcp-tool-row { border-top: 1px solid var(--color-border-subtle); }
+.settings-card > .mcp-tool-row + .mcp-tool-row, .settings-card > .mcp-tool-limits + .mcp-tool-row, .settings-card > .mcp-tool-command-rules + .mcp-tool-row { border-top: 1px solid var(--color-border-subtle); }
+.mcp-tool-command-rules { padding: .7rem 1rem .9rem 1.4rem; border-top: 1px solid var(--color-border-subtle); background: var(--color-bg-inset); }
+.command-rules-block { display: grid; gap: .55rem; }
+.command-rules-block .settings-row-hint { white-space: normal; }
+.command-rules-list { display: grid; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-surface); }
+.command-rule-row { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem .3rem .7rem; }
+.command-rule-row + .command-rule-row { border-top: 1px solid var(--color-border-subtle); }
+.command-rule-row > code { flex: 1; min-width: 0; overflow: hidden; font-family: var(--font-mono); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
 
 /* Skills: the SKILL.md text is the page; what is derived from it waits under disclosures. */
 .skill-description { color: var(--color-text-secondary); font-size: var(--font-size-md); line-height: 1.45; }
@@ -5978,7 +5985,7 @@ textarea {
 .permissions-empty .app-icon { width: 1.4rem; height: 1.4rem; }
 .command-rule-form { display: flex; flex-wrap: wrap; gap: .4rem; align-items: stretch; margin: .2rem 0 0; }
 .command-rule-form input { flex: 1 1 100%; min-width: 0; padding: .5rem .6rem; font-family: var(--font-mono); font-size: var(--font-size-md); }
-.command-rule-form select { flex: 1 1 auto; min-height: 0; padding: .4rem .5rem; font-size: var(--font-size-md); }
+.command-rule-form select { flex: none; width: auto; min-height: 0; padding: .4rem .5rem; font-size: var(--font-size-md); }
 .command-rule-form button { flex: none; padding: .4rem .9rem; }
 .permission-item select { min-height: 0; margin-top: .45rem; padding: .3rem .45rem; font-size: var(--font-size-md); }
 .command-rule-hint { color: var(--color-text-subtle); font-size: var(--font-size-sm); line-height: 1.45; }

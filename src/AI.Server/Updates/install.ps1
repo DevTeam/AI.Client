@@ -22,6 +22,11 @@ try {
     $installer = Start-Process -FilePath $plan.Package -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
     $success = $installer.ExitCode -eq 0
     if (-not $success) { throw "Installer exit code: $($installer.ExitCode)" }
+    try {
+        Remove-Item -LiteralPath $plan.Package -Force
+    } catch {
+        $_ | Out-String | Add-Content -LiteralPath $logPath
+    }
 } catch {
     $_ | Out-String | Add-Content -LiteralPath $logPath
 } finally {

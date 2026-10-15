@@ -59,6 +59,10 @@ APPLESCRIPT
         fi
     fi
 fi
+if [ "$success" = true ]; then
+    rm -f "$package" || true
+    if [ -n "$companion" ]; then rm -f "$companion" || true; fi
+fi
 printf '{"Success":%s,"Version":"%s"}' "$success" "$version" > "$result.tmp"
 mv "$result.tmp" "$result"
 if [ "$product" = Host ] && [ "$#" -eq 1 ] && [ "$1" = --public-web ]; then

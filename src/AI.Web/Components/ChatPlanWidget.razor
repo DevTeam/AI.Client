@@ -64,7 +64,7 @@
                         <Bar>
                             @if (TimeBar(step, timing) is var (within, over, rest))
                             {
-                                @if (within > 0) { <span style="flex-grow: @Share(within)"></span> }
+                                @if (within > 0) { <span class="@(over > 0 ? "chat-plan-widget-expected" : null)" style="flex-grow: @Share(within)"></span> }
                                 @if (over > 0) { <span class="chat-plan-widget-over" style="flex-grow: @Share(over)"></span> }
                                 @if (rest > 0) { <i style="flex-grow: @Share(rest)"></i> }
                             }

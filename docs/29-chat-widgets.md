@@ -850,7 +850,9 @@ is described in [Chat plans](37-chat-plans.md).
     progress during a run, "~5m" expected for a waiting step; with nothing to expect yet, a waiting
     step shows its share of the plan, muted and marked "≈". The bar under a row is the step's time
     against what it was expected to take: accent up to the expectation and the rest of it empty;
-    past it the track is the time taken, accent for the expected part and warning for the rest.
+    past it the track is the time taken, the expected part neutral (`--color-fill-stronger`) and the
+    rest warning after a wider gap. Neutral rather than accent, because a warm accent (amber) is too
+    close to the warning colour to tell the two apart.
     Waiting and skipped steps, and steps with nothing expected, have no bar. The step in progress
     is the current row. Rows open nothing and have no locate button: a step is not a message.
   - **Why the bar is time.** Under each row it once showed the step's weight, which read as a done

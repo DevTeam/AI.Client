@@ -50,7 +50,7 @@
                     {
                         var step = plan.Steps[stepIndex];
                         <li @key="stepIndex" class="chat-plan-step is-@StatusClass(step.Status)">
-                            <span class="chat-plan-mark" title="@StatusLabel(step.Status)" aria-label="@StatusLabel(step.Status)">
+                            <span class="chat-plan-mark is-@StatusClass(step.Status)" title="@StatusLabel(step.Status)" aria-label="@StatusLabel(step.Status)">
                                 @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
                                 else if (step.Status == ChatPlanStepStatus.Failed) { <AppIcon Name="x" /> }
                             </span>
@@ -161,7 +161,7 @@
         return string.Join(", ", parts);
     }
 
-    private static string StatusClass(ChatPlanStepStatus status) => status switch
+    public static string StatusClass(ChatPlanStepStatus status) => status switch
     {
         ChatPlanStepStatus.InProgress => "in-progress",
         ChatPlanStepStatus.Completed => "completed",
@@ -170,7 +170,7 @@
         _ => "pending"
     };
 
-    private static string StatusLabel(ChatPlanStepStatus status) => status switch
+    public static string StatusLabel(ChatPlanStepStatus status) => status switch
     {
         ChatPlanStepStatus.InProgress => "In progress",
         ChatPlanStepStatus.Completed => "Completed",

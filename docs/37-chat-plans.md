@@ -56,6 +56,26 @@ progress and returns the plan with `percent`, `completed` and `total`.
 It runs without approval (`ToolDefaultDecision`), is always among the offered tools
 (`AdaptiveContextPolicy` core tools), and is available in every chat kind that allows it.
 
+## In the chat
+
+`ChatPlanCard` is a summary card on the shared `chat-summary-card` shell, collapsed by default.
+
+- **Collapsed** it is one line: the step in progress (or the plan's title and how it ended), the
+  completed count ("2/5"), the percentage and, for a live plan, the estimated time left; a hairline
+  track along the header's bottom edge fills by the weighted progress.
+- **Expanded** it lists every step with a status mark, its title, its note, the reported progress
+  of the step in progress and its time.
+- **Above the composer** (`Home.razor`, `composer-dock`), while the branch's run is generating or
+  paused, the card shows the branch's plan if the current turn moved it or an earlier turn left it
+  unfinished. It opens upward like the live file-changes card, and its clock ticks every second.
+- **Under the turn**, once the run stops, `MessageFeed` adds the card after the answer of every turn
+  that moved the plan, with the state that turn left it in.
+- The activity row of a call reads "Lay out plan · N steps" or "Update plan", with the result
+  "P% · C of N steps done" (`AppPlanPresentationAdapter`).
+
+The **Plan** widget (`chat-plan`) shows the branch's plan beside the conversation, including a
+plan set aside by an earlier turn; see [Chat widgets](29-chat-widgets.md#plan-widget).
+
 ## Model guidance
 
 - The standing prompt's application tools guide says to lay out a plan for a task of three or more

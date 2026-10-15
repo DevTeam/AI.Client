@@ -962,6 +962,11 @@
                                         TopicTitle="@(_guideTopic is { } guideTopic ? GuideTopics.Find(guideTopic)?.Title : null)"
                                         OnStart="StartGuideTopicAsync" OnPause="ToggleGuidePauseAsync" OnStop="StopGuideStepAsync" />
                         break;
+                    case ChatWidgetCatalog.ChatPlan:
+                        <ChatPlanWidget Widget="@widget"
+                                        Messages="@widgetMessages"
+                                        IsGenerating="@(widgetRun?.Status is ChatRunStatus.Generating or ChatRunStatus.Paused)" />
+                        break;
                     case ChatWidgetCatalog.ChatContext:
                         <ChatContextWidget Widget="@widget"
                                            Context="@GetComposerContext()" />

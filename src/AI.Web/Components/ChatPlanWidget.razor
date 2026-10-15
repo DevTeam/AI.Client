@@ -1,0 +1,143 @@
+@using AI.Contracts.Plans
+@inject IChatPlanStatisticsCalculator Calculator
+@implements IDisposable
+@* The plan of the visible branch (docs/37-chat-plans.md): how far it has come by weight, and every
+   step with its share of the work, its status, note and time. The plan stays here between turns,
+   so a task the assistant set aside can still be read; the chat card shows it only while a run
+   works on it and under the turn that moved it. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-plan-widget">
+    @if (_stats is not { Plan: { } plan, Progress: { } progress })
+    {
+        <p class="chat-usage-empty">When the assistant works through a task of several steps, its plan and progress appear here.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="Progress by the assistant's estimate of each step's share of the work">@progress.Percent%</span>
+                <span class="chat-usage-muted">@(progress.IsFinished ? "finished" : "done")</span>
+                <span class="chat-widget-headline-aside chat-usage-muted" title="Steps completed, out of all steps">@progress.Completed of @progress.Total @(progress.Total == 1 ? "step" : "steps")</span>
+            </div>
+            @if (plan.Title is { } title)
+            {
+                <div class="chat-plan-widget-title">@title</div>
+            }
+            <div class="chat-plan-widget-bar" role="progressbar" aria-label="Plan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progress.Percent">
+                <span style="flex-grow: @Share(progress.Fraction)"></span>
+                <i style="flex-grow: @Share(1 - progress.Fraction)"></i>
+            </div>
+        </div>
+
+        <div class="chat-usage-section">
+            <ul class="chat-widget-rows">
+                @foreach (var entry in _stats.Steps)
+                {
+                    var step = entry.Step;
+                    <ChatWidgetRow @key="entry.Number" Widget="@Widget" Current="@(progress.Current == entry.Number - 1 && !progress.IsFinished)"
+                                   Class="@($"chat-plan-widget-step is-{ChatPlanCard.StatusClass(step.Status)}")"
+                                   OpenTitle="@StepTitle(entry)">
+                        <Tile>
+                            <span class="chat-plan-mark is-@ChatPlanCard.StatusClass(step.Status)" aria-label="@ChatPlanCard.StatusLabel(step.Status)">
+                                @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
+                                else if (step.Status == ChatPlanStepStatus.Failed) { <AppIcon Name="x" /> }
+                            </span>
+                        </Tile>
+                        <Name><span class="chat-widget-row-label">@step.Title</span></Name>
+                        <Details>
+                            <span>@ChatPlanCard.StatusLabel(step.Status)@(step.Status == ChatPlanStepStatus.InProgress && step.Progress > 0 ? $" {step.Progress}%" : null)</span>
+                            @if (step.Duration(_now) is { } duration && (step.IsFinished || IsGenerating))
+                            {
+                                <span>@ChatPlanCard.FormatDuration(duration)</span>
+                            }
+                            @if (step.Note is { } note) { <span class="chat-plan-widget-note">@note</span> }
+                        </Details>
+                        <Figure><span title="The step's estimated share of the whole plan">@Percent(entry.Share)</span></Figure>
+                        <Bar>
+                            @if (entry.Done > 0) { <span style="flex-grow: @Share(entry.Share * entry.Done)"></span> }
+                            @if (entry.Done < 1) { <i class="chat-plan-widget-weight" style="flex-grow: @Share(entry.Share * (1 - entry.Done))"></i> }
+                            @if (entry.Share < 1) { <i style="flex-grow: @Share(1 - entry.Share)"></i> }
+                        </Bar>
+                    </ChatWidgetRow>
+                }
+            </ul>
+        </div>
+
+        @if (progress.Elapsed is { } elapsed)
+        {
+            <div class="chat-usage-section chat-usage-footnote">
+                <span title="From the first step's start to now, or to the plan's last change once it is finished">@ChatPlanCard.FormatDuration(elapsed) @(progress.IsFinished ? "in all" : "so far")</span>
+                @if (IsGenerating && progress.Remaining is { } remaining)
+                {
+                    <span class="chat-usage-muted" title="The weight still to do at the pace so far; the weights are the assistant's estimates">about @ChatPlanCard.FormatDuration(remaining) left</span>
+                }
+            </div>
+        }
+    }
+</ChatWidget>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The visible branch, root to leaf.</summary>
+    [Parameter]
+    public IReadOnlyList<ChatMessageView> Messages { get; set; } = [];
+
+    /// <summary>True while the branch's run is working: the clock runs and the time left is estimated.</summary>
+    [Parameter]
+    public bool IsGenerating { get; set; }
+
+    private ChatPlanStatistics _stats = ChatPlanStatistics.Empty;
+    private IReadOnlyList<ChatMessageView>? _statisticsMessages;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+    private PeriodicTimer? _clock;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_statisticsMessages, Messages)) Refresh();
+        if (IsGenerating && _clock is null)
+        {
+            _clock = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            _ = TickAsync(_clock);
+        }
+        else if (!IsGenerating && _clock is not null)
+        {
+            _clock.Dispose();
+            _clock = null;
+            Refresh();
+        }
+    }
+
+    private async Task TickAsync(PeriodicTimer clock)
+    {
+        try
+        {
+            while (await clock.WaitForNextTickAsync())
+                await InvokeAsync(() => { if (_stats.HasPlan) { Refresh(); StateHasChanged(); } });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void Refresh()
+    {
+        _now = DateTimeOffset.UtcNow;
+        _stats = Calculator.Calculate(Messages, _now);
+        _statisticsMessages = Messages;
+    }
+
+    public void Dispose() => _clock?.Dispose();
+
+    private string? GetSummary() => _stats is { Progress: { } progress }
+        ? $"{progress.Percent}% · {progress.Completed}/{progress.Total}"
+        : null;
+
+    private static string StepTitle(ChatPlanStepEntry entry) =>
+        $"Step {entry.Number}: {entry.Step.Title}\nWeight {entry.Step.Weight}, {Percent(entry.Share)} of the plan"
+        + (entry.Step.Note is { } note ? $"\n{note}" : string.Empty);
+
+    private static string Share(double value) =>
+        Math.Max(0, value).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Percent(double share) => $"{(int)Math.Round(Math.Clamp(share, 0d, 1d) * 100)}%";
+
+}

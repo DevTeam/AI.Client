@@ -12,6 +12,7 @@ Current widgets:
 | Id | Title | Icon | Component | Shows |
 | --- | --- | --- | --- | --- |
 | `chat-schedule` | Schedule | `stopwatch` | `ChatScheduleWidget` | In an ordinary chat, the way to schedule it; in a scheduled chat, the countdown to the next run, its state, Run now, Pause or Resume, Edit and Remove, what the schedule does and the recent runs, each opening its branch — see [Scheduled chats](35-scheduled-chats.md) |
+| `chat-plan` | Plan | `list-checks` | `ChatPlanWidget` | The plan the assistant keeps for a task of several steps on the visible branch: weighted progress, steps completed, and every step with its status, share of the work, note and time; the elapsed time and, during a run, the time left — see [Chat plans](37-chat-plans.md) |
 | `chat-context` | Context | `chart-pie` | `ChatContextWidget` | How the context window of the next request is filled: the ring, its layers and what is left |
 | `chat-usage` | Usage | `gauge` | `ChatUsageWidget` | Tokens, cost and where they went, with the compacting actions for a filling window |
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
@@ -824,6 +825,34 @@ Which models answered the chat (`ChatModelsWidget`, `IChatModelStatisticsCalcula
   usage pair and the branch. Bound in `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`.
   The widget is a `ChatWidget` with `Summary`, `ChatWidgetScopeSwitch`, the shared count headline
   and `chat-usage-*` building blocks; the rows are widget rows.
+
+## Plan widget
+
+The plan of the visible branch (`ChatPlanWidget`, `IChatPlanStatisticsCalculator`); the plan itself
+is described in [Chat plans](37-chat-plans.md).
+
+- **Source of truth.** `ChatMessageView.Plan` of the newest plan result on the visible branch. The
+  plan stays here after the turn that moved it, so a plan an earlier turn left unfinished can still
+  be read; the chat's own card is shown only during a run and under the turn that moved the plan.
+- **What it shows.**
+  - **Headline.** The weighted progress as a percentage, "done" or "finished", and "N of M steps"
+    on the right; the plan's title under it, then a bar filled by the same progress.
+  - **Rows.** One per step, in order: a status mark on the tile, the title, the status (with the
+    reported progress of a step in progress), its time and its note; on the right the step's share
+    of the whole plan by weight. The bar under a row is that share: the done part in the accent,
+    the rest of the step's weight a shade over the fill. The step in progress is the current row.
+    Rows open nothing and have no locate button: a step is not a message.
+  - **Footer.** The plan's elapsed time and, while the branch's run works, the estimate of the time
+    left at the pace so far.
+- **No scope switch.** A branch has one plan; "last turn" would only hide it.
+- **Clock.** While the run works, the widget recomputes every second, so the times and the estimate
+  move between plan updates; otherwise it computes once per change of the branch.
+- **Empty state.** "When the assistant works through a task of several steps, its plan and progress
+  appear here."
+- **Folded summary.** `P% · completed/total`.
+- **Architecture.** `IChatPlanStatisticsCalculator` in `src/AI.Web/Widgets` returns a
+  `ChatPlanStatistics` record with one `ChatPlanStepEntry` per step, over `ChatPlanProgress` from the
+  contracts. The status marks and the duration format are shared with `ChatPlanCard`.
 
 ## Team widget
 

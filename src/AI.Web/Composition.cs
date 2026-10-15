@@ -121,6 +121,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatTeamStatisticsCalculator>()
             .Root<AI.Contracts.Chats.IChatTeamRosterCalculator>()
             .Root<IChatUnfinishedStatisticsCalculator>()
+            .Root<IChatPlanStatisticsCalculator>()
             .Root<IChatSchedulePresentation>()
             .Root<IChatScheduleApi>()
             .Root<AI.Contracts.Schedules.IScheduleCalendar>()
@@ -155,6 +156,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<NotificationService>("base")
             .Transient<DesktopUnreadCountPublisher>()
             .Transient<ChatSkillStatisticsCalculator>()
+            .Transient<ChatPlanStatisticsCalculator>()
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)
                 {

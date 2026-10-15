@@ -23,7 +23,7 @@ The code is laid out as follows:
 
 The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispatcher owns the agent, the agent owns the tool session, the session owns these tools. Lazy resolution breaks the construction cycle.
 
-`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, and `app_navigate` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
+`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, `app_navigate` and `plan_update` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
 
 `InProcess` is a full value of the domain enum `McpTransportKind`, not just a string in settings: saving a project-level policy binds the server to the project and records its transport. Both servers bundled with the Host appear in settings identically — name and transport are read-only; instead of a command line, the list of tool policies is shown, and they cannot be removed.
 
@@ -45,6 +45,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_schedule` | `Get`, `Set`, `Pause`, `Resume`, `Remove`, `RunNow`, `ReportRun` for a chat's schedule — see [35-scheduled-chats.md](35-scheduled-chats.md) |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
+| `plan_update` | lay out and move the plan the user watches during a multi-step task; changes no data — see [37-chat-plans.md](37-chat-plans.md) |
 
 ### app_read
 

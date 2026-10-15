@@ -7888,12 +7888,12 @@ textarea {
 .chat-plan-step { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto; align-items: start; column-gap: .6rem; padding: .25rem var(--chat-card-inset); }
 .chat-plan-mark { display: inline-grid; box-sizing: border-box; width: 1rem; height: 1rem; margin-top: .1rem; place-items: center; border: 1.5px solid var(--color-border-strong); border-radius: 50%; color: var(--color-text-muted); }
 .chat-plan-mark .app-icon { width: .65rem; height: .65rem; }
-.chat-plan-step.is-pending .chat-plan-mark,
-.chat-plan-step.is-skipped .chat-plan-mark { border-style: dashed; }
-.chat-plan-step.is-in-progress .chat-plan-mark { border-color: var(--color-accent-strong); }
-.chat-plan-step.is-in-progress .chat-plan-mark::after { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: var(--color-accent-strong); }
-.chat-plan-step.is-completed .chat-plan-mark { border-color: transparent; background: color-mix(in srgb, var(--color-success) 18%, transparent); color: var(--color-success); }
-.chat-plan-step.is-failed .chat-plan-mark { border-color: transparent; background: color-mix(in srgb, var(--color-danger) 18%, transparent); color: var(--color-danger); }
+.chat-plan-mark.is-pending,
+.chat-plan-mark.is-skipped { border-style: dashed; }
+.chat-plan-mark.is-in-progress { border-color: var(--color-accent-strong); }
+.chat-plan-mark.is-in-progress::after { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: var(--color-accent-strong); }
+.chat-plan-mark.is-completed { border-color: transparent; background: color-mix(in srgb, var(--color-success) 18%, transparent); color: var(--color-success); }
+.chat-plan-mark.is-failed { border-color: transparent; background: color-mix(in srgb, var(--color-danger) 18%, transparent); color: var(--color-danger); }
 .chat-plan-step-text { display: grid; min-width: 0; gap: .1rem; }
 .chat-plan-step-title { color: var(--color-text); font-size: var(--font-size-base); line-height: 1.35; overflow-wrap: anywhere; }
 .chat-plan-step.is-in-progress .chat-plan-step-title { color: var(--color-text-strong); font-weight: 600; }
@@ -9472,6 +9472,17 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-files-lines { display: inline-flex; gap: .35rem; font-size: var(--font-size-sm); }
 .chat-widget-row-track > .chat-files-bar-added { background: var(--color-success); }
 .chat-widget-row-track > .chat-files-bar-removed { background: var(--color-danger); }
+
+/* Plan widget (ChatPlanWidget.razor). The plan's bar fills by weighted progress; a step's track is
+   its share of the plan, the done part in the accent and the rest of its weight a shade over the fill. */
+.chat-plan-widget-title { color: var(--color-text-secondary); font-size: var(--font-size-md); }
+.chat-plan-widget-bar { display: flex; gap: 1px; height: .35rem; overflow: hidden; border-radius: var(--radius-2xs); background: var(--color-fill); }
+.chat-plan-widget-bar > span { flex-basis: 0; background: var(--color-accent-strong); }
+.chat-plan-widget-bar > i { flex-basis: 0; }
+.chat-widget-row-track > .chat-plan-widget-weight { background: var(--color-fill-strong); }
+.chat-plan-widget-step.is-skipped .chat-widget-row-label { color: var(--color-text-subtle); text-decoration: line-through; }
+.chat-plan-widget-step.is-failed .chat-widget-row-label { color: var(--color-danger-text); }
+.chat-widget-row-meta > .chat-plan-widget-note { white-space: normal; }
 .chat-files-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 
 .chat-tools-errors { color: var(--color-danger-text); font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -7,6 +7,7 @@ using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
 using AI.Contracts.Chats;
+using AI.Contracts.Skills;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 public sealed class ChatToolRiskAssessSkill(
     ISkillCatalog catalog,
+    ISkillGuide guide,
     IChatService chats,
     IProjectService projects,
     IGlobalSettingsRepository settings,
@@ -80,13 +82,29 @@ public sealed class ChatToolRiskAssessSkill(
         if (connection is null) return new("Failed", "No enabled model connection is available.", chatId);
 
         var parameters = invocation.Parameters;
-        var userRequest = LatestUserRequest(chat, branchId);
+        var path = BranchPath(chat, branchId);
+        var requests = UserRequests(path, RequestCount);
+        var userRequest = requests.Length > 0 ? requests[^1] : null;
+        var toolName = Text(parameters, "tool_name");
+        var active = await ActivePlaybookAsync(projectId, path, token);
         var conversation = new List<ChatCompletionMessage>
         {
             new("system", SkillMarkdown.Body(skill.Content)),
             new("user", JsonSerializer.Serialize(new
             {
                 user_request = userRequest is { } intent ? Clip(intent, 4_000) : null,
+                earlier_user_requests = requests.Length > 1
+                    ? requests[..^1].Select(item => Clip(item, 2_000)).ToArray()
+                    : null,
+                active_skill = active is null ? null : new
+                {
+                    id = active.Id,
+                    name = active.Name,
+                    description = active.Description,
+                    allowed_tools = active.AllowedTools ?? [],
+                    tool_is_allowed = Lists(active, toolName, Text(parameters, "tool_ref")),
+                    instructions = Clip(SkillMarkdown.Body(active.Content), 8_000)
+                },
                 project_directories = project?.DirectoryGrants.Select(grant => new
                 {
                     path = grant.CanonicalRoot,
@@ -94,13 +112,13 @@ public sealed class ChatToolRiskAssessSkill(
                 }).ToArray() ?? [],
                 tool = new
                 {
-                    name = Text(parameters, "tool_name"),
+                    name = toolName,
                     title = Text(parameters, "tool_title"),
                     description = Text(parameters, "tool_description") is { } description ? Clip(description, 2_000) : null,
                     annotations = Json(Text(parameters, "annotations"))
                 },
                 arguments = Clip(Text(parameters, "arguments") ?? "{}", 12_000)
-            }))
+            }, InputOptions))
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),
@@ -116,18 +134,68 @@ public sealed class ChatToolRiskAssessSkill(
             Output: JsonSerializer.SerializeToElement(new { decision = verdict.Decision, risk = verdict.Risk, reason }));
     }
 
-    /// <summary>What the person asked for last on this branch: the intent a call has to serve to be "plainly asked for".</summary>
-    private static string? LatestUserRequest(ChatDetails chat, Guid branchId)
+    /// <summary>
+    /// How many of the person's latest messages are passed on. A follow-up such as "yes, go on" says
+    /// nothing about the work on its own; the request it answers does.
+    /// </summary>
+    private const int RequestCount = 3;
+
+    private static readonly JsonSerializerOptions InputOptions =
+        new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
+    /// <summary>The branch's messages from its first one to its head, the call's own steps included.</summary>
+    private static List<ChatMessageView> BranchPath(ChatDetails chat, Guid branchId)
     {
         var byId = chat.Messages.ToDictionary(item => item.Id);
         var head = chat.Branches?.SingleOrDefault(item => item.Id == branchId)?.HeadMessageId
             ?? (chat.Messages.Count > 0 ? chat.Messages[^1].Id : null);
+        var path = new List<ChatMessageView>();
         for (var current = head is { } id && byId.TryGetValue(id, out var start) ? start : null;
              current is not null;
              current = current.ParentId is { } parentId && byId.TryGetValue(parentId, out var parent) ? parent : null)
-            if (current.Role == "User" && !string.IsNullOrWhiteSpace(current.Content)) return current.Content;
-        return null;
+            path.Add(current);
+        path.Reverse();
+        return path;
     }
+
+    /// <summary>
+    /// What the person asked for last on this branch, oldest first: the intent a call has to serve
+    /// to be "plainly asked for".
+    /// </summary>
+    private static string[] UserRequests(IReadOnlyList<ChatMessageView> path, int count) =>
+        path.Where(item => item.Role == "User" && !string.IsNullOrWhiteSpace(item.Content))
+            .Select(item => item.Content)
+            .TakeLast(count)
+            .ToArray();
+
+    /// <summary>
+    /// The playbook the assistant is following, found the way the chat itself finds it. Its id comes
+    /// from the run_skill call and its text from the catalog, so the call's arguments cannot vouch for
+    /// themselves by naming a skill.
+    /// </summary>
+    private async Task<SkillDefinition?> ActivePlaybookAsync(Guid projectId, IReadOnlyList<ChatMessageView> path,
+        CancellationToken token)
+    {
+        var context = path
+            .Where(item => item.Role is "User" or "Assistant" or "Tool")
+            .Select(item => new ChatCompletionMessage(item.Role.ToLowerInvariant(), item.Content, item.ToolCalls,
+                item.ToolCallId, JoinsTurn: item.Role == "User" && !item.StartsTurn))
+            .ToArray();
+        try
+        {
+            return await guide.ActivePlaybookAsync(projectId, context, token);
+        }
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // Without the playbook the call is judged on the person's messages alone, as before.
+            return null;
+        }
+    }
+
+    /// <summary>Whether the playbook names this tool, matched the way its tools are pinned for the chat.</summary>
+    private static bool Lists(SkillDefinition skill, string? name, string? reference) =>
+        (skill.AllowedTools ?? []).Any(allowed => allowed == name || allowed == reference
+            || reference?.EndsWith("__" + allowed, StringComparison.Ordinal) == true);
 
     private static (string Decision, string Risk, string? Reason)? Parse(string content)
     {

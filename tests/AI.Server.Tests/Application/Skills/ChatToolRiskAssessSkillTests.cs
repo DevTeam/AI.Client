@@ -11,6 +11,7 @@ using AI.Application.Tools;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
+using AI.Contracts.Skills;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
@@ -24,6 +25,8 @@ public class ChatToolRiskAssessSkillTests
     private readonly Guid _questionId = Guid.CreateVersion7();
     private readonly List<ChatCompletionRequest> _requests = [];
     private ToolApprovalMode _mode = ToolApprovalMode.Auto;
+    private IReadOnlyList<ChatMessageView>? _messages;
+    private IReadOnlyList<string> _playbookTools = ["read_file"];
 
     [Fact]
     public async Task ShouldAllowACallTheModelFindsLowRisk()
@@ -127,6 +130,104 @@ public class ChatToolRiskAssessSkillTests
         _requests.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("read_file", true)]
+    [InlineData("mcp_fs__read_file", true)]
+    [InlineData("process_run", false)]
+    public async Task ShouldPassTheActivePlaybookWithTheRequestsItContinues(string allowed, bool listed)
+    {
+        _playbookTools = [allowed];
+        _messages = SkillHistory("""{"status":"Completed","skillId":"release-notes"}""", "Yes, go on.");
+
+        await CreateApprover("""{"decision":"allow","risk":"low","reason":"x"}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        using var input = Input();
+        var root = input.RootElement;
+        root.GetProperty("user_request").GetString().ShouldBe("Yes, go on.");
+        root.GetProperty("earlier_user_requests").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe(["Write the release notes for 2.1."]);
+        var skill = root.GetProperty("active_skill");
+        skill.GetProperty("id").GetString().ShouldBe("release-notes");
+        skill.GetProperty("tool_is_allowed").GetBoolean().ShouldBe(listed);
+        skill.GetProperty("instructions").GetString().ShouldNotBeNull().ShouldContain("Read the changelog");
+    }
+
+    [Theory]
+    // A load the runner refused gave the assistant no instructions to follow.
+    [InlineData("release-notes", """{"status":"Failed","error":"Unavailable"}""")]
+    // An id the catalog does not know brings no text with it, whatever the call claimed.
+    [InlineData("trusted-deploy", """{"status":"Completed"}""")]
+    public async Task ShouldNotPassAPlaybookTheCatalogDidNotLoad(string skillId, string result)
+    {
+        _messages = SkillHistory(result, "Yes, go on.", skillId);
+
+        await CreateApprover("""{"decision":"ask","risk":"medium","reason":"x"}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), """{"skillId":"release-notes"}""",
+                TestContext.Current.CancellationToken);
+
+        using var input = Input();
+        input.RootElement.TryGetProperty("active_skill", out _).ShouldBeFalse();
+        input.RootElement.GetProperty("user_request").GetString().ShouldBe("Yes, go on.");
+    }
+
+    [Fact]
+    public async Task ShouldPassOnlyTheLatestRequests()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var ids = Enumerable.Range(0, 5).Select(_ => Guid.CreateVersion7()).ToArray();
+        _messages = ids.Select((id, index) => new ChatMessageView(id, index == 0 ? null : ids[index - 1],
+            index % 2 == 0 ? "User" : "Assistant", $"Message {index}", now)).ToArray();
+
+        await CreateApprover("""{"decision":"ask","risk":"medium","reason":"x"}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), "{}", TestContext.Current.CancellationToken);
+
+        using var input = Input();
+        input.RootElement.GetProperty("user_request").GetString().ShouldBe("Message 4");
+        input.RootElement.GetProperty("earlier_user_requests").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe(["Message 0", "Message 2"]);
+    }
+
+    private static ChatMessageView[] SkillHistory(string result, string followUp, string skillId = "release-notes")
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (request, call, output, question, answer) =
+            (Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        return
+        [
+            new(request, null, "User", "Write the release notes for 2.1.", now),
+            new(call, request, "Assistant", "", now,
+                ToolCalls: [new("call-1", "mcp_app__run_skill", $$"""{"skillId":"{{skillId}}"}""")]),
+            new(output, call, "Tool", result, now, ToolCallId: "call-1"),
+            new(question, output, "Assistant", "Shall I read the changelog?", now),
+            new(answer, question, "User", followUp, now)
+        ];
+    }
+
+    private JsonDocument Input() =>
+        JsonDocument.Parse(_requests.ShouldHaveSingleItem().ContextMessages![^1].Content);
+
+    private SkillDefinition Playbook() =>
+        new("release-notes", "Release notes", "Writes release notes from the changelog.", "Project",
+            "---\nid: release-notes\n---\n\n1. Read the changelog.\n2. Write docs/release.md.",
+            true, JsonSerializer.SerializeToElement(new { type = "object" }), AllowedTools: _playbookTools,
+            Kind: SkillKinds.Playbook);
+
+    private ISkillCatalog Catalog()
+    {
+        var builtIn = new BuiltInSkillCatalog();
+        IReadOnlyList<SkillDefinition> All() => [.. builtIn.List(), Playbook()];
+        var catalog = new Mock<ISkillCatalog>();
+        catalog.Setup(item => item.List()).Returns(All);
+        catalog.Setup(item => item.GetById(It.IsAny<string>()))
+            .Returns((string id) => All().FirstOrDefault(skill => skill.Id == id));
+        catalog.Setup(item => item.ListAsync(It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(All);
+        catalog.Setup(item => item.GetByIdAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, Guid? _, CancellationToken _) => All().FirstOrDefault(skill => skill.Id == id));
+        return catalog.Object;
+    }
+
     private static AgentTool Tool()
     {
         var schema = JsonSerializer.SerializeToElement(new { type = "object" });
@@ -139,11 +240,11 @@ public class ChatToolRiskAssessSkillTests
     private ToolAutoApprover CreateApprover(string answer, string userRequest = "Fix the empty list case")
     {
         var now = DateTimeOffset.UtcNow;
+        IReadOnlyList<ChatMessageView> messages = _messages ?? [new ChatMessageView(_questionId, null, "User", userRequest, now)];
         var chats = new Mock<IChatService>(MockBehavior.Strict);
         chats.Setup(item => item.GetAsync(_projectId, _chatId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new ChatDetails(_chatId, _projectId, "Fix", now, now, 3, _connectionId,
-                [new ChatMessageView(_questionId, null, "User", userRequest, now)],
-                [new ChatBranchView(_chatId, _questionId, "Main")], ApprovalMode: _mode));
+            .ReturnsAsync(() => new ChatDetails(_chatId, _projectId, "Fix", now, now, 3, _connectionId, messages,
+                [new ChatBranchView(_chatId, messages[^1].Id, "Main")], ApprovalMode: _mode));
         var projects = new Mock<IProjectService>(MockBehavior.Strict);
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProjectDetails(_projectId, "Project", "", now, now, 1,
@@ -157,8 +258,8 @@ public class ChatToolRiskAssessSkillTests
         var completion = new Mock<IChatCompletionClient>(MockBehavior.Strict);
         completion.Setup(item => item.StreamAsync(It.IsAny<ChatCompletionRequest>(), It.IsAny<CancellationToken>()))
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, answer, token));
-        var catalog = new BuiltInSkillCatalog();
-        var skill = new ChatToolRiskAssessSkill(catalog, chats.Object, projects.Object, settings.Object, secrets.Object,
+        var catalog = Catalog();
+        var skill = new ChatToolRiskAssessSkill(catalog, new SkillGuide(catalog), chats.Object, projects.Object, settings.Object, secrets.Object,
             completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
         return new ToolAutoApprover(chats.Object, new SkillRunner(catalog, null!, chatToolRiskAssessSkill: skill),
             new ChatBranchSettingsResolver());

@@ -76,9 +76,14 @@ Approve for me   — the chat-tool-risk-assess executor judges the call; only "a
 Full access      — every such call runs without asking
 ```
 
-The assessment is one model call on the chat's own connection. It sees the user's latest request
-on the branch, the project's directory grants, the tool's description and annotations (as
-unverified hints) and the exact arguments, all passed as data. Switching the mode while a card
+The assessment is one model call on the chat's own connection. It sees the user's last three
+messages on the branch, so that a short follow-up such as "go on" is read with the task it
+continues, the playbook the chat is following (found from its `run_skill` call within the last few
+turns, with the text taken from the skill catalog rather than from the call), whether that playbook
+lists the tool among its `allowed-tools`, the project's directory grants, the tool's description and
+annotations (as unverified hints) and the exact arguments, all passed as data. A step of the
+active playbook counts as asked for by the user; it never lifts the rules on secrets, paths outside
+the project, uploads, deletion or history rewrites. Switching the mode while a card
 waits answers it: Full access lets the call through, and "Approve for me" gets one assessment.
 Background subtasks, which have nobody to ask, run what the parent chat's mode would allow and
 refuse the rest. A chat not created yet keeps the mode picked in its composer and is created with it.

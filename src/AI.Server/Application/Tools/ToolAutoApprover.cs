@@ -59,6 +59,7 @@ public sealed class ToolAutoApprover(IChatService chats, ISkillRunner skills,
             ["chat_id"] = chatId.ToString(),
             ["branch_id"] = branchId.ToString(),
             ["tool_name"] = tool.OriginalName,
+            ["tool_ref"] = tool.ModelDefinition.Name,
             ["arguments"] = arguments
         };
         if (descriptor.DisplayName != tool.OriginalName) parameters["tool_title"] = descriptor.DisplayName;

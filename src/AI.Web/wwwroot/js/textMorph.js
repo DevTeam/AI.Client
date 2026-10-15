@@ -1,15 +1,17 @@
-// Text that changes in place without jumping. The part the old and the new text share stays where
-// it is; the rest dissolves into the new text while its width eases to fit, so whatever follows on
-// the line glides along instead of jumping. Used for the activity line under the running turn
+// Text that changes in place without jumping. The words the old and the new text share stay where
+// they are; the rest decodes into the new text: each changed character runs through random letters
+// and settles, roughly from left to right, while the width eases to fit, so whatever follows on the
+// line glides along instead of jumping. Used for the activity line under the running turn
 // (docs/18-compact-turn-view.md).
 //
 // Blazor renders the line empty and puts its state in .turn-activity[data-activity-*] attributes
 // (the title, count and detail, held for a moment each), so this script owns its children and the
 // renderer never diffs them.
 (() => {
-    // Matches the transitions of .text-morph-tail in app.css; the layers are folded back into plain
-    // text once they have played, so the resting DOM is just the text again.
-    const MorphMs = 260;
+    // How long a change takes to settle, and how often the unsettled characters pick new letters.
+    const DecodeMs = 300;
+    const GlyphMs = 35;
+    const Glyphs = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     // The activity line shows each state at least this long, so calls that start and finish within
     // a few frames do not flicker past; only the latest one waiting is shown when the time is up.
     const MinShownMs = 600;
@@ -17,53 +19,82 @@
     // would otherwise flash for a frame.
     const ThinkingAfterMs = 400;
 
-    // A zero-width space keeps an empty layer one line tall, so the baseline never moves.
-    const layer = (text, className) => {
-        const span = document.createElement("span");
-        span.className = className;
-        span.textContent = text || "​";
-        return span;
-    };
+    const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
+        || document.documentElement.dataset.animations === "false";
 
-    const sharedPrefix = (from, to) => {
+    // The shared start, cut back to a word boundary, so a word is never half kept and half decoded.
+    const sharedWords = (from, to) => {
         let length = 0;
         while (length < from.length && length < to.length && from[length] === to[length]) length++;
-        // Never split a surrogate pair between the kept prefix and the morphing tail.
-        if (length > 0 && /[\uD800-\uDBFF]/.test(to[length - 1])) length--;
+        if (length < from.length || length < to.length) {
+            while (length > 0 && to[length - 1] !== " ") length--;
+        }
         return length;
+    };
+
+    // Spaces and separators keep their place, so the line keeps its shape while it decodes.
+    const isFixed = ch => ch === " " || ch === "·" || ch === "…";
+
+    const randomGlyph = () => Glyphs[Math.floor(Math.random() * Glyphs.length)];
+
+    const stop = element => {
+        clearTimeout(element.morphTimer);
+        clearInterval(element.morphTicker);
     };
 
     const morph = (element, text) => {
         const previous = element.morphText;
         if (previous === text) return;
         element.morphText = text;
-        clearTimeout(element.morphTimer);
-        if (previous === undefined || !element.isConnected) {
+        stop(element);
+        if (previous === undefined || !element.isConnected || reducedMotion()) {
             element.textContent = text;
             return;
         }
 
-        const kept = sharedPrefix(previous, text);
+        const kept = sharedWords(previous, text);
+        const from = [...previous.slice(kept)];
+        const to = [...text.slice(kept)];
+        const length = Math.max(from.length, to.length);
+        // Each character settles at its own moment: mostly in reading order, with some spread so
+        // the line does not read as a wipe.
+        const settleAt = Array.from({ length }, (_, i) => (i / length * 0.65 + Math.random() * 0.35) * DecodeMs);
+
         const prefix = document.createElement("span");
         prefix.textContent = text.slice(0, kept);
         const tail = document.createElement("span");
         tail.className = "text-morph-tail";
-        const leaving = layer(previous.slice(kept), "text-morph-layer");
-        leaving.setAttribute("aria-hidden", "true");
-        const arriving = layer(text.slice(kept), "text-morph-layer is-arriving");
-        tail.append(leaving, arriving);
+        tail.setAttribute("aria-hidden", "true");
         element.replaceChildren(prefix, tail);
 
         // Inline width is runtime geometry: from the old tail's width to the new one's.
-        tail.style.width = `${leaving.getBoundingClientRect().width}px`;
-        const target = text.slice(kept) ? arriving.getBoundingClientRect().width : 0;
-        tail.getBoundingClientRect();
-        requestAnimationFrame(() => {
-            tail.style.width = `${target}px`;
-            leaving.classList.add("is-leaving");
-            arriving.classList.remove("is-arriving");
-        });
-        element.morphTimer = setTimeout(() => { element.textContent = text; }, MorphMs);
+        tail.textContent = to.join("") || "​";
+        const target = to.length ? tail.getBoundingClientRect().width : 0;
+        tail.textContent = from.join("") || "​";
+        tail.style.width = `${tail.getBoundingClientRect().width}px`;
+        requestAnimationFrame(() => { tail.style.width = `${target}px`; });
+
+        const started = performance.now();
+        const frame = () => {
+            const elapsed = performance.now() - started;
+            let line = "";
+            for (let i = 0; i < length; i++) {
+                if (elapsed >= settleAt[i]) {
+                    line += to[i] ?? "";
+                    continue;
+                }
+                const ch = to[i] ?? from[i];
+                line += isFixed(ch) ? ch : randomGlyph();
+            }
+            // A zero-width space keeps an empty tail one line tall, so the baseline never moves.
+            tail.textContent = line || "​";
+        };
+        frame();
+        element.morphTicker = setInterval(frame, GlyphMs);
+        element.morphTimer = setTimeout(() => {
+            stop(element);
+            element.textContent = text;
+        }, DecodeMs);
     };
 
     const readActivity = line => ({

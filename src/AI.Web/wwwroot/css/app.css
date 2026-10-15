@@ -6380,6 +6380,8 @@ textarea {
     align-items: baseline;
     color: var(--color-text-faint);
     font-size: var(--font-size-sm);
+    /* The same face as the turn's row above it, digits included. */
+    font-variant-numeric: tabular-nums;
     line-height: 1.25;
     white-space: nowrap;
 }
@@ -6403,28 +6405,17 @@ textarea {
     text-overflow: ellipsis;
 }
 
-/* A text changing in place (js/textMorph.js): the shared start stays put, the differing tail
-   dissolves into the new one while its width eases to fit, so what follows glides instead of
-   jumping. Both layers sit in one grid cell on the same baseline, so the line never moves up or
-   down; `clip` (not hidden) keeps the tail's baseline that of its text. */
+/* A text changing in place (js/textMorph.js): the shared words stay put, the rest decodes into the
+   new text through random letters while its width eases to fit, so what follows glides instead of
+   jumping. `clip` (not hidden) keeps the tail's baseline that of its text, so the line never moves
+   up or down. */
 .text-morph-tail {
     display: inline-grid;
     justify-items: start;
     vertical-align: baseline;
     overflow-x: clip;
-    transition: width var(--duration-slow) var(--ease-emphasized);
-}
-
-.text-morph-layer {
-    grid-area: 1 / 1;
     white-space: pre;
-    transition: opacity var(--duration-base) ease, filter var(--duration-base) ease;
-}
-
-.text-morph-layer.is-arriving,
-.text-morph-layer.is-leaving {
-    opacity: 0;
-    filter: blur(3px);
+    transition: width var(--duration-slow) var(--ease-emphasized);
 }
 
 .tool-row-glyph {

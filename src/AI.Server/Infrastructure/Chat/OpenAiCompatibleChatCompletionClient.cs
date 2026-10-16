@@ -111,10 +111,11 @@ public sealed class OpenAiCompatibleChatCompletionClient(
 
         using var _ = response;
 
+        var firstTokenTimeout = policy.FirstTokenTimeoutFor(InputCharacters(request));
         using var firstToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        firstToken.CancelAfter(policy.FirstTokenTimeout);
+        firstToken.CancelAfter(firstTokenTimeout);
         var started = false;
-        await using var stream = await ReadStreamAsync(response, firstToken.Token, cancellationToken);
+        await using var stream = await ReadStreamAsync(response, firstTokenTimeout, firstToken.Token, cancellationToken);
         await using var chunks = sseParser.ParseAsync(stream, firstToken.Token).GetAsyncEnumerator(firstToken.Token);
         while (true)
         {
@@ -126,7 +127,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             }
             catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested && !started)
             {
-                throw new ChatFirstTokenTimeoutException(policy.FirstTokenTimeout, error);
+                throw new ChatFirstTokenTimeoutException(firstTokenTimeout, error);
             }
 
             if (!started)
@@ -171,8 +172,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
     }
 
-    private async Task<Stream> ReadStreamAsync(HttpResponseMessage response, CancellationToken firstToken,
-        CancellationToken cancellationToken)
+    private static async Task<Stream> ReadStreamAsync(HttpResponseMessage response, TimeSpan timeout,
+        CancellationToken firstToken, CancellationToken cancellationToken)
     {
         try
         {
@@ -180,8 +181,20 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ChatFirstTokenTimeoutException(policy.FirstTokenTimeout, error);
+            throw new ChatFirstTokenTimeoutException(timeout, error);
         }
+    }
+
+    /// <summary>The size of what the endpoint has to read before it can answer: messages, call arguments and tool schemas.</summary>
+    private static long InputCharacters(ChatCompletionRequest request)
+    {
+        long total = request.ContextMessages is { Count: > 0 } messages
+            ? messages.Sum(message => (long)message.ForModel.Length
+                                      + (message.ToolCalls?.Sum(call => (long)call.Arguments.Length) ?? 0))
+            : request.Message.Length;
+        if (request.Tools is { Count: > 0 } tools)
+            total += tools.Sum(tool => (long)tool.Description.Length + tool.InputSchema.GetRawText().Length);
+        return total;
     }
 
     /// <summary>

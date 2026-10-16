@@ -541,6 +541,15 @@ public sealed class BuiltInToolTests
                 .GetProperty("content").GetString().ShouldBe("alpha\nbeta\n");
             (await Structured(session, "read_text_file", new { path = file, tail = 1 }, token))
                 .GetProperty("content").GetString().ShouldBe("beta");
+            var range = await Structured(session, "read_text_file", new { path = file, offset = 2, limit = 1 }, token);
+            range.GetProperty("content").GetString().ShouldBe("beta");
+            range.GetProperty("firstLine").GetInt32().ShouldBe(2);
+            range.GetProperty("truncated").GetBoolean().ShouldBeFalse();
+            var first = await Structured(session, "read_text_file", new { path = file, offset = 1, limit = 1 }, token);
+            first.GetProperty("content").GetString().ShouldBe("alpha");
+            first.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            (await Structured(session, "read_text_file", new { path = file, offset = 9 }, token))
+                .GetProperty("error").GetString()!.ShouldContain("past its end");
 
             var edits = new[] { new { oldText = "beta", newText = "gamma" } };
             (await Structured(session, "edit_file", new { path = file, edits, dryRun = true }, token))

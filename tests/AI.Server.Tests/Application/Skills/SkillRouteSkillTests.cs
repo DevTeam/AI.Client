@@ -105,6 +105,16 @@ public class SkillRouteSkillTests
     }
 
     [Fact]
+    public async Task ShouldRouteOnAConnectionMarkedForSubtasks()
+    {
+        var route = await CreateRouting("{\"skills\":[\"project-create\"],\"tools\":[]}", subtaskModel: "fast-model")
+            .RouteAsync(Run, [new ChatCompletionMessage("user", "Create a project")], [], TestContext.Current.CancellationToken);
+
+        route.ShouldNotBeNull();
+        _requests.Single().Model.ShouldBe("fast-model");
+    }
+
+    [Fact]
     public async Task ShouldSkipAnOversizedRoutingCatalogueOnASmallConnection()
     {
         var route = await CreateRouting("{}", window: 4_096).RouteAsync(Run,
@@ -118,7 +128,7 @@ public class SkillRouteSkillTests
     private static AgentTool Tool(string name, string description) =>
         new(new ChatToolDefinition(name, description, JsonDocument.Parse("{}").RootElement), null!, Guid.Empty, name, "");
 
-    private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null)
+    private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null, string? subtaskModel = null)
     {
         var now = DateTimeOffset.UtcNow;
         var chats = new Mock<IChatService>(MockBehavior.Strict);
@@ -129,9 +139,12 @@ public class SkillRouteSkillTests
         var settings = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([new ConnectionSettings(_connectionId, "Main", "https://example.test/v1",
-                "test-model", true, true, false, ContextWindowTokens: window)], [], []) { ChatAutomation = new ChatAutomationSettings(RouteSkills: routeSkills) });
+                    "test-model", true, true, false, ContextWindowTokens: window),
+                .. subtaskModel is null ? Array.Empty<ConnectionSettings>() : [new ConnectionSettings(Guid.CreateVersion7(), "Fast",
+                    "https://example.test/v1", subtaskModel, true, false, false, ForSubtasks: true, ContextWindowTokens: window)]],
+                [], []) { ChatAutomation = new ChatAutomationSettings(RouteSkills: routeSkills) });
         var secrets = new Mock<IGlobalSecretStore>(MockBehavior.Strict);
-        secrets.Setup(item => item.GetAsync("connection", _connectionId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        secrets.Setup(item => item.GetAsync("connection", It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
         var completion = new Mock<IChatCompletionClient>(MockBehavior.Strict);
         completion.Setup(item => item.StreamAsync(It.IsAny<ChatCompletionRequest>(), It.IsAny<CancellationToken>()))
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, answer, token));

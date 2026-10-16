@@ -688,3 +688,46 @@ Files: `src/AI.Web/Components/GlobalSettingsPanel.razor`, `src/AI.Web/wwwroot/cs
 
 Checks: `AI.Web` builds; the panel was checked in the settings drawer in the dark and light themes
 with the orange accent, and changing a list still saves its count.
+
+## 2026-10-16 — Faster turns: smaller tool inventories, patient first tokens, reads side by side
+
+The chat "Settings tools configure" took ten minutes for 46 seconds of work. Five `app_read
+McpTools` pages carried every tool's full schema, the next request grew to about 101,000 tokens, and
+the endpoint did not send a first token within the fixed 90 seconds; it was asked five more times,
+each time reading the whole prompt from the start. The changes below remove that and other waits
+found in the agent loop.
+
+- `app_read McpTools` returns a compact inventory by default (names, schema hashes, default
+  decisions, annotations, short descriptions, parameter names); `query` returns one tool's full
+  schema. The tool-configuration playbooks classify from the inventory.
+- The first-token wait grows with the request (90 seconds plus one per thousand input tokens, at
+  most ten minutes), the SSE parser no longer applies its own fixed 120 seconds, and a first-token
+  timeout is retried once instead of five times.
+- Tool policies for the offered tools are resolved from one read of the settings, the project and
+  the chat per step instead of one read of each per tool.
+- Reads of the built-in server and `app_read` that need no confirmation run side by side within a
+  batch; results keep the batch's order.
+- In "Ask for approval" mode the card is shown at once and the risk assessment joins it as advice;
+  a background run refuses without an assessment.
+- Skill routing runs on a connection marked for subtasks when there is one.
+- `read_text_file` reads line ranges with `offset` and `limit`.
+- When every plan step is finished and a criterion is unverified, the check is asked for before the
+  answer instead of dropping a written answer.
+
+Changing the descriptions and parameters of `app_read` and `read_text_file` changes their schema
+hashes, so saved policies for the old hashes no longer match; both tools default to `Allow`.
+
+Files: `src/AI.Server/Infrastructure/Tools/App/AppReadTool.cs`,
+`src/AI.Server/Infrastructure/Chat/{ChatTransportPolicy,ChatCompletionSseParser,OpenAiCompatibleChatCompletionClient,RetryingChatCompletionClient}.cs`,
+`src/AI.Server/Application/Chat/IChatTransportPolicy.cs`,
+`src/AI.Server/Application/Tools/{ToolPolicyResolver,IToolPolicyResolver,ChatAgent}.cs`,
+`src/AI.Server/Application/Runs/ChatRunDispatcher.cs`, `src/AI.Server/Application/Skills/SkillRouteSkill.cs`,
+`src/AI.Mcp.BuiltIn/Files/ReadTextFileTool.cs`, the playbooks `settings-tools-configure`,
+`project-tools-configure` and `project-configure`, and docs 06, 07, 16, 17, 27 and 37.
+
+Checks: `AI.Server.Tests` 1319 tests (one Unix-only skipped), `AI.Web.Tests` 683,
+`AI.Mcp.CSharp.Tests` 21 and `AI.TextCorrection.Tests` 175, all passing. New tests cover the compact
+inventory's parameter names, the single first-token retry, the first-token wait growing with the
+prompt, reads of one batch running at once and returning in order, a manual approval card shown
+before its advice and updated with it, routing on a subtask connection, `read_text_file` ranges, and
+the criteria check asked for before the answer.

@@ -122,7 +122,7 @@ public sealed partial class AppToolTests
         await using var session = await fixture.OpenAsync();
 
         var first = await AppFixture.CallAsync(session, "app_read",
-            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1 });
+            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1, includeSchemas = true });
         first.GetProperty("total").GetInt32().ShouldBeGreaterThan(1);
         var tool = first.GetProperty("items")[0];
         tool.GetProperty("serverId").GetGuid().ShouldBe(AppMcpServer.Id);
@@ -132,7 +132,7 @@ public sealed partial class AppToolTests
         tool.GetProperty("annotations").ValueKind.ShouldBe(JsonValueKind.Object);
 
         var next = await AppFixture.CallAsync(session, "app_read",
-            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1,
+            new { resource = "McpTools", resourceId = AppMcpServer.Id, limit = 1, includeSchemas = true,
                 cursor = first.GetProperty("nextCursor").GetString() });
         next.GetProperty("items")[0].GetProperty("name").GetString()
             .ShouldNotBe(tool.GetProperty("name").GetString());
@@ -145,11 +145,12 @@ public sealed partial class AppToolTests
         await using var session = await fixture.OpenAsync();
 
         var inventory = await AppFixture.CallAsync(session, "app_read",
-            new { resource = "McpTools", resourceId = DefaultMcpServer.Id, includeSchemas = false });
+            new { resource = "McpTools", resourceId = DefaultMcpServer.Id });
         var listed = inventory.GetProperty("items").EnumerateArray().ToArray();
         listed.Length.ShouldBeGreaterThan(1);
         var chosen = listed.Single(item => item.GetProperty("name").GetString() == "write_file");
         chosen.TryGetProperty("inputSchema", out _).ShouldBeFalse();
+        chosen.GetProperty("parameters").EnumerateArray().Select(name => name.GetString()).ShouldContain("path");
         chosen.GetProperty("defaultDecision").GetString().ShouldBe("Ask");
 
         var detail = await AppFixture.CallAsync(session, "app_read",

@@ -49,6 +49,30 @@ public class RetryingChatCompletionClientTests
     }
 
     [Fact]
+    public async Task ShouldRetryAFirstTokenTimeoutOnlyOnce()
+    {
+        var timeouts = Enumerable.Repeat<Exception?>(
+            new ChatFirstTokenTimeoutException(TimeSpan.FromSeconds(90), new OperationCanceledException()), 5).ToArray();
+        var endpoint = new Endpoint(timeouts);
+
+        await Should.ThrowAsync<ChatFirstTokenTimeoutException>(async () => await CollectAsync(CreateInstance(endpoint)));
+
+        // Each attempt makes the endpoint read the whole prompt again, so one more is the most worth paying for.
+        endpoint.Attempts.ShouldBe(2);
+    }
+
+    [Fact]
+    public void ShouldAllowALongerFirstTokenWaitForALongerPrompt()
+    {
+        var policy = new ChatTransportPolicy(firstTokenTimeout: TimeSpan.FromSeconds(90));
+
+        policy.FirstTokenTimeoutFor(0).ShouldBe(TimeSpan.FromSeconds(90));
+        // About a hundred thousand tokens.
+        policy.FirstTokenTimeoutFor(400_000).ShouldBe(TimeSpan.FromSeconds(190));
+        policy.FirstTokenTimeoutFor(long.MaxValue / 2).ShouldBe(TimeSpan.FromMinutes(10));
+    }
+
+    [Fact]
     public async Task ShouldNotRetryWhatTheEndpointHasAlreadyDecided()
     {
         var endpoint = new Endpoint(RateLimit(HttpStatusCode.Unauthorized), null);

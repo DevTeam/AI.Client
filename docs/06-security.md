@@ -76,6 +76,10 @@ Approve for me   — the chat-tool-risk-assess executor judges the call; only "a
 Full access      — every such call runs without asking
 ```
 
+In "Ask for approval" mode the assessment is only advice, so the card does not wait for it: the card
+is shown at once and the assessment's reason joins it when it arrives, if the card is still waiting.
+A background run that has nobody to ask refuses the call without an assessment.
+
 The assessment is one model call on the chat's own connection. It sees the user's last three
 messages on the branch, so that a short follow-up such as "go on" is read with the task it
 continues, the playbook the chat is following (found from its `run_skill` call within the last few

@@ -1018,12 +1018,18 @@ public sealed class ChatRunDispatcher(
         ToolCallPosition position, CancellationToken token)
     {
         var (projectId, chatId, branchId) = (runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
-        // The chat's mode answers first; a card is only for what it leaves to the person.
-        var automatic = await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token);
+        // The chat's mode answers first; a card is only for what it leaves to the person. In
+        // automatic mode the assessment is that answer, so the card waits for it. In manual mode it
+        // is only advice: the card goes up at once and the advice joins it when it arrives, so the
+        // person never waits on a model to see what they are asked.
+        var mode = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
+        if (mode == ToolApprovalMode.FullAccess) return ToolApprovalAction.Allow;
+        var automatic = mode == ToolApprovalMode.Auto
+            ? await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token)
+            : ToolAutoApproval.Ask;
         if (automatic.Allowed) return ToolApprovalAction.Allow;
         if (runtime.State.Queue.FirstOrDefault(item => item.Id == runtime.ActiveMessageId)?.Interactive == false)
             return ToolApprovalAction.Deny;
-        var mode = await autoApprover.ModeAsync(projectId, chatId, branchId, token);
         var command = (await policies.ResolveAsync(projectId, chatId, branchId, tool.ServerId, tool.OriginalName,
             tool.SchemaHash, arguments, token)).Command;
         var completion = new TaskCompletionSource<ToolApprovalAction>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1037,6 +1043,11 @@ public sealed class ChatRunDispatcher(
             runtime.State.Append("");
             await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
         }
+        var approvalId = runtime.PendingApproval.Id;
+        using var advising = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var advice = mode == ToolApprovalMode.Ask
+            ? AdviseAsync(runtime, approvalId, tool, arguments, advising.Token)
+            : Task.CompletedTask;
         try
         {
             while (true)
@@ -1073,6 +1084,8 @@ public sealed class ChatRunDispatcher(
         }
         finally
         {
+            await advising.CancelAsync();
+            await advice;
             using var lease = await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None);
             runtime.PendingApproval = null;
             runtime.Approval = null;
@@ -1080,6 +1093,33 @@ public sealed class ChatRunDispatcher(
             // down here rather than left to be answered a second time.
             runtime.Snapshot = runtime.Snapshot with { PendingApproval = null };
             Publish();
+        }
+    }
+
+    /// <summary>
+    /// Adds the risk assessment to a card that is already on screen, if it is still the card being
+    /// answered when the assessment arrives. Advice that fails or comes too late is simply not shown.
+    /// </summary>
+    private async Task AdviseAsync(Runtime runtime, Guid approvalId, AgentTool tool, string arguments,
+        CancellationToken token)
+    {
+        var (projectId, chatId, branchId) = (runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId);
+        try
+        {
+            var assessment = await autoApprover.DecideAsync(projectId, chatId, branchId, tool, arguments, token);
+            if (assessment.Reason is not { Length: > 0 } reason) return;
+            using var lease = await synchronization.EnterAsync(chatId, token);
+            if (runtime.PendingApproval is not { } pending || pending.Id != approvalId) return;
+            runtime.PendingApproval = pending with { Assessment = reason };
+            await SaveAsync(runtime, await chats.GetAsync(projectId, chatId, token), token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // The card was answered first, which is the point of not waiting for the advice.
+        }
+        catch (Exception)
+        {
+            // Advice is optional: the card stands without it, as it does when the assessment fails.
         }
     }
 

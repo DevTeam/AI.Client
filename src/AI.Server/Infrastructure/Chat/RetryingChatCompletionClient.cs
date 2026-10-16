@@ -34,6 +34,13 @@ public sealed class RetryingChatCompletionClient(
     /// </summary>
     private const int MaxServerFaults = 5;
 
+    /// <summary>
+    /// How many times a request that timed out before its first token is sent again. The endpoint
+    /// had the whole allowance to read the prompt; asking again starts that reading over, so once
+    /// covers a passing queue and more only repeats the same wait.
+    /// </summary>
+    private const int MaxFirstTokenTimeouts = 1;
+
     private static readonly TimeSpan FirstBackoff = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
 
@@ -150,6 +157,7 @@ public sealed class RetryingChatCompletionClient(
         // No status at all means the request never got an answer: DNS, a refused connection, a
         // reset mid-handshake. The endpoint has not refused anything, so this is worth repeating.
         HttpRequestException { StatusCode: null } when attempt <= MaxServerFaults => Backoff(attempt),
+        ChatFirstTokenTimeoutException => attempt <= MaxFirstTokenTimeouts ? Backoff(attempt) : null,
         TimeoutException or IOException when attempt <= MaxServerFaults => Backoff(attempt),
         _ => null
     };

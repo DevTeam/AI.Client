@@ -270,9 +270,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var modelContext = checkpoints.Apply(run, context);
             var permitted = new List<AgentTool>();
             if (session is not null)
-                foreach (var tool in session.Tools)
-                    if (kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName)
-                        && (await PolicyAsync(projectId, chatId, branchId, tool, token)).Decision != "Deny") permitted.Add(tool);
+            {
+                var candidates = session.Tools.Where(tool => kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName)).ToArray();
+                var resolved = await policies.ResolveAsync(projectId, chatId, branchId, candidates, token);
+                for (var index = 0; index < candidates.Length; index++)
+                    if (resolved[index].Decision != "Deny") permitted.Add(candidates[index]);
+            }
             if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             toolCatalog.Update(run, permitted);
             // Once per turn, before its first step: which skill fits the new message, and which tools
@@ -303,6 +306,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
             if (plansAllowed) UpsertPlan(run);
+            // Every step is finished and only the criteria are left: the answer this step may write
+            // would be dropped at the gate below, so the check is asked for now, before it is written.
+            if (plansAllowed && !criteriaAsked && plans.Current(run) is { Steps.Count: > 0 } finished
+                && finished.Steps.All(step => step.IsFinished) && OpenCriteria(run) is { Length: > 0 } unsettled)
+            {
+                criteriaAsked = true;
+                instructions.Upsert(run, new ModelInstruction(CriteriaKey, CriteriaGate(unsettled), 960,
+                    ModelInstructionLifetime.UntilAcknowledged));
+            }
             var composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             var pendingTools = toolCatalog.ConsumePinned(run);
             var selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
@@ -504,128 +516,155 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             // A step is stalled only when none of its calls told the model anything new. An error
             // is information too, unless it is the same error for the same call again.
             var learned = false;
-            for (var index = 0; index < calls.Count; index++)
+            // Reads of the built-in servers that need nobody's confirmation start together, so a
+            // batch of searches and file reads takes as long as its slowest call rather than all of
+            // them in turn. Their results are still taken, recorded and shown in the batch's order.
+            using var alongside = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var reads = await StartReadsAsync(calls, selectedTools, session, counts, projectId, chatId, branchId, runKey,
+                alongside.Token, token);
+            try
             {
-                var call = calls[index];
-                ToolCallResult result;
-                try
+                for (var index = 0; index < calls.Count; index++)
                 {
-                    token.ThrowIfCancellationRequested();
-                    var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
-                        ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
-                    var arguments = session!.ValidateArguments(tool, call.Arguments);
-                    var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
-                    // What the rules were checked against is what runs: process_run's bare program
-                    // name is pinned to the file PATH found for it, and the card shows that.
-                    if (policy.Command?.Subject.Arguments is { } pinned) arguments = pinned;
-                    if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
+                    var call = calls[index];
+                    ToolCallResult result;
+                    try
                     {
-                        var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
-                        var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
-                        input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
-                        arguments = input.ToJsonString();
-                    }
-                    var count = counts.GetValueOrDefault(call.Name) + 1;
-                    counts[call.Name] = count;
-                    if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
-                    else if (count > policy.MaxCalls) result = ToolCallLimitError(call.Name, count, policy);
-                    // Asking to be allowed to ask is one prompt too many: the confirmation and the
-                    // question put the same decision to the same person twice, and the first one
-                    // tells them nothing the second does not. Deny still applies, above, so someone
-                    // who does not want to be asked at all still has a way to say so.
-                    else if (policy.Decision == "Ask" && !AsksTheUser(tool)
-                             && await deadline.WhileWaitingForAPersonAsync(() => approve(tool, arguments, policy.TimeoutSeconds,
-                                 new ToolCallPosition(index + 1, calls.Count), token)) == ToolApprovalAction.Deny)
-                        // Worded for both callers: a person declining at the card, and a background run that
-                        // has nobody to ask and refuses anything needing confirmation.
-                        result = Error("This invocation was not approved. Do not retry it.");
-                    else
-                    {
-                        var activeCall = new ToolActivity(call.Id, call.Name, arguments);
-                        await activity(activeCall, token);
-                        var current = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
-                        if (current.Decision == "Deny") result = Error("Policy changed before execution. Submit a new invocation.");
+                        token.ThrowIfCancellationRequested();
+                        if (reads.TryGetValue(index, out var read))
+                        {
+                            counts[call.Name] = counts.GetValueOrDefault(call.Name) + 1;
+                            await activity(new ToolActivity(call.Id, call.Name, read.Arguments), token);
+                            result = await read.Result;
+                            await workspace.RecordEffectAsync(runKey, read.Tool.Descriptor, read.Arguments, token);
+                        }
                         else
                         {
-                            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-                            // A wait gives way to a message joining the turn: the model waits for
-                            // something to happen, and the person writing to it is that something.
-                            var joined = tool.OriginalName == "trigger_wait"
-                                ? joinSignal?.Invoke() ?? CancellationToken.None
-                                : CancellationToken.None;
-                            using var wake = joined.Register(timeout.Cancel);
-                            // A tool that is waiting on a person is not a tool that has gone quiet.
-                            // Both clocks are off while it waits: the silence timer, which would
-                            // kill the question in under a minute, and the turn's own 24-hour limit, which
-                            // must not be spent on time the person took to read it.
-                            var asking = AsksTheUser(tool);
-                            // Leave a short transport margin for execution tools to report their own timeout.
-                            var patience = asking
-                                ? null
-                                : new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
-                            // Progress arrives on the transport's own thread while the call is in
-                            // flight, so it is forwarded fire-and-forget: a slow subscriber must
-                            // not be able to stall the tool it is reporting on.
-                            var progress = new Progress<ToolProgress>(update =>
+                            var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
+                                ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
+                            var arguments = session!.ValidateArguments(tool, call.Arguments);
+                            var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
+                            // What the rules were checked against is what runs: process_run's bare program
+                            // name is pinned to the file PATH found for it, and the card shows that.
+                            if (policy.Command?.Subject.Arguments is { } pinned) arguments = pinned;
+                            if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
                             {
-                                patience?.Renew();
-                                _ = activity(
-                                    activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
-                                    CancellationToken.None);
-                            });
-                            // The baseline has to exist before the call, not after: once a write
-                            // lands there is nothing left to compare against.
-                            await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
-                            try
-                            {
-                                result = asking
-                                    ? await deadline.WhileWaitingForAPersonAsync(
-                                        () => session.CallAsync(tool, arguments, progress, timeout.Token))
-                                    : await session.CallAsync(tool, arguments, progress, timeout.Token);
+                                var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
+                                var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
+                                input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
+                                arguments = input.ToJsonString();
                             }
-                            // A call that outlived its own policy timeout has failed; the turn has
-                            // not. Letting that reach the outer handler abandoned every call after
-                            // it and ended the run, so one slow server took the whole batch with
-                            // it. The run's own cancellation still does exactly that, which is the
-                            // difference this guard draws.
-                            catch (OperationCanceledException) when (!token.IsCancellationRequested && joined.IsCancellationRequested)
+                            var count = counts.GetValueOrDefault(call.Name) + 1;
+                            counts[call.Name] = count;
+                            if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
+                            else if (count > policy.MaxCalls) result = ToolCallLimitError(call.Name, count, policy);
+                            // Asking to be allowed to ask is one prompt too many: the confirmation and the
+                            // question put the same decision to the same person twice, and the first one
+                            // tells them nothing the second does not. Deny still applies, above, so someone
+                            // who does not want to be asked at all still has a way to say so.
+                            else if (policy.Decision == "Ask" && !AsksTheUser(tool)
+                                     && await deadline.WhileWaitingForAPersonAsync(() => approve(tool, arguments, policy.TimeoutSeconds,
+                                         new ToolCallPosition(index + 1, calls.Count), token)) == ToolApprovalAction.Deny)
+                                // Worded for both callers: a person declining at the card, and a background run that
+                                // has nobody to ask and refuses anything needing confirmation.
+                                result = Error("This invocation was not approved. Do not retry it.");
+                            else
                             {
-                                result = Text("The wait ended early because a new message joined this turn. "
-                                    + "It follows these results; read it before deciding whether to wait again.");
-                            }
-                            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                            {
-                                result = Error($"The tool went silent for {policy.TimeoutSeconds} seconds. "
-                                    + "Its effects may have occurred. Do not automatically repeat it.");
-                            }
+                                var activeCall = new ToolActivity(call.Id, call.Name, arguments);
+                                await activity(activeCall, token);
+                                var current = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
+                                if (current.Decision == "Deny") result = Error("Policy changed before execution. Submit a new invocation.");
+                                else
+                                {
+                                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                                    // A wait gives way to a message joining the turn: the model waits for
+                                    // something to happen, and the person writing to it is that something.
+                                    var joined = tool.OriginalName == "trigger_wait"
+                                        ? joinSignal?.Invoke() ?? CancellationToken.None
+                                        : CancellationToken.None;
+                                    using var wake = joined.Register(timeout.Cancel);
+                                    // A tool that is waiting on a person is not a tool that has gone quiet.
+                                    // Both clocks are off while it waits: the silence timer, which would
+                                    // kill the question in under a minute, and the turn's own 24-hour limit, which
+                                    // must not be spent on time the person took to read it.
+                                    var asking = AsksTheUser(tool);
+                                    // Leave a short transport margin for execution tools to report their own timeout.
+                                    var patience = asking
+                                        ? null
+                                        : new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
+                                    // Progress arrives on the transport's own thread while the call is in
+                                    // flight, so it is forwarded fire-and-forget: a slow subscriber must
+                                    // not be able to stall the tool it is reporting on.
+                                    var progress = new Progress<ToolProgress>(update =>
+                                    {
+                                        patience?.Renew();
+                                        _ = activity(
+                                            activeCall with { Progress = update.Progress, Total = update.Total, Message = update.Message },
+                                            CancellationToken.None);
+                                    });
+                                    // The baseline has to exist before the call, not after: once a write
+                                    // lands there is nothing left to compare against.
+                                    await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
+                                    try
+                                    {
+                                        result = asking
+                                            ? await deadline.WhileWaitingForAPersonAsync(
+                                                () => session.CallAsync(tool, arguments, progress, timeout.Token))
+                                            : await session.CallAsync(tool, arguments, progress, timeout.Token);
+                                    }
+                                    // A call that outlived its own policy timeout has failed; the turn has
+                                    // not. Letting that reach the outer handler abandoned every call after
+                                    // it and ended the run, so one slow server took the whole batch with
+                                    // it. The run's own cancellation still does exactly that, which is the
+                                    // difference this guard draws.
+                                    catch (OperationCanceledException) when (!token.IsCancellationRequested && joined.IsCancellationRequested)
+                                    {
+                                        result = Text("The wait ended early because a new message joined this turn. "
+                                            + "It follows these results; read it before deciding whether to wait again.");
+                                    }
+                                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                                    {
+                                        result = Error($"The tool went silent for {policy.TimeoutSeconds} seconds. "
+                                            + "Its effects may have occurred. Do not automatically repeat it.");
+                                    }
 
-                            await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, token);
+                                    await workspace.RecordEffectAsync(runKey, tool.Descriptor, arguments, token);
+                                }
+                            }
                         }
                     }
+                    catch (OperationCanceledException)
+                    {
+                        await AbandonAsync(calls, index,
+                            "Invocation interrupted or timed out. Its effects may have occurred. Do not automatically repeat it.");
+                        throw;
+                    }
+                    catch (Exception error) when (error is ArgumentException or JsonException)
+                    {
+                        result = Error(error.Message);
+                    }
+                    catch (Exception)
+                    {
+                        // A transport failure can happen after a side effect. Record uncertainty and stop.
+                        await AbandonAsync(calls, index, "Tool transport failed; outcome unknown. Do not automatically repeat it.");
+                        throw;
+                    }
+                    var message = ToolMessage(call.Id, result);
+                    await persist(message, token);
+                    context.Add(message);
+                    toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
+                        .Select(item => item.AssetId).OfType<string>());
+                    await activity(null, token);
+                    learned |= observedResults.Add((call.Name, call.Arguments, result.ModelContent));
                 }
-                catch (OperationCanceledException)
-                {
-                    await AbandonAsync(calls, index,
-                        "Invocation interrupted or timed out. Its effects may have occurred. Do not automatically repeat it.");
-                    throw;
-                }
-                catch (Exception error) when (error is ArgumentException or JsonException)
-                {
-                    result = Error(error.Message);
-                }
-                catch (Exception)
-                {
-                    // A transport failure can happen after a side effect. Record uncertainty and stop.
-                    await AbandonAsync(calls, index, "Tool transport failed; outcome unknown. Do not automatically repeat it.");
-                    throw;
-                }
-                var message = ToolMessage(call.Id, result);
-                await persist(message, token);
-                context.Add(message);
-                toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
-                    .Select(item => item.AssetId).OfType<string>());
-                await activity(null, token);
-                learned |= observedResults.Add((call.Name, call.Arguments, result.ModelContent));
+            }
+            finally
+            {
+                // A batch left early, by an error or a stop, leaves no read running behind it.
+                await alongside.CancelAsync();
+                foreach (var read in reads.Values)
+                    try { await read.Result; }
+                    catch (Exception) { /* Its outcome went with the batch. */ }
             }
             stalledSteps = learned ? 0 : stalledSteps + 1;
             if (toolImages.Count > 0 && configuredConnection?.ImageInput != ImageInputMode.Disabled)
@@ -1079,8 +1118,80 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
     }
 
-    private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool, CancellationToken token) =>
-        policies.ResolveAsync(projectId, chatId, branchId, tool.ServerId, tool.OriginalName, tool.SchemaHash, token);
+    /// <summary>A read started ahead of its turn in the batch, with what was checked before it started.</summary>
+    private sealed record StartedRead(AgentTool Tool, string Arguments, Task<ToolCallResult> Result);
+
+    /// <summary>
+    /// The read-only tools of the Host's own servers, whose annotations the Host wrote itself. A
+    /// third-party server's hints are its own claims, and a wait or a question takes its time from
+    /// an event or a person rather than from the read.
+    /// </summary>
+    private static bool RunsAlongside(AgentTool tool) =>
+        tool.Descriptor.Annotations?.ReadOnlyHint == true
+        && (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName != "trigger_wait"
+            || tool.ServerId == AppMcpServer.Id && tool.OriginalName == "app_read");
+
+    /// <summary>
+    /// Starts every call of the batch that may run alongside the others: a read of the Host's own
+    /// servers that its policy allows without confirmation and within its call limit. A batch with
+    /// fewer than two such calls starts nothing here and runs in turn as before.
+    /// </summary>
+    private async Task<Dictionary<int, StartedRead>> StartReadsAsync(List<ChatToolCall> calls,
+        IReadOnlyList<AgentTool> selectedTools, RefreshableToolSession? session, IReadOnlyDictionary<string, int> counts,
+        Guid projectId, Guid chatId, Guid branchId, WorkspaceRunKey runKey, CancellationToken alongside,
+        CancellationToken token)
+    {
+        var started = new Dictionary<int, StartedRead>();
+        if (session is null || calls.Count < 2) return started;
+        var candidates = new List<(int Index, AgentTool Tool, string Arguments, EffectiveToolPolicy Policy)>();
+        var planned = new Dictionary<string, int>(counts, StringComparer.Ordinal);
+        for (var index = 0; index < calls.Count; index++)
+        {
+            var call = calls[index];
+            var count = planned[call.Name] = planned.GetValueOrDefault(call.Name) + 1;
+            if (selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name) is not { } tool
+                || !RunsAlongside(tool)) continue;
+            string arguments;
+            try
+            {
+                arguments = session.ValidateArguments(tool, call.Arguments);
+            }
+            catch (Exception error) when (error is ArgumentException or JsonException)
+            {
+                // Its turn in the batch reports the error, as for any other call.
+                continue;
+            }
+            var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
+            if (policy.Decision != "Allow" || count > policy.MaxCalls) continue;
+            candidates.Add((index, tool, policy.Command?.Subject.Arguments ?? arguments, policy));
+        }
+        if (candidates.Count < 2) return started;
+        foreach (var (index, tool, arguments, policy) in candidates)
+        {
+            await workspace.RecordIntentAsync(runKey, tool.Descriptor, arguments, token);
+            started[index] = new StartedRead(tool, arguments, ReadAsync(session, tool, arguments, policy, alongside, token));
+        }
+        return started;
+    }
+
+    private async Task<ToolCallResult> ReadAsync(RefreshableToolSession session, AgentTool tool, string arguments,
+        EffectiveToolPolicy policy, CancellationToken alongside, CancellationToken token)
+    {
+        // Off the caller's thread at once, so a server that does its work before its first await
+        // cannot hold up the reads started after it.
+        await Task.Yield();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(alongside);
+        var patience = new Patience(timeout, TimeSpan.FromSeconds(policy.TimeoutSeconds + 2), MaxCallDuration);
+        try
+        {
+            return await session.CallAsync(tool, arguments, new Progress<ToolProgress>(_ => patience.Renew()), timeout.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && !alongside.IsCancellationRequested)
+        {
+            return Error($"The tool went silent for {policy.TimeoutSeconds} seconds. "
+                + "Its effects may have occurred. Do not automatically repeat it.");
+        }
+    }
 
     private Task<EffectiveToolPolicy> PolicyAsync(Guid projectId, Guid chatId, Guid branchId, AgentTool tool,
         string arguments, CancellationToken token) =>

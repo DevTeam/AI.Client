@@ -3,6 +3,8 @@ namespace AI.Application.Tools;
 using Chats;
 using Projects;
 using Settings;
+using AI.Contracts.Chats;
+using AI.Contracts.Projects;
 using AI.Contracts.Settings;
 using Commands;
 
@@ -52,15 +54,39 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
     public async Task<EffectiveToolPolicy> ResolveAsync(Guid projectId, Guid chatId, Guid branchId,
         Guid serverId, string name, string schemaHash, CancellationToken cancellationToken)
     {
+        var (global, project, chat) = await LoadAsync(projectId, chatId, cancellationToken);
+        return Resolve(global, project, chat, branchId, serverId, name, schemaHash);
+    }
+
+    // The agent asks for every offered tool before each step; reading the settings, the project and
+    // the whole chat once per tool made that cost grow with the tool count times the chat's size.
+    public async Task<IReadOnlyList<EffectiveToolPolicy>> ResolveAsync(Guid projectId, Guid chatId, Guid branchId,
+        IReadOnlyList<AgentTool> tools, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        var (global, project, chat) = await LoadAsync(projectId, chatId, cancellationToken);
+        return tools.Select(tool => Resolve(global, project, chat, branchId, tool.ServerId, tool.OriginalName, tool.SchemaHash))
+            .ToArray();
+    }
+
+    private async Task<(GlobalSettings Global, ProjectDetails Project, ChatDetails Chat)> LoadAsync(
+        Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
         var global = await settings.LoadAsync(cancellationToken);
-        var server = global.McpServers.SingleOrDefault(item => item.Id == serverId);
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
+        var chat = await chats.GetAsync(projectId, chatId, cancellationToken)
+            ?? throw new InvalidOperationException("Chat not found.");
+        return (global, project, chat);
+    }
+
+    private EffectiveToolPolicy Resolve(GlobalSettings global, ProjectDetails project, ChatDetails chat, Guid branchId,
+        Guid serverId, string name, string schemaHash)
+    {
+        var server = global.McpServers.SingleOrDefault(item => item.Id == serverId);
         var binding = project.McpServers.SingleOrDefault(item => item.Id == serverId);
         var projectPolicy = project.ToolPolicies.SingleOrDefault(item => item.ServerId == serverId
             && item.Name == name && item.SchemaHash == schemaHash);
-        var chat = await chats.GetAsync(projectId, chatId, cancellationToken)
-            ?? throw new InvalidOperationException("Chat not found.");
         var branchPolicies = branchSettings.BranchToolPolicies(chat, branchId, serverId, name, schemaHash);
         var chatPolicy = chat.ToolPolicies?.SingleOrDefault(item => item.ServerId == serverId
             && item.Name == name && item.SchemaHash == schemaHash);

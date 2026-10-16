@@ -119,9 +119,10 @@ public sealed class AppReadTool(
                               + "For 'Messages', afterMessageId returns only later messages on the selected branch; retain the last seen id to read changes without replaying the branch. "
                               + "'ConnectionModels' fetches the provider's model catalog: resourceId selects a saved connection "
                               + "and uses its stored key and URL; otherwise query must be an absolute HTTP Base URL and no key is sent. "
-                              + "'McpTools' needs resourceId of an enabled MCP server from Settings. Pass includeSchemas=false "
-                              + "for a compact policy inventory; query selects one exact original tool name when its full schema is needed. "
-                              + "The result includes names, schema hashes, annotations and default decisions. "
+                              + "'McpTools' needs resourceId of an enabled MCP server from Settings. It returns a compact policy "
+                              + "inventory by default: names, schema hashes, default decisions, annotations, short descriptions and "
+                              + "parameter names. query selects one exact original tool name and returns its full schema; "
+                              + "includeSchemas=true returns full schemas for a whole page, which is large and rarely needed. "
                               + "Project, Chat and Settings list saved overrides only; an absent rule uses the tool's default decision. "
                               + "A server policy of Ask does not make all its tools Ask. "
                               + "'CommandRules' lists the rules that decide calls of process_run and the file tools by what they run or change, "
@@ -159,7 +160,7 @@ public sealed class AppReadTool(
             ChatArchiveScope archiveScope = ChatArchiveScope.Active,
             DateTimeOffset? activityBefore = null,
             DateTimeOffset? activityAfter = null,
-            bool includeSchemas = true,
+            bool? includeSchemas = null,
             CancellationToken cancellationToken = default) =>
             tool.ReadAsync(run, resource, projectId, chatId, branchId, resourceId, afterMessageId, cursor, limit, query, isRegex,
                 ignoreCase, roles, archiveScope, activityBefore, activityAfter, includeSchemas, cancellationToken);
@@ -182,7 +183,7 @@ public sealed class AppReadTool(
         ChatArchiveScope archiveScope = ChatArchiveScope.Active,
         DateTimeOffset? activityBefore = null,
         DateTimeOffset? activityAfter = null,
-        bool includeSchemas = true,
+        bool? includeSchemas = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -235,7 +236,7 @@ public sealed class AppReadTool(
         AppResource resource, Guid? projectId, Guid? chatId, Guid? branchId, Guid? resourceId,
         Guid? afterMessageId, string? cursor, int limit,
         string? query, ChatArchiveScope archiveScope, DateTimeOffset? activityBefore, DateTimeOffset? activityAfter,
-        bool includeSchemas, CancellationToken cancellationToken)
+        bool? includeSchemas, CancellationToken cancellationToken)
     {
         switch (resource)
         {
@@ -257,7 +258,9 @@ public sealed class AppReadTool(
                         throw new InvalidOperationException("The MCP server connected successfully but declared no tools.");
                     var declared = session.Tools.Where(tool => string.IsNullOrWhiteSpace(query)
                         || tool.OriginalName.Equals(query, StringComparison.Ordinal)).ToArray();
-                    if (includeSchemas)
+                    // Full schemas of a whole server run to tens of thousands of tokens and stay in the
+                    // context for the rest of the run, so they come only for the one tool asked for by name.
+                    if (includeSchemas ?? !string.IsNullOrWhiteSpace(query))
                         return Paging.Page("McpTools", declared.Select(tool => new
                         {
                             tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
@@ -270,6 +273,7 @@ public sealed class AppReadTool(
                         DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
                         Description = tool.Descriptor.Description is { Length: > 240 } description
                             ? description[..240] + "…" : tool.Descriptor.Description,
+                        Parameters = ParameterNames(tool.Descriptor.InputSchema),
                         tool.Descriptor.Annotations
                     }).ToArray(), cursor, limit, reply.Json);
                 }
@@ -454,4 +458,11 @@ public sealed class AppReadTool(
 
     private static Guid Required(Guid? value, string name) =>
         value ?? throw new ArgumentException($"'{name}' is required for this resource.", name);
+
+    /// <summary>The top-level parameter names of a tool's input schema: what it can be asked to do, without the schema's bulk.</summary>
+    private static string[] ParameterNames(JsonElement schema) =>
+        schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out var properties)
+                                                  && properties.ValueKind == JsonValueKind.Object
+            ? properties.EnumerateObject().Select(property => property.Name).ToArray()
+            : [];
 }

@@ -14,9 +14,11 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
         ReadAsync,
         new McpServerToolCreateOptions
         {
-            Description = "Read a text file as UTF-8. Without 'head' or 'tail' the content is returned verbatim, so it can be written back "
-                          + "unchanged; those two options instead return whole lines joined by LF and are mutually exclusive. Content is "
-                          + $"limited to {FileLimits.ContentCharacters} characters. "
+            Description = "Read a text file as UTF-8. Without 'head', 'tail' or 'offset' the content is returned verbatim, so it can be "
+                          + "written back unchanged; those options instead return whole lines joined by LF and are mutually exclusive. "
+                          + "'offset' starts at that 1-based line and 'limit' caps the line count, so a large file can be read in parts: "
+                          + "find the place with grep_files, then read the lines around it. 'firstLine' and 'lines' say which lines came "
+                          + $"back and 'truncated' that more follow. Content is limited to {FileLimits.ContentCharacters} characters. "
                           + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -26,11 +28,19 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
         [Description("Absolute path of the file to read.")] [MaxLength(4096)] string path,
         [Description("Return only the first N lines.")] [Range(1, 100000)] int? head = null,
         [Description("Return only the last N lines.")] [Range(1, 100000)] int? tail = null,
+        [Description("Start at this 1-based line.")] [Range(1, int.MaxValue)] int? offset = null,
+        [Description("With 'offset', return at most this many lines.")] [Range(1, 100000)] int? limit = null,
         CancellationToken cancellationToken = default)
     {
-        if (head is not null && tail is not null)
+        if ((head is not null ? 1 : 0) + (tail is not null ? 1 : 0) + (offset is not null ? 1 : 0) > 1)
         {
-            return reply.Reply(new TextFileResult(path, "", 0, 0, false, "Specify either 'head' or 'tail', not both."), true);
+            return reply.Reply(new TextFileResult(path, "", 0, 0, false, "Specify only one of 'head', 'tail' and 'offset'."), true);
+        }
+
+        if (limit is not null && offset is null)
+        {
+            // A limit alone is a head by another name; reading from the first line keeps the call useful.
+            offset = 1;
         }
 
         string resolved;
@@ -55,9 +65,12 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
 
         try
         {
-            return reply.Reply(head is null && tail is null
-                ? await WholeAsync(resolved, cancellationToken)
-                : await LinesAsync(resolved, head, tail, cancellationToken));
+            var result = offset is { } start
+                ? await RangeAsync(resolved, start, limit, cancellationToken)
+                : head is null && tail is null
+                    ? await WholeAsync(resolved, cancellationToken)
+                    : await LinesAsync(resolved, head, tail, cancellationToken);
+            return reply.Reply(result, result.Error is not null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -131,6 +144,33 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
             selected.Count,
             truncated,
             null);
+    }
+
+    private async Task<TextFileResult> RangeAsync(string path, int offset, int? limit, CancellationToken cancellationToken)
+    {
+        var selected = new List<string>();
+        var number = 0;
+        var truncated = false;
+        var characters = 0;
+        await foreach (var line in files.ReadLinesAsync(path, cancellationToken))
+        {
+            if (++number < offset) continue;
+            if (selected.Count == limit || (selected.Count > 0 && characters + line.Length + 1 > FileLimits.ContentCharacters))
+            {
+                truncated = true;
+                break;
+            }
+
+            selected.Add(line);
+            characters += line.Length + 1;
+        }
+
+        if (selected.Count == 0 && number < offset)
+        {
+            return new TextFileResult(path, "", 0, 0, false, $"The file has {number} lines; 'offset' {offset} is past its end.");
+        }
+
+        return new TextFileResult(path, string.Join('\n', selected), selected.Count == 0 ? 0 : offset, selected.Count, truncated, null);
     }
 
     private static int Lines(string content)

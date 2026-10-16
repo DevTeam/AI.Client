@@ -159,7 +159,10 @@ public sealed class SkillRouteSkill(
         var chat = invocation.CurrentChatId is { } chatId ? await chats.GetAsync(invocation.ProjectId, chatId, token) : null;
         var project = await projects.GetAsync(invocation.ProjectId, token);
         var connectionId = chat?.ConnectionId ?? project?.ConnectionId;
-        return global.Connections.FirstOrDefault(item => item.Id == connectionId && item.Enabled)
+        // The person waits on this before every turn, and picking from a short list is the kind of
+        // work the connections marked for subtasks are for: usually a cheaper, faster model.
+        return global.Connections.FirstOrDefault(item => item.ForSubtasks && item.Enabled)
+            ?? global.Connections.FirstOrDefault(item => item.Id == connectionId && item.Enabled)
             ?? global.Connections.FirstOrDefault(item => item.IsDefault && item.Enabled)
             ?? global.Connections.FirstOrDefault(item => item.Enabled);
     }

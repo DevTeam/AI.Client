@@ -77,8 +77,8 @@ still apply. Do not ask again for a decision the user already made.
    `project-security-review` to identify overly broad grants and unsafe existing policies. If a
    selected workflow actually needs a policy change, call `project-tools-configure` with only its
    enabled server names and exact original tool names. Use `tool_search` to find a candidate;
-   if its original name remains unclear, read one compact `McpTools` inventory for that server
-   with includeSchemas=false. Let the configuration playbook inspect the selected full schemas;
+   if its original name remains unclear, read the compact `McpTools` inventory for that server
+   (the default). Let the configuration playbook inspect the selected full schemas;
    do not fetch them here. Do not use a broad all-server default for
    initial setup. Preserve Deny and inherited restrictions.
    Apply changes at project scope, not globally or in this chat, and verify saved policies.

@@ -92,9 +92,11 @@ Where criteria come from:
 - a scheduled chat's success criteria: `chat-schedule-run` takes each as a criterion and reports the
   run as succeeded only when every criterion that applies is met.
 
-Before the final answer the criteria are settled, once. When the model answers with a criterion
-still `Unverified`, `ChatAgent` drops the draft and asks the step again with the trailing
-instruction `run.plan-criteria`: check each, mark it `NotApplicable` with the reason, or leave it
+Before the final answer the criteria are settled, once. When every step is finished and a
+criterion is still `Unverified`, the next request already carries the trailing instruction
+`run.plan-criteria`, so the check is asked for before an answer is written rather than by dropping
+one. When the model answers with a criterion still `Unverified` before that, `ChatAgent` drops the
+draft and asks the step again with the same instruction: check each, mark it `NotApplicable` with the reason, or leave it
 `Unverified` and say so in the answer. The second answer stands whatever the criteria say: a
 criterion that cannot be checked is reported, not forced. The plan reminder `run.plan` lists the
 criteria and stays while one is unverified, even after the last step.

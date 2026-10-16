@@ -20,9 +20,10 @@ user's language. Use another scope only when the user explicitly requested it.
    grants, credentials and server settings unchanged.
 2. For each selected server, read `app_read` resource=McpTools with resourceId=the server id.
    When exact original tool names were supplied, fetch each one directly with `query` set to that
-   name and includeSchemas=true. Otherwise first read a compact inventory with
-   includeSchemas=false, following nextCursor until complete, then fetch each selected tool's
-   full schema by exact query before classifying it. Discovery connects but calls no tools. On a
+   name, which returns its full schema. Otherwise read the compact inventory (the default),
+   following nextCursor until complete: names, schema hashes, default decisions, annotations,
+   short descriptions and parameter names. Classify from it, and fetch one tool's full schema by
+   exact query only when that still leaves the decision unclear. Discovery connects but calls no tools. On a
    discovery error, report that server and continue other servers; never guess its tool identities.
    Select supplied tool names exactly, or all discovered tools when none were specified. Policies
    use the returned (serverId, name, schemaHash), never the model's prefixed function name.

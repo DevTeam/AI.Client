@@ -430,7 +430,9 @@ new project's first chat, submits the requested task there with `app_runs` and o
 The catalog alone was not enough: a model read it and still did by hand what a playbook covers.
 So before the first model step of every interactive turn that starts with a new user message,
 `ChatAgent` asks `ISkillRouting`, which runs the `skill-route` executor: one model call without
-tools on the chat's own connection, 12 seconds at most. It gets the message, the end of the
+tools, 12 seconds at most. The person waits on it before every turn, so it runs on the first
+enabled connection marked for subtasks — usually a cheaper, faster model — and on the chat's own
+connection when none is marked. It gets the message, the end of the
 previous answer, the active playbook, the selected skill metadata and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
 tools, and those the chosen skills declare, receive pending discovery priority before the tool

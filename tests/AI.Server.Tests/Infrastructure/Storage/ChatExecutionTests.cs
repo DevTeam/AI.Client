@@ -218,20 +218,17 @@ public sealed partial class ChatExecutionTests
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
 
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Go on"));
+        // Every step is finished, so the unchecked criterion is asked about before an answer is
+        // written rather than by dropping one: the turn costs no answer thrown away.
         var reminded = await fixture.NextCallAsync();
         reminded.Request.ContextMessages![^1].ForModel.ShouldContain("1. [Unverified] The parser tests pass", Case.Sensitive);
-        reminded.Answer.SetResult("Done, it works.");
-
-        // The answer over an unchecked criterion is dropped and the step asked again, once.
-        var gated = await fixture.NextCallAsync();
-        gated.Request.ContextMessages![^1].ForModel.ShouldContain(
+        reminded.Request.ContextMessages![^1].ForModel.ShouldContain(
             "Before you answer: these criteria of the plan are still Unverified: 1. The parser tests pass.", Case.Sensitive);
-        gated.Answer.SetResult("Done; the parser tests were not run, so that is not verified.");
+        reminded.Answer.SetResult("Done; the parser tests were not run, so that is not verified.");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
 
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages[^1].Content.ShouldBe("Done; the parser tests were not run, so that is not verified.");
-        chat.Messages.ShouldNotContain(message => message.Content == "Done, it works.");
     }
 
     [Fact]
@@ -915,6 +912,50 @@ public sealed partial class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Where(message => message.Role == "Assistant" && message.ToolCalls is null)
             .ShouldHaveSingleItem().Content.ShouldBe("The command printed the same output every time; I need the log path.");
+    }
+
+    [Fact]
+    public async Task AManualApprovalCardShouldNotWaitForItsRiskAdvice()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Completion.RiskRelease = new TaskCompletionSource();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        // The card is up while the assessment is still being written.
+        var pending = (await fixture.WaitAsync(run => run.PendingApproval is not null)).PendingApproval!;
+        pending.Assessment.ShouldBeNull();
+        fixture.Completion.RiskRelease.SetResult();
+        var advised = (await fixture.WaitAsync(run => run.PendingApproval?.Assessment is not null)).PendingApproval!;
+        advised.Id.ShouldBe(pending.Id);
+        advised.Assessment.ShouldBe("Review this call.");
+
+        (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
+            new ToolApprovalDecision(pending.Id, ToolApprovalAction.Allow), CancellationToken.None)).ShouldBeTrue();
+        (await fixture.NextCallAsync()).Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task ReadsOfABatchShouldRunTogetherAndReturnInTheirOrder()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferReads = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Read the three files"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [.. Enumerable.Range(1, 3).Select(index =>
+            new ChatToolCall($"read-{index}", "mcp_built_in__read_text_file", $"{{\"path\":\"C:\\file{index}.txt\"}}"))];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.Where(message => message.ToolCallId is not null).Select(message => message.ToolCallId)
+            .ShouldBe(["read-1", "read-2", "read-3"]);
+        fixture.Tools.MostReadsAtOnce.ShouldBeGreaterThan(1);
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
 
     [Fact]
@@ -2917,7 +2958,22 @@ public sealed partial class ChatExecutionTests
     {
         // A stand-in server answers in the stored result format, so it needs the codec itself.
         private readonly ToolResultCodec _codec = new(new ToolResultModelProjector());
-        public int CallCount { get; private set; }
+        private int _callCount;
+        private int _activeReads;
+        private int _mostReadsAtOnce;
+        public int CallCount => _callCount;
+
+        /// <summary>The most read_text_file calls that were in flight at the same moment.</summary>
+        public int MostReadsAtOnce => _mostReadsAtOnce;
+
+        /// <summary>Set to offer a built-in read-only tool, which may run alongside the other reads of its batch.</summary>
+        public bool OfferReads { get; set; }
+
+        private static readonly AgentTool ReadTextFile = new(
+            new ChatToolDefinition("mcp_built_in__read_text_file", "Read", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__read_text_file", "read_text_file", "Read", JsonSerializer.Deserialize<JsonElement>("{}"))
+                with { Annotations = new ToolAnnotations(null, true, false, true, false) },
+            DefaultMcpServer.Id, "read_text_file", "schema");
         public int OpenCount { get; private set; }
         private static readonly AgentTool ProcessRun = new(
             new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
@@ -2979,7 +3035,8 @@ public sealed partial class ChatExecutionTests
         public IReadOnlyList<AgentTool> Tools =>
             [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
-                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>()];
+                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
+                .. OfferReads ? [ReadTextFile] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>
         public IUserPromptBroker? Broker { get; set; }
@@ -3007,7 +3064,22 @@ public sealed partial class ChatExecutionTests
 
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
-            CallCount++;
+            Interlocked.Increment(ref _callCount);
+            if (tool.OriginalName == "read_text_file")
+            {
+                var active = Interlocked.Increment(ref _activeReads);
+                for (var most = _mostReadsAtOnce; active > most; most = _mostReadsAtOnce)
+                    Interlocked.CompareExchange(ref _mostReadsAtOnce, active, most);
+                try
+                {
+                    await Task.Delay(300, cancellationToken);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeReads);
+                }
+                return _codec.Read("{\"structuredContent\":{\"content\":\"text\"}}");
+            }
             if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","

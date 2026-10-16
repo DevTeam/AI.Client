@@ -12,7 +12,7 @@ In addition, the Host ships a second built-in server — [App tools](17-app-tool
 | `trigger_wait` | wait for a time, file, or process condition during the current chat run | `read` for file paths |
 | `fetch` | download an http/https URL as Markdown | — (network) |
 | `list_allowed_directories` | enumerate the current session's directory grants | — |
-| `read_text_file` | read a text file, `head`/`tail` options | `read` |
+| `read_text_file` | read a text file, `head`/`tail` or `offset`/`limit` line ranges | `read` |
 | `read_multiple_files` | batch read up to 32 files | `read` |
 | `read_image_file` | read an image and return the picture itself as an image block | `read` |
 | `list_directory` | direct children of a directory | `read` |
@@ -124,7 +124,10 @@ Path check in `PathGuard`:
 
 Result limits: 262144 characters per file contents, 32 files and 262144 characters per `read_multiple_files`, 15 MB per `read_image_file`, 5000 entries per `list_directory`, 20000 entries and 32 levels per `directory_tree`, 1000 matches and 200000 visited entries per `search_files`, 1000 matches, 5000 read files, and 131072 characters per `grep_files`, 64 replacements per `edit_file`. Directory links are enumerated but not expanded during the walk. `move_file` does not overwrite an existing destination. `delete_file` deletes only a file, `delete_directory` only a directory: each tool refuses the other kind of path and names the suitable one. Without `recursive`, a non-empty directory is not removed, so a call that did not request recursion cannot wipe more than the named directory. Both tools declare `destructive = true` and `idempotent = false`: a repeat call on an already removed path returns `deleted: false` with an error.
 
-`read_text_file` without `head`/`tail` returns the contents verbatim, including the trailing newline, so the result can be written back without distortion. `edit_file` compares text in normalized LF form and preserves the file's original newline style; every `oldText` must occur exactly once, otherwise no replacement is applied.
+`read_text_file` with `offset` (a 1-based line) and an optional `limit` returns that range of lines
+joined by LF; `firstLine` and `lines` say which lines came back, `truncated` that more follow, and an
+`offset` past the end is an error naming the file's line count. A `limit` alone reads from the first
+line. A large file is read in parts this way instead of whole. `read_text_file` without `head`, `tail` or `offset` returns the contents verbatim, including the trailing newline, so the result can be written back without distortion. `edit_file` compares text in normalized LF form and preserves the file's original newline style; every `oldText` must occur exactly once, otherwise no replacement is applied.
 
 Not implemented: `IncludePatterns`/`ExcludePatterns` from the `DirectoryGrant` model.
 

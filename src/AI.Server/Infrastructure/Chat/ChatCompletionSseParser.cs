@@ -13,13 +13,11 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
     // Once the model has started streaming, a gap of the policy's idle timeout between lines means
     // the connection has stalled. Waiting for the very first chunk is a different situation — the
     // endpoint may legitimately spend a while "thinking" (a large tool-result context, a slow
-    // provider, a reasoning model) before sending anything at all, so that wait gets a much longer
-    // allowance below rather than reusing this one; conflating the two used to fail a
-    // merely-slow-to-start response with a bare "The operation has timed out." after only 10 seconds.
+    // provider, a reasoning model) before sending anything at all. That wait is bounded by the
+    // caller's token, which allows for the size of the request; a fixed limit here would cut a
+    // long prompt off before the caller's allowance ran out.
     /// <summary>How many tool calls one assistant message may carry before the stream is rejected as malformed.</summary>
     private const int MaxParallelToolCalls = 1024;
-
-    private static readonly TimeSpan FirstTokenTimeout = TimeSpan.FromSeconds(120);
 
     /// <summary>
     /// How long the stream is read past its finish reason for the usage report. Endpoints asked for
@@ -51,7 +49,7 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
                     ? UsageWait - finishTimer.Elapsed
                     : hasContent
                         ? policy.StreamIdleTimeout - contentIdleTimer.Elapsed
-                        : FirstTokenTimeout;
+                        : Timeout.InfiniteTimeSpan;
                 if (finished && readTimeout <= TimeSpan.Zero) break;
                 if (hasContent && readTimeout <= TimeSpan.Zero) throw Stalled(calls.Count);
 
@@ -61,7 +59,6 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
             catch (TimeoutException)
             {
                 if (finished) break;
-                if (!hasContent) throw new TimeoutException($"The model did not send a response within {FirstTokenTimeout.TotalSeconds:0} seconds.");
                 throw Stalled(calls.Count);
             }
 

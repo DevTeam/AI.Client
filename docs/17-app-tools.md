@@ -59,6 +59,14 @@ Resources: `Projects`, `Project`, `Chats`, `Chat`, `Messages`, `Runs`, `Settings
 
 `Runs`, and the `current` run that `app_runs` returns, are compact: the open page's message tail, draft, diffs and turn usage are left out, and queued messages, the arguments of tools in flight and the streaming answer are clipped. A run submitting a long message would otherwise return that message again in its own result.
 
+`McpTools` lists the declared tools of one enabled server as a compact policy inventory by default:
+names, schema hashes, default decisions, annotations, descriptions cut to 240 characters and the
+top-level parameter names. `query` with an exact original tool name returns that tool's full input
+schema; `includeSchemas=true` returns full schemas for a whole page. Full schemas were the default
+until 2026-10: one server's page ran to over a hundred thousand characters, which stayed in the
+context for the rest of the run, and a request that large outlasted the endpoint's first-token
+timeout on every retry.
+
 A page is bounded simultaneously by the number of items (`limit`, default 100, max 1000) and by a budget of 262144 characters — the same as for the file tools. The cursor is the decimal offset of the next item, opaque by contract: the caller returns what it received and never computes it on its own. The first item of the page is always included, otherwise a document larger than the budget would become unreachable.
 
 ### Message search

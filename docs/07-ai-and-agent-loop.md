@@ -94,7 +94,12 @@ flowchart TD
 - Validate arguments against MCP input schema before approval and invocation.
 - Validate the structured result against output schema, if defined.
 - Max iterations, max calls, deadline, and cancellation.
-- Independent read-only calls may run in parallel only after policy evaluation.
+- Independent read-only calls may run in parallel only after policy evaluation. Implemented for
+  the Host's own reads: when a model response holds two or more calls of the built-in server's
+  read-only tools (except `trigger_wait`) or of `app_read`, each allowed by its policy without a
+  confirmation and within its call limit, `ChatAgent` starts them together. Their results are still
+  taken, recorded, shown and sent in the batch's order, and a batch left early cancels the reads it
+  started. A third-party server's `readOnlyHint` is its own claim, so its calls keep running in turn.
 - Side-effecting calls are executed sequentially by default.
 - A completed invocation is not repeated automatically.
 - Any result is treated as untrusted model input.
@@ -122,6 +127,14 @@ The UI does not parse provider-specific SSE directly.
 ## Errors and retries
 
 Retries are allowed for transient transport failures before any side effect begins, or for an explicitly idempotent invocation. `idempotentHint` from an unknown server is not sufficient for automatic retries. Rate limits and server retry hints are respected but bounded by the overall deadline.
+
+The wait for a stream's first token grows with the request: 90 seconds plus one second per
+thousand estimated input tokens (four characters a token, counting messages, call arguments and
+tool schemas), at most ten minutes (`IChatTransportPolicy.FirstTokenTimeoutFor`). A slow gateway
+reads a long prompt for minutes before it sends anything, and a fixed limit cut it off just before
+the answer. A first-token timeout is retried once: each attempt makes the endpoint read the whole
+prompt again, so more attempts only repeat the same wait. Once the stream has started, the idle
+timeout between lines applies instead.
 
 ## Branch context
 

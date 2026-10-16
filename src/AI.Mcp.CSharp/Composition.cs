@@ -21,9 +21,9 @@ internal sealed partial class Composition
             .Root<ScriptRunner>(nameof(Worker))
             // Tools
             .Transient<ScriptRunTool>(Tag.Unique)
-            .Transient<ProcessScriptRunner, ToolReply>()
             // File system: the platform is one implementation of the contract, a fake in tests is another.
             .Singleton<SystemFileSystem, SystemPath>()
+            .Transient<ProcessScriptRunner, ToolReply>()
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

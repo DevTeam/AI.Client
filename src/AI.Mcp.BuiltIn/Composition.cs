@@ -28,9 +28,9 @@ internal sealed partial class Composition
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
-            .Transient<ProcessRunner, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             // File system: the platform is one implementation of the contract, a fake in tests is another.
             .Singleton<SystemFileSystem, SystemPath>()
+            .Transient<ProcessRunner, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {

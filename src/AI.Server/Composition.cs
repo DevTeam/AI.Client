@@ -66,22 +66,13 @@ internal sealed class Composition
                 WorkspaceUndoService,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
-                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, ContextTextTokenizer>()
-            .Transient<CompositeToolSessionFactory>()
-            // The dispatcher of scheduled chats owns one loop and the schedules it last read.
-            .Singleton<ChatScheduler>()
-            // Command rules share one document and its write gate.
-            .Singleton<JsonCommandRuleRepository>()
-            .Singleton<ChatKindPolicyRegistry>()
-            // Context windows learned from model catalogs, and which endpoints reported none.
-            .Singleton<ConnectionContextWindowDetector>()
+                JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, ContextTextTokenizer, ChatScheduler, JsonCommandRuleRepository,
+                ChatKindPolicyRegistry, ConnectionContextWindowDetector, JsonLineFileLoggerProvider, ChatReplySuggestions, ChatRepositoryRouter>()
             .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
             .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
             .Bind<IPersistentChatRunRepository>().As(Lifetime.Singleton).To<JsonChatRunRepository>()
             .Bind<IHostLifetimeChatRunRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRunRepository>()
-            .Bind<IChatRepository>().As(Lifetime.Singleton).To<ChatRepositoryRouter>()
             .Bind<IChatRunRepository>().As(Lifetime.Singleton).To<ChatRunRepositoryRouter>()
-            .Singleton<JsonLineFileLoggerProvider>()
             // Credentials: DPAPI on Windows; elsewhere AES-GCM under a key in the system keyring,
             // or in the data directory when the machine has no working keyring.
             .Singleton<IUserDataProtector>(ctx =>
@@ -100,11 +91,7 @@ internal sealed class Composition
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
-            .Singleton<ChatReplySuggestions>()
-            // Bindings: one call per lifetime and tag. Order inside a call carries no meaning; a call
-            // carries at most the number of type parameters Pure.DI declares for one binding method.
-            // Request handling, storage layout and workspace access.
-            .Transient<ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
+            .Transient<CompositeToolSessionFactory, ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
                 ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
@@ -116,9 +103,6 @@ internal sealed class Composition
                 ChatTemporaryDirectory,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
                 TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles>()
-            .Transient<DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
-                MarkupFilePreviewFormat>(Tag.Unique)
-            // Instruction composition, context planning, credentials and usage accounting.
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
                 OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief, ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
@@ -128,8 +112,8 @@ internal sealed class Composition
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,
-                GenericSkillExecutor, SkillGuide, SkillRouting, SkillCandidateSelector, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext>()
-            .Transient<ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo, ScheduledChatQuery>()
+                GenericSkillExecutor, SkillGuide, SkillRouting, SkillCandidateSelector, AppNavigationTargets, AppGuideTopics, AppGuideLanguageContext,
+                ChatScheduleStore, ChatScheduleService, ScheduledChatPass, ScheduleDemo, ScheduledChatQuery>()
             .Transient<IKeyringMasterKeyStore>(ctx =>
             {
                 if (OperatingSystem.IsMacOS())
@@ -148,18 +132,15 @@ internal sealed class Composition
             .Transient<ChatCommentSuggestSkill>("chat-comment-suggest")
             .Transient<SkillRouteSkill>("skill-route")
             .Transient<ChatToolRiskAssessSkill>("chat-tool-risk-assess")
-            // Endpoints, app tools and session factories are injected as collections; the tag belongs to
-            // the call, so each tagged group stays on its own.
             .Transient<ConversationChatKindPolicy, GuideChatKindPolicy, DemoChatKindPolicy, TeamDemoChatKindPolicy,
-                ScheduledChatKindPolicy>(Tag.Unique)
-            .Transient<HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
+                ScheduledChatKindPolicy, HealthEndpoints, RunEndpoints, ChatEndpoints, ProjectEndpoints, SettingsEndpoints,
                 ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
-                AppGuideEndpoints, ScheduleEndpoints>(Tag.Unique)
-            .Transient<AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
+                AppGuideEndpoints, ScheduleEndpoints, AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
                 AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
                 AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppScheduleTool, AppPlanTool,
-                DefaultToolSessionFactory, CSharpToolSessionFactory>(Tag.Unique)
+                DefaultToolSessionFactory, CSharpToolSessionFactory, DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
+                MarkupFilePreviewFormat>(Tag.Unique)
             .Transient<AppToolSessionFactory>(Tag.Type)
             .Transient((
                 [Tag("base")] IChatCompletionClient baseClient,

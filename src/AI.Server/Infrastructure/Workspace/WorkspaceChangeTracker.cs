@@ -159,6 +159,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
     {
         private readonly Lock _gate = new();
         private readonly Dictionary<string, Baseline> _baselines = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ComposedChange> _changes = new(StringComparer.OrdinalIgnoreCase);
         private readonly IFileSystem _files = files;
         private readonly IPath _paths = paths;
         private string[] _grantRoots = grantRoots;
@@ -211,8 +212,7 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
             var byPath = new Dictionary<string, FileChange>(StringComparer.OrdinalIgnoreCase);
             foreach (var (path, baseline) in tracked)
             {
-                var current = Read(path);
-                if (Describe(diff, path, baseline, current) is not { } change) continue;
+                if (Change(diff, path, baseline) is not { } change) continue;
                 byPath[path] = change;
             }
 
@@ -220,6 +220,44 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
             files.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));
             return new WorkspaceChangeSet(files, files.Sum(file => file.Additions ?? 0),
                 files.Sum(file => file.Deletions ?? 0));
+        }
+
+        /// <summary>
+        /// The path's net change. A set is composed at the end of every call, and a run that touched
+        /// many files would otherwise read and diff all of them each time, so the last answer is
+        /// kept while the file's stamp (existence, length and write time) and its baseline are the
+        /// ones it was computed for. Only a probe of the file is left on that path.
+        /// </summary>
+        private FileChange? Change(ILineDiff diff, string path, Baseline baseline)
+        {
+            lock (_gate)
+                if (_changes.TryGetValue(path, out var known) && known.Order == baseline.Order
+                    && Probe(path) is { } stamp && stamp == known.Stamp)
+                    return known.Change;
+            var current = Read(path);
+            var change = Describe(diff, path, baseline, current);
+            // An unreadable file has no stamp worth keeping, so it is read again next time.
+            if (!current.IsUnreadable)
+                lock (_gate)
+                    _changes[path] = new ComposedChange(baseline.Order,
+                        new FileStamp(current.Exists, current.Length, current.ModifiedAt), change);
+            return change;
+        }
+
+        private FileStamp? Probe(string path)
+        {
+            try
+            {
+                var entry = _files.GetEntryAsync(path, CancellationToken.None).GetAwaiter().GetResult();
+                if (entry is null || entry.IsDirectory) return new FileStamp(false, 0, default);
+                return new FileStamp(true, entry.Length, _files.GetLastWriteTimeAsync(path, CancellationToken.None)
+                    .GetAwaiter().GetResult().UtcDateTime);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException
+                                              or NotSupportedException or ArgumentException)
+            {
+                return null;
+            }
         }
 
         public List<WorkspaceUndoCapture> Captures(IReadOnlyDictionary<string, Baseline> tracked,
@@ -293,7 +331,9 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
                 if (entry.Length > MaxTrackedBytes)
                     return new Baseline(true, null, entry.Length, modifiedAt, order, null);
                 var bytes = _files.ReadBytesAsync(path, CancellationToken.None).GetAwaiter().GetResult();
-                var text = _files.ReadTextAsync(path, CancellationToken.None).GetAwaiter().GetResult();
+                // Decoded from the bytes just read, as a text read would decode the file, rather
+                // than read a second time.
+                var text = bytes is null ? null : Decode(bytes);
                 // A NUL byte is the usual cheap tell for binary content, where line counts are noise.
                 return text is null || text.Contains('\0', StringComparison.Ordinal)
                     ? new Baseline(true, null, entry.Length, modifiedAt, order, bytes)
@@ -306,6 +346,16 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
                 return Baseline.Unreadable;
             }
         }
+
+        private static string Decode(byte[] bytes)
+        {
+            using var reader = new StreamReader(new MemoryStream(bytes, writable: false));
+            return reader.ReadToEnd();
+        }
+
+        private readonly record struct FileStamp(bool Exists, long Length, DateTime ModifiedAt);
+
+        private sealed record ComposedChange(long Order, FileStamp Stamp, FileChange? Change);
 
         /// <summary>
         /// Canonicalizes a reported path and refuses anything outside the run's grants. The path
@@ -352,6 +402,8 @@ public sealed class WorkspaceChangeTracker(ILineDiff diff, IWorkspaceUndoService
 
         public static Baseline Missing => new(false, null, 0, default, Next(), null);
         public static Baseline Unreadable => new(true, null, 0, default, Next(), null);
+
+        public bool IsUnreadable => Exists && Text is null && Bytes is null && Length == 0 && ModifiedAt == default;
 
         public static long Next() => Interlocked.Increment(ref _taken);
     }

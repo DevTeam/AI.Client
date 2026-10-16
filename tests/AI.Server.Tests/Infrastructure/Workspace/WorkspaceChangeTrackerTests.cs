@@ -382,4 +382,32 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
 
         (await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken)).IsEmpty.ShouldBeTrue();
     }
+
+    [Fact]
+    public async Task ShouldNotReadAnUnchangedTrackedFileAgainForTheNextSnapshot()
+    {
+        // A snapshot is taken at the end of every call; a file the run is done with should cost a
+        // probe there, not a read and a diff.
+        var files = new AI.Infrastructure.Tests.Storage.MemoryFileSystem();
+        var file = @"C:\data\work\a.txt";
+        await files.WriteTextAsync(file, "one\ntwo", TestContext.Current.CancellationToken);
+        var tracker = new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>(), files, files.Path);
+        await tracker.BeginRunAsync(_run, [new ToolDirectoryGrant(@"C:\data\work", true, ["edit"])],
+            null, TestContext.Current.CancellationToken);
+        await EditAsync(tracker, "edit_file", file,
+            () => files.WriteTextAsync(file, "one\nTWO", TestContext.Current.CancellationToken));
+        var first = await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken);
+        while (files.ReadPaths.TryDequeue(out _)) { }
+
+        var second = await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken);
+
+        files.ReadPaths.ShouldBeEmpty();
+        second.Files.ShouldHaveSingleItem().Diff.ShouldBe(first.Files.ShouldHaveSingleItem().Diff);
+
+        await files.WriteTextAsync(file, "one\nTWO\nthree", TestContext.Current.CancellationToken);
+        var third = await tracker.SnapshotAsync(_run, TestContext.Current.CancellationToken);
+
+        files.ReadPaths.ShouldContain(file);
+        third.Files.ShouldHaveSingleItem().Additions.ShouldBe(2);
+    }
 }

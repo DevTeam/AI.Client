@@ -39,6 +39,40 @@ public sealed class ChatThread
         _branches[id.Value] = new ChatBranch(id.Value, null, title.Trim());
     }
 
+    private ChatThread(ChatThread source)
+    {
+        Id = source.Id;
+        ProjectId = source.ProjectId;
+        Title = source.Title;
+        AutoTitlePending = source.AutoTitlePending;
+        Kind = source.Kind;
+        KindState = source.KindState;
+        KindStateVersion = source.KindStateVersion;
+        CreatedAt = source.CreatedAt;
+        UpdatedAt = source.UpdatedAt;
+        LastActivityAt = source.LastActivityAt;
+        ArchivedAt = source.ArchivedAt;
+        ArchiveOperationId = source.ArchiveOperationId;
+        IsPinned = source.IsPinned;
+        PinnedAt = source.PinnedAt;
+        PinOrder = source.PinOrder;
+        ConnectionId = source.ConnectionId;
+        ReasoningEffort = source.ReasoningEffort;
+        ApprovalMode = source.ApprovalMode;
+        // Messages, branches and policies are immutable, so sharing them is safe. Messages go in
+        // creation order, the order a chat read from its document has them in.
+        foreach (var message in source._messages.Values.OrderBy(item => item.CreatedAt))
+            _messages.Add(message.Id, message);
+        foreach (var branch in source._branches.Values) _branches.Add(branch.Id, branch);
+        foreach (var policy in source._toolPolicies) _toolPolicies.Add(policy.Key, policy.Value);
+    }
+
+    /// <summary>
+    /// An independent copy that changes apart from this chat. It shares the immutable messages,
+    /// so a copy costs a pass over the chat's entries rather than another read of its document.
+    /// </summary>
+    public ChatThread Clone() => new(this);
+
     public ChatId Id { get; }
     public ProjectId ProjectId { get; }
     public string Title { get; private set; }

@@ -8,6 +8,28 @@ The chat manifest contains `MessageIds` and branches. Messages are written separ
 
 Repositories serialize revision checking and writing within a single Host. Multiple processes must not write to the same directory. Unused nodes are currently retained; a garbage collector is not implemented.
 
+## Read caches
+
+A chat document holds whole tool results, and the agent loop reads it several times around every tool
+call, so `JsonChatRepository` keeps the parsed chats it has read or written, by path, least recently
+used first out once their documents together pass 96 MB (a document above 48 MB is not kept). Each
+entry carries the file's stamp: its length and last write time.
+
+- A read whose stamp matches the entry gets a clone of the cached chat. `ChatThread` is mutable, and a
+  caller changes what it read and then saves it, so the cached chat itself is never handed out; the
+  clone shares the immutable messages, branches and policies.
+- A read that misses parses the file and keeps the result only when the stamp did not change while it
+  was read.
+- A save checks the revision against the entry while its stamp matches the file, and reads the file
+  otherwise. It keeps a clone of what it wrote, under the stamp the file has after the move, so the
+  caller may go on changing its own instance. A conflicting save changes nothing in the cache.
+- A write by anything else, another repository instance included, changes the stamp, so the entry is
+  dropped at the next read and the stored revision is checked again from the file.
+
+`JsonProjectRepository` keeps the last document text of each project the same way, so the project read
+at every step of a run costs a stamp instead of a file read; the text is parsed for every caller.
+
+
 ## File access
 
 Storage logic performs no operating-system call of its own. Every read, write, directory listing, move

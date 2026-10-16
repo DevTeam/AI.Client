@@ -117,6 +117,45 @@ public class JsonProjectRepositoryTests
         Should.Throw<Exception>(action);
     }
 
+    [Fact]
+    public async Task ShouldAnswerRepeatedReadsWithoutReadingAnUnchangedDocument()
+    {
+        // A run reads its project at every step to see whether a grant changed.
+        var repository = CreateInstance();
+        await repository.SaveAsync(CreateProject(), 0, CancellationToken.None);
+        await repository.GetAsync(_projectId, CancellationToken.None);
+        while (_fileSystem.ReadPaths.TryDequeue(out _)) { }
+
+        var first = await repository.GetAsync(_projectId, CancellationToken.None);
+        var second = await repository.GetAsync(_projectId, CancellationToken.None);
+
+        _fileSystem.ReadPaths.ShouldNotContain(GetProjectPath());
+        first.ShouldNotBeNull();
+        second.ShouldNotBeNull();
+        first.Project.ShouldNotBeSameAs(second.Project);
+        first.Project.UpdateDetails("Changed in memory", null, _createdAt.AddMinutes(1));
+        second.Project.Name.ShouldBe("Project");
+    }
+
+    [Fact]
+    public async Task ShouldReadAProjectAgainAfterAnotherWriter()
+    {
+        var repository = CreateInstance();
+        var other = CreateInstance();
+        await repository.SaveAsync(CreateProject(), 0, CancellationToken.None);
+        await repository.GetAsync(_projectId, CancellationToken.None);
+        var renamed = (await other.GetAsync(_projectId, CancellationToken.None))!;
+        renamed.Project.UpdateDetails("Renamed elsewhere", null, _createdAt.AddMinutes(1));
+        (await other.SaveAsync(renamed.Project, renamed.Revision, CancellationToken.None)).ShouldBe(ProjectSaveResult.Saved(2));
+
+        var current = await repository.GetAsync(_projectId, CancellationToken.None);
+
+        current.ShouldNotBeNull();
+        current.Project.Name.ShouldBe("Renamed elsewhere");
+        current.Revision.ShouldBe(2);
+        (await repository.SaveAsync(CreateProject(), 1, CancellationToken.None)).ShouldBe(ProjectSaveResult.Conflict(2));
+    }
+
     private JsonProjectRepository CreateInstance()
     {
         var location = new Mock<IProjectStorageLocation>();

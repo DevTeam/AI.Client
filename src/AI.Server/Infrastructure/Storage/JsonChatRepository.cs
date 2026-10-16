@@ -15,13 +15,14 @@ public sealed class JsonChatRepository(
     public void Dispose() => _writes.Dispose();
 
     private readonly AsyncGate _writes = new();
-    private const long MaxReviewLookupDocumentBytes = 48L * 1024 * 1024;
-    private const long MaxReviewLookupCacheBytes = 96L * 1024 * 1024;
-    private readonly Lock _reviewLookupsGate = new();
-    private readonly Dictionary<string, ReviewLookup> _reviewLookups = new(
+    // Parsed chats by path, least recently used last, bounded by the size of their documents.
+    private const long MaxCachedDocumentBytes = 48L * 1024 * 1024;
+    private const long MaxCacheBytes = 96L * 1024 * 1024;
+    private readonly Lock _documentsGate = new();
+    private readonly Dictionary<string, CachedDocument> _documents = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-    private readonly LinkedList<string> _reviewLookupOrder = new();
-    private long _reviewLookupBytes;
+    private readonly LinkedList<string> _documentOrder = new();
+    private long _documentBytes;
 
     public async Task<IReadOnlyList<StoredChatSummary>> ListSummariesAsync(ProjectId projectId, CancellationToken cancellationToken)
     {
@@ -71,21 +72,17 @@ public sealed class JsonChatRepository(
     public async Task<StoredChat?> GetAsync(ProjectId projectId, ChatId id, CancellationToken cancellationToken)
     {
         var path = paths.GetChatPath(id, projectId);
+        if (await CurrentDocumentAsync(path, cancellationToken) is { } cached)
+            return new StoredChat(cached.Chat.Clone(), cached.Revision);
         var before = await GetStampAsync(path, cancellationToken);
         var json = await fileSystem.ReadTextAsync(path, cancellationToken);
         if (json is null) return null;
         var stored = serializer.Deserialize(json);
-        if (before is { Length: <= MaxReviewLookupDocumentBytes } stamp
-            && await GetStampAsync(path, cancellationToken) == stamp)
+        // Cached only when nothing wrote the file while it was read, so the stamp names this content.
+        if (before is { } stamp && await GetStampAsync(path, cancellationToken) == stamp)
         {
-            var messages = stored.Chat.Messages.ToDictionary(message => message.Id.Value);
-            var reviewIds = messages.Values
-                .Where(message => message.Role == ChatMessageRole.User)
-                .SelectMany(message => message.Resources ?? [])
-                .Where(resource => resource.Kind == AI.Domain.Resources.ChatResourceKind.Review)
-                .Select(resource => resource.Id).ToHashSet();
-            StoreReviewLookup(new ReviewLookup(path, stamp, messages, reviewIds,
-                new LinkedListNode<string>(path)));
+            StoreDocument(path, stamp, stored.Chat, stored.Revision);
+            return stored with { Chat = stored.Chat.Clone() };
         }
         return stored;
     }
@@ -94,8 +91,8 @@ public sealed class JsonChatRepository(
         ChatMessageId messageId, CancellationToken cancellationToken)
     {
         var path = paths.GetChatPath(id, projectId);
-        if (await CurrentReviewLookupAsync(path, cancellationToken) is { } lookup)
-            return new ChatMessageLookup(lookup.Messages.GetValueOrDefault(messageId.Value));
+        if (await CurrentDocumentAsync(path, cancellationToken) is { } cached)
+            return new ChatMessageLookup(cached.Messages.GetValueOrDefault(messageId.Value));
         var json = await fileSystem.ReadTextAsync(path, cancellationToken);
         return json is null ? null : new ChatMessageLookup(serializer.DeserializeMessage(json, messageId.Value));
     }
@@ -104,61 +101,72 @@ public sealed class JsonChatRepository(
         Guid reviewId, CancellationToken cancellationToken)
     {
         var path = paths.GetChatPath(id, projectId);
-        if (await CurrentReviewLookupAsync(path, cancellationToken) is { } lookup)
-            return lookup.ReviewIds.Contains(reviewId);
+        if (await CurrentDocumentAsync(path, cancellationToken) is { } cached)
+            return cached.ReviewIds.Contains(reviewId);
         var json = await fileSystem.ReadTextAsync(path, cancellationToken);
         // A negative check is definitive for GUIDs written by System.Text.Json. A positive check
         // falls back to the domain model because the ID may occur in unrelated message content.
         return json?.Contains(reviewId.ToString("D"), StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<ReviewLookup?> CurrentReviewLookupAsync(string path, CancellationToken cancellationToken)
+    /// <summary>
+    /// The parsed chat whose stamp still matches the file, or null. A stamp is the file's length and
+    /// last write time: every write this repository makes replaces the entry with what it wrote, and a
+    /// write by anyone else changes the stamp, so a stale entry is never answered from.
+    /// </summary>
+    private async Task<CachedDocument?> CurrentDocumentAsync(string path, CancellationToken cancellationToken)
     {
-        ReviewLookup? lookup;
-        lock (_reviewLookupsGate) _reviewLookups.TryGetValue(path, out lookup);
-        if (lookup is null) return null;
-        if (await GetStampAsync(path, cancellationToken) != lookup.Stamp)
+        CachedDocument? cached;
+        lock (_documentsGate) _documents.TryGetValue(path, out cached);
+        if (cached is null) return null;
+        if (await GetStampAsync(path, cancellationToken) != cached.Stamp)
         {
-            lock (_reviewLookupsGate)
-                if (_reviewLookups.TryGetValue(path, out var current) && ReferenceEquals(current, lookup))
-                    RemoveReviewLookup(path);
+            lock (_documentsGate)
+                if (_documents.TryGetValue(path, out var current) && ReferenceEquals(current, cached))
+                    RemoveDocument(path);
             return null;
         }
-        lock (_reviewLookupsGate)
+        lock (_documentsGate)
         {
-            if (_reviewLookups.TryGetValue(path, out var current) && ReferenceEquals(current, lookup))
+            if (_documents.TryGetValue(path, out var current) && ReferenceEquals(current, cached))
             {
-                _reviewLookupOrder.Remove(lookup.Node);
-                _reviewLookupOrder.AddFirst(lookup.Node);
+                _documentOrder.Remove(cached.Node);
+                _documentOrder.AddFirst(cached.Node);
             }
         }
-        return lookup;
+        return cached;
     }
 
-    private void StoreReviewLookup(ReviewLookup lookup)
+    /// <summary>
+    /// Keeps <paramref name="chat"/> as the parsed form of the file with <paramref name="stamp"/>.
+    /// The caller hands it over: nothing may change it afterwards, and readers get clones.
+    /// </summary>
+    private void StoreDocument(string path, FileStamp stamp, ChatThread chat, long revision)
     {
-        lock (_reviewLookupsGate)
+        lock (_documentsGate)
         {
-            RemoveReviewLookup(lookup.Path);
-            _reviewLookups.Add(lookup.Path, lookup);
-            _reviewLookupOrder.AddFirst(lookup.Node);
-            _reviewLookupBytes += lookup.Stamp.Length;
-            while (_reviewLookupBytes > MaxReviewLookupCacheBytes)
-                RemoveReviewLookup(_reviewLookupOrder.Last!.Value);
+            RemoveDocument(path);
+            if (stamp.Length > MaxCachedDocumentBytes) return;
+            var document = new CachedDocument(path, stamp, chat, revision, new LinkedListNode<string>(path));
+            _documents.Add(path, document);
+            _documentOrder.AddFirst(document.Node);
+            _documentBytes += stamp.Length;
+            while (_documentBytes > MaxCacheBytes)
+                RemoveDocument(_documentOrder.Last!.Value);
         }
     }
 
-    private void InvalidateReviewLookup(string path)
+    private void InvalidateDocument(string path)
     {
-        lock (_reviewLookupsGate) RemoveReviewLookup(path);
+        lock (_documentsGate) RemoveDocument(path);
     }
 
-    // Called only while holding _reviewLookupsGate.
-    private void RemoveReviewLookup(string path)
+    // Called only while holding _documentsGate.
+    private void RemoveDocument(string path)
     {
-        if (!_reviewLookups.Remove(path, out var lookup)) return;
-        _reviewLookupOrder.Remove(lookup.Node);
-        _reviewLookupBytes -= lookup.Stamp.Length;
+        if (!_documents.Remove(path, out var document)) return;
+        _documentOrder.Remove(document.Node);
+        _documentBytes -= document.Stamp.Length;
     }
 
     private async Task<FileStamp?> GetStampAsync(string path, CancellationToken cancellationToken)
@@ -168,12 +176,19 @@ public sealed class JsonChatRepository(
             ? new FileStamp(entry.Length, await fileSystem.GetLastWriteTimeAsync(path, cancellationToken)) : null;
     }
 
+    /// <summary>
+    /// Saves when the stored revision is still <paramref name="expectedRevision"/>. The revision is
+    /// taken from the cached document while its stamp matches the file, so a save in the agent loop
+    /// costs stamp reads instead of a read and parse of the whole transcript; the document is read
+    /// only when something else wrote it. What was written becomes the cached document.
+    /// </summary>
     public async Task<ChatSaveResult> SaveAsync(ChatThread chat, long expectedRevision, CancellationToken cancellationToken)
     {
         using var lease = await _writes.EnterAsync(cancellationToken);
         var path = paths.GetChatPath(chat.Id, chat.ProjectId);
-        var current = await fileSystem.ReadTextAsync(path, cancellationToken);
-        var revision = current is null ? 0 : JsonNode.Parse(current)!["Revision"]!.GetValue<long>();
+        var revision = await CurrentDocumentAsync(path, cancellationToken) is { } cached
+            ? cached.Revision
+            : await ReadRevisionAsync(path, cancellationToken);
         if (revision != expectedRevision)
         {
             return ChatSaveResult.Conflict(revision);
@@ -183,12 +198,21 @@ public sealed class JsonChatRepository(
         var temporaryPath = paths.GetTemporaryChatPath(chat.Id, chat.ProjectId);
         var summaryPath = paths.GetChatSummaryPath(chat.Id, chat.ProjectId);
         var temporarySummaryPath = paths.GetTemporaryChatSummaryPath(chat.Id, chat.ProjectId);
-        await fileSystem.WriteTextAsync(temporaryPath, serializer.Serialize(chat, nextRevision), cancellationToken);
-        await fileSystem.WriteTextAsync(temporarySummaryPath, serializer.SerializeSummary(chat, nextRevision), cancellationToken);
+        // The caller keeps its instance and may go on changing it, so the cache keeps its own copy.
+        var saved = chat.Clone();
+        InvalidateDocument(path);
+        await fileSystem.WriteTextAsync(temporaryPath, serializer.Serialize(saved, nextRevision), cancellationToken);
+        await fileSystem.WriteTextAsync(temporarySummaryPath, serializer.SerializeSummary(saved, nextRevision), cancellationToken);
         await fileSystem.MoveAsync(temporaryPath, path, true, cancellationToken);
-        InvalidateReviewLookup(path);
+        if (await GetStampAsync(path, cancellationToken) is { } stamp) StoreDocument(path, stamp, saved, nextRevision);
         await fileSystem.MoveAsync(temporarySummaryPath, summaryPath, true, cancellationToken);
         return ChatSaveResult.Saved(nextRevision);
+    }
+
+    private async Task<long> ReadRevisionAsync(string path, CancellationToken cancellationToken)
+    {
+        var current = await fileSystem.ReadTextAsync(path, cancellationToken);
+        return current is null ? 0 : JsonNode.Parse(current)!["Revision"]!.GetValue<long>();
     }
 
     public async Task<ChatDeleteResult> DeleteAsync(
@@ -203,15 +227,36 @@ public sealed class JsonChatRepository(
         if (current is null) return new ChatDeleteResult(false, 0);
         var revision = JsonNode.Parse(current)!["Revision"]!.GetValue<long>();
         if (revision != expectedRevision) return new ChatDeleteResult(false, revision);
+        InvalidateDocument(path);
         await fileSystem.DeleteFileAsync(path, cancellationToken);
-        InvalidateReviewLookup(path);
         await fileSystem.DeleteFileAsync(paths.GetChatSummaryPath(id, projectId), cancellationToken);
         await fileSystem.DeleteFileAsync(paths.GetHistoryCheckpointsPath(id, projectId), cancellationToken);
         return new ChatDeleteResult(true, revision);
     }
 
     private sealed record FileStamp(long Length, DateTimeOffset LastWriteTime);
-    private sealed record ReviewLookup(string Path, FileStamp Stamp,
-        IReadOnlyDictionary<Guid, ChatMessage> Messages, IReadOnlySet<Guid> ReviewIds,
-        LinkedListNode<string> Node);
+
+    private sealed class CachedDocument(string path, FileStamp stamp, ChatThread chat, long revision,
+        LinkedListNode<string> node)
+    {
+        private IReadOnlyDictionary<Guid, ChatMessage>? _messages;
+        private IReadOnlySet<Guid>? _reviewIds;
+
+        public string Path { get; } = path;
+        public FileStamp Stamp { get; } = stamp;
+        /// <summary>Never changed and never handed out: readers get a clone.</summary>
+        public ChatThread Chat { get; } = chat;
+        public long Revision { get; } = revision;
+        public LinkedListNode<string> Node { get; } = node;
+
+        // Built on first use: most cached documents only ever serve whole-chat reads and saves.
+        public IReadOnlyDictionary<Guid, ChatMessage> Messages =>
+            _messages ??= Chat.Messages.ToDictionary(message => message.Id.Value);
+
+        public IReadOnlySet<Guid> ReviewIds => _reviewIds ??= Chat.Messages
+            .Where(message => message.Role == ChatMessageRole.User)
+            .SelectMany(message => message.Resources ?? [])
+            .Where(resource => resource.Kind == AI.Domain.Resources.ChatResourceKind.Review)
+            .Select(resource => resource.Id).ToHashSet();
+    }
 }

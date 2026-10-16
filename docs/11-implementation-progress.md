@@ -761,3 +761,33 @@ order and its ignoring a detection for another model, detecting once per connect
 storing only the connection's own model, retrying a miss, falling back when the endpoint fails,
 keeping a detection on save and dropping it on a model change, and the composer treating a detected
 window as real.
+
+## 2026-10-16 — Fewer storage reads around each tool call
+
+Every tool call in the agent loop parsed the whole chat document about five times and read it once
+more for the revision check of the save, all under the chat's lock: at the call's start and end for
+the run snapshot, before appending the result, inside the append and in the save. A chat holds whole
+tool results, so each of those grew with every step. The tracked files of the run were read twice and
+diffed again at the end of every call, and the project document was read at every step.
+
+- `JsonChatRepository` keeps parsed chats by file stamp (length and last write time), in a cache
+  bounded by document size. Reads get a clone (`ChatThread.Clone`, which shares the immutable
+  messages); a save takes the revision from the cached chat while the stamp matches and keeps what
+  it wrote as the cached chat. A write by anything else changes the stamp, and the file is read and
+  checked again. The review-source lookups use the same cache.
+- `JsonProjectRepository` keeps the last document of each project by stamp, so an unchanged project
+  is not read from disk again; it is still parsed for each caller.
+- `WorkspaceChangeTracker` keeps each tracked path's change while the file's stamp and baseline are
+  the ones it was computed for, and decodes a file's text from the bytes it reads instead of reading
+  the file again.
+
+Files: `src/AI.Server/Domain/Chats/ChatThread.cs`,
+`src/AI.Server/Infrastructure/Storage/{JsonChatRepository,JsonProjectRepository}.cs`,
+`src/AI.Server/Infrastructure/Workspace/WorkspaceChangeTracker.cs`, doc 04.
+
+Checks: `AI.Server.Tests` 1326 tests (one Unix-only skipped), all passing. New tests: three tool
+calls (four reads and a save each) read the chat file no times after the first save and write every
+revision; a chat handed out changes apart from the cache, and a conflicting save leaves it intact;
+another writer's save is seen and its revision checked; a clone serializes as the document read back
+does; repeated project reads skip the file and see another writer; an unchanged tracked file is not
+read again for the next snapshot, and a changed one is.

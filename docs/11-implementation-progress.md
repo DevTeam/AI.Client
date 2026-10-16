@@ -780,14 +780,20 @@ diffed again at the end of every call, and the project document was read at ever
 - `WorkspaceChangeTracker` keeps each tracked path's change while the file's stamp and baseline are
   the ones it was computed for, and decodes a file's text from the bytes it reads instead of reading
   the file again.
+- The run snapshot at the start and end of a call, and the read before a tool result is appended,
+  take the chat through `IChatService.GetHeaderAsync`: revision, branches, kind and settings without
+  projecting every message into a view. The append itself still returns the full chat.
 
 Files: `src/AI.Server/Domain/Chats/ChatThread.cs`,
+`src/AI.Server/Application/Chats/{IChatService,ChatService}.cs`,
+`src/AI.Server/Application/Runs/ChatRunDispatcher.cs`,
 `src/AI.Server/Infrastructure/Storage/{JsonChatRepository,JsonProjectRepository}.cs`,
 `src/AI.Server/Infrastructure/Workspace/WorkspaceChangeTracker.cs`, doc 04.
 
-Checks: `AI.Server.Tests` 1326 tests (one Unix-only skipped), all passing. New tests: three tool
+Checks: `AI.Server.Tests` 1339 tests (one Unix-only skipped), all passing. New tests: three tool
 calls (four reads and a save each) read the chat file no times after the first save and write every
 revision; a chat handed out changes apart from the cache, and a conflicting save leaves it intact;
 another writer's save is seen and its revision checked; a clone serializes as the document read back
 does; repeated project reads skip the file and see another writer; an unchanged tracked file is not
-read again for the next snapshot, and a changed one is.
+read again for the next snapshot, and a changed one is; a chat header carries the revision and
+branches without messages.

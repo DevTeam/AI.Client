@@ -7,6 +7,11 @@ public interface IChatService
     Task<IReadOnlyList<ChatSummary>> ListAsync(Guid projectId, CancellationToken cancellationToken);
     Task<bool> ExistsAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
+    /// <summary>
+    /// The chat with no messages: its revision, branches, kind and settings. For a caller that needs
+    /// only those, such as a run snapshot taken at every tool call, without projecting the transcript.
+    /// </summary>
+    Task<ChatDetails?> GetHeaderAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
     /// <summary>Loads one message for review validation without projecting the entire transcript.</summary>
     Task<ChatMessageView?> GetReviewSourceAsync(Guid projectId, Guid chatId, Guid messageId,

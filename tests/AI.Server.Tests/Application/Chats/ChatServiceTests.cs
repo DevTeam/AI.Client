@@ -311,6 +311,26 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task ShouldReadAChatHeaderWithoutItsMessages()
+    {
+        var userId = new ChatMessageId(Guid.CreateVersion7());
+        var chat = new ChatThread(_chatId, _projectId, "Chat", _now);
+        chat.AddMessage(new ChatMessage(userId, null, ChatMessageRole.User, "Question", _now), _now);
+        _repository.Setup(i => i.GetAsync(_projectId, _chatId, CancellationToken.None))
+            .ReturnsAsync(new StoredChat(chat, 4));
+
+        var header = await CreateInstance().GetHeaderAsync(_projectId.Value, _chatId.Value, CancellationToken.None);
+
+        header.ShouldNotBeNull();
+        header.Revision.ShouldBe(4);
+        header.Messages.ShouldBeEmpty();
+        var branch = header.Branches.ShouldNotBeNull().ShouldHaveSingleItem();
+        branch.HeadMessageId.ShouldBe(userId.Value);
+        branch.Revision.ShouldBe(1);
+        header.Kind.ShouldBe(ChatKind.Conversation.Value);
+    }
+
+    [Fact]
     public async Task ShouldAnswerEndpointChangeWithoutToolOutput()
     {
         var userId = new ChatMessageId(Guid.CreateVersion7());

@@ -61,6 +61,12 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
         return stored is null ? null : ToDetails(stored.Chat, stored.Revision);
     }
 
+    public async Task<ChatDetails?> GetHeaderAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
+    {
+        var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
+        return stored is null ? null : ToDetails(stored.Chat, stored.Revision, withMessages: false);
+    }
+
     public async Task<ChatDetails?> GetTranscriptAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken)
     {
         var stored = await repository.GetAsync(new ProjectId(projectId), new ChatId(chatId), cancellationToken);
@@ -576,10 +582,16 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             parent.ParentHeadMessageId?.Value);
     }
 
-    private ChatDetails ToDetails(ChatThread chat, long revision)
+    private ChatDetails ToDetails(ChatThread chat, long revision, bool withMessages = true)
     {
-        var planCalls = Plans.ChatPlanHistory.PlanCallIds(chat.Messages);
-        var askUserCalls = AskUserCalls(chat.Messages);
+        ChatMessageView[] messages = [];
+        if (withMessages)
+        {
+            var planCalls = Plans.ChatPlanHistory.PlanCallIds(chat.Messages);
+            var askUserCalls = AskUserCalls(chat.Messages);
+            messages = chat.Messages.OrderBy(item => item.CreatedAt)
+                .Select(message => ToView(message, planCalls, askUserCalls)).ToArray();
+        }
         return new(
             chat.Id.Value,
             chat.ProjectId.Value,
@@ -588,7 +600,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             chat.UpdatedAt,
             revision,
             chat.ConnectionId?.Value,
-            chat.Messages.OrderBy(item => item.CreatedAt).Select(message => ToView(message, planCalls, askUserCalls)).ToArray(),
+            messages,
             chat.Branches.Select(branch => new ChatBranchView(branch.Id, branch.HeadMessageId?.Value, branch.Title,
                 branch.ParentBranchId, branch.RootMessageId?.Value, branch.Revision, ToContract(branch.Member),
                 ToContract(branch.Settings))).ToArray(),

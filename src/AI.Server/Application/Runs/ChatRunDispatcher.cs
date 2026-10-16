@@ -1213,7 +1213,7 @@ public sealed class ChatRunDispatcher(
             // The file tool has returned, so its effects can be shown while the model continues.
             runtime.WorkspaceChanges = await workspace.SnapshotAsync(WorkspaceKey(runtime), token);
             runtime.State.Append("");
-            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
+            await SaveAsync(runtime, await chats.GetHeaderAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
             return;
         }
 
@@ -1226,7 +1226,7 @@ public sealed class ChatRunDispatcher(
         {
             runtime.LastProgressPublished = clock.UtcNow;
             runtime.State.Append("");
-            await SaveAsync(runtime, await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
+            await SaveAsync(runtime, await chats.GetHeaderAsync(runtime.State.ProjectId, runtime.State.ChatId, token), token);
             return;
         }
 
@@ -1310,7 +1310,7 @@ public sealed class ChatRunDispatcher(
     private async Task PersistToolMessageAsync(Runtime runtime, ChatCompletionMessage message, CancellationToken token)
     {
         using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
-        var chat = await chats.GetAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
+        var chat = await chats.GetHeaderAsync(runtime.State.ProjectId, runtime.State.ChatId, token)
             ?? throw new InvalidOperationException("Chat not found.");
         var baseRevision = chat.Revision;
         var id = ids.Create();

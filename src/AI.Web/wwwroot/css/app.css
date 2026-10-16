@@ -5660,11 +5660,6 @@ pre:hover > .code-copy-action,
 .code-copy-action:focus-visible,
 .code-copy-action.is-copied { opacity: 1; }
 
-button.code-copy-action:hover:not(:disabled) {
-    background: inherit;
-    color: var(--color-text);
-}
-
 @media (hover: none) {
     .code-copy-action { opacity: 1; }
 }
@@ -7386,6 +7381,27 @@ textarea {
     margin: 0 0 0.5rem;
 }
 
+/* The toolbar rests hidden and surfaces with the pointer or keyboard focus on the diagram, like a
+   code block's Copy. It keeps its room, so the diagram does not move when it appears. On an error
+   block only the button hides: the toolbar there also holds the error's header. */
+.mermaid-block[data-mermaid-state="ok"] .mermaid-toolbar,
+.mermaid-error .mermaid-toolbar .mermaid-zoom-button {
+    opacity: 0;
+    transition: opacity var(--duration-fast) ease;
+}
+
+.mermaid-block:is(:hover, :focus-within)[data-mermaid-state="ok"] .mermaid-toolbar,
+.mermaid-block[data-mermaid-state="ok"] .mermaid-toolbar:has(.is-copied),
+.mermaid-block:is(:hover, :focus-within) .mermaid-error .mermaid-toolbar .mermaid-zoom-button,
+.mermaid-error .mermaid-toolbar .mermaid-zoom-button.is-copied {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .mermaid-block[data-mermaid-state="ok"] .mermaid-toolbar,
+    .mermaid-error .mermaid-toolbar .mermaid-zoom-button { opacity: 1; }
+}
+
 .mermaid-zoom-level {
     min-width: 2.6rem;
     color: var(--color-text-muted);
@@ -7394,32 +7410,23 @@ textarea {
     text-align: center;
 }
 
+/* The same quiet buttons as the message actions and a code block's Copy. */
 .mermaid-zoom-button {
     display: inline-grid;
     flex: none;
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 1.7rem;
+    height: 1.7rem;
     padding: 0;
     place-items: center;
-    border: 1px solid var(--color-border-translucent);
-    border-radius: var(--radius-sm);
+    border-color: transparent;
+    background: transparent;
+    color: var(--color-text-muted);
+}
+
+.mermaid-zoom-button:hover:not(:disabled),
+button.code-copy-action:hover:not(:disabled) {
     background: var(--color-fill);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-}
-
-.mermaid-zoom-button:hover:not(:disabled) {
-    background: var(--color-fill-hover);
-    color: var(--color-text-strong);
-}
-
-.mermaid-zoom-button:active:not(:disabled) {
-    background: var(--color-fill-active);
-}
-
-.mermaid-zoom-button:focus-visible {
-    outline: 2px solid var(--color-accent-strong);
-    outline-offset: 2px;
+    color: var(--color-text);
 }
 
 .mermaid-zoom-button:disabled {
@@ -7428,8 +7435,8 @@ textarea {
 }
 
 .mermaid-zoom-icon {
-    width: 0.95rem;
-    height: 0.95rem;
+    width: 1rem;
+    height: 1rem;
 }
 
 /* The render() call replaces the original fence, but if Blazor's diff momentarily brings the

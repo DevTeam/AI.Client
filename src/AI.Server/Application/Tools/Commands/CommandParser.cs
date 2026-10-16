@@ -1,5 +1,6 @@
 namespace AI.Application.Tools.Commands;
 
+using System.Buffers;
 using System.Text.Json;
 using AI.Contracts.FileSystem;
 
@@ -100,11 +101,26 @@ public sealed class CommandParser(IExecutableLocator locator, IPath paths) : ICo
     /// </summary>
     public const string Unresolved = "<relative to an unknown directory>";
 
-    private static string OptionValue(string argument)
+    private string OptionValue(string argument)
     {
+        // On Windows /nodeReuse:false or /p:OutDir=..\out is a switch, not a file in the drive's
+        // root; only what it sets can name a path.
+        if (paths.DirectorySeparator == '\\' && argument.StartsWith('/'))
+        {
+            var colon = argument.IndexOf(':', StringComparison.Ordinal);
+            if (colon > 1 && !argument.AsSpan(1, colon - 1).ContainsAnyExcept(SwitchNameCharacters))
+            {
+                var value = argument[(colon + 1)..];
+                var assignment = value.IndexOf('=', StringComparison.Ordinal);
+                return assignment > 0 ? value[(assignment + 1)..] : value;
+            }
+        }
         var equals = argument.IndexOf('=', StringComparison.Ordinal);
         return argument.StartsWith('-') && equals > 0 ? argument[(equals + 1)..] : argument;
     }
+
+    private static readonly SearchValues<char> SwitchNameCharacters =
+        SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
 
     /// <summary>
     /// A value is treated as a path when it names a root, or has a directory separator and is not

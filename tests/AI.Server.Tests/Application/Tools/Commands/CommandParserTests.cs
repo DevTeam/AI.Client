@@ -114,6 +114,21 @@ public sealed class CommandParserTests
     }
 
     [Fact]
+    public async Task ShouldReadWindowsSwitchesAsOptions()
+    {
+        // Elsewhere /nodeReuse:false is a file in the root.
+        if (!OperatingSystem.IsWindows()) return;
+
+        var check = await CheckAsync("dotnet", ["build", "src/App.csproj", "--no-restore", "-m:1", "/nodeReuse:false"]);
+
+        check.BlocksAllow.ShouldBeFalse();
+        check.Command.Paths.ShouldBe([Paths.GetFullPath("src/App.csproj", Project)]);
+
+        var outside = await CheckAsync("dotnet", ["build", "/p:OutDir=..\\..\\out"]);
+        outside.BlocksAllow.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task ShouldLeaveCallsThatNameNoProgram()
     {
         var parser = TestPrograms.Parser();

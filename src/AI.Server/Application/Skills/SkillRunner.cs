@@ -190,7 +190,8 @@ public sealed class SkillRunner(ISkillCatalog catalog, [Tag("chat-rename")] ISki
             + "When following them takes three or more steps of real work and mcp_app__plan_update is among your tools, "
             + "lay those steps out with it before the first one, weighted by their share of the work and estimated in "
             + "minutes, and move the plan "
-            + "as each step starts and ends; a plan of an earlier, different task is replaced.",
+            + "as each step starts and ends; a plan of an earlier, different task is replaced. The checks the "
+            + "instructions ask for become the plan's criteria, settled before the final answer.",
             invocation.CurrentChatId, Output: output);
     }
 }

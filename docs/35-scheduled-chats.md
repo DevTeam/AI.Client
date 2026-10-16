@@ -126,7 +126,7 @@ the widget uses.
 | `chat-schedule-create` | Schedules the selected branch or a new chat. It asks for missing values and prepares tool and directory access for the run |
 | `chat-schedule-edit` | Changes, pauses or resumes a schedule, asking only for values not named, and confirms old and new values side by side unless the user gave them exactly. When the change touches what a run does, it repeats the readiness check and asks once to allow the new tools and directories |
 | `chat-schedule-delete` | Removes the schedule (keeping the chat), pauses it instead, or deletes the chat, after one confirmation |
-| `chat-schedule-run` | In a run branch: carries out the task with the tools and directories the schedule was set up to allow, checks the success criteria with evidence and reports with `ReportRun`. Anywhere else: starts a run now. The dispatcher puts it on every run message |
+| `chat-schedule-run` | In a run branch: carries out the task with the tools and directories the schedule was set up to allow, checks the success criteria with evidence — as the criteria of its plan, for a task of several steps, see [Chat plans](37-chat-plans.md#criteria-of-done) — and reports with `ReportRun`. Anywhere else: starts a run now. The dispatcher puts it on every run message |
 
 Each has its own stopwatch icon in the shared skill icon set.
 

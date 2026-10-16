@@ -102,6 +102,7 @@ deletes a chat the user asked for by name.
 | `project-directory-add` | Grants more directories, read-only or read-write | `app_security` AddDirectoryGrant |
 | `project-directory-remove` | Revokes grants the user picks | `app_security` RemoveDirectoryGrant |
 | `project-security-review` | Reviews grants, servers and tool policies; changes nothing | `app_read` |
+| `project-done-define` (`/dod`) | Writes or changes the project's definition of done in the project instructions: scoped checks a tool can make, which plans take as their criteria; see [plans](37-chat-plans.md#criteria-of-done) | `app_read`, `app_instructions`, `ask_user`, read-only file tools |
 | `memory-save` | Saves a fact, updating a matching entry instead of duplicating it | `app_memory` |
 | `memory-review` | Merges duplicates and drops stale entries the user approves | `app_memory` |
 | `memory-forget` | Deletes matching entries after showing them | `app_memory` |

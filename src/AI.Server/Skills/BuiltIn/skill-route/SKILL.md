@@ -42,6 +42,7 @@ Choose:
   skill already keeps one, so never route a task to chat-plan in place of the skill that does the
   work. Choose it alone only when the message asks to track or show progress, or for a to-do list of
   the work it is about to do. A request to plan a change without doing it uses code-plan or qa-plan.
+  Writing or changing the project's definition of done uses project-done-define.
   For code tasks, prefer a specific available skill over code-feature-implement: planning uses
   code-plan, source explanations code-explain, behavior-preserving structural changes code-refactor,
   adding tests code-tests-add, compiler/analyzer diagnostics code-build-fix, correctness review

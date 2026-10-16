@@ -6,7 +6,7 @@ aliases: ["run-now"]
 kind: playbook
 description: Run the scheduled task of this chat — inside a scheduled run branch carry out the task, check its success criteria and report the outcome; anywhere else start a run now. Used by the application's dispatcher for every scheduled run.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_schedule","app_read","ask_user","tool_search"]
+tools: ["app_schedule","app_read","ask_user","tool_search","plan_update"]
 ---
 
 1. Take `projectId`, `chatId` and `branchId` from output.context. Call `app_schedule` operation
@@ -23,9 +23,13 @@ tools: ["app_schedule","app_read","ask_user","tool_search"]
    person. Never try to give yourself more access: permission changes stay `Ask` for this tool, and
    changing the chat's own policies is not the run's job. No one is watching a scheduled run: ask with `ask_user`
    only when the task cannot go on without a person's decision — the run waits, the chat shows that
-   it needs attention, and the person can answer it there or from the widget.
+   it needs attention, and the person can answer it there or from the widget. For a task of several
+   steps, lay it out with `plan_update` and take every success criterion, in its own words, as one of
+   the plan's `criteria`, so the person reading the run sees what was checked.
 4. Check the success criteria against what actually happened, with evidence: output, files, a
-   response, a measured value. Without criteria, success means the task was done completely.
+   response, a measured value. When the plan has them as criteria, settle each with `plan_update`
+   `checks`, citing the tool call that showed it in `evidenceCall`; the run succeeded only if every
+   criterion that applies is Met. Without criteria, success means the task was done completely.
    Never report success for work that was skipped, failed or only planned. A call still waiting for
    approval, or a path the project does not grant, is not a failure of the task: say in the summary
    which tool or directory was missing, so the schedule can be fixed with `chat-schedule-edit`.

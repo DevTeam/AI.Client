@@ -5628,6 +5628,47 @@ button:active:not(:disabled) {
     font-size: 0.88em;
 }
 
+/* A code fence's Copy (js/codeCopy.js) sits in the <pre>'s corner. The <code> takes over the
+   sideways scroll so the button stays put; it rests hidden and surfaces like the message actions. */
+.markdown-content pre[data-code-copy] {
+    position: relative;
+    overflow-x: visible;
+}
+
+.markdown-content pre[data-code-copy] > code {
+    display: block;
+    overflow-x: auto;
+}
+
+.code-copy-action {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    z-index: 1;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-color: transparent;
+    background: inherit;
+    color: var(--color-text-muted);
+    opacity: 0;
+    transition: opacity var(--duration-fast) ease,
+                color var(--duration-fast) ease,
+                transform var(--duration-fast) ease;
+}
+
+pre:hover > .code-copy-action,
+.code-copy-action:focus-visible,
+.code-copy-action.is-copied { opacity: 1; }
+
+button.code-copy-action:hover:not(:disabled) {
+    background: inherit;
+    color: var(--color-text);
+}
+
+@media (hover: none) {
+    .code-copy-action { opacity: 1; }
+}
+
 :is(.markdown-content, .file-preview-code) pre .hljs { color: var(--color-text); }
 :is(.markdown-content, .file-preview-code) pre .hljs-comment,
 :is(.markdown-content, .file-preview-code) pre .hljs-quote { color: var(--color-text-muted); font-style: italic; }

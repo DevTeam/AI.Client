@@ -354,6 +354,7 @@ Duplicate active branch has not been implemented: it makes sense to add it toget
 - A Comment button opens the review comment editor from the toolbar: on the user's selection if it is inside the message, otherwise on the whole message (up to the 2000-character quote limit; longer messages ask for a selection). The editor still opens from a selection; the button only makes one and replays the mouseup.
 - A question's toolbar is Copy, Comment, Edit and branch, More. Fork from here and Edit and replace branch moved into More (a popover pinned to its button by `messageActions.js`). The destructive action is the menu's last item, after a separator, and the only one in colour. Answers keep Copy, Comment, Fork.
 - All toolbar icons share one muted colour and brighten on hover. Copy turns into a check for 1.2 s.
+- Every Markdown code fence — in messages, the file preview and the review text — has its own Copy in the top-right corner (`codeCopy.js`). It shows on hover or focus, copies the fence's code without the closing line break and turns into the same check. Diagram and SVG fences have none, and a fence gets it only once its message has stopped streaming.
 
 ## Chat list order: manual for pinned, activity for the rest (2026-09-28)
 

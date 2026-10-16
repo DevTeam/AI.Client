@@ -81,4 +81,7 @@ public interface IChatFeedProjection
 
     /// <summary>The newest plan among <paramref name="messages"/>, oldest message first; null when none set one.</summary>
     PlanSighting? LatestPlan(IReadOnlyList<ChatMessageView> messages);
+
+    /// <summary>The message holding the result of the tool call <paramref name="callId"/>; null when it is not among <paramref name="messages"/>.</summary>
+    Guid? ToolResultOf(IReadOnlyList<ChatMessageView> messages, string callId);
 }

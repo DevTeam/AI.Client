@@ -222,7 +222,9 @@
                 else if (entry.Plan is { } turnPlan)
                 {
                     var planKey = (entry.TurnId, "plan");
-                    <ChatPlanCard @key="planKey" Plan="@turnPlan" ExpandUpward="true" />
+                    <ChatPlanCard @key="planKey" Plan="@turnPlan" ExpandUpward="true"
+                                  EvidenceMessage="@(call => Feed.ToolResultOf(GetVisibleBranchMessages(), call))"
+                                  OnShowMessage="ScrollToMessageAsync" />
                 }
                 else if (entry.ActiveTools is { Count: > 0 } activeTools)
                 {

@@ -1,5 +1,6 @@
 @using AI.Contracts.Plans
 @inject IChatPlanStatisticsCalculator Calculator
+@inject IChatFeedProjection Feed
 @implements IDisposable
 @* The plan of the visible branch (docs/37-chat-plans.md). The plan's bar is made of its steps, each
    as wide as its share of the work and filled as far as it has come, so the weights are seen once,
@@ -41,7 +42,7 @@
                     var timing = entry.Timing;
                     <ChatWidgetRow @key="entry.Number" Widget="@Widget" Current="@(progress.Current == entry.Number - 1 && !progress.IsFinished)"
                                    Class="@($"chat-plan-widget-step is-{ChatPlanCard.StatusClass(step.Status)} {(timing.IsOver ? "is-over" : null)}")"
-                                   OpenTitle="@StepTitle(entry)" Note="@NoteOf(step)">
+                                   OpenTitle="@StepTitle(entry)" Note="@NoteOf(step.Note)">
                         <Tile>
                             <span class="chat-plan-mark is-@ChatPlanCard.StatusClass(step.Status)" aria-label="@ChatPlanCard.StatusLabel(step.Status)">
                                 @if (step.Status == ChatPlanStepStatus.Completed) { <AppIcon Name="check" /> }
@@ -73,6 +74,36 @@
                 }
             </ul>
         </div>
+
+        @if (plan.Criteria is { Count: > 0 } criteria)
+        {
+            var summary = ChatPlanCriteriaSummary.Of(plan);
+            <div class="chat-usage-section">
+                <div class="chat-usage-row chat-usage-heading">
+                    <span>Done when</span>
+                    <span class="chat-usage-figure chat-usage-muted" title="Criteria met, of those that apply to the task">@summary.Met of @summary.Total met</span>
+                </div>
+                <ul class="chat-widget-rows">
+                    @for (var index = 0; index < criteria.Count; index++)
+                    {
+                        var criterion = criteria[index];
+                        var evidence = criterion.EvidenceCall is { } call ? Feed.ToolResultOf(Messages, call) : null;
+                        <ChatWidgetRow @key="index" Widget="@Widget" Class="@($"chat-plan-widget-criterion is-{ChatPlanCard.CriterionClass(criterion.Status)}")"
+                                       OpenTitle="@criterion.Text" Note="@NoteOf(criterion.Evidence)" UseNoun="evidence"
+                                       Uses="@(evidence is { } messageId ? [messageId] : [])">
+                            <Tile>
+                                <span class="chat-plan-mark is-@ChatPlanCard.CriterionMark(criterion.Status)" aria-label="@ChatPlanCard.CriterionLabel(criterion.Status)">
+                                    @if (criterion.Status == ChatPlanCriterionStatus.Met) { <AppIcon Name="check" /> }
+                                    else if (criterion.Status == ChatPlanCriterionStatus.NotMet) { <AppIcon Name="x" /> }
+                                </span>
+                            </Tile>
+                            <Name>@criterion.Text</Name>
+                            <Details><span>@ChatPlanCard.CriterionLabel(criterion.Status)</span></Details>
+                        </ChatWidgetRow>
+                    }
+                </ul>
+            </div>
+        }
 
         @if (progress.Elapsed is { } elapsed)
         {
@@ -144,8 +175,9 @@
 
     public void Dispose() => _clock?.Dispose();
 
-    private string? GetSummary() => _stats is { Progress: { } progress }
+    private string? GetSummary() => _stats is { Plan: { } plan, Progress: { } progress }
         ? $"{progress.Percent}% · {progress.Completed}/{progress.Total}"
+          + (ChatPlanCriteriaSummary.Of(plan) is { Total: > 0 } criteria ? $" · ✓ {criteria.Met}/{criteria.Total}" : null)
         : null;
 
     /// <summary>
@@ -172,7 +204,7 @@
         return (expected / spent, 1 - expected / spent, 0);
     }
 
-    private static RenderFragment? NoteOf(ChatPlanStep step) => step.Note is { } note ? @<text>@note</text> : null;
+    private static RenderFragment? NoteOf(string? text) => text is { } note ? @<text>@note</text> : null;
 
     private static string StepTitle(ChatPlanStepEntry entry) =>
         $"Step {entry.Number}: {entry.Step.Title}"

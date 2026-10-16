@@ -175,6 +175,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
         var stalledSteps = 0;
+        var criteriaAsked = false;
         var observedResults = new HashSet<(string Name, string Arguments, string Result)>();
         var routed = false;
         // What the request carried in the previous step: kept, so the next request starts the same.
@@ -460,6 +461,18 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             // answer, published as written.
             if (calls.Count == 0)
             {
+                // The plan's criteria are settled before the answer, once: an answer written over
+                // criteria nobody checked reads as done when it may not be. The draft is dropped and
+                // the step asked again; a second answer stands, whatever the criteria say.
+                if (plansAllowed && !criteriaAsked && OpenCriteria(run) is { Length: > 0 } open)
+                {
+                    criteriaAsked = true;
+                    continuedAnswer.Clear();
+                    await Draft(null);
+                    instructions.Upsert(run, new ModelInstruction(CriteriaKey, CriteriaGate(open), 960,
+                        ModelInstructionLifetime.UntilAcknowledged));
+                    continue;
+                }
                 var finalText = continuedAnswer.ToString() + content;
                 continuedAnswer.Clear();
                 return await FinishAsync(finalText);
@@ -478,6 +491,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var preamble = content.ToString();
             if (calls.Any(call => !seenIds.Add(call.Id)))
                 throw new InvalidOperationException("Duplicate tool call IDs or excessive calls.");
+            // A criterion of the plan may cite any of these as its evidence, the batch's own included.
+            if (plansAllowed) foreach (var call in calls) plans.NoteCall(run, call.Id);
             var assistant = new ChatCompletionMessage("assistant", preamble, calls.ToArray());
             // Cleared first so the publication that carries the preamble also drops its draft:
             // the text changes owner without a frame showing it twice or not at all.
@@ -773,7 +788,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private void UpsertPlan(ToolRunContext run)
     {
-        if (plans.Current(run) is not { } plan || plan.Steps.All(step => step.IsFinished))
+        if (plans.Current(run) is not { } plan
+            || plan.Steps.All(step => step.IsFinished) && ChatPlanCriteriaSummary.Of(plan).Unverified == 0)
         {
             instructions.Remove(run, PlanKey);
             return;
@@ -801,9 +817,18 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     + "holding it up and give it new minutes, or lay out a revised plan; if the approach itself is in doubt, "
                     + "ask the user before going on.";
         }
+        if (plan.Criteria is { Count: > 0 } criteria)
+        {
+            text.Append("\nDone when:");
+            for (var index = 0; index < criteria.Count; index++)
+                text.Append(invariant, $"\n  {index + 1}. [{criteria[index].Status}] {criteria[index].Text}")
+                    .Append(criteria[index].Evidence is { } evidence ? " - " + evidence : "");
+        }
         text.Append("\nKeep it current as you work: mark a step InProgress when you start it, report the progress of a long "
             + "step, and mark it Completed as soon as it is done, or Skipped or Failed with a note. Several moves go in one call. "
-            + "If the user's latest message is a different task, lay out a new plan for it, or skip the remaining steps.");
+            + "If the user's latest message is a different task, lay out a new plan for it, with its own criteria or "
+            + "criteria [] for none, or skip the remaining steps. Settle each criterion with checks once you have checked "
+            + "it, citing the tool call that showed it.");
         if (over is not null) text.Append('\n').Append(over);
         instructions.Upsert(run, new ModelInstruction(PlanKey, text.ToString(),
             // Trailing: the plan moves with the work, and a change here must not cost the cached conversation.
@@ -816,6 +841,22 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{(int)Math.Round(time.TotalMinutes)} min");
 
     private const string PlanKey = "run.plan";
+
+    private const string CriteriaKey = "run.plan-criteria";
+
+    /// <summary>The criteria of the run's plan nobody has checked yet, numbered as the model refers to them.</summary>
+    private string[] OpenCriteria(ToolRunContext run) => plans.Current(run)?.Criteria is { } criteria
+        ? criteria.Select((criterion, index) => (criterion, index))
+            .Where(item => item.criterion.Status == ChatPlanCriterionStatus.Unverified)
+            .Select(item => $"{item.index + 1}. {item.criterion.Text}").ToArray()
+        : [];
+
+    private static string CriteriaGate(IReadOnlyList<string> open) =>
+        "Before you answer: these criteria of the plan are still Unverified: " + string.Join("; ", open) + ". "
+        + "Check each with a tool and settle it with mcp_app__plan_update checks - Met or NotMet, with the evidence and "
+        + "the evidenceCall of the tool call that showed it - or mark it NotApplicable with the reason if it does not "
+        + "concern this task. If one cannot be checked, leave it Unverified and say in your answer that it was not "
+        + "verified and why. Then give your answer.";
 
     /// <summary>
     /// Asks the <c>skill-route</c> skill about the message that starts this turn, and pins the tools

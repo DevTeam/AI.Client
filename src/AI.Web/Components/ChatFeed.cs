@@ -322,6 +322,14 @@ public sealed class ChatFeed : IChatFeedProjection
     /// The server reads the plan out of each plan result (<see cref="ChatMessageView.Plan"/>), so
     /// this needs no result bodies: the newest one along the chain is the branch's plan.
     /// </summary>
+    public Guid? ToolResultOf(IReadOnlyList<ChatMessageView> messages, string callId)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        for (var index = messages.Count - 1; index >= 0; index--)
+            if (messages[index] is { Role: "Tool" } message && message.ToolCallId == callId) return message.Id;
+        return null;
+    }
+
     public PlanSighting? LatestPlan(IReadOnlyList<ChatMessageView> messages)
     {
         ArgumentNullException.ThrowIfNull(messages);

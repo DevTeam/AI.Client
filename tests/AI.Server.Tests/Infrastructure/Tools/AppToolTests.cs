@@ -312,6 +312,43 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task ShouldSetAndSettleThePlansCriteria()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var run = new ToolRunContext(fixture.ProjectId, fixture.ChatId, fixture.ChatId, true);
+        using var scope = await fixture.Plans.BeginAsync(run, TestContext.Current.CancellationToken);
+        fixture.Plans.NoteCall(run, "call-tests");
+
+        var laid = await AppFixture.CallAsync(session, "plan_update", new
+        {
+            steps = new object[] { new { title = "Fix the parser", status = "InProgress" } },
+            criteria = new object[] { new { text = "The parser tests pass" }, new { text = "Both themes checked" } }
+        });
+        laid.GetProperty("criteriaTotal").GetInt32().ShouldBe(2);
+        laid.GetProperty("criteriaMet").GetInt32().ShouldBe(0);
+
+        var settled = await AppFixture.CallAsync(session, "plan_update", new
+        {
+            checks = new object[]
+            {
+                new { criterion = 1, status = "Met", evidence = "12 of 12 passed", evidenceCall = "call-tests" },
+                new { criterion = 2, status = "NotApplicable", evidence = "No UI changed", evidenceCall = "call-made-up" }
+            }
+        });
+        settled.GetProperty("criteriaMet").GetInt32().ShouldBe(1);
+        settled.GetProperty("criteriaTotal").GetInt32().ShouldBe(1);
+        settled.GetProperty("guidance").GetString().ShouldNotBeNull().ShouldContain("call-made-up");
+        var criteria = fixture.Plans.Current(run).ShouldNotBeNull().Criteria.ShouldNotBeNull();
+        criteria[0].EvidenceCall.ShouldBe("call-tests");
+        criteria[1].EvidenceCall.ShouldBeNull();
+
+        var unsettled = await AppFixture.CallAsync(session, "plan_update",
+            new { checks = new object[] { new { criterion = 1, status = "NotMet" } } }, expectError: true);
+        unsettled.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("evidence");
+    }
+
+    [Fact]
     public async Task ShouldDiscoverEveryToolOverTheInProcessTransport()
     {
         await using var fixture = await AppFixture.CreateAsync();

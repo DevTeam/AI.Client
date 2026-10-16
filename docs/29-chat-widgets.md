@@ -858,6 +858,10 @@ is described in [Chat plans](37-chat-plans.md).
   - **Why the bar is time.** Under each row it once showed the step's weight, which read as a done
     step at 15%, and then the step's own progress, which repeated its status mark and figure. Time
     against the expectation is what the row has no other way to show.
+  - **Done when.** The plan's criteria of done, when it has any (see
+    [Chat plans](37-chat-plans.md#criteria-of-done)), with "N of M met" counting only those that
+    apply: one row each with the status mark, the criterion, its status and its evidence as the note.
+    The locate button shows the tool call that showed it, when the criterion cites one.
   - **Footer.** The plan's working time and, while the branch's run works, the forecast as a range
     ("about 8-15m left", the likely finish by the clock in its tooltip), or "waiting for you" while
     the run waits for the person.
@@ -867,7 +871,7 @@ is described in [Chat plans](37-chat-plans.md).
   between plan updates; otherwise it computes once per change of the branch.
 - **Empty state.** "When the assistant works through a task of several steps, its plan and progress
   appear here."
-- **Folded summary.** `P% · completed/total`.
+- **Folded summary.** `P% · completed/total`, and `· ✓ met/total` when the plan has criteria.
 - **Architecture.** `IChatPlanStatisticsCalculator` in `src/AI.Web/Widgets` returns a
   `ChatPlanStatistics` record with one `ChatPlanStepEntry` per step, over `ChatPlanProgress` from the
   contracts. The status marks and the duration format are shared with `ChatPlanCard`.

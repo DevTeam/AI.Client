@@ -58,6 +58,20 @@ public class ChatPlansTests
         plans.Current(_run).ShouldBeNull();
     }
 
+    [Fact]
+    public async Task ShouldKnowTheCallsMadeOnTheBranch()
+    {
+        _chats.Setup(chats => chats.GetAsync(It.IsAny<ProjectId>(), It.IsAny<ChatId>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StoredChat?)null);
+        var plans = new ChatPlans(_chats.Object, _clock);
+        using var scope = await plans.BeginAsync(_run, TestContext.Current.CancellationToken);
+
+        plans.NoteCall(_run, "call-1");
+
+        plans.KnowsCall(_run, "call-1").ShouldBeTrue();
+        plans.KnowsCall(_run, "call-2").ShouldBeFalse();
+    }
+
     private sealed class TestClock : IClock
     {
         public DateTimeOffset UtcNow { get; set; }

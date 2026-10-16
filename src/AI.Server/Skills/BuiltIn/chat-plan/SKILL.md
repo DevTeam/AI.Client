@@ -27,9 +27,16 @@ same turn. Write step titles in the user's language.
 4. Estimate each step's working time in `minutes`: the time you expect to spend on it, tool runs
    included, not the time the user may take to answer. A guess is fine; the application corrects
    the forecast by how the finished steps actually went and shows the user the time left.
-5. Call `plan_update` once with all `steps`, the first one `InProgress`, and a short `title`
-   for the task. Then start the work.
-6. Move the plan as the work moves, putting several changes in one `updates` call:
+5. Decide whether the task has a checkable outcome: a change to code, configuration, files or
+   data, requirements the user named, checks a loaded skill asks for, or a `## Definition of done`
+   in the project instructions. If it has, write 2–5 `criteria`, each one thing a tool can show to
+   be true ("the parser tests pass", "the docs mention the new flag"); take the user's requirements,
+   the skill's checks and the definition-of-done items that concern the task. An explanation, a draft
+   the user will judge, or an exploration has none: leave `criteria` out. When the user says to do
+   without them, do.
+6. Call `plan_update` once with all `steps`, the first one `InProgress`, a short `title` for the
+   task and the `criteria`. Then start the work.
+7. Move the plan as the work moves, putting several changes in one `updates` call:
    - mark a step `Completed` as soon as it is done and the next one `InProgress` in the same call;
    - during a long step, report `progress` 0–100 when it has clearly advanced (a quarter, a half),
      not after every tool call;
@@ -40,9 +47,14 @@ same turn. Write step titles in the user's language.
    - when a step takes much longer than you estimated, the plan reminder says so: give it new
      `minutes` with a note on what is holding it up, or revise the plan, and ask the user if the
      approach itself is in doubt.
-7. Before the final answer, every step is `Completed`, `Skipped` or `Failed`. Do not repeat the
-   plan in the answer; report the outcome, and name any failed or skipped step and what it leaves
-   undone.
-8. When the user's next message continues the same task, keep moving the same plan. When it is a
-   different task, lay out a new plan for it, or mark the remaining steps `Skipped` if the new task
-   needs none.
+8. Settle each criterion with `checks` once you have checked it: `Met` or `NotMet` with what showed
+   it in `evidence` and the id of that tool call in `evidenceCall`; `NotApplicable` with the reason
+   for a definition-of-done item that turned out not to concern the task. Never call a criterion met
+   that you did not check; one you could not check stays `Unverified`.
+9. Before the final answer, every step is `Completed`, `Skipped` or `Failed`, and every criterion
+   is settled or left `Unverified` on purpose. Do not repeat the plan in the answer; report the
+   outcome, name any failed or skipped step and what it leaves undone, and say which criteria were
+   not met or not verified, and why.
+10. When the user's next message continues the same task, keep moving the same plan. When it is a
+    different task, lay out a new plan for it with its own criteria, or `criteria: []` for none, or
+    mark the remaining steps `Skipped` if the new task needs none.

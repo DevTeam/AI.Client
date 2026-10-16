@@ -45,7 +45,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_schedule` | `Get`, `Set`, `Pause`, `Resume`, `Remove`, `RunNow`, `ReportRun` for a chat's schedule — see [35-scheduled-chats.md](35-scheduled-chats.md) |
 | `spawn_subtask` | run a task in a separate conversation and return only its result |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
-| `plan_update` | lay out and move the plan the user watches during a multi-step task; changes no data — see [37-chat-plans.md](37-chat-plans.md) |
+| `plan_update` | lay out and move the plan the user watches during a multi-step task, with its optional criteria of done; changes no data — see [37-chat-plans.md](37-chat-plans.md) |
 
 ### app_read
 

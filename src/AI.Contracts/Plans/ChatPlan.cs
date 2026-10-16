@@ -25,7 +25,12 @@ public enum ChatPlanStepStatus
 /// between turns are left out, so step times and the forecast measure work rather than waiting. Only
 /// differences on it mean anything.
 /// </param>
-public sealed record ChatPlan(string? Title, IReadOnlyList<ChatPlanStep> Steps, DateTimeOffset UpdatedAt, double Clock = 0)
+/// <param name="Criteria">
+/// What has to be true for the task to count as done, when it has a checkable outcome; null or empty
+/// for a task that has none — an explanation, a draft the user will judge, an exploration.
+/// </param>
+public sealed record ChatPlan(string? Title, IReadOnlyList<ChatPlanStep> Steps, DateTimeOffset UpdatedAt, double Clock = 0,
+    IReadOnlyList<ChatPlanCriterion>? Criteria = null)
 {
     /// <summary>
     /// A moment on the working clock for a wall-clock time, counted back from the last update. Used
@@ -90,4 +95,6 @@ public sealed record ChatPlanToolResult(
     int Completed,
     int Total,
     string Guidance,
-    string? Error = null);
+    string? Error = null,
+    int CriteriaMet = 0,
+    int CriteriaTotal = 0);

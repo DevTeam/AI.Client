@@ -10,6 +10,7 @@
 {
     var progress = ChatPlanProgress.Of(plan, Live ? PlanClock.Now(plan, WorkingSince ?? plan.UpdatedAt, Waiting) : plan.Clock);
     var current = progress.Current is { } index ? plan.Steps[index] : null;
+    var criteria = ChatPlanCriteriaSummary.Of(plan);
     <section class="chat-plan chat-summary-card @(ExpandUpward ? "opens-upward" : null) @(_showDetails ? "is-expanded" : "is-collapsed") @(Live ? "is-live" : null)"
              aria-label="Plan">
         <div class="chat-summary-top">
@@ -38,6 +39,10 @@
                     <span class="chat-plan-eta" title="@FinishTitle(low, high)">@FormatRange(low, high) left</span>
                 }
                 <span class="chat-plan-count" title="Steps completed">@progress.Completed/@progress.Total</span>
+                @if (criteria.Total > 0)
+                {
+                    <span class="chat-plan-criteria-count @CriteriaState(criteria, progress.IsFinished)" title="@CriteriaTitle(criteria)">✓ @criteria.Met/@criteria.Total</span>
+                }
                 <span class="chat-plan-percent" title="Progress by the estimated share of each step">@progress.Percent%</span>
             </span>
             <span class="chat-plan-track" role="progressbar" aria-label="Plan progress" aria-valuemin="0" aria-valuemax="100"
@@ -79,6 +84,41 @@
                         </li>
                     }
                 </ol>
+                @if (plan.Criteria is { Count: > 0 } items)
+                {
+                    <div class="chat-plan-criteria-title">Done when</div>
+                    <ul class="chat-plan-criteria">
+                        @for (var criterionIndex = 0; criterionIndex < items.Count; criterionIndex++)
+                        {
+                            var criterion = items[criterionIndex];
+                            var evidence = criterion.EvidenceCall is { } call ? EvidenceMessage?.Invoke(call) : null;
+                            <li @key="criterionIndex" class="chat-plan-criterion is-@CriterionClass(criterion.Status)">
+                                <span class="chat-plan-mark is-@CriterionMark(criterion.Status)" title="@CriterionLabel(criterion.Status)" aria-label="@CriterionLabel(criterion.Status)">
+                                    @if (criterion.Status == ChatPlanCriterionStatus.Met) { <AppIcon Name="check" /> }
+                                    else if (criterion.Status == ChatPlanCriterionStatus.NotMet) { <AppIcon Name="x" /> }
+                                </span>
+                                <span class="chat-plan-step-text">
+                                    <span class="chat-plan-criterion-text">@criterion.Text</span>
+                                    @if (criterion.Evidence is { } note)
+                                    {
+                                        <span class="chat-plan-step-note">@note</span>
+                                    }
+                                </span>
+                                <span class="chat-plan-step-meta">
+                                    @if (evidence is { } messageId && OnShowMessage.HasDelegate)
+                                    {
+                                        <button class="chat-plan-evidence" type="button" title="Show the tool call that showed it"
+                                                @onclick="() => OnShowMessage.InvokeAsync(messageId)">Evidence</button>
+                                    }
+                                    else
+                                    {
+                                        <span>@CriterionLabel(criterion.Status)</span>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
             </div>
         </div>
     </section>
@@ -98,6 +138,12 @@
 
     /// <summary>The live run is waiting for the person: the clock stands still and no forecast is given.</summary>
     [Parameter] public bool Waiting { get; set; }
+
+    /// <summary>The message holding a tool call's result, by the call's id; null when it is not on this branch.</summary>
+    [Parameter] public Func<string, Guid?>? EvidenceMessage { get; set; }
+
+    /// <summary>Shows a message in the transcript: where a criterion's evidence is.</summary>
+    [Parameter] public EventCallback<Guid> OnShowMessage { get; set; }
 
     private readonly string _detailsId = $"chat-plan-details-{Guid.NewGuid():N}";
     private bool _showDetails;
@@ -171,6 +217,47 @@
         if (skipped > 0) parts.Add($"{skipped} skipped");
         return string.Join(", ", parts);
     }
+
+    /// <summary>
+    /// How the criteria count reads: in the warning colour once the steps are done with criteria still
+    /// unchecked, in the danger colour when one was not met; the words in its tooltip say which.
+    /// </summary>
+    private static string? CriteriaState(ChatPlanCriteriaSummary criteria, bool finished) =>
+        criteria.NotMet > 0 ? "is-not-met" : finished && criteria.Unverified > 0 ? "is-unverified" : null;
+
+    private static string CriteriaTitle(ChatPlanCriteriaSummary criteria)
+    {
+        var parts = new List<string> { $"{criteria.Met} of {criteria.Total} criteria met" };
+        if (criteria.NotMet > 0) parts.Add($"{criteria.NotMet} not met");
+        if (criteria.Unverified > 0) parts.Add($"{criteria.Unverified} not verified");
+        if (criteria.NotApplicable > 0) parts.Add($"{criteria.NotApplicable} not applicable");
+        return string.Join(", ", parts);
+    }
+
+    public static string CriterionClass(ChatPlanCriterionStatus status) => status switch
+    {
+        ChatPlanCriterionStatus.Met => "met",
+        ChatPlanCriterionStatus.NotMet => "not-met",
+        ChatPlanCriterionStatus.NotApplicable => "not-applicable",
+        _ => "unverified"
+    };
+
+    /// <summary>A criterion wears the mark of the step status it reads like.</summary>
+    public static string CriterionMark(ChatPlanCriterionStatus status) => status switch
+    {
+        ChatPlanCriterionStatus.Met => "completed",
+        ChatPlanCriterionStatus.NotMet => "failed",
+        ChatPlanCriterionStatus.NotApplicable => "skipped",
+        _ => "pending"
+    };
+
+    public static string CriterionLabel(ChatPlanCriterionStatus status) => status switch
+    {
+        ChatPlanCriterionStatus.Met => "Met",
+        ChatPlanCriterionStatus.NotMet => "Not met",
+        ChatPlanCriterionStatus.NotApplicable => "Not applicable",
+        _ => "Not verified"
+    };
 
     public static string StatusClass(ChatPlanStepStatus status) => status switch
     {

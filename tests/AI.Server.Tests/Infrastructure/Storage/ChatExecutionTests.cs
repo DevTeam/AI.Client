@@ -204,6 +204,37 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AnswerOverUncheckedCriteriaShouldBeAskedForOnceThenStand()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        fixture.Tools.OfferPlan = true;
+        fixture.Tools.PlanCriteria = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Fix the parser"));
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_app__plan_update", "{}")];
+        first.Answer.SetResult("");
+        (await fixture.NextCallAsync()).Answer.SetResult("Studying it.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Go on"));
+        var reminded = await fixture.NextCallAsync();
+        reminded.Request.ContextMessages![^1].ForModel.ShouldContain("1. [Unverified] The parser tests pass", Case.Sensitive);
+        reminded.Answer.SetResult("Done, it works.");
+
+        // The answer over an unchecked criterion is dropped and the step asked again, once.
+        var gated = await fixture.NextCallAsync();
+        gated.Request.ContextMessages![^1].ForModel.ShouldContain(
+            "Before you answer: these criteria of the plan are still Unverified: 1. The parser tests pass.", Case.Sensitive);
+        gated.Answer.SetResult("Done; the parser tests were not run, so that is not verified.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages[^1].Content.ShouldBe("Done; the parser tests were not run, so that is not verified.");
+        chat.Messages.ShouldNotContain(message => message.Content == "Done, it works.");
+    }
+
+    [Fact]
     public async Task ToolMessagesShouldBePublishedAsAContiguousChatDelta()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2927,6 +2958,9 @@ public sealed partial class ChatExecutionTests
         public bool OfferRunSkill { get; set; }
         public bool OfferPlan { get; set; }
 
+        /// <summary>Set to give the stand-in plan an unchecked criterion and steps already done.</summary>
+        public bool PlanCriteria { get; set; }
+
         /// <summary>Stands in for plan_update, offered only to a test that set <see cref="OfferPlan"/>.</summary>
         private static readonly AgentTool PlanUpdate = new(
             new ChatToolDefinition("mcp_app__plan_update", "Plan", JsonSerializer.Deserialize<JsonElement>("{}")),
@@ -2978,6 +3012,10 @@ public sealed partial class ChatExecutionTests
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");
+            if (tool.OriginalName == "plan_update" && PlanCriteria)
+                return _codec.Read("{\"structuredContent\":{\"plan\":{\"title\":\"Fix\",\"steps\":[{\"title\":\"Study\","
+                    + "\"status\":\"Completed\",\"progress\":100}],\"updatedAt\":\"2026-10-15T09:00:00Z\","
+                    + "\"criteria\":[{\"text\":\"The parser tests pass\"}]},\"percent\":100,\"completed\":1,\"total\":1,\"guidance\":\"\"}}");
             if (tool.OriginalName == "plan_update")
                 return _codec.Read("{\"structuredContent\":{\"plan\":{\"title\":\"Fix\",\"steps\":[{\"title\":\"Study\","
                     + "\"weight\":2,\"status\":\"InProgress\",\"progress\":40},{\"title\":\"Build\",\"weight\":3}],"

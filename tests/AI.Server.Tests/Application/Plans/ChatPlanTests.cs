@@ -228,6 +228,54 @@ public class ChatPlanTests
     }
 
     [Fact]
+    public void ShouldSettleCriteriaOnlyWithWhatSettledThem()
+    {
+        var plan = ChatPlanEditor.Replace(null, null, [new("Fix", Status: ChatPlanStepStatus.InProgress)], At(0));
+        plan = ChatPlanEditor.Criteria(plan, [new("The parser tests pass"), new("Both themes checked")]);
+
+        ChatPlanCriteriaSummary.Of(plan).ShouldBe(new ChatPlanCriteriaSummary(0, 0, 2, 0));
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Check(plan, [new(1, ChatPlanCriterionStatus.Met)]))
+            .Message.ShouldContain("evidence");
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Check(plan, [new(2, ChatPlanCriterionStatus.NotApplicable)]))
+            .Message.ShouldContain("why it does not apply");
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Check(plan, [new(3, ChatPlanCriterionStatus.Met, "x")]))
+            .Message.ShouldContain("criteria 1–2");
+
+        plan = ChatPlanEditor.Check(plan,
+        [
+            new(1, ChatPlanCriterionStatus.Met, " 12 of 12  passed ", "call-7"),
+            new(2, ChatPlanCriterionStatus.NotApplicable, "No UI changed")
+        ]);
+
+        plan.Criteria.ShouldBe(
+        [
+            new ChatPlanCriterion("The parser tests pass", ChatPlanCriterionStatus.Met, "12 of 12 passed", "call-7"),
+            new ChatPlanCriterion("Both themes checked", ChatPlanCriterionStatus.NotApplicable, "No UI changed")
+        ]);
+        ChatPlanCriteriaSummary.Of(plan).ShouldBe(new ChatPlanCriteriaSummary(1, 0, 0, 1));
+        ChatPlanCriteriaSummary.Of(plan).Total.ShouldBe(1);
+    }
+
+    [Fact]
+    public void ShouldKeepCriteriaThroughACorrectedPlanUntilTheyAreSetAgain()
+    {
+        var plan = ChatPlanEditor.Replace(null, null, [new("Fix")], At(0));
+        plan = ChatPlanEditor.Check(ChatPlanEditor.Criteria(plan, [new("Tests pass")]),
+            [new(1, ChatPlanCriterionStatus.Met, "All passed")]);
+
+        var corrected = ChatPlanEditor.Replace(plan, null, [new("Fix"), new("Docs")], At(1));
+        corrected.Criteria.ShouldNotBeNull().ShouldHaveSingleItem().Status.ShouldBe(ChatPlanCriterionStatus.Met);
+
+        var reworded = ChatPlanEditor.Criteria(corrected, [new("tests pass"), new("Docs updated")]);
+        reworded.Criteria![0].ShouldBe(new ChatPlanCriterion("tests pass", ChatPlanCriterionStatus.Met, "All passed"));
+        reworded.Criteria[1].Status.ShouldBe(ChatPlanCriterionStatus.Unverified);
+
+        ChatPlanEditor.Criteria(reworded, []).Criteria.ShouldBeEmpty();
+        Should.Throw<ArgumentException>(() => ChatPlanEditor.Criteria(plan,
+            Enumerable.Range(1, 9).Select(index => new ChatPlanCriterionInput($"C{index}")).ToArray()));
+    }
+
+    [Fact]
     public void ShouldReadTheNewestSuccessfulPlanAlongTheBranch()
     {
         var first = ChatPlanEditor.Replace(null, "First", [new("Study")], At(0));

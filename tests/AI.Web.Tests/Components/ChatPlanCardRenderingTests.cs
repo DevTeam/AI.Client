@@ -55,6 +55,39 @@ public sealed class ChatPlanCardRenderingTests
     }
 
     [Fact]
+    public async Task ShouldShowTheCriteriaOfDoneWithTheirStandingAndEvidence()
+    {
+        var evidenceId = Guid.NewGuid();
+        var plan = new ChatPlan("Fix", [new("Study", Status: ChatPlanStepStatus.Completed)], Start, 0,
+        [
+            new("The parser tests pass", ChatPlanCriterionStatus.Met, "12 of 12 passed", "call-tests"),
+            new("Both themes checked", ChatPlanCriterionStatus.NotApplicable, "No UI changed"),
+            new("The docs mention the flag")
+        ]);
+
+        var html = await RenderAsync(plan, evidence: call => call == "call-tests" ? evidenceId : null);
+
+        // One of the two that apply is met; the one left unchecked after the steps turns the count to a warning.
+        html.ShouldContain("class=\"chat-plan-criteria-count is-unverified\"");
+        html.ShouldContain("✓ 1/2");
+        html.ShouldContain(">Done when</div>");
+        html.ShouldContain("class=\"chat-plan-criterion is-not-applicable\"");
+        html.ShouldContain("No UI changed");
+        html.ShouldContain(">Evidence</button>");
+        html.ShouldContain(">Not verified</span>");
+    }
+
+    [Fact]
+    public void ShouldFindTheResultOfAToolCall()
+    {
+        var result = new ChatMessageView(Guid.NewGuid(), null, "Tool", "x", Start, ToolCallId: "call-1");
+        var feed = new ChatFeed();
+
+        feed.ToolResultOf([new ChatMessageView(Guid.NewGuid(), null, "User", "x", Start), result], "call-1").ShouldBe(result.Id);
+        feed.ToolResultOf([result], "call-2").ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ShouldForecastALivePlanAndSayWhenAStepRunsOverOrTheRunWaits()
     {
         var now = DateTimeOffset.UtcNow;
@@ -99,7 +132,8 @@ public sealed class ChatPlanCardRenderingTests
         feed.LatestPlan([Message("User"), Message("Assistant")]).ShouldBeNull();
     }
 
-    private static async Task<string> RenderAsync(ChatPlan plan, bool live = false, bool waiting = false)
+    private static async Task<string> RenderAsync(ChatPlan plan, bool live = false, bool waiting = false,
+        Func<string, Guid?>? evidence = null)
     {
         var composition = new Composition("http://127.0.0.1:52173/", publicWeb: true);
         var registrations = new ServiceCollection();
@@ -116,7 +150,9 @@ public sealed class ChatPlanCardRenderingTests
                     [nameof(ChatPlanCard.Plan)] = plan,
                     [nameof(ChatPlanCard.Live)] = live,
                     [nameof(ChatPlanCard.WorkingSince)] = live ? plan.UpdatedAt : null,
-                    [nameof(ChatPlanCard.Waiting)] = waiting
+                    [nameof(ChatPlanCard.Waiting)] = waiting,
+                    [nameof(ChatPlanCard.EvidenceMessage)] = evidence,
+                    [nameof(ChatPlanCard.OnShowMessage)] = EventCallback.Factory.Create<Guid>(new object(), (Guid _) => { })
                 }));
             return component.ToHtmlString();
         });

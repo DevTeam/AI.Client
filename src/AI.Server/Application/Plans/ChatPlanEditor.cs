@@ -21,6 +21,21 @@ public sealed record ChatPlanStepUpdate(
     string? Note = null,
     double? Minutes = null);
 
+/// <summary>A criterion of done as the model writes it.</summary>
+/// <param name="EvidenceCall">The id of the tool call whose result shows it.</param>
+public sealed record ChatPlanCriterionInput(
+    string Text,
+    ChatPlanCriterionStatus Status = ChatPlanCriterionStatus.Unverified,
+    string? Evidence = null,
+    string? EvidenceCall = null);
+
+/// <summary>A change to one criterion of the current plan, by its number counting from one.</summary>
+public sealed record ChatPlanCriterionCheck(
+    int Criterion,
+    ChatPlanCriterionStatus Status,
+    string? Evidence = null,
+    string? EvidenceCall = null);
+
 /// <summary>A moment by the wall clock and by the plan's working clock (<see cref="ChatPlan.Clock"/>).</summary>
 public readonly record struct ChatPlanMoment(DateTimeOffset At, double Clock);
 
@@ -35,10 +50,12 @@ public static class ChatPlanEditor
     public const int MaxTitleLength = 160;
     public const int MaxNoteLength = 240;
     public const double MaxMinutes = 24 * 60;
+    public const int MaxCriteria = 8;
 
     /// <summary>
     /// Lays out a new plan. A step that keeps its title from the previous plan keeps its times, so
-    /// rewording the rest of a plan does not reset the clock of the work already done.
+    /// rewording the rest of a plan does not reset the clock of the work already done; the criteria
+    /// are kept until they are set again.
     /// </summary>
     public static ChatPlan Replace(ChatPlan? previous, string? title, IReadOnlyList<ChatPlanStepInput> steps,
         ChatPlanMoment now)
@@ -62,7 +79,71 @@ public static class ChatPlanEditor
             };
             result.Add(Transition(start, input.Status, input.Progress, null, now));
         }
-        return new ChatPlan(Text(title, MaxTitleLength) ?? Text(previous?.Title, MaxTitleLength), result, now.At, now.Clock);
+        // The criteria stay with a plan laid out again: a corrected plan is still the same task. A
+        // new task brings its own, or an empty list for none.
+        return new ChatPlan(Text(title, MaxTitleLength) ?? Text(previous?.Title, MaxTitleLength), result, now.At, now.Clock,
+            previous?.Criteria);
+    }
+
+    /// <summary>
+    /// Sets the plan's criteria of done; an empty list says the task has none. A criterion that keeps
+    /// its text keeps where it stood, unless the new one says otherwise.
+    /// </summary>
+    public static ChatPlan Criteria(ChatPlan plan, IReadOnlyList<ChatPlanCriterionInput> criteria)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(criteria);
+        if (criteria.Count > MaxCriteria)
+            throw new ArgumentException($"A plan has at most {MaxCriteria} criteria; keep the ones that decide whether the task is done.");
+        var earlier = (plan.Criteria ?? []).GroupBy(item => item.Text, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var result = criteria.Select((input, index) =>
+        {
+            var text = Text(input.Text, MaxTitleLength) ?? throw new ArgumentException("Every criterion needs its text.");
+            return input.Status == ChatPlanCriterionStatus.Unverified && input.Evidence is null
+                   && earlier.GetValueOrDefault(text) is { } kept
+                ? kept with { Text = text }
+                : Settle(new ChatPlanCriterion(text), input.Status, input.Evidence, input.EvidenceCall, index + 1);
+        }).ToArray();
+        return plan with { Criteria = result };
+    }
+
+    /// <summary>Settles criteria of the current plan; anything a check leaves out stays as it was.</summary>
+    public static ChatPlan Check(ChatPlan plan, IReadOnlyList<ChatPlanCriterionCheck> checks)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(checks);
+        var criteria = (plan.Criteria ?? []).ToArray();
+        foreach (var check in checks)
+        {
+            if (check.Criterion < 1 || check.Criterion > criteria.Length)
+                throw new ArgumentException(criteria.Length == 0
+                    ? "The plan has no criteria; set them with 'criteria' first."
+                    : $"Criterion {check.Criterion} does not exist; the plan has criteria 1–{criteria.Length}.");
+            criteria[check.Criterion - 1] = Settle(criteria[check.Criterion - 1], check.Status, check.Evidence,
+                check.EvidenceCall, check.Criterion);
+        }
+        return plan with { Criteria = criteria };
+    }
+
+    /// <summary>
+    /// A criterion is settled only with what settled it: what showed it met, what failed, or why it
+    /// does not concern this task. Unverified needs nothing; it is the honest state of a check not made.
+    /// </summary>
+    private static ChatPlanCriterion Settle(ChatPlanCriterion criterion, ChatPlanCriterionStatus status, string? evidence,
+        string? call, int number)
+    {
+        var text = Text(evidence, MaxNoteLength);
+        if (status != ChatPlanCriterionStatus.Unverified && text is null)
+            throw new ArgumentException(status == ChatPlanCriterionStatus.NotApplicable
+                ? $"Criterion {number}: say why it does not apply to this task."
+                : $"Criterion {number}: say what showed it ({status}) in 'evidence'.");
+        return criterion with
+        {
+            Status = status,
+            Evidence = text ?? (status == criterion.Status ? criterion.Evidence : null),
+            EvidenceCall = string.IsNullOrWhiteSpace(call) ? status == criterion.Status ? criterion.EvidenceCall : null : call.Trim()
+        };
     }
 
     /// <summary>Moves steps of the current plan; anything a change leaves out stays as it was.</summary>

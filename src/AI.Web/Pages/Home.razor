@@ -513,7 +513,9 @@
         {
             <ChatPlanCard @key="@("plan-" + GetSelectedRunBranchId())" Plan="@dockedPlan" Live="true" ExpandUpward="true"
                           WorkingSince="@GetWidgetMessages(_selectedChat!).LastOrDefault(message => message.StartsTurn)?.CreatedAt"
-                          Waiting="@IsWaitingForPerson(GetSelectedRun())" />
+                          Waiting="@IsWaitingForPerson(GetSelectedRun())"
+                          EvidenceMessage="@(call => Feed.ToolResultOf(GetWidgetMessages(_selectedChat!), call))"
+                          OnShowMessage="ScrollToTurnAsync" />
         }
         @if (GetLiveTurnChanges() is { } dockedChanges)
         {

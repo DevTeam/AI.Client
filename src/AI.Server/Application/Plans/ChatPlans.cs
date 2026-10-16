@@ -31,6 +31,12 @@ public interface IChatPlans
     /// <summary>Stops the working clock until the returned scope ends: the run is waiting for the person.</summary>
     IDisposable WaitForPerson(ToolRunContext run);
 
+    /// <summary>Records a tool call made on the branch, so a criterion can cite it as evidence.</summary>
+    void NoteCall(ToolRunContext run, string callId);
+
+    /// <summary>Whether the branch has a tool call by this id: this run's, or one in its history.</summary>
+    bool KnowsCall(ToolRunContext run, string callId);
+
     /// <summary>False when the run has ended, or the plan was changed since <paramref name="expected"/> was read.</summary>
     bool TrySet(ToolRunContext run, ChatPlan? expected, ChatPlan plan);
 }
@@ -42,8 +48,9 @@ public sealed class ChatPlans(IChatRepository chats, IClock clock) : IChatPlans
     public async Task<IDisposable> BeginAsync(ToolRunContext run, CancellationToken cancellationToken)
     {
         var key = Key.Of(run);
-        var plan = await LoadAsync(run, cancellationToken);
+        var (plan, calls) = await LoadAsync(run, cancellationToken);
         var entry = new Entry(plan, plan?.Clock ?? 0, clock.UtcNow);
+        foreach (var call in calls) entry.Calls.Add(call);
         _entries[key] = entry;
         return new Scope(() => _entries.TryRemove(new KeyValuePair<Key, Entry>(key, entry)));
     }
@@ -55,6 +62,17 @@ public sealed class ChatPlans(IChatRepository chats, IClock clock) : IChatPlans
         var now = clock.UtcNow;
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new ChatPlanMoment(now, 0);
         lock (entry) return new ChatPlanMoment(now, entry.ClockAt(now));
+    }
+
+    public void NoteCall(ToolRunContext run, string callId)
+    {
+        if (_entries.TryGetValue(Key.Of(run), out var entry)) lock (entry) entry.Calls.Add(callId);
+    }
+
+    public bool KnowsCall(ToolRunContext run, string callId)
+    {
+        if (!_entries.TryGetValue(Key.Of(run), out var entry)) return false;
+        lock (entry) return entry.Calls.Contains(callId);
     }
 
     public IDisposable WaitForPerson(ToolRunContext run)
@@ -99,18 +117,21 @@ public sealed class ChatPlans(IChatRepository chats, IClock clock) : IChatPlans
     /// A chat that cannot be read leaves the run without its earlier plan rather than failing it: the
     /// model can lay the plan out again.
     /// </summary>
-    private async Task<ChatPlan?> LoadAsync(ToolRunContext run, CancellationToken cancellationToken)
+    private async Task<(ChatPlan? Plan, IReadOnlyList<string> Calls)> LoadAsync(ToolRunContext run, CancellationToken cancellationToken)
     {
         try
         {
             var stored = await chats.GetAsync(new ProjectId(run.ProjectId), new ChatId(run.ChatId), cancellationToken);
             var head = stored?.Chat.Branches.SingleOrDefault(branch => branch.Id == run.BranchId)?.HeadMessageId;
-            return head is null ? null : ChatPlanHistory.Latest(stored!.Chat.GetBranch(head));
+            if (head is null) return (null, []);
+            var branch = stored!.Chat.GetBranch(head);
+            return (ChatPlanHistory.Latest(branch),
+                branch.SelectMany(message => message.ToolCalls ?? []).Select(call => call.Id).ToArray());
         }
         catch (Exception error) when (error is AI.Domain.Common.DomainException or IOException
                                           or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
-            return null;
+            return (null, []);
         }
     }
 
@@ -128,6 +149,7 @@ public sealed class ChatPlans(IChatRepository chats, IClock clock) : IChatPlans
         public TimeSpan Waited { get; set; }
         public DateTimeOffset? WaitingSince { get; set; }
         public int Waits { get; set; }
+        public HashSet<string> Calls { get; } = new(StringComparer.Ordinal);
 
         public double ClockAt(DateTimeOffset now) =>
             Base + Math.Max(0, (now - Since - Waited - (WaitingSince is { } waiting ? now - waiting : TimeSpan.Zero)).TotalSeconds);

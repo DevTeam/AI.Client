@@ -63,6 +63,42 @@ time, rather than a measured-looking "0s".
 A finished step is held to the model's own estimate, so its time against the estimate shows how the
 estimate went.
 
+## Criteria of done
+
+A plan can say what has to be true for its task to be done (`ChatPlan.Criteria`, at most 8): "the
+parser tests pass", "both themes checked". They are optional. A task with a checkable outcome — a
+change to code, configuration, files or data, requirements the user named, checks a skill asks for —
+gets them; an explanation, a draft the user will judge or an exploration does not, and neither does
+a task the user wants done without them. No criteria means no criteria block anywhere and no check
+before the answer.
+
+A criterion (`ChatPlanCriterion`) is `Unverified` until settled, then `Met`, `NotMet` or
+`NotApplicable`. Every status but `Unverified` needs its `Evidence`: what showed it, what failed, or
+why the criterion does not concern this task. `NotApplicable` exists for general rules: a project's
+definition of done is written for every task, and an item about the UI does not concern a change to
+the server; it is shown muted and left out of the count. A criterion can cite the tool call that
+showed it (`EvidenceCall`); the tool keeps the link only for a call made on the branch
+(`IChatPlans.NoteCall`, and the calls of the branch's history), so the chat links to real evidence.
+
+Where criteria come from:
+
+- the user's request;
+- the checks of a loaded playbook: the result of loading any playbook (`SkillRunner`) says they
+  become the plan's criteria;
+- the `## Definition of done` section of the project instructions, written with the
+  `project-done-define` skill (`/dod`) as scoped items ("For UI changes: …"): the standing prompt
+  says to take the items that concern the task and to mark one that turns out not to concern it
+  `NotApplicable`;
+- a scheduled chat's success criteria: `chat-schedule-run` takes each as a criterion and reports the
+  run as succeeded only when every criterion that applies is met.
+
+Before the final answer the criteria are settled, once. When the model answers with a criterion
+still `Unverified`, `ChatAgent` drops the draft and asks the step again with the trailing
+instruction `run.plan-criteria`: check each, mark it `NotApplicable` with the reason, or leave it
+`Unverified` and say so in the answer. The second answer stands whatever the criteria say: a
+criterion that cannot be checked is reported, not forced. The plan reminder `run.plan` lists the
+criteria and stays while one is unverified, even after the last step.
+
 ## Storage
 
 A plan has no store of its own. It is the structured result of the `plan_update` tool, kept in the
@@ -82,7 +118,9 @@ the history stays the record.
 ## Tool
 
 `mcp_app__plan_update` (`AppPlanTool`) takes either `steps`, laying out a new plan that replaces the
-current one, or `updates`, moving steps of the current plan by number; never both. Each step can
+current one, or `updates`, moving steps of the current plan by number; never both. `criteria` sets
+the criteria of done (an empty list drops them; laying out steps again keeps them), and `checks`
+settles them by number. Each step can
 carry `minutes`, its expected working time; an update can revise it. Laying out again keeps the
 times of steps whose titles stay the same. The application stamps the times on both clocks,
 computes the progress and returns the plan with `percent`, `completed` and `total`.
@@ -98,6 +136,10 @@ It runs without approval (`ToolDefaultDecision`), is always among the offered to
   completed count ("2/5"), the percentage and, for a live plan, the forecast as a range ("8-15m
   left", with the likely finish by the clock in its tooltip), or "Waiting for you" while the run
   waits; a hairline track along the header's bottom edge fills by the weighted progress.
+- **Criteria** count beside the steps when the plan has them: "✓ 1/2", in the danger text colour
+  when one is not met and in the warning one when the steps are done and one is still unchecked.
+  Expanded, a "Done when" block follows the steps: each criterion with the mark of the step status
+  it reads like, its evidence, and an "Evidence" link to the tool call that showed it.
 - **Expanded** it lists every step with a status mark, its title, its note, the reported progress
   of the step in progress and its time: taken for a finished step, "4m / ~5m" for the step in
   progress, "~5m" expected for a waiting one. A step well over its expected time shows it in the

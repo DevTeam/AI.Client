@@ -25,7 +25,10 @@ public sealed class AppPlanPresentationAdapter : BuiltInToolPresentationAdapter
         var percent = Number(structured, "percent") ?? 0;
         var total = Number(structured, "total") ?? 0;
         var completed = Number(structured, "completed") ?? 0;
-        return new ToolResultPresentation($"{percent}% · {completed} of {Plural(total, "step", "steps")} done",
+        var criteria = Number(structured, "criteriaTotal") is > 0 and var count
+            ? $" · {Number(structured, "criteriaMet") ?? 0} of {Plural(count, "criterion", "criteria")} met"
+            : string.Empty;
+        return new ToolResultPresentation($"{percent}% · {completed} of {Plural(total, "step", "steps")} done{criteria}",
             ToolResultSeverity.Ok, [], null);
     }
 }

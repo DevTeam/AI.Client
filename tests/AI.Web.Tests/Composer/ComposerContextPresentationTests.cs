@@ -39,6 +39,19 @@ public class ComposerContextPresentationTests
     }
 
     [Fact]
+    public void ShouldTakeTheReportedWindowAsTheRealOne()
+    {
+        var connection = new ConnectionSettings(Guid.CreateVersion7(), "Test", "https://example.test/v1", "model", true, true,
+            false, DetectedContextWindow: new DetectedContextWindow("model", 131_072));
+
+        var context = _presentation.Build(null, connection, string.Empty);
+
+        context.CapacityTokens.ShouldBe(131_072);
+        // Only the fallback asks for the real window to be set by hand.
+        context.IsDefaultCapacity.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ShouldShowOnlyKnownLayersBeforeTheFirstRequest()
     {
         var context = _presentation.Build(null, null, string.Empty);

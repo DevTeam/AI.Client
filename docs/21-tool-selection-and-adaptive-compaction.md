@@ -46,8 +46,11 @@ The tool share is further reduced by the complete projected conversation, includ
 instructions, tool results and trailing guidance. It is `min(schema share, max(0, U -
 max(U / 4, estimated context messages + trailing guidance)))`. At least a quarter of `U` is left
 for messages even when history is short. History and tool results are projected/compacted by the existing
-planner. Connection overrides and the output reserve are respected; parameter count and model
-names do not determine the profile.
+planner. Connection overrides, windows detected from the model catalog and the output reserve are
+respected (see `20-context-management.md`); parameter count and model names do not determine the
+profile. A 128K model whose catalog reports its window therefore gets the full profile instead of
+the Compact one that the 32,768-token fallback forces (about 16 tools, a smaller schema share and
+more frequent compaction).
 
 The agent reselects tools after step guidance and automatic checkpoints are known, before final
 planning. Definitions whose protocol groups were summarized away can then leave the request,

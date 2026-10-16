@@ -98,12 +98,67 @@ public sealed partial class OpenAiCompatibleConnectionModelsResolver(HttpClient 
             {
                 ownedBy = ownedByElement.GetString();
             }
-            models.Add(new ResolvedModelInfo(id.Trim(), display?.Trim(), ownedBy?.Trim()));
+            models.Add(new ResolvedModelInfo(id.Trim(), display?.Trim(), ownedBy?.Trim(), ContextWindow(entry)));
         }
         // Sort alphabetically so the list does not dance between requests because the upstream server
         // returned the catalog in a different order each time.
         models.Sort((left, right) => string.Compare(left.Id, right.Id, StringComparison.OrdinalIgnoreCase));
         return models;
+    }
+
+    // The OpenAI schema has no context length, so each server names it its own way. A length the
+    // server enforces at run time comes before one the model was trained for: LM Studio's loaded
+    // length and vLLM's max_model_len are what the server will accept, not what the weights allow.
+    private static readonly string[] ContextWindowFields =
+    [
+        "loaded_context_length", // LM Studio, the length the model is loaded with
+        "max_model_len",         // vLLM, SGLang
+        "context_length",        // OpenRouter, Together, Fireworks, DeepInfra (under metadata)
+        "context_window",        // Groq, LiteLLM
+        "max_context_length",    // Mistral, LM Studio
+        "max_input_tokens",      // LiteLLM model_info
+        "input_token_limit"      // Gemini-style catalogs
+    ];
+
+    // Where a server nests the model's details instead of putting them on the entry itself.
+    private static readonly string[] ContextWindowContainers = ["top_provider", "model_info", "metadata", "info"];
+
+    // The bounds a window typed by hand must keep; anything outside is a misread field, not a window.
+    private const long MinimumContextWindow = 1_024;
+    private const long MaximumContextWindow = 4_000_000;
+
+    private static long? ContextWindow(JsonElement entry)
+    {
+        if (ContextWindowField(entry) is { } direct) return direct;
+        foreach (var name in ContextWindowContainers)
+        {
+            if (entry.TryGetProperty(name, out var nested) && nested.ValueKind == JsonValueKind.Object
+                && ContextWindowField(nested) is { } found)
+                return found;
+        }
+
+        return null;
+    }
+
+    private static long? ContextWindowField(JsonElement source)
+    {
+        foreach (var name in ContextWindowFields)
+        {
+            if (source.TryGetProperty(name, out var value) && Tokens(value) is { } tokens) return tokens;
+        }
+
+        return null;
+    }
+
+    private static long? Tokens(JsonElement value)
+    {
+        long tokens;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)) tokens = number;
+        else if (value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(),
+                     System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            tokens = parsed;
+        else return null;
+        return tokens is >= MinimumContextWindow and <= MaximumContextWindow ? tokens : null;
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, Uri endpoint, CancellationToken cancellationToken)

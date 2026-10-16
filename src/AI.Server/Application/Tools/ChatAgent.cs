@@ -40,7 +40,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IModelInstructionComposer instructionComposer, IModelInstructionDiagnostics instructionDiagnostics,
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
-    IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans) : IChatAgent
+    IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
+    IConnectionContextWindowDetector contextWindows) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -79,7 +80,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             ? global.Connections.SingleOrDefault(item => item.Id == connectionId)
             : global.Connections.SingleOrDefault(item => item.Model == request.Model
                 && item.BaseUrl.TrimEnd('/') == request.BaseUrl.TrimEnd('/'));
-        if (configuredConnection is not null) configuredConnection = configuredConnection with { Model = request.Model };
+        if (configuredConnection is not null)
+        {
+            configuredConnection = configuredConnection with { Model = request.Model };
+            // Without a window set by hand, the catalog's figure for this model beats the fallback.
+            configuredConnection = await contextWindows.DetectAsync(configuredConnection, token);
+        }
         var project = await projects.GetAsync(projectId, token) ?? throw new InvalidOperationException("Project not found.");
         // Every server is gated the same way: enabled and not denied globally, and not switched off
         // for this project. A server that fails the test is never started, so nothing it could

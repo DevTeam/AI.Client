@@ -75,9 +75,47 @@ The connection needs two effective values:
 Values are resolved in the following order:
 
 1. explicit override in the connection settings;
-2. a conservative default for an OpenAI-compatible endpoint.
+2. the window the endpoint's model catalog reports for the connection's model (`Detected`);
+3. a conservative default for an OpenAI-compatible endpoint.
 
-The current version shows the source as `Override` or `Default`. The resolver interface allows a built-in model catalog to be added later without changing the planner and UI contracts.
+The source is shown as `Override`, `Detected` or `Default`. Only the context window is detected;
+the output reserve is an override or the default.
+
+#### Detected window
+
+`GET {baseUrl}/models` has no standard field for the context length, so the catalog reader
+(`OpenAiCompatibleConnectionModelsResolver`) takes the first of these it finds on a model entry, then
+inside its `top_provider`, `model_info`, `metadata` or `info` object:
+
+| Field | Reported by |
+|---|---|
+| `loaded_context_length` | LM Studio: the length the model is loaded with |
+| `max_model_len` | vLLM, SGLang |
+| `context_length` | OpenRouter, Together, Fireworks, DeepInfra (under `metadata`) |
+| `context_window` | Groq, LiteLLM |
+| `max_context_length` | Mistral, LM Studio |
+| `max_input_tokens` | LiteLLM `model_info` |
+| `input_token_limit` | Gemini-style catalogs |
+
+A length the server enforces comes before one the model was trained for, which is why LM Studio's
+loaded length beats its maximum. llama.cpp's `n_ctx_train` is not read: the server may run with a
+smaller `n_ctx`, and a trained length would overflow it. Values must be whole numbers from 1,024 to
+4,000,000 (numbers or digit strings); anything else is ignored. Ollama's OpenAI-compatible catalog
+reports no length, so such connections stay on the default.
+
+`ConnectionContextWindowDetector` (a singleton) asks the catalog once per connection, Base URL and
+model, before the first request of a turn when the connection has no override and no detection for
+that model. The turn waits for the answer at most 2 seconds; a slower answer (up to 15 seconds) is
+still taken and serves later turns. A found window for the connection's own model is stored on the
+connection as `DetectedContextWindow { Model, Tokens }`, so settings show it and skills, subtasks and
+restarts read it without asking. A window for a model that only a branch selected stays in memory.
+An endpoint that reports nothing or fails is asked again after 30 minutes. A detection applies only
+while the connection's model equals its `Model`; after a model change the default applies until the
+catalog is read again. Saving a connection keeps a stored detection when the editor did not carry
+it and the model and Base URL are unchanged, and a detection does not count as a conflicting edit.
+
+The default is not raised: a local model served with a short window keeps working only because the
+fallback is small. A wrong detection can be corrected with an explicit override.
 
 The new settings must be nullable and have working defaults, so the old `settings.json` is read without a separate migration. Saving settings may write the new fields; existing files load.
 
@@ -205,7 +243,10 @@ Prompt content and tool result contents are not logged. The projection size, not
 
 ### UI
 
-When the connection has no explicit override, the connection card shows `Context window: Default (16k)`. When an override is set, the card shows `Context window: Override (N tokens)`. The diagnostic toast after a failure shows the cause and the recommended action without revealing prompt content.
+The connection's Context limits group shows the effective window and reserve with their sources:
+`override`, `reported by the endpoint` or `default`. The settings editor also applies the window of
+the model chosen from a loaded catalog at once, and saves it with the connection. The composer's
+"Default window size" note appears only for the default, not for a detected window. The diagnostic toast after a failure shows the cause and the recommended action without revealing prompt content.
 
 ### Context ring in the composer
 

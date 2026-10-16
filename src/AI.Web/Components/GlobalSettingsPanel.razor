@@ -321,7 +321,7 @@
                                         </details>
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
-                                                <span class="settings-row-text"><span class="settings-row-label">Context limits</span><span class="settings-row-hint">Empty fields use the model's defaults</span></span>
+                                                <span class="settings-row-text"><span class="settings-row-label">Context limits</span><span class="settings-row-hint">Empty fields use what the endpoint reports, or safe defaults</span></span>
                                                 <span class="settings-row-value" title="@($"Context window: {limits.ContextWindowTokens} tokens ({SourceLabel(limits.ContextWindowSource)}). Reserved output: {limits.ReservedOutputTokens} tokens ({SourceLabel(limits.ReservedOutputSource)})")">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
@@ -964,7 +964,7 @@
 
         foreach (var editor in _connections)
         {
-            var item = editor.ToSettings();
+            var item = WithCatalogWindow(editor);
             _loadedConnections.TryGetValue(item.Id, out var expected);
             if (expected is not null && JsonSerializer.Serialize(item) == JsonSerializer.Serialize(expected)) continue;
             _savingItem = item.Name;
@@ -1318,11 +1318,25 @@
         value is >= 1 && value <= words.Length ? words[value - 1] : "not rated";
 
     private ResolvedConnectionContextLimits EffectiveLimits(ConnectionEditor connection) =>
-        ContextLimits.Resolve(connection.ToSettings());
+        ContextLimits.Resolve(WithCatalogWindow(connection));
+
+    /// <summary>
+    /// The connection as it is saved: with the window the loaded catalog reports for the chosen
+    /// model, so a model just picked shows its real window rather than the fallback.
+    /// </summary>
+    private ConnectionSettings WithCatalogWindow(ConnectionEditor connection)
+    {
+        var settings = connection.ToSettings();
+        return _resolvedModels.TryGetValue(connection.Id, out var models)
+            && models.FirstOrDefault(item => item.Id == settings.Model)?.ContextWindowTokens is { } tokens
+                ? settings with { DetectedContextWindow = new DetectedContextWindow(settings.Model, tokens) }
+                : settings;
+    }
 
     private static string SourceLabel(ContextLimitSource source) => source switch
     {
         ContextLimitSource.Override => "override",
+        ContextLimitSource.Detected => "reported by the endpoint",
         _ => "default"
     };
 
@@ -1980,6 +1994,8 @@
         public string GoodFor { get; set; } = string.Empty;
         public long? ContextWindowTokens { get; set; }
         public long? ReservedOutputTokens { get; set; }
+        // What the Host learned from the catalog; carried through untouched, never edited here.
+        public DetectedContextWindow? DetectedContextWindow { get; set; }
         public decimal? InputPrice { get; set; }
         public decimal? OutputPrice { get; set; }
         public decimal? CachedInputPrice { get; set; }
@@ -1999,6 +2015,7 @@
             GoodFor = item.GoodFor ?? string.Empty,
             ContextWindowTokens = item.ContextWindowTokens,
             ReservedOutputTokens = item.ReservedOutputTokens,
+            DetectedContextWindow = item.DetectedContextWindow,
             InputPrice = item.Prices?.Input,
             OutputPrice = item.Prices?.Output,
             CachedInputPrice = item.Prices?.CachedInput
@@ -2015,7 +2032,8 @@
                     ? new AI.Contracts.Usage.TokenPrices(input, output, CachedInputPrice)
                     : null,
                 ImageInput,
-                string.IsNullOrWhiteSpace(ReasoningEffort) ? null : ReasoningEffort);
+                string.IsNullOrWhiteSpace(ReasoningEffort) ? null : ReasoningEffort,
+                DetectedContextWindow);
     }
 
     [SuppressMessage("ReSharper", "PropertyCanBeMadeInitOnly.Local")]

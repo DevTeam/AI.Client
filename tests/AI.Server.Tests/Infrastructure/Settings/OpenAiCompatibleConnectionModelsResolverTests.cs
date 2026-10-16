@@ -269,6 +269,39 @@ public class OpenAiCompatibleConnectionModelsResolverTests
         models.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task ShouldReadTheContextLengthEachProviderReportsItsOwnWay()
+    {
+        _handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(Ok("""
+                {"data":[
+                    {"id":"openrouter","context_length":200000,"top_provider":{"context_length":128000}},
+                    {"id":"vllm","object":"model","max_model_len":32768},
+                    {"id":"groq","context_window":131072},
+                    {"id":"lmstudio","max_context_length":131072,"loaded_context_length":8192},
+                    {"id":"litellm","model_info":{"max_input_tokens":"1000000"}},
+                    {"id":"deepinfra","metadata":{"context_length":65536}},
+                    {"id":"ollama","owned_by":"library"},
+                    {"id":"nonsense","context_length":-1,"max_model_len":"lots"}
+                ]}
+                """));
+
+        var models = (await CreateInstance().ResolveAsync("https://llm.example/v1", null, CancellationToken.None))
+            .ToDictionary(item => item.Id, item => item.ContextWindowTokens);
+
+        models["openrouter"].ShouldBe(200_000);
+        models["vllm"].ShouldBe(32_768);
+        models["groq"].ShouldBe(131_072);
+        // The length the model is loaded with is the one the server enforces.
+        models["lmstudio"].ShouldBe(8_192);
+        models["litellm"].ShouldBe(1_000_000);
+        models["deepinfra"].ShouldBe(65_536);
+        models["ollama"].ShouldBeNull();
+        models["nonsense"].ShouldBeNull();
+    }
+
     private OpenAiCompatibleConnectionModelsResolver CreateInstance() =>
         new(new HttpClient(_handler.Object) { Timeout = Timeout.InfiniteTimeSpan });
 

@@ -731,3 +731,33 @@ inventory's parameter names, the single first-token retry, the first-token wait 
 prompt, reads of one batch running at once and returning in order, a manual approval card shown
 before its advice and updated with it, routing on a subtask connection, `read_text_file` ranges, and
 the criteria check asked for before the answer.
+
+## 2026-10-16 — Context window detected from the model catalog
+
+A connection without a context-window override no longer always falls back to 32,768 tokens. The
+model catalog reader takes the context length the provider reports (`loaded_context_length`,
+`max_model_len`, `context_length`, `context_window`, `max_context_length`, `max_input_tokens`,
+`input_token_limit`, also inside `top_provider`, `model_info`, `metadata` or `info`) into
+`ResolvedModelInfo.ContextWindowTokens`. Before the first request of a turn,
+`ConnectionContextWindowDetector` asks the catalog once per connection, Base URL and model (the turn
+waits at most 2 seconds), stores a window found for the connection's own model as
+`ConnectionSettings.DetectedContextWindow`, and keeps misses in memory for 30 minutes. The resolver
+uses it as `ContextLimitSource.Detected` after an override and before the default. The 32,768-token
+fallback is unchanged, so local models with short windows keep working. Saving a connection keeps
+the detection while the model and Base URL stay, and a detection is not a conflicting edit. The
+settings editor shows the source (`override`, `reported by the endpoint`, `default`) and applies the
+window of a model picked from a loaded catalog at once.
+
+Files: `src/AI.Contracts/Settings/{ConnectionSettings,ResolvedConnectionContextLimits,ConnectionContextLimitsResolver}.cs`,
+`src/AI.Server/Infrastructure/Settings/OpenAiCompatibleConnectionModelsResolver.cs`,
+`src/AI.Server/Application/Settings/{IConnectionContextWindowDetector,ConnectionContextWindowDetector,GlobalSettingsService}.cs`,
+`src/AI.Server/Application/Tools/ChatAgent.cs`, `src/AI.Server/Composition.cs`,
+`src/AI.Web/Components/GlobalSettingsPanel.razor`, `tests/AI.Server.Tests/TestServer.cs` (the
+catalog is an edge and lists nothing in composed tests), and docs 20 and 21.
+
+Checks: `AI.Server.Tests` 1331 tests (one Unix-only skipped) and `AI.Web.Tests` 684, all passing.
+New tests cover the fields of each provider and the precedence of the loaded length, the resolver's
+order and its ignoring a detection for another model, detecting once per connection and model,
+storing only the connection's own model, retrying a miss, falling back when the endpoint fails,
+keeping a detection on save and dropping it on a model change, and the composer treating a detected
+window as real.

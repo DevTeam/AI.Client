@@ -30,6 +30,10 @@ internal sealed class TestServer
 #pragma warning disable DIW000 // These registrations intentionally replace production edge bindings.
             .Arg<IChatCompletionClient>("completion")
             .Singleton(() => Mock.Of<IGlobalSecretStore>())
+            // The endpoint's model catalog is the model endpoint too; it lists nothing here.
+            .Singleton(() => Mock.Of<IConnectionModelsResolver>(item =>
+                item.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())
+                    == Task.FromResult<IReadOnlyList<AI.Contracts.Settings.ResolvedModelInfo>>(Array.Empty<AI.Contracts.Settings.ResolvedModelInfo>())))
             // The whole server performs its IO through the one file-system contract, so this single
             // binding puts every repository, the logger and the secret store onto the shared fake.
             .Bind<IFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)

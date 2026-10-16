@@ -63,6 +63,33 @@ public class GlobalSettingsItemTests
     }
 
     [Fact]
+    public async Task UpsertingConnectionKeepsTheWindowTheHostDetectedForItsModel()
+    {
+        var detected = new DetectedContextWindow("model", 131_072);
+        var stored = Connection("Connection", true) with { DetectedContextWindow = detected };
+        var repository = new MemoryRepository(new GlobalSettings([stored], [], []));
+        // The editor was opened before the Host learned the window.
+        var read = stored with { DetectedContextWindow = null };
+
+        await Service(repository, new MemorySecrets()).UpsertConnectionAsync(
+            read with { GoodFor = "coding" }, read, CancellationToken.None);
+
+        repository.State.Connections.ShouldHaveSingleItem().DetectedContextWindow.ShouldBe(detected);
+    }
+
+    [Fact]
+    public async Task UpsertingConnectionWithAnotherModelDropsTheDetectedWindow()
+    {
+        var stored = Connection("Connection", true) with { DetectedContextWindow = new DetectedContextWindow("model", 131_072) };
+        var repository = new MemoryRepository(new GlobalSettings([stored], [], []));
+
+        await Service(repository, new MemorySecrets()).UpsertConnectionAsync(
+            stored with { Model = "another-model" }, stored, CancellationToken.None);
+
+        repository.State.Connections.ShouldHaveSingleItem().DetectedContextWindow.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task RemovingMcpServerRemovesOnlyItsGlobalPolicies()
     {
         var first = Server("First", "one");

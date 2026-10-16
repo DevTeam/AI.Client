@@ -73,6 +73,8 @@ internal sealed class Composition
             // Command rules share one document and its write gate.
             .Singleton<JsonCommandRuleRepository>()
             .Singleton<ChatKindPolicyRegistry>()
+            // Context windows learned from model catalogs, and which endpoints reported none.
+            .Singleton<ConnectionContextWindowDetector>()
             .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
             .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
             .Bind<IPersistentChatRunRepository>().As(Lifetime.Singleton).To<JsonChatRunRepository>()

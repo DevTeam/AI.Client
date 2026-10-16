@@ -124,6 +124,8 @@ public sealed class GlobalSettingsService(
         var toolPolicies = request.ToolPolicies.Select(Normalize).ToArray();
         // The request carries only what the connections and MCP editors own; the rest is kept.
         var stored = await repository.LoadAsync(cancellationToken);
+        connections = connections.Select(item =>
+            KeepDetection(item, stored.Connections.SingleOrDefault(current => current.Id == item.Id))).ToArray();
         var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation);
         await repository.SaveAsync(settings, cancellationToken);
         return await GetAsync(cancellationToken);
@@ -144,7 +146,7 @@ public sealed class GlobalSettingsService(
             var connections = stored.Connections.Where(item => item.Id != connection.Id)
                 .Select(item => connection.IsDefault ? item with { IsDefault = false } : item).ToList();
             var index = current is null ? connections.Count : stored.Connections.ToList().FindIndex(item => item.Id == connection.Id);
-            connections.Insert(index, connection with { HasCredential = current?.HasCredential ?? false });
+            connections.Insert(index, KeepDetection(connection, current) with { HasCredential = current?.HasCredential ?? false });
             return Task.FromResult(stored with { Connections = NormalizeConnectionDefaults(connections) });
         }, cancellationToken);
         return await GetAsync(cancellationToken);
@@ -224,8 +226,22 @@ public sealed class GlobalSettingsService(
             throw new SettingsConflictException("Settings changed since they were read. Reload and review this item before saving.");
     }
 
+    // The detected window is the Host's own note, written while an editor may be open; it is not
+    // a change anyone made to the connection.
     private static bool SameConnection(ConnectionSettings left, ConnectionSettings right) =>
-        left with { HasCredential = false } == right with { HasCredential = false };
+        left with { HasCredential = false, DetectedContextWindow = null }
+        == right with { HasCredential = false, DetectedContextWindow = null };
+
+    /// <summary>
+    /// Keeps the window detected for the stored connection when the incoming one does not carry it
+    /// (an editor or a tool that never saw it) and still runs the same model at the same endpoint.
+    /// </summary>
+    private static ConnectionSettings KeepDetection(ConnectionSettings item, ConnectionSettings? current) =>
+        item.DetectedContextWindow is null && current?.DetectedContextWindow is { } detected
+            && detected.Model == item.Model
+            && string.Equals(current.BaseUrl.TrimEnd('/'), item.BaseUrl.TrimEnd('/'), StringComparison.Ordinal)
+            ? item with { DetectedContextWindow = detected }
+            : item;
 
     private static bool SameMcpServer(McpServerSettings left, McpServerSettings right) =>
         JsonSerializer.Serialize(ComparableMcpServer(left)) == JsonSerializer.Serialize(ComparableMcpServer(right));
@@ -329,11 +345,15 @@ public sealed class GlobalSettingsService(
             throw new ArgumentException("Reserved output tokens must be smaller than the context window.");
         }
 
+        var model = item.Model.Trim();
         return item with
         {
             Name = item.Name.Trim(),
             BaseUrl = item.BaseUrl.TrimEnd('/'),
-            Model = item.Model.Trim(),
+            Model = model,
+            // A detection for another model, or of a size no window has, is not worth keeping.
+            DetectedContextWindow = item.DetectedContextWindow is { Tokens: >= 1_024 and <= 4_000_000 } detected
+                && detected.Model == model ? detected : null,
             // A rating is one of five words or nothing at all. Anything outside that is not a
             // judgement anyone made, and a stored zero would read as "the weakest there is".
             Capability = Rating(item.Capability),

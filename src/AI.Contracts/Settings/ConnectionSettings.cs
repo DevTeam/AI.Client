@@ -24,6 +24,10 @@ namespace AI.Contracts.Settings;
 /// Optional Chat Completions reasoning_effort sent only when the configured endpoint supports it;
 /// null leaves the provider's default untouched.
 /// </param>
+/// <param name="DetectedContextWindow">
+/// What the model catalog reported as the window of the model; used when
+/// <paramref name="ContextWindowTokens"/> is not set. Filled by the Host, not typed by anyone.
+/// </param>
 /// <summary>
 /// One model the endpoint advertises through <c>GET /v1/models</c>. The resolver normalises the
 /// upstream OpenAI-compatible payload into this shape so the UI does not need to know the
@@ -35,7 +39,19 @@ namespace AI.Contracts.Settings;
 /// prefers it when present.
 /// </param>
 /// <param name="OwnedBy">The provider's own owner tag, kept for sorting and debugging only.</param>
-public sealed record ResolvedModelInfo(string Id, string? DisplayName = null, string? OwnedBy = null);
+/// <param name="ContextWindowTokens">
+/// The context length the provider reports for the model (OpenRouter's <c>context_length</c>, vLLM's
+/// <c>max_model_len</c> and similar); null when the catalog does not say.
+/// </param>
+public sealed record ResolvedModelInfo(string Id, string? DisplayName = null, string? OwnedBy = null,
+    long? ContextWindowTokens = null);
+
+/// <summary>
+/// A context window the endpoint's model catalog reported for one model, kept on the connection so
+/// it does not have to be asked again. It applies only while the connection runs that model, and
+/// never over a window set by hand.
+/// </summary>
+public sealed record DetectedContextWindow(string Model, long Tokens);
 
 /// <summary>
 /// What the connection editor currently shows, sent when it asks for the model catalog. The form is
@@ -66,4 +82,5 @@ public sealed record ConnectionSettings(
     long? ReservedOutputTokens = null,
     Usage.TokenPrices? Prices = null,
     ImageInputMode ImageInput = ImageInputMode.Automatic,
-    string? ReasoningEffort = null);
+    string? ReasoningEffort = null,
+    DetectedContextWindow? DetectedContextWindow = null);

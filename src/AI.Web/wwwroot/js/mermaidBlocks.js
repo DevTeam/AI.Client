@@ -159,18 +159,50 @@ const zoomButton = ({ action, title, icon }) => {
     return button;
 };
 
+// Copy hands over the diagram's source, not a picture: a diagram is copied to be changed and drawn
+// again elsewhere. It carries `message-copy-action`, so messageActions.js turns it into the same
+// check as the message's own Copy. The source of a drawn diagram is kept here, as the fence it came
+// from is gone; an error block still shows its source and is read from there.
+const COPY_ACTION_ATTR = "data-mermaid-copy";
+const sources = new WeakMap();
+
+const copyButton = () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mermaid-zoom-button message-copy-action";
+    button.setAttribute(COPY_ACTION_ATTR, "");
+    button.setAttribute("title", "Copy diagram source");
+    button.setAttribute("aria-label", "Copy diagram source");
+    const icon = (paths, extraClass) =>
+        `<svg class="app-icon mermaid-zoom-icon${extraClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+        `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    button.innerHTML =
+        icon('<rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />', "") +
+        icon('<path d="m5 12 4 4L19 6" />', " copied-icon");
+    return button;
+};
+
+const copySource = (block, button) => {
+    const source = sources.get(block) ?? block.querySelector(".mermaid-source")?.textContent ?? "";
+    // The check would claim a copy that did not happen.
+    navigator.clipboard.writeText(source).catch(error => {
+        button.classList.remove("is-copied");
+        console.error("Could not copy the diagram source:", error);
+    });
+};
+
 const zoomToolbar = () => {
     const toolbar = document.createElement("div");
     toolbar.className = "mermaid-toolbar";
     toolbar.setAttribute("role", "group");
-    toolbar.setAttribute("aria-label", "Diagram zoom");
+    toolbar.setAttribute("aria-label", "Diagram");
 
     // The percentage is a plain label, not a control: it reports the state the two buttons set.
     const level = document.createElement("span");
     level.className = "mermaid-zoom-level";
     level.textContent = "100%";
 
-    toolbar.append(zoomButton(ZOOM_ACTIONS[0]), level, zoomButton(ZOOM_ACTIONS[1]), zoomButton(ZOOM_ACTIONS[2]));
+    toolbar.append(zoomButton(ZOOM_ACTIONS[0]), level, zoomButton(ZOOM_ACTIONS[1]), zoomButton(ZOOM_ACTIONS[2]), copyButton());
     return toolbar;
 };
 
@@ -267,6 +299,7 @@ const renderOne = async matchedNode => {
     const content = document.createDocumentFragment();
     content.append(zoomToolbar(), holder);
     const block = wrap(matchedNode, "ok", content);
+    sources.set(block, source);
     // Puts the block at 100%: it records mermaid's own style for later zooms and settles the
     // buttons' enabled state.
     applyZoom(block, 1);
@@ -280,7 +313,15 @@ const errorBlock = (message, source) => {
     const header = document.createElement("div");
     header.className = "mermaid-error-header";
     header.textContent = "Mermaid could not render this diagram.";
-    root.appendChild(header);
+    // With a source to copy, the header shares its line with the Copy button.
+    if (source) {
+        const toolbar = document.createElement("div");
+        toolbar.className = "mermaid-toolbar";
+        toolbar.append(header, copyButton());
+        root.appendChild(toolbar);
+    } else {
+        root.appendChild(header);
+    }
 
     const detail = document.createElement("p");
     detail.className = "mermaid-error-message";
@@ -335,6 +376,12 @@ const renderAll = async root => {
 // One delegated listener for every toolbar in the feed. Buttons appear and disappear as Blazor
 // diffs the transcript, so nothing is bound per button; the handler walks up to the block instead.
 const onClick = event => {
+    const copy = event.target instanceof Element ? event.target.closest(`[${COPY_ACTION_ATTR}]`) : null;
+    const copyBlock = copy?.closest(`.${RENDERED_CLASS}`);
+    if (copyBlock) {
+        copySource(copyBlock, copy);
+        return;
+    }
     const button = event.target instanceof Element ? event.target.closest(`[${ZOOM_ACTION_ATTR}]`) : null;
     if (!button) return;
     const block = button.closest(`.${RENDERED_CLASS}`);

@@ -8,9 +8,9 @@
     // its <code> scrolls sideways (app.css). The button carries `message-copy-action`, so
     // messageActions.js shows the same check as the message's own Copy once it is clicked.
     const READY_ATTR = "data-code-copy";
-    // Diagram and image fences are replaced by their rendering; the fence source is not what the
-    // reader sees there.
-    const RENDERED_LANGUAGES = new Set(["mermaid", "svg"]);
+    // Mermaid fences are replaced by a diagram that has its own Copy in its toolbar
+    // (mermaidBlocks.js). An SVG fence keeps its <pre> (svgBlocks.js), so it gets the corner button
+    // here and copies the image's source.
 
     const languageOf = element => {
         if (!element) return null;
@@ -33,10 +33,9 @@
     const wantsButton = pre => {
         if (pre.hasAttribute(READY_ATTR)) return false;
         // A fence still being written changes with every token; it gets its button when it is done.
-        if (pre.closest(".streaming, .mermaid-block, .svg-block")) return false;
+        if (pre.closest(".streaming, .mermaid-block")) return false;
         const code = pre.querySelector(":scope > code");
-        const language = languageOf(code) ?? languageOf(pre);
-        return !RENDERED_LANGUAGES.has(language);
+        return (languageOf(code) ?? languageOf(pre)) !== "mermaid";
     };
 
     const addButtons = () => {

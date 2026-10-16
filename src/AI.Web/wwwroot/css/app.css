@@ -5635,7 +5635,7 @@ button:active:not(:disabled) {
     overflow-x: visible;
 }
 
-.markdown-content pre[data-code-copy] > code {
+.markdown-content pre[data-code-copy]:not(.svg-block) > code {
     display: block;
     overflow-x: auto;
 }
@@ -7456,6 +7456,12 @@ textarea {
     flex-direction: column;
     gap: 0.5rem;
     font-size: var(--font-size-lg);
+}
+
+.mermaid-error .mermaid-toolbar {
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0;
 }
 
 .mermaid-error-header {

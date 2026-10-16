@@ -48,7 +48,8 @@ const renderAll = container => {
         // Markdig may hoist the language onto a bare <pre>; give the source a <code> so CSS hides it.
         if (!pre.querySelector(':scope > code')) {
             const code = document.createElement('code');
-            code.append(...pre.childNodes);
+            // codeCopy.js may already have put its button in the corner; it stays outside the source.
+            code.append(...[...pre.childNodes].filter(node => !(node instanceof Element && node.classList.contains('code-copy-action'))));
             pre.append(code);
         }
         pre.classList.add(RENDERED_CLASS);

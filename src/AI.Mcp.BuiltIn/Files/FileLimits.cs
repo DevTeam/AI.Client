@@ -6,6 +6,16 @@ using System.Collections.Frozen;
 internal static class FileLimits
 {
     public const int ContentCharacters = 262144;
+
+    /// <summary>
+    /// Lines a read without a range returns. Asked for a whole file, a model rarely needs more than
+    /// its start to decide where to look, and a large file read whole stays in its context for the
+    /// rest of the run; a range reads further, up to <see cref="ContentCharacters"/>.
+    /// </summary>
+    public const int WholeReadLines = 2000;
+
+    /// <summary>Characters a read without a range returns, at a line boundary.</summary>
+    public const int WholeReadCharacters = 100000;
     public const int MultipleFilesPaths = 32;
     public const int MultipleFilesCharacters = 262144;
     public const int DirectoryEntries = 5000;

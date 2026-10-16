@@ -15,7 +15,8 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply re
         new McpServerToolCreateOptions
         {
             Description = $"Read up to {FileLimits.MultipleFilesPaths} text files in one call. A failed path reports its own error and does not "
-                          + $"fail the call. The combined content is limited to {FileLimits.MultipleFilesCharacters} characters. "
+                          + $"fail the call. The combined content is limited to {FileLimits.MultipleFilesCharacters} characters. CRLF line "
+                          + "breaks come back as LF with 'lineEndings': 'CRLF'; write_file restores them. "
                           + "Every path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -57,14 +58,15 @@ public sealed class ReadMultipleFilesTool(IPathGuard guard, IBuiltInToolReply re
                     continue;
                 }
 
-                var truncated = content.Length > budget;
+                var (text, style) = LineEndings.ForModel(content);
+                var truncated = text.Length > budget;
                 if (truncated)
                 {
-                    content = content[..budget];
+                    text = text[..budget];
                 }
 
-                budget -= content.Length;
-                results.Add(new FileText(resolved, content, truncated, null));
+                budget -= text.Length;
+                results.Add(new FileText(resolved, text, truncated, null, style));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
             {

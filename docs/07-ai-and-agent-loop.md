@@ -100,6 +100,10 @@ flowchart TD
   confirmation and within its call limit, `ChatAgent` starts them together. Their results are still
   taken, recorded, shown and sent in the batch's order, and a batch left early cancels the reads it
   started. A third-party server's `readOnlyHint` is its own claim, so its calls keep running in turn.
+- A read of those same tools that returns exactly what the same call returned earlier in the turn
+  is sent to the model as `{"unchanged": true, "sameAs": "<first call id>", ...}` instead of a second
+  copy; the transcript keeps the full result. The record is cleared when the history is summarized,
+  since the first result may then be gone.
 - Side-effecting calls are executed sequentially by default.
 - A completed invocation is not repeated automatically.
 - Any result is treated as untrusted model input.

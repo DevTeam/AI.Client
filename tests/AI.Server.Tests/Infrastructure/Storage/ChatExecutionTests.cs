@@ -939,6 +939,29 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ARepeatedReadWithTheSameResultShouldPointAtTheFirst()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferReads = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Read the file twice"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls = [new ChatToolCall("read-1", "mcp_built_in__read_text_file", "{\"path\":\"C:\\\\file.txt\"}")];
+        first.Answer.SetResult("");
+        var second = await fixture.NextCallAsync();
+        second.ToolCalls = [new ChatToolCall("read-2", "mcp_built_in__read_text_file", "{\"path\":\"C:\\\\file.txt\"}")];
+        second.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        var results = next.Request.ContextMessages!.Where(message => message.ToolCallId is not null).ToArray();
+        results[0].ForModel.ShouldContain("\"content\":\"text\"", Case.Sensitive);
+        results[1].ForModel.ShouldContain("\"sameAs\":\"read-1\"", Case.Sensitive);
+        results[1].ForModel.ShouldNotContain("\"content\"", Case.Sensitive);
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task ReadsOfABatchShouldRunTogetherAndReturnInTheirOrder()
     {
         await using var fixture = await Fixture.CreateAsync();

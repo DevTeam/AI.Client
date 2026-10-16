@@ -23,10 +23,10 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
         {
             Description = "Search a directory tree for entries matching a glob pattern. '*' matches within one segment, '**' crosses "
                           + "segments and '?' matches one character. A pattern without a separator matches the entry name, otherwise the "
-                          + $"path relative to the search root. The result is capped both by match count (at most {FileLimits.SearchMatches}) "
-                          + "and by total size; either cap sets `truncated: true`. By default, version control and build/dependency "
-                          + "directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) are not descended into; pass "
-                          + "excludeDefaults: false to search them too. "
+                          + "path relative to the search root. Matches are paths relative to `path`. The result is capped both by match "
+                          + $"count (at most {FileLimits.SearchMatches}) and by total size; either cap sets `truncated: true`. By default, "
+                          + "version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) "
+                          + "and whatever the Git repository's ignore files ignore are skipped; pass excludeDefaults: false to search them too. "
                           + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -36,7 +36,7 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
         [Description("Absolute path of the directory to search.")] [MaxLength(4096)] string path,
         [Description("Glob pattern to match, for example '*.cs' or 'src/**/*.razor'.")] [MaxLength(512)] string pattern,
         [Description("Glob patterns to skip; a matching directory is not descended into.")] [MaxLength(64)] string[]? excludePatterns = null,
-        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) by default.")]
+        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) and Git-ignored entries by default.")]
         bool excludeDefaults = true,
         CancellationToken cancellationToken = default)
     {
@@ -71,12 +71,13 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
         var budget = new ResultBudget(FileLimits.SearchCharacters);
         var examined = 0;
         var truncated = false;
-        var queue = new Queue<string>();
-        queue.Enqueue(resolved);
+        var queue = new Queue<(string Path, IgnoreRules? Parent)>();
+        var rootRules = excludeDefaults ? await IgnoreRules.ForRootAsync(files, _paths, resolved, cancellationToken) : IgnoreRules.None;
+        queue.Enqueue((resolved, null));
         while (queue.Count > 0 && !truncated)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var current = queue.Dequeue();
+            var (current, parent) = queue.Dequeue();
             IReadOnlyList<FileSystemEntry> children;
             try
             {
@@ -86,6 +87,8 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
             {
                 continue;
             }
+
+            var rules = parent is null ? rootRules : await parent.EnterAsync(files, _paths, current, children, cancellationToken);
 
             foreach (var info in children)
             {
@@ -102,20 +105,22 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
                 }
 
                 var relative = _paths.GetRelativePath(resolved, info.Path);
-                if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)))
+                if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)) || rules.IsIgnored(_paths, info.Path, directory))
                 {
                     continue;
                 }
 
                 if (include.IsMatch(info.Name, relative))
                 {
-                    if (!budget.TryReserve(info.Path.Length + MatchOverheadCharacters))
+                    // Relative to the root the result names once: the same absolute prefix on every
+                    // match was most of a large result, and all of it went into the model's context.
+                    if (!budget.TryReserve(relative.Length + MatchOverheadCharacters))
                     {
                         truncated = true;
                         break;
                     }
 
-                    matches.Add(info.Path);
+                    matches.Add(relative);
                 }
 
                 // A link is never followed: descending through one leads back up the tree, and a
@@ -123,7 +128,7 @@ public sealed class SearchFilesTool(IPathGuard guard, IBuiltInToolReply reply, I
                 // reparse point that resolves to itself is not a link and is descended into.
                 if (directory && !await LinkTargets.IsLinkAsync(files, _paths, info.Path, info.Attributes, cancellationToken))
                 {
-                    queue.Enqueue(info.Path);
+                    queue.Enqueue((info.Path, rules));
                 }
             }
         }

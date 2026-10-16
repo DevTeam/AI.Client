@@ -797,3 +797,35 @@ another writer's save is seen and its revision checked; a clone serializes as th
 does; repeated project reads skip the file and see another writer; an unchanged tracked file is not
 read again for the next snapshot, and a changed one is; a chat header carries the revision and
 branches without messages.
+
+## 2026-10-16 — File tools spend less of the model's context
+
+Stored chats showed where file reads went: one `search_files` with `*` returned 68,000 characters,
+most of them worktree copies under `.claude/worktrees` and the same absolute prefix repeated on each
+of 1,000 entries; `grep_files` sent empty `before`/`after` lists on every match; directory entries
+repeated `size: null`; CRLF files paid an escaped `\r` on every line; and a read without a range
+could return 262,144 characters, which then stayed in the context for the rest of the run.
+
+- `search_files`, `grep_files` and `directory_tree` return paths relative to `path` and skip what the
+  Git repository ignores (`info/exclude` and every `.gitignore` on the way). The stored search above
+  is 37% smaller from the relative paths alone, and its 1,000-entry cap is now spent on the
+  project's own files.
+- `grep_files` leaves out the context lists when no context was asked for.
+- The model view of a structured result drops null-valued properties.
+- `read_text_file` without a range returns at most 2,000 lines and 100,000 characters, ending at a
+  whole line, with `totalLines` when it is cut.
+- CRLF files are read with LF and `lineEndings: "CRLF"`; `write_file` restores CRLF.
+- A read that returns exactly what the same call returned earlier in the turn is sent as a pointer
+  to the first result.
+
+The descriptions and result schemas of these tools changed, so their schema hashes did too; they
+default to `Allow`.
+
+Files: `src/AI.Mcp.BuiltIn/Files/{IgnoreRules,LineEndings,SearchFilesTool,GrepFilesTool,DirectoryTreeTool,ReadTextFileTool,ReadMultipleFilesTool,WriteFileTool,FileLimits,Results}.cs`,
+`src/AI.Contracts/Tools/ToolResultModelProjector.cs`, `src/AI.Server/Application/Tools/ChatAgent.cs`,
+docs 07 and 16.
+
+Checks: `AI.Server.Tests` 1343 tests (one Unix-only skipped) and `AI.Web.Tests` 684, all passing. New
+tests cover ignore rules (info/exclude, anchored and negated patterns, a nested `.gitignore`, the
+switch that turns them off), CRLF reads and the CRLF-preserving write, a cut read with its total line
+count, a repeated read sent as a pointer, and null fields left out of the model view.

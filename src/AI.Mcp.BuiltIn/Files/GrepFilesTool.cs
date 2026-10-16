@@ -37,9 +37,10 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
                           + "maxMatchesPerFile for an exhaustive list from few files — and the result is capped by total size as well; any "
                           + "cap sets `truncated: true`, while `matchCount` stays the real number of matching lines in that file. Binary "
                           + "files are skipped and counted in `filesSkipped`, and a line much longer than the reported text is returned as "
-                          + "a window around the match. By default, version control and build/dependency directories (.git, bin, obj, "
-                          + "artifacts, node_modules, .vs, .idea, .vscode) are not descended into; pass excludeDefaults: false to search "
-                          + "them too. The path must be absolute and covered by a directory grant with 'read' access."
+                          + "a window around the match. When path is a directory, file paths are relative to it. By default, version "
+                          + "control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) and "
+                          + "whatever the Git repository's ignore files ignore are skipped; pass excludeDefaults: false to search them too. "
+                          + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
     [McpServerTool(Name = "grep_files", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false,
@@ -52,7 +53,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
         [Description("Match regardless of letter case.")] bool ignoreCase = false,
         [Description("Glob limiting which files are searched, for example '*.cs' or 'src/**/*.razor'.")] [MaxLength(512)] string? filePattern = null,
         [Description("Glob patterns to skip; a matching directory is not descended into.")] [MaxLength(64)] string[]? excludePatterns = null,
-        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) by default.")]
+        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) and Git-ignored entries by default.")]
         bool excludeDefaults = true,
         [Description("Lines of surrounding context to return before and after each match.")] [Range(0, 10)] int contextLines = 0,
         [Description("Maximum matching lines reported per file; every match is still counted in 'matchCount'.")] [Range(1, 100)]
@@ -114,7 +115,8 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
             return Failure(resolved, query, "Path does not exist.");
         }
 
-        var scan = new Scan(files, matcher, contextLines, maxMatchesPerFile);
+        // A directory's files are named relative to it, so the root is written once rather than on every file.
+        var scan = new Scan(files, matcher, contextLines, maxMatchesPerFile, single ? null : file => _paths.GetRelativePath(resolved, file));
         try
         {
             if (single)
@@ -137,12 +139,13 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
     private async Task WalkAsync(
         Scan scan, string root, GlobPattern? include, GlobPattern[] excludes, bool excludeDefaults, CancellationToken cancellationToken)
     {
-        var queue = new Queue<string>();
-        queue.Enqueue(root);
+        var queue = new Queue<(string Path, IgnoreRules? Parent)>();
+        var rootRules = excludeDefaults ? await IgnoreRules.ForRootAsync(files, _paths, root, cancellationToken) : IgnoreRules.None;
+        queue.Enqueue((root, null));
         while (queue.Count > 0 && !scan.Stopped)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var current = queue.Dequeue();
+            var (current, parent) = queue.Dequeue();
             IReadOnlyList<FileSystemEntry> children;
             try
             {
@@ -152,6 +155,8 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
             {
                 continue;
             }
+
+            var rules = parent is null ? rootRules : await parent.EnterAsync(files, _paths, current, children, cancellationToken);
 
             foreach (var info in children)
             {
@@ -167,7 +172,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
                 }
 
                 var relative = _paths.GetRelativePath(root, info.Path);
-                if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)))
+                if (excludes.Any(exclude => exclude.IsMatch(info.Name, relative)) || rules.IsIgnored(_paths, info.Path, directory))
                 {
                     continue;
                 }
@@ -179,7 +184,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
                     // itself is not a link and is descended into.
                     if (!await LinkTargets.IsLinkAsync(files, _paths, info.Path, info.Attributes, cancellationToken))
                     {
-                        queue.Enqueue(info.Path);
+                        queue.Enqueue((info.Path, rules));
                     }
 
                     continue;
@@ -251,7 +256,8 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
     /// the total match cap, the scanned file cap or the size budget is spent — the walk ends and
     /// the result is reported as truncated.
     /// </summary>
-    private sealed class Scan(IFileSystem files, LineMatcher matcher, int contextLines, int maxMatchesPerFile)
+    private sealed class Scan(IFileSystem files, LineMatcher matcher, int contextLines, int maxMatchesPerFile,
+        Func<string, string>? name)
     {
         private readonly List<TextFileMatches> _files = [];
         private readonly ResultBudget _budget = new(FileLimits.GrepCharacters);
@@ -361,7 +367,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
                     _total++;
                     if (matches.Count + pending.Count < maxMatchesPerFile && _total <= FileLimits.GrepMatches)
                     {
-                        if (!reserved && !_budget.TryReserve(path.Length + FileOverheadCharacters))
+                        if (!reserved && !_budget.TryReserve(Name(path).Length + FileOverheadCharacters))
                         {
                             Stopped = true;
                             break;
@@ -411,7 +417,7 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
 
             if (matchCount > 0)
             {
-                _files.Add(new TextFileMatches(path, matchCount, matches.ToArray(), matchCount > matches.Count || Stopped));
+                _files.Add(new TextFileMatches(Name(path), matchCount, matches.ToArray(), matchCount > matches.Count || Stopped));
             }
         }
 
@@ -450,6 +456,8 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
             return true;
         }
 
+        private string Name(string path) => name?.Invoke(path) ?? path;
+
         private static string Clip(string line) =>
             line.Length <= FileLimits.GrepLineCharacters
                 ? line
@@ -477,7 +485,10 @@ public sealed class GrepFilesTool(IPathGuard guard, IBuiltInToolReply reply, IFi
         {
             public List<string> After { get; } = [];
 
-            public TextMatch ToMatch() => new(line, column, text, before, After.ToArray());
+            // Context the caller did not ask for is left out rather than sent as empty lists on every match.
+            public TextMatch ToMatch() => before.Length == 0 && After.Count == 0
+                ? new(line, column, text, null, null)
+                : new(line, column, text, before, After.ToArray());
         }
     }
 }

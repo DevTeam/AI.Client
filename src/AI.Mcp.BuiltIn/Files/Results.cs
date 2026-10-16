@@ -1,12 +1,16 @@
 namespace AI.Mcp.BuiltIn.Files;
 
+/// <param name="TotalLines">How many lines the file has, given when <paramref name="Truncated"/> says more follow.</param>
+/// <param name="LineEndings"><c>CRLF</c> when the file's line breaks are CRLF and the content was handed over with LF.</param>
 public sealed record TextFileResult(
     string Path,
     string Content,
     int FirstLine,
     int LineCount,
     bool Truncated,
-    string? Error);
+    string? Error,
+    int? TotalLines = null,
+    string? LineEndings = null);
 
 /// <summary>
 /// The outcome of reading one image. <paramref name="Width"/> and <paramref name="Height"/> are the
@@ -23,7 +27,8 @@ public sealed record ImageFileResult(
     bool Attached,
     string? Error);
 
-public sealed record FileText(string Path, string Content, bool Truncated, string? Error);
+/// <param name="LineEndings"><c>CRLF</c> when the file's line breaks are CRLF and the content was handed over with LF.</param>
+public sealed record FileText(string Path, string Content, bool Truncated, string? Error, string? LineEndings = null);
 
 public sealed record MultipleFilesResult(FileText[] Files, string? Error);
 
@@ -40,9 +45,9 @@ public sealed record SearchFilesResult(string Path, string[] Matches, bool Trunc
 /// <summary>
 /// One matching line. <paramref name="Line"/> and <paramref name="Column"/> are 1-based, and
 /// <paramref name="Before"/><paramref name="After"/> carry context lines only when the caller asked
-/// for them; at the start or end of a file they are shorter rather than padded.
+/// for them, and are null otherwise; at the start or end of a file they are shorter rather than padded.
 /// </summary>
-public sealed record TextMatch(int Line, int Column, string Text, string[] Before, string[] After);
+public sealed record TextMatch(int Line, int Column, string Text, string[]? Before, string[]? After);
 
 /// <summary>
 /// The matches found in one file. <paramref name="MatchCount"/> counts every matching line even

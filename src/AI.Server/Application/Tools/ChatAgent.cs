@@ -183,6 +183,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var stalledSteps = 0;
         var criteriaAsked = false;
         var observedResults = new HashSet<(string Name, string Arguments, string Result)>();
+        // The first call of each read this turn, by what it returned: a read repeated with the same
+        // result is sent as a pointer to the first, not as a second copy of the same file.
+        var firstReads = new Dictionary<(string Name, string Arguments, string Result), string>();
         var routed = false;
         // What the request carried in the previous step: kept, so the next request starts the same.
         var compactionMemory = new ContextCompactionMemory();
@@ -359,6 +362,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 {
                     // What was read before is now a summary, so reading it again is not a repeat.
                     observedResults.Clear();
+                    firstReads.Clear();
                     modelContext = checkpoints.Apply(run, context);
                     composition = instructionComposer.Compose(run, modelContext, configuredConnection);
                 }
@@ -407,6 +411,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 }
                 checkpoints.PinHistory(run, kept);
                 observedResults.Clear();
+                firstReads.Clear();
             }
             await Usage(plan);
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
@@ -655,7 +660,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         await AbandonAsync(calls, index, "Tool transport failed; outcome unknown. Do not automatically repeat it.");
                         throw;
                     }
-                    var message = ToolMessage(call.Id, result);
+                    var seen = (call.Name, call.Arguments, result.ModelContent);
+                    var repeated = !result.IsError
+                                   && selectedTools.FirstOrDefault(item => item.ModelDefinition.Name == call.Name) is { } used
+                                   && RunsAlongside(used) && !firstReads.TryAdd(seen, call.Id);
+                    var message = ToolMessage(call.Id, repeated ? result with { ModelContent = RepeatedRead(firstReads[seen]) } : result);
                     await persist(message, token);
                     context.Add(message);
                     toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
@@ -1205,6 +1214,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
     // The history keeps the whole result, host metadata included; the model is sent a projection
     // without it, so a third-party server cannot smuggle anything into context through _meta.
+    /// <summary>What the model is sent for a read whose result it already has from earlier in the turn.</summary>
+    private static string RepeatedRead(string firstCallId) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            unchanged = true,
+            sameAs = firstCallId,
+            note = "The same call returned exactly this result earlier in this turn, in call " + firstCallId
+                   + "; nothing has changed since. Use that result."
+        });
+
     private ChatCompletionMessage ToolMessage(string callId, ToolCallResult result) =>
         new("tool", toolResultCodec.Write(result), ToolCallId: callId, ModelContent: result.ModelContent);
 

@@ -302,6 +302,87 @@ public sealed class BuiltInToolTests
     }
 
     [Fact]
+    public async Task ShouldSkipWhatTheRepositoryIgnores()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-gitignore").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, ".git", "info"));
+            File.WriteAllText(Path.Combine(root, ".git", "info", "exclude"), "worktrees/\n");
+            File.WriteAllText(Path.Combine(root, ".gitignore"), "*.log\n/out/\n!keep.log\n");
+            Directory.CreateDirectory(Path.Combine(root, "src", "out"));
+            File.WriteAllText(Path.Combine(root, "src", "code.cs"), "needle");
+            File.WriteAllText(Path.Combine(root, "src", "out", "built.cs"), "needle");
+            File.WriteAllText(Path.Combine(root, "src", ".gitignore"), "generated.cs\n");
+            File.WriteAllText(Path.Combine(root, "src", "generated.cs"), "needle");
+            File.WriteAllText(Path.Combine(root, "trace.log"), "needle");
+            File.WriteAllText(Path.Combine(root, "keep.log"), "needle");
+            Directory.CreateDirectory(Path.Combine(root, "out"));
+            File.WriteAllText(Path.Combine(root, "out", "top.cs"), "needle");
+            Directory.CreateDirectory(Path.Combine(root, "worktrees", "copy"));
+            File.WriteAllText(Path.Combine(root, "worktrees", "copy", "code.cs"), "needle");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using var session = await CreateFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            // "/out/" is anchored to the root, so src/out stays; a nested .gitignore applies below it.
+            string[] expected = ["keep.log", Path.Combine("src", "code.cs"), Path.Combine("src", "out", "built.cs")];
+            (await Structured(session, "search_files", new { path = root, pattern = "*.*" }, token))
+                .GetProperty("matches").EnumerateArray().Select(item => item.GetString())
+                .Where(match => match != ".gitignore" && match != Path.Combine("src", ".gitignore"))
+                .ShouldBe(expected, ignoreOrder: true);
+            (await Structured(session, "grep_files", new { path = root, query = "needle" }, token))
+                .GetProperty("files").EnumerateArray().Select(item => item.GetProperty("path").GetString())
+                .ShouldBe(expected, ignoreOrder: true);
+            (await Structured(session, "directory_tree", new { path = root }, token))
+                .GetProperty("entries").EnumerateArray().Select(entry => entry.GetProperty("path").GetString())
+                .ShouldNotContain(entry => entry!.StartsWith("worktrees", StringComparison.Ordinal) || entry == "trace.log");
+            (await Structured(session, "grep_files", new { path = root, query = "needle", excludeDefaults = false }, token))
+                .GetProperty("totalMatches").GetInt32().ShouldBe(7);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldReadALargeOrCrlfFileCompactlyAndWriteItBack()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-read-compact").FullName;
+        try
+        {
+            var crlf = Path.Combine(root, "windows.txt");
+            File.WriteAllText(crlf, "alpha\r\nbeta\r\n");
+            var large = Path.Combine(root, "large.txt");
+            File.WriteAllText(large, string.Concat(Enumerable.Range(1, 2500).Select(index => $"line {index}\n")));
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using var session = await CreateFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read", "write"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            var read = await Structured(session, "read_text_file", new { path = crlf }, token);
+            read.GetProperty("content").GetString().ShouldBe("alpha\nbeta\n");
+            read.GetProperty("lineEndings").GetString().ShouldBe("CRLF");
+            (await Structured(session, "read_multiple_files", new { paths = (string[])[crlf] }, token))
+                .GetProperty("files")[0].GetProperty("content").GetString().ShouldBe("alpha\nbeta\n");
+            // What was read comes back with the file's own line breaks.
+            await Structured(session, "write_file", new { path = crlf, content = "alpha\ngamma\n" }, token);
+            (await File.ReadAllTextAsync(crlf, token)).ShouldBe("alpha\r\ngamma\r\n");
+
+            // A read without a range stops after a whole line and says how much is left.
+            var start = await Structured(session, "read_text_file", new { path = large }, token);
+            start.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            start.GetProperty("lineCount").GetInt32().ShouldBe(2000);
+            start.GetProperty("totalLines").GetInt32().ShouldBe(2500);
+            start.GetProperty("content").GetString()!.ShouldEndWith("line 2000\n");
+            (await Structured(session, "read_text_file", new { path = large, offset = 2001 }, token))
+                .GetProperty("lineCount").GetInt32().ShouldBe(500);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldSkipDefaultExcludedDirectoriesUnlessDisabled()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-tree-excludes").FullName;
@@ -566,7 +647,7 @@ public sealed class BuiltInToolTests
             (await Structured(session, "read_multiple_files", new { paths = (string[])[file] }, token))
                 .GetProperty("files").EnumerateArray().Single().GetProperty("content").GetString()!.ShouldContain("gamma");
             (await Structured(session, "search_files", new { path = root, pattern = "*.txt" }, token))
-                .GetProperty("matches").EnumerateArray().Single().GetString().ShouldBe(file);
+                .GetProperty("matches").EnumerateArray().Single().GetString().ShouldBe(Path.Combine("src", "sample.txt"));
             (await Structured(session, "list_directory", new { path = root }, token))
                 .GetProperty("entries").EnumerateArray().Single().GetProperty("name").GetString().ShouldBe("src");
             (await Structured(session, "directory_tree", new { path = root }, token))
@@ -608,8 +689,10 @@ public sealed class BuiltInToolTests
             plain.GetProperty("totalMatches").GetInt32().ShouldBe(2);
             plain.GetProperty("filesScanned").GetInt32().ShouldBe(2);
             var file = plain.GetProperty("files").EnumerateArray().Single();
-            file.GetProperty("path").GetString().ShouldBe(Path.Combine(root, "a.txt"));
+            file.GetProperty("path").GetString().ShouldBe("a.txt");
             var first = file.GetProperty("matches").EnumerateArray().First();
+            // Context nobody asked for is not sent as empty lists on every match.
+            (!first.TryGetProperty("before", out var noContext) || noContext.ValueKind == JsonValueKind.Null).ShouldBeTrue();
             first.GetProperty("line").GetInt32().ShouldBe(2);
             first.GetProperty("column").GetInt32().ShouldBe(5);
             first.GetProperty("text").GetString().ShouldBe("two needle here");
@@ -633,7 +716,7 @@ public sealed class BuiltInToolTests
 
             (await Structured(session, "grep_files", new { path = root, query = "needle", filePattern = "*.md", ignoreCase = true }, token))
                 .GetProperty("files").EnumerateArray().Single()
-                .GetProperty("path").GetString().ShouldBe(Path.Combine(root, "b.md"));
+                .GetProperty("path").GetString().ShouldBe("b.md");
 
             // Lookaround is unsupported by the non-backtracking engine and has to surface as a
             // readable error rather than as an exception escaping the tool.

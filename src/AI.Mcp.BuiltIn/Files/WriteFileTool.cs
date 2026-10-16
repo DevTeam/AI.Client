@@ -18,7 +18,8 @@ public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply, IFi
         new McpServerToolCreateOptions
         {
             Description = "Create a file or replace its entire content with UTF-8 text. This overwrites an existing file; use edit_file to "
-                          + "change part of one. Missing parent directories are created. "
+                          + "change part of one. Missing parent directories are created. LF content written over a file that uses CRLF "
+                          + "is written with CRLF. "
                           + "The path must be absolute and covered by a directory grant with 'write' access."
         });
 
@@ -48,6 +49,11 @@ public sealed class WriteFileTool(IPathGuard guard, IBuiltInToolReply reply, IFi
         var existed = await files.FileExistsAsync(resolved, cancellationToken);
         try
         {
+            // Reads hand the model LF text, so LF content written over a CRLF file gets its CRLF back
+            // rather than a whole-file line-ending change.
+            if (existed && content.Contains('\n', StringComparison.Ordinal) && !content.Contains('\r', StringComparison.Ordinal)
+                && await LineEndings.IsCrlfAsync(files, resolved, cancellationToken))
+                content = content.Replace("\n", "\r\n", StringComparison.Ordinal);
             await files.WriteTextAsync(resolved, content, cancellationToken);
             return reply.Reply(new WriteFileResult(resolved, Utf8.GetByteCount(content), !existed, null));
         }

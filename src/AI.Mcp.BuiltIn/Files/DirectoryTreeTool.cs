@@ -25,7 +25,8 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
                           + $"At most {FileLimits.TreeEntries} entries and {FileLimits.TreeDepth} levels are returned, and the result is "
                           + "also capped by total size — either cap sets `truncated: true`. Directory links are listed but not followed. "
                           + "By default, version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, "
-                          + ".idea, .vscode) are skipped entirely at any depth; pass excludeDefaults: false to see them. "
+                          + ".idea, .vscode) and whatever the Git repository's ignore files ignore are skipped entirely at any depth; pass "
+                          + "excludeDefaults: false to see them. "
                           + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -34,7 +35,7 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
     private async Task<CallToolResult> TreeAsync(
         [Description("Absolute path of the directory to walk.")] [MaxLength(4096)] string path,
         [Description("Maximum depth to descend, where 1 lists only immediate children.")] [Range(1, FileLimits.TreeDepth)] int maxDepth = FileLimits.TreeDepth,
-        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) by default.")]
+        [Description("Skip version control and build/dependency directories (.git, bin, obj, artifacts, node_modules, .vs, .idea, .vscode) and Git-ignored entries by default.")]
         bool excludeDefaults = true,
         CancellationToken cancellationToken = default)
     {
@@ -55,7 +56,9 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
 
         var entries = new List<TreeEntry>();
         var budget = new ResultBudget(FileLimits.TreeCharacters);
-        var truncated = await Walk(resolved, resolved, 1, Math.Min(maxDepth, FileLimits.TreeDepth), excludeDefaults, entries, budget, cancellationToken);
+        var rules = excludeDefaults ? await IgnoreRules.ForRootAsync(files, _paths, resolved, cancellationToken) : IgnoreRules.None;
+        var truncated = await Walk(resolved, resolved, 1, Math.Min(maxDepth, FileLimits.TreeDepth), excludeDefaults, rules, entries, budget,
+            cancellationToken);
         return reply.Reply(new DirectoryTreeResult(resolved, entries.ToArray(), truncated, null));
     }
 
@@ -65,6 +68,7 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
         int depth,
         int maxDepth,
         bool excludeDefaults,
+        IgnoreRules parent,
         List<TreeEntry> entries,
         ResultBudget budget,
         CancellationToken cancellationToken)
@@ -80,12 +84,14 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
             return false;
         }
 
+        var rules = depth == 1 ? parent : await parent.EnterAsync(files, _paths, current, children, cancellationToken);
         var ordered = children.OrderBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
         var truncated = false;
         foreach (var info in ordered)
         {
             var directory = info.IsDirectory;
-            if (directory && excludeDefaults && FileLimits.DefaultExcludedNames.Contains(info.Name))
+            if (directory && excludeDefaults && FileLimits.DefaultExcludedNames.Contains(info.Name)
+                || rules.IsIgnored(_paths, info.Path, directory))
             {
                 continue;
             }
@@ -116,7 +122,7 @@ public sealed class DirectoryTreeTool(IPathGuard guard, IBuiltInToolReply reply,
                 continue;
             }
 
-            truncated |= await Walk(root, info.Path, depth + 1, maxDepth, excludeDefaults, entries, budget, cancellationToken);
+            truncated |= await Walk(root, info.Path, depth + 1, maxDepth, excludeDefaults, rules, entries, budget, cancellationToken);
         }
 
         return truncated;

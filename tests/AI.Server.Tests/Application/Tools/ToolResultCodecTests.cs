@@ -13,6 +13,16 @@ public class ToolResultCodecTests
     private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement.Clone();
 
     [Fact]
+    public void ShouldLeaveNullFieldsOutOfTheModelView()
+    {
+        var structured = JsonSerializer.Deserialize<JsonElement>(
+            "{\"path\":\"a\",\"error\":null,\"entries\":[{\"name\":\"x\",\"size\":null},{\"name\":\"y\",\"size\":3}]}");
+
+        ModelProjector.Project([], structured, false)
+            .ShouldBe("{\"path\":\"a\",\"entries\":[{\"name\":\"x\"},{\"name\":\"y\",\"size\":3}]}");
+    }
+
+    [Fact]
     public void ShouldPersistResourceAssetReferenceWithoutInlineBytes()
     {
         var assetId = new string('a', 64);

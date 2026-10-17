@@ -22,6 +22,12 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
         .DisableHtml()
         .Build();
 
+    private readonly MarkdownPipeline _user = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .UseSoftlineBreakAsHardlineBreak()
+        .DisableHtml()
+        .Build();
+
     /// <summary>
     /// No advanced extensions here: the attribute syntax they add is what lets markdown hang an
     /// event handler on an element, and a label written by a model is not worth that surface.
@@ -31,6 +37,8 @@ public sealed class SafeMarkdownRenderer : IMarkdownRenderer
         .Build();
 
     public string Render(string markdown) => RenderLinks(markdown, _pipeline);
+
+    public string RenderUser(string markdown) => RenderLinks(markdown, _user);
 
     private static string RenderLinks(string markdown, MarkdownPipeline pipeline)
     {

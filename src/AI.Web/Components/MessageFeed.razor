@@ -440,7 +440,7 @@
                             @if (message.Role is "User" or "Assistant" && message.ToolCalls is null)
                             {
                                 <MessageReviewText @key="message.Id" ProjectId="SelectedChat.ProjectId" ChatId="SelectedChat.Id"
-                                                   MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, MessageMarkdown(message)))"
+                                                   MessageId="message.Id" Content="@((MarkupString)RenderMarkdownCached(message.Id, MessageMarkdown(message), message.Role == "User"))"
                                                    Review="@(MessageReviews?.GetValueOrDefault(message.Id))"
                                                    OnChanged="OnMessageReviewChanged" OnAttach="OnAttachMessageReview" />
                             }
@@ -2405,7 +2405,8 @@
         return _liveMarkdown[content] = MarkdownRenderer.Render(content);
     }
 
-    private string RenderMarkdownCached(Guid messageId, string content)
+    /// <param name="user">The user typed the text, so each of its line breaks is kept.</param>
+    private string RenderMarkdownCached(Guid messageId, string content, bool user = false)
     {
         var chatId = SelectedChat?.Id ?? Guid.Empty;
         if (_markdownCache.TryGetValue(messageId, out var cached)
@@ -2414,7 +2415,7 @@
         {
             return cached.Html;
         }
-        var html = MarkdownRenderer.Render(content);
+        var html = user ? MarkdownRenderer.RenderUser(content) : MarkdownRenderer.Render(content);
         _markdownCache[messageId] = (chatId, content, html);
         return html;
     }

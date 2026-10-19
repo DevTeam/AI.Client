@@ -59,7 +59,11 @@ public sealed record SubtaskOutcome(
     IReadOnlyList<string> Unresolved,
     long ElapsedMilliseconds = 0);
 
-public sealed record SubtaskResult(IReadOnlyList<SubtaskOutcome> Results, string? Error);
+/// <param name="Next">
+/// What the caller should do with these results. Told only in its standing instructions to trust
+/// passed evidence, a caller still re-verified every part itself, which took longer than the parts.
+/// </param>
+public sealed record SubtaskResult(IReadOnlyList<SubtaskOutcome> Results, string? Error, string? Next = null);
 
 /// <summary>One turn of a subtask, kept for the user to read and withheld from the model.</summary>
 public sealed record SubtaskTranscriptEntry(string Task, string Role, string Content, string? ToolName);
@@ -191,8 +195,9 @@ public sealed class AppSubtaskTool(
             Prompt(sharedInstructions, item.Task, item.AcceptanceCriteria),
             index, board, cancellationToken)).ToArray();
         var completed = await Task.WhenAll(runs);
+        var outcomes = completed.Select(item => item.Outcome).ToArray();
         return reply.Reply(
-            new SubtaskResult(completed.Select(item => item.Outcome).ToArray(), null),
+            new SubtaskResult(outcomes, null, Next(outcomes)),
             new SubtaskTranscript(completed.SelectMany(item => item.Transcript).ToArray()),
             completed.Any(item => item.Outcome.Error is not null));
     }
@@ -308,6 +313,24 @@ public sealed class AppSubtaskTool(
             return (new SubtaskOutcome(task, answer.ToString(), connection, transcript.Count, toolCalls, 0, false, error.Message,
                 [], [], [error.Message], elapsed.ElapsedMilliseconds), transcript);
         }
+    }
+
+    /// <summary>
+    /// Points the caller at the tasks that need it, by their 1-based position, and away from the
+    /// ones whose own checks already passed.
+    /// </summary>
+    private static string Next(IReadOnlyList<SubtaskOutcome> outcomes)
+    {
+        var attention = outcomes.Select((outcome, index) => (outcome, number: index + 1))
+            .Where(item => !item.outcome.Completed || item.outcome.Error is not null || item.outcome.Unresolved.Count > 0
+                           || item.outcome.Checks.Count == 0
+                           || item.outcome.Checks.Any(check => !string.Equals(check.Status, "Passed", StringComparison.OrdinalIgnoreCase)))
+            .Select(item => item.number).ToArray();
+        if (attention.Length == 0)
+            return "Every task completed and passed its own checks. Integrate the results and run at most one cross-result check, "
+                + "such as one combined comparison with the source; do not reread or re-verify individual results.";
+        return $"Tasks {string.Join(", ", attention)} failed, left unresolved items or lack passed checks: inspect, fix or retry only "
+            + "those. Trust the passed checks of the others; integrate them without re-verifying.";
     }
 
     private static string Prompt(string? sharedInstructions, string task, IReadOnlyList<string>? acceptanceCriteria)

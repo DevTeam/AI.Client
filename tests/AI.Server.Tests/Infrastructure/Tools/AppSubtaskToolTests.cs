@@ -56,6 +56,8 @@ public sealed class AppSubtaskToolTests
         outcome.GetProperty("checks")[0].GetProperty("status").GetString().ShouldBe("Passed");
         outcome.GetProperty("unresolved").GetArrayLength().ShouldBe(0);
         outcome.GetProperty("artifacts").GetArrayLength().ShouldBe(0);
+        // Passed evidence is the caller's cue to integrate rather than re-verify.
+        result.StructuredContent!.Value.GetProperty("next").GetString()!.ShouldContain("at most one cross-result check");
 
         // The transcript rides in _meta, which the model-facing projection excludes by contract.
         result.Meta.ShouldNotBeNull();
@@ -114,6 +116,8 @@ public sealed class AppSubtaskToolTests
         outcomes.GetArrayLength().ShouldBe(3);
         outcomes.EnumerateArray().Select(item => item.GetProperty("task").GetString())
             .ShouldBe(["first", "second", "third"], ignoreOrder: true);
+        // Without evidence envelopes no task has passed checks, so each one is named for a look.
+        result.StructuredContent!.Value.GetProperty("next").GetString()!.ShouldStartWith("Tasks 1, 2, 3 ");
     }
 
     [Fact]

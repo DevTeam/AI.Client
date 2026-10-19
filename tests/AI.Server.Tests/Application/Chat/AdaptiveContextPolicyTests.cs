@@ -204,6 +204,23 @@ public sealed class AdaptiveContextPolicyTests
     }
 
     [Fact]
+    public void ShouldKeepBasicFileAndExecutionToolsForARequestNoDescriptionMatches()
+    {
+        string[] basic = ["read_text_file", "write_file", "edit_file", "grep_files", "list_directory", "process_run"];
+        var core = basic.Select(name => Tool(name, new string('d', 1_500))).ToArray();
+        // Shorter schemas would win every free place, and a pin narrows the ordinary ones to a handful.
+        var others = Enumerable.Range(0, 30).Select(index => Tool($"other_{index}", "Short")).ToArray();
+        var pinned = new HashSet<string>([others[0].ModelDefinition.Name], StringComparer.Ordinal);
+
+        var selection = Policy().Choose(Connection(131_072), "Переведи фрагмент и запиши результат", [],
+            [.. others, .. core], pinned);
+
+        selection.Tools.ShouldContain(others[0]);
+        foreach (var tool in core) selection.Tools.ShouldContain(tool);
+        selection.Tools.Count.ShouldBeLessThan(others.Length + core.Length);
+    }
+
+    [Fact]
     public void ShouldKeepAFloorOfToolsWhenHistoryAloneExceedsTheWindow()
     {
         var search = Tool("tool_search", "Find capabilities", app: true);

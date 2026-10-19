@@ -269,8 +269,22 @@ public sealed partial class AdaptiveContextPolicy(
     }
 
     private long Tokens(string text, string? model) => tokenEstimator.ForModel(model).EstimateMessages([new ChatCompletionMessage("system", text)]);
-    private static bool Core(AgentTool tool) => tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal)
-        && tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask";
+    /// <summary>
+    /// Tools every run keeps whatever its request says. Relevance is word overlap with the English
+    /// descriptions, so a request in another language ranks nothing, and the basic file and execution
+    /// tools would otherwise lose their places to whichever schemas are shortest. Being core, they
+    /// also never count as pins, which narrow the rest of the selection to a handful.
+    /// </summary>
+    private static bool Core(AgentTool tool)
+    {
+        var name = tool.ModelDefinition.Name;
+        if (name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
+            return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask";
+        if (name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal))
+            return tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
+                or ToolPolicyResolver.ProcessRun;
+        return name.StartsWith(ToolRef.CSharpPrefix, StringComparison.Ordinal) && tool.OriginalName == "cs_run";
+    }
     private static ModelInstructionPlacement Position(ModelInstruction item) => item.Placement == ModelInstructionPlacement.Standing
         ? ModelInstructionPlacement.Standing : item.Lifetime != ModelInstructionLifetime.Run ? ModelInstructionPlacement.Trailing : item.Placement;
     private static IEnumerable<string> Words(string? text) => string.IsNullOrWhiteSpace(text) ? []

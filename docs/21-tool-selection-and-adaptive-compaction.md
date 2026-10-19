@@ -79,6 +79,14 @@ that token budget. Under pressure or a necessary discovery, the set is
 chosen again within the hard share and surviving tools retain their order. A stalled run keeps
 its fitting tools offered and receives trailing guidance to stop calling them.
 
+Core tools are the ones every run keeps whatever its request says: `ask_user`, `tool_search`,
+`plan_update` and `spawn_subtask` from the App server, `read_text_file`, `write_file`,
+`edit_file`, `grep_files`, `list_directory` and `process_run` from the built-in server, and
+`cs_run`. Relevance is word overlap with the English tool descriptions, so a request in another
+language ranks nothing and the shortest schemas would take the free places. Core tools also
+never count as pins: a pin narrows the ordinary tools to a few beside it, which suits a skill's
+first tools for one turn, not tools a run needs on every step.
+
 ## Progressive tool discovery
 
 `mcp_app__tool_search` receives a capability query and searches only tools that already passed the run's

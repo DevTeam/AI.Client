@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Processes;
@@ -102,6 +103,11 @@ public sealed class ProcessRunner : IProcessRunner
             }
         }
 
+        // Python writes redirected output in the ANSI code page unless told otherwise, which turns
+        // every non-Latin character into a guess; UTF-8 is what the output is decoded as first.
+        start.Environment["PYTHONUTF8"] = "1";
+        start.Environment["PYTHONIOENCODING"] = "utf-8";
+
         using var process = new System.Diagnostics.Process();
         process.StartInfo = start;
 
@@ -140,10 +146,10 @@ public sealed class ProcessRunner : IProcessRunner
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(request.TimeoutMs);
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        var output = DrainAsync(process.StandardOutput, stdout, timeout.Token);
-        var errors = DrainAsync(process.StandardError, stderr, timeout.Token);
+        var stdout = new MemoryStream();
+        var stderr = new MemoryStream();
+        var output = DrainAsync(process.StandardOutput.BaseStream, stdout, timeout.Token);
+        var errors = DrainAsync(process.StandardError.BaseStream, stderr, timeout.Token);
         var timedOut = false;
         try
         {
@@ -167,27 +173,49 @@ public sealed class ProcessRunner : IProcessRunner
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        var (outText, outCut) = Decode(stdout, output.Result);
+        var (errorText, errorCut) = Decode(stderr, errors.Result);
         return new ProcessResult(
             process.ExitCode,
-            stdout.ToString(),
-            stderr.ToString(),
+            outText,
+            errorText,
             timer.ElapsedMilliseconds,
             timedOut || timeout.IsCancellationRequested,
-            output.Result || errors.Result,
+            outCut || errorCut,
             null,
             job.LimitExceeded);
     }
 
-    private static async Task<bool> DrainAsync(StreamReader reader, StringBuilder target, CancellationToken token)
+    /// <summary>Raw bytes, enough for <see cref="OutputLimit"/> characters in any encoding.</summary>
+    private const int OutputBytes = OutputLimit * 4;
+
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    private static readonly Lazy<Encoding> Legacy = new(() =>
     {
-        var buffer = new char[4096];
+        // Console programs such as cmd and Windows PowerShell write redirected output in the OEM
+        // code page of the user's locale, not in UTF-8.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        try
+        {
+            return Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException)
+        {
+            return Encoding.Latin1;
+        }
+    });
+
+    private static async Task<bool> DrainAsync(Stream source, MemoryStream target, CancellationToken token)
+    {
+        var buffer = new byte[4096];
         var truncated = false;
         try
         {
-            while (await reader.ReadAsync(buffer.AsMemory(), token) is var count && count != 0)
+            while (await source.ReadAsync(buffer.AsMemory(), token) is var count && count != 0)
             {
-                var keep = Math.Min(count, OutputLimit - target.Length);
-                target.Append(buffer, 0, keep);
+                var keep = (int)Math.Min(count, OutputBytes - target.Length);
+                target.Write(buffer, 0, keep);
                 truncated |= keep != count;
             }
         }
@@ -197,5 +225,33 @@ public sealed class ProcessRunner : IProcessRunner
         }
 
         return truncated;
+    }
+
+    /// <summary>
+    /// The bytes as UTF-8 when they are valid UTF-8, which most tools write and nothing else
+    /// produces by accident, and in the locale's OEM code page otherwise. Decoding everything in
+    /// one fixed code page garbled whichever of the two the program did not use.
+    /// </summary>
+    private static (string Text, bool Truncated) Decode(MemoryStream bytes, bool cut)
+    {
+        var data = bytes.GetBuffer().AsSpan(0, (int)bytes.Length);
+        if (data.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])) data = data[3..];
+        string? text = null;
+        // A cut at the byte limit can split the last character; its partial bytes say nothing
+        // about the encoding of the rest.
+        for (var drop = 0; text is null && drop <= (cut ? Math.Min(3, data.Length) : 0); drop++)
+        {
+            try
+            {
+                text = StrictUtf8.GetString(data[..^drop]);
+            }
+            catch (DecoderFallbackException)
+            {
+                // Not UTF-8, or not yet at a character boundary.
+            }
+        }
+
+        text ??= Legacy.Value.GetString(data);
+        return text.Length > OutputLimit ? (text[..OutputLimit], true) : (text, cut);
     }
 }

@@ -55,6 +55,26 @@ public sealed class BuiltInToolTests
         finally { Environment.SetEnvironmentVariable(variable, previous); }
     }
     [Fact]
+    public async Task ShouldDecodeOutputAsUtf8OrInTheOemCodePage()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        const string text = "привет, мир";
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        var oem = System.Text.Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        // The text must survive the OEM page for that half of the check to mean anything.
+        var encodings = oem.GetString(oem.GetBytes(text)) == text ? [System.Text.Encoding.UTF8, oem] : new[] { System.Text.Encoding.UTF8 };
+        foreach (var encoding in encodings)
+        {
+            var bytes = string.Join(",", encoding.GetBytes(text));
+            var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
+                ["-NoProfile", "-NonInteractive", "-Command", $"$b=[byte[]]@({bytes}); $o=[Console]::OpenStandardOutput(); $o.Write($b,0,$b.Length); $o.Flush()"],
+                AppContext.BaseDirectory, 10000), TestContext.Current.CancellationToken);
+            result.ExitCode.ShouldBe(0, result.Stderr);
+            result.Stdout.ShouldBe(text, encoding.WebName);
+        }
+    }
+
+    [Fact]
     public async Task ShouldDiscoverValidateAndRunOverStdio()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

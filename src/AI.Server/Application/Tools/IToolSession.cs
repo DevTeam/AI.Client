@@ -49,9 +49,13 @@ public sealed record ToolDirectoryGrant(string Root, bool Recursive, IReadOnlyLi
 /// delegating work in the background — where anything that would stop to ask is answered "no" at
 /// once instead of waiting out a timeout nobody will interrupt.
 /// </param>
+/// <param name="IsSubtask">
+/// Whether this run was delegated by another agent. The application server uses it to reject nested
+/// work immediately when every concurrency slot is held, rather than deadlocking behind its parents.
+/// </param>
 public sealed record ToolRunContext(Guid ProjectId, Guid ChatId, Guid BranchId, bool Interactive,
     ChatKind Kind = default, JsonElement? KindState = null, int KindStateVersion = 1,
-    bool OverlayPromptsAllowed = true)
+    bool OverlayPromptsAllowed = true, bool IsSubtask = false)
 {
     /// <summary>
     /// No run at all: a session opened to inspect what the servers offer, never to call anything.

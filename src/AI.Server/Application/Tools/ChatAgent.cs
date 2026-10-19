@@ -58,7 +58,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         bool overlayPromptsAllowed = true,
         Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
         Func<string, CancellationToken, Task>? stalledReport = null,
-        Func<CancellationToken>? joinSignal = null)
+        Func<CancellationToken>? joinSignal = null,
+        int? maxModelSteps = null)
     {
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -100,11 +101,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             .Where(kindPolicy.AllowsServer).ToHashSet();
         var grants = project.DirectoryGrants.Where(_ => behavior.AllowDirectoryGrants)
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
+        var subtask = parentBranchId is not null;
         var run = new ToolRunContext(projectId, chatId, branchId, interactive, kindPolicy.Kind, request.KindState,
-            request.KindStateVersion, overlayPromptsAllowed);
+            request.KindStateVersion, overlayPromptsAllowed, subtask);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
-        var plansAllowed = servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
+        var plansAllowed = !subtask && servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
         using var planScope = plansAllowed ? await plans.BeginAsync(run, token) : null;
         // Waiting for the person stops the plan's working clock as it stops the turn's deadline.
         if (plansAllowed) deadline.PersonWait = () => plans.WaitForPerson(run);
@@ -122,7 +124,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         if (request.TeamStatus is { Length: > 0 } teamStatus)
             instructions.Upsert(run, new ModelInstruction("run.team-status", teamStatus, 880,
                 ModelInstructionLifetime.Run, Required: true));
-        if (behavior.IncludeStandingInstructions) await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id), configuredConnection, token);
+        if (behavior.IncludeStandingInstructions)
+            await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id) && !subtask, configuredConnection, token);
+        if (subtask)
+            instructions.Upsert(run, new ModelInstruction("run.subtask",
+                "You are a focused background worker. Execute the assigned task directly with the tools already offered. "
+                + "Do not plan, search for additional tools, inspect unrelated application state, or repeat successful reads and checks. "
+                + "Keep spawn_subtask available, but delegate again only when the assigned work is itself independently divisible. "
+                + "Keep necessary verification proportional and return a short factual result to the parent.",
+                995, ModelInstructionLifetime.Run, Required: true));
         // Set while the application compacts the history itself, so its summary is accounted as a
         // compaction rather than as a checkpoint the model asked for.
         var compactingAhead = false;
@@ -181,6 +191,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
         var stalledSteps = 0;
+        var modelSteps = 0;
         var criteriaAsked = false;
         var observedResults = new HashSet<(string Name, string Arguments, string Result)>();
         // The first call of each read this turn, by what it returned: a read repeated with the same
@@ -277,14 +288,25 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (truncated == 0) await Draft(null);
             checkpoints.Update(run, context);
             var modelContext = checkpoints.Apply(run, context);
+            if (maxModelSteps is { } stepLimit && modelSteps >= stepLimit)
+            {
+                var report = $"I stopped after the {stepLimit}-step model-step budget. Review the tool transcript for completed work; the requested task may be unfinished.";
+                if (stalledReport is not null) await stalledReport(report, token);
+                return await FinishAsync(report);
+            }
             var permitted = new List<AgentTool>();
             if (session is not null)
             {
-                var candidates = session.Tools.Where(tool => kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName)).ToArray();
+                var candidates = session.Tools.Where(tool => kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName))
+                    .Where(tool => !subtask || tool.ServerId != AppMcpServer.Id || tool.OriginalName == "spawn_subtask").ToArray();
                 var resolved = await policies.ResolveAsync(projectId, chatId, branchId, candidates, token);
                 for (var index = 0; index < candidates.Length; index++)
                     if (resolved[index].Decision != "Deny") permitted.Add(candidates[index]);
             }
+            if (maxModelSteps is { } warningLimit && modelSteps == Math.Max(1, warningLimit - 5))
+                instructions.Upsert(run, new ModelInstruction("run.subtask-step-warning",
+                    "Only five model steps remain. Stop exploring and complete the requested output now; verify only the essential result.",
+                    995, ModelInstructionLifetime.UntilAcknowledged, Required: true));
             if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             toolCatalog.Update(run, permitted);
             // Once per turn, before its first step: which skill fits the new message, and which tools
@@ -292,7 +314,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (!routed)
             {
                 routed = true;
-                if (interactive && behavior.RouteSkills && servers.Contains(AppMcpServer.Id)
+                if (!subtask && interactive && behavior.RouteSkills && servers.Contains(AppMcpServer.Id)
                     && await RouteAsync(run, context, permitted, token) is { } route)
                 {
                     var runSkill = permitted.FirstOrDefault(tool =>
@@ -312,7 +334,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     "Several tool calls produced no new information. Do not call another tool. Answer now: what you "
                     + "found and did, and what is missing or blocking the rest.",
                     970, ModelInstructionLifetime.Request));
-            if (behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
+            if (!subtask && behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
             if (plansAllowed) UpsertPlan(run);
             // Every step is finished and only the criteria are left: the answer this step may write
@@ -417,6 +439,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (!plan.Fits) throw new ContextWindowExceededException(plan);
             try
             {
+                modelSteps++;
                 await foreach (var chunk in completion.StreamAsync(
                                    request with { ContextMessages = plan.Messages, Tools = available }, token))
                 {

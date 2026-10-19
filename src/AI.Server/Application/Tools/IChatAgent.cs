@@ -48,5 +48,8 @@ public interface IChatAgent
         Func<string, CancellationToken, Task>? stalledReport = null,
         // A token cancelled once a message is waiting to join the turn. A trigger_wait in flight
         // ends on it, so the person's message is read now rather than when the wait runs out.
-        Func<CancellationToken>? joinSignal = null);
+        Func<CancellationToken>? joinSignal = null,
+        // Background delegation is deliberately bounded: a narrow task that still needs dozens of
+        // model round trips is exploring rather than executing. Null keeps ordinary chats unlimited.
+        int? maxModelSteps = null);
 }

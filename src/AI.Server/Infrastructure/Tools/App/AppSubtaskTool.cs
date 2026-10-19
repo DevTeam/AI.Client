@@ -12,6 +12,8 @@ using AI.Contracts.Tools;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 
 /// <summary>One piece of work to delegate, and optionally the connection that should answer it.</summary>
 /// <param name="Task">What the subtask is asked to do.</param>
@@ -71,21 +73,21 @@ public sealed class AppSubtaskTool(
     ITokenUsageMeter usageMeter, IChatBranchSettingsResolver branchSettings) : IAppTool
 {
     /// <summary>
-    /// How many subtask runs may be in flight across the Host at once. A nested subtask holds its
-    /// parent open, so this bounds depth and width together: runaway recursion stops here instead
-    /// of consuming the machine.
+    /// How many subtask runs may be in flight across the Host at once. Extra work in a root fan-out
+    /// waits for a slot, while nested work never waits behind its own parents and fails instead;
+    /// this bounds width without creating a recursive deadlock.
     /// </summary>
     private const int MaxConcurrentRuns = 8;
 
     /// <summary>
-    /// Matches the concurrency ceiling: one fan-out may use every slot, because checking a set of
-    /// connections in one call is the case this exists for, and nesting is what the ceiling guards.
+    /// A fan-out may contain more work than fits at once. The queue starts another task whenever a
+    /// slot is released, so the caller does not need a second model step for item nine.
     /// </summary>
-    private const int MaxTasks = 8;
+    private const int MaxTasks = 32;
 
     private const int MaxEntryLength = 2000;
 
-    private static int _running;
+    private static readonly SemaphoreSlim Slots = new(MaxConcurrentRuns, MaxConcurrentRuns);
 
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
     private CallToolResult Failed(string error) => reply.Reply(new SubtaskResult([], error), true);
@@ -111,8 +113,9 @@ public sealed class AppSubtaskTool(
                               + "are dealt out over them in turn — else the calling chat's current model. No connection needs to be marked for this tool to remain available. Read the settings resource to "
                               + "see what each connection is worth: a connection may carry a capability rating from 1 to 5, token prices and a line on "
                               + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
-                              + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "
-                              + "a single call. A subtask has nobody "
+                              + $"one call run together with at most {MaxConcurrentRuns} active at once; extra tasks wait in the same call, while separate calls do not, "
+                              + "so put every task you want run in parallel into a single call. Put rules shared by every task in 'sharedInstructions' once instead of "
+                              + "repeating them in every task and overflowing the call arguments. A subtask has nobody "
                               + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "
                               + "a subtask needs them. Nothing is saved: there is no chat to open afterwards, though the full exchange is "
                               + "attached to this result for the user to read."
@@ -121,15 +124,18 @@ public sealed class AppSubtaskTool(
         [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
             UseStructuredContent = true, OutputSchemaType = typeof(SubtaskResult))]
         private Task<CallToolResult> RunAsync(
-            SubtaskRequest[] tasks,
+            [MinLength(1)] [MaxLength(MaxTasks)] SubtaskRequest[] tasks,
             IProgress<ProgressNotificationValue> progress,
             Guid? projectId = null,
             Guid? chatId = null,
             Guid? connectionId = null,
+            [Description("Instructions common to every task, supplied once to keep the call compact.")]
+            [MaxLength(20000)] string? sharedInstructions = null,
             CancellationToken cancellationToken = default) =>
             // Omitted ids mean the run's own project and chat, which is almost always what is meant
             // and is the one pair a model cannot get wrong.
-            tool.RunAsync(run, projectId ?? run.ProjectId, chatId ?? run.ChatId, tasks, progress, connectionId, cancellationToken);
+            tool.RunAsync(run, projectId ?? run.ProjectId, chatId ?? run.ChatId, tasks, progress, connectionId,
+                sharedInstructions, cancellationToken);
     }
 
     private async Task<CallToolResult> RunAsync(
@@ -139,6 +145,7 @@ public sealed class AppSubtaskTool(
         SubtaskRequest[] tasks,
         IProgress<ProgressNotificationValue> progress,
         Guid? connectionId = null,
+        string? sharedInstructions = null,
         CancellationToken cancellationToken = default)
     {
         if (tasks is not { Length: > 0 }) return Failed("At least one task is required.");
@@ -164,32 +171,46 @@ public sealed class AppSubtaskTool(
             return Failed(error.Message);
         }
 
-        var claimed = Interlocked.Add(ref _running, tasks.Length);
-        if (claimed > MaxConcurrentRuns)
-        {
-            Interlocked.Add(ref _running, -tasks.Length);
-            return Failed($"Too many subtasks are already running ({MaxConcurrentRuns} at most, including nested ones).");
-        }
+        var board = new Board(progress, tasks.Length);
+        var runs = tasks.Select((item, index) => RunQueuedAsync(run, projectId, chatId,
+            endpoints[index].Template, endpoints[index].Name, item.Task, Prompt(sharedInstructions, item.Task),
+            index, board, cancellationToken)).ToArray();
+        var completed = await Task.WhenAll(runs);
+        return reply.Reply(
+            new SubtaskResult(completed.Select(item => item.Outcome).ToArray(), null),
+            new SubtaskTranscript(completed.SelectMany(item => item.Transcript).ToArray()),
+            completed.Any(item => item.Outcome.Error is not null));
+    }
 
+    private async Task<(SubtaskOutcome Outcome, IReadOnlyList<SubtaskTranscriptEntry> Transcript)> RunQueuedAsync(
+        ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task, string prompt,
+        int index, Board board, CancellationToken cancellationToken)
+    {
+        board.Set(index, "queued");
+        var entered = run.IsSubtask
+            ? await Slots.WaitAsync(0, cancellationToken)
+            : await WaitAsync(cancellationToken);
+        if (!entered)
+            return (new SubtaskOutcome(task, string.Empty, connection, 0, 0, 0, false,
+                $"No subtask slot is available for nested work ({MaxConcurrentRuns} at most)."), []);
         try
         {
-            var board = new Board(progress, tasks.Length);
-            var runs = tasks.Select((item, index) => RunOneAsync(run, projectId, chatId,
-                endpoints[index].Template, endpoints[index].Name, item.Task, index, board, cancellationToken)).ToArray();
-            var completed = await Task.WhenAll(runs);
-            return reply.Reply(
-                new SubtaskResult(completed.Select(item => item.Outcome).ToArray(), null),
-                new SubtaskTranscript(completed.SelectMany(item => item.Transcript).ToArray()),
-                completed.Any(item => item.Outcome.Error is not null));
+            return await RunOneAsync(run, projectId, chatId, template, connection, task, prompt, index, board, cancellationToken);
         }
         finally
         {
-            Interlocked.Add(ref _running, -tasks.Length);
+            Slots.Release();
         }
     }
 
+    private static async Task<bool> WaitAsync(CancellationToken cancellationToken)
+    {
+        await Slots.WaitAsync(cancellationToken);
+        return true;
+    }
+
     private async Task<(SubtaskOutcome Outcome, IReadOnlyList<SubtaskTranscriptEntry> Transcript)> RunOneAsync(
-        ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task,
+        ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task, string prompt,
         int index, Board board, CancellationToken cancellationToken)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
@@ -211,7 +232,7 @@ public sealed class AppSubtaskTool(
                 // what the caller found. The caller is still told the total: the run is registered as
                 // its child below, and a parent's snapshot covers its children.
                 Guid.CreateVersion7(),
-                template with { Message = task, ContextMessages = [new ChatCompletionMessage("user", task)] },
+                template with { Message = prompt, ContextMessages = [new ChatCompletionMessage("user", prompt)] },
                 (message, _) =>
                 {
                     if (message.ToolCalls is { Count: > 0 } calls)
@@ -252,7 +273,8 @@ public sealed class AppSubtaskTool(
                 // Same reason, said once for every tool rather than per callback: this run has no
                 // person behind it, so ask_user answers itself instead of waiting for one.
                 interactive: false,
-                parentBranchId: run.BranchId);
+                parentBranchId: run.BranchId,
+                maxModelSteps: 40);
             var text = answer.ToString();
             transcript.Add(new SubtaskTranscriptEntry(task, "assistant", text, null));
             board.Finish(index);
@@ -268,6 +290,10 @@ public sealed class AppSubtaskTool(
                 elapsed.ElapsedMilliseconds), transcript);
         }
     }
+
+    private static string Prompt(string? sharedInstructions, string task) => string.IsNullOrWhiteSpace(sharedInstructions)
+        ? task
+        : sharedInstructions.Trim() + Environment.NewLine + Environment.NewLine + task;
 
     /// <summary>
     /// Turns one message of a subtask into a line a person can read. A tool result is stored as the

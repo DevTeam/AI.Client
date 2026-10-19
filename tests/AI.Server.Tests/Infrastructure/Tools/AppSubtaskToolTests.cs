@@ -56,6 +56,41 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldUseAFocusedPromptWithoutTheApplicationCatalog()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        await session.CallAsync(tool, SubtaskFixture.Arguments("do the focused work"), null,
+            TestContext.Current.CancellationToken);
+
+        var prompt = string.Join("\n", fixture.Completion.Requests.ShouldHaveSingleItem().ContextMessages!
+            .Select(message => message.Content));
+        prompt.ShouldContain("focused background worker");
+        prompt.ShouldNotContain("Application tools (named here without their server prefix)");
+        prompt.ShouldNotContain("Skills: use a matching skill");
+    }
+
+    [Fact]
+    public async Task ShouldForceAResultAfterTheSubtaskModelStepBudget()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.LoopWithUnavailableTools();
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("do not explore forever"), null,
+            TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        fixture.Completion.StreamRequests.ShouldBe(40);
+        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("answer").GetString()!
+            .ShouldContain("step budget");
+    }
+
+    [Fact]
     public async Task ShouldRunSeveralTasksInOneCall()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -73,7 +108,7 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
-    public async Task ShouldRefuseMoreTasksThanItWillRunAtOnce()
+    public async Task ShouldQueueMoreTasksThanItRunsAtOnce()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
         fixture.Completion.Answer("done");
@@ -84,8 +119,47 @@ public sealed class AppSubtaskToolTests
             SubtaskFixture.Arguments("a", "b", "c", "d", "e", "f", "g", "h", "i"), null,
             TestContext.Current.CancellationToken);
 
-        result.IsError.ShouldBeTrue();
-        result.StructuredContent!.Value.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("At most");
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        result.StructuredContent!.Value.GetProperty("results").GetArrayLength().ShouldBe(9);
+    }
+
+    [Fact]
+    public async Task ShouldApplySharedInstructionsWithoutRepeatingThemInEveryTask()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+        var arguments = JsonSerializer.Serialize(new
+        {
+            sharedInstructions = "Preserve code blocks.",
+            tasks = new[] { new { task = "translate first" }, new { task = "translate second" } }
+        });
+
+        var result = await session.CallAsync(tool, arguments, null, TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        lock (fixture.Completion.Requests)
+            fixture.Completion.Requests.ShouldAllBe(request =>
+                request.Message.StartsWith("Preserve code blocks." + Environment.NewLine + Environment.NewLine + "translate ",
+                    StringComparison.Ordinal));
+        result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
+            .Select(item => item.GetProperty("task").GetString()).ShouldBe(["translate first", "translate second"], ignoreOrder: true);
+        tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
+            .GetProperty("maxItems").GetInt32().ShouldBe(32);
+    }
+
+    [Fact]
+    public async Task ShouldRefuseMoreThanTheQueueLimit()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var error = await Should.ThrowAsync<ArgumentException>(() => session.CallAsync(tool,
+            SubtaskFixture.Arguments(Enumerable.Range(1, 33).Select(index => $"task-{index}").ToArray()), null,
+            TestContext.Current.CancellationToken));
+        error.Message.ShouldContain("at most 32 items");
     }
 
     [Fact]
@@ -420,18 +494,35 @@ public sealed class AppSubtaskToolTests
     private sealed class StubCompletion : IChatCompletionClient
     {
         private Func<string, string> _answer = _ => string.Empty;
+        private bool _loop;
+        private int _call;
+        private int _streamRequests;
+
+        public List<ChatCompletionRequest> Requests { get; } = [];
+        public int StreamRequests => Volatile.Read(ref _streamRequests);
 
         public void Answer(string text) => _answer = _ => text;
 
         public void AnswerPerTask(Func<string, string> answer) => _answer = answer;
 
+        public void LoopWithUnavailableTools() => _loop = true;
+
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+            Task.FromResult(new ChatCompletionResponse("Stopped at the model-step budget with unfinished work.", request.Model));
 
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(
             ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             await Task.Yield();
+            lock (Requests) Requests.Add(request);
+            Interlocked.Increment(ref _streamRequests);
+            if (_loop)
+            {
+                var call = Interlocked.Increment(ref _call);
+                yield return new ChatCompletionChunk(string.Empty,
+                    ToolCalls: [new($"call-{call}", "mcp_built_in__read_text_file", $"{{\"path\":\"missing-{call}\"}}")]);
+                yield break;
+            }
             yield return new ChatCompletionChunk(_answer(request.Message));
         }
     }

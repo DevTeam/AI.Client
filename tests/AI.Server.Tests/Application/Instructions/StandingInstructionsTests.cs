@@ -83,6 +83,8 @@ public sealed class StandingInstructionsTests : IDisposable
         preview.Layers[0].Content.ShouldContain("large divisible work such as translations");
         preview.Layers[0].Content.ShouldContain("put every parallel task in one call");
         preview.Layers[0].Content.ShouldContain("separate output files or other disjoint targets");
+        preview.Layers[0].Content.ShouldContain("sharedInstructions once");
+        preview.Layers[0].Content.ShouldContain("small set of aggregate checks");
         preview.Layers[0].Content.ShouldContain("remains available without one");
         preview.Layers[0].Content.ShouldContain("uses the current chat's model");
         // Access outside the grants is asked for, not worked around.

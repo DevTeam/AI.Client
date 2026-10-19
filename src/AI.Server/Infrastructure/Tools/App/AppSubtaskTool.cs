@@ -103,7 +103,9 @@ public sealed class AppSubtaskTool(
             {
                 SerializerOptions = reply.Json,
                 Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
-                              + "context. It runs in your project and chat unless 'projectId' and 'chatId' name others, and inherits their "
+                              + "context. Use one call with multiple tasks for large divisible work such as translation, generation or the same "
+                              + "transformation across independent files or ranges; tasks that write must use disjoint targets, then the caller "
+                              + "integrates and verifies them. It runs in your project and chat unless 'projectId' and 'chatId' name others, and inherits their "
                               + "directory grants and tool policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
                               + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
                               + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "

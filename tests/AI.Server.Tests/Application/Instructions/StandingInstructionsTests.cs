@@ -80,6 +80,9 @@ public sealed class StandingInstructionsTests : IDisposable
 
         preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index", "skills.catalog"]);
         preview.Layers[0].Content.ShouldContain("spawn_subtask");
+        preview.Layers[0].Content.ShouldContain("large divisible work such as translations");
+        preview.Layers[0].Content.ShouldContain("put every parallel task in one call");
+        preview.Layers[0].Content.ShouldContain("separate output files or other disjoint targets");
         // Access outside the grants is asked for, not worked around.
         preview.Layers[0].Content.ShouldContain("pathKind 'directories'");
         preview.Layers[0].Content.ShouldContain("AddDirectoryGrant");

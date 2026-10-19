@@ -50,6 +50,24 @@ public sealed class ToolDefinitionSelectorTests
         selection.Tools.ShouldContain(item => item.OriginalName == "ask_user");
     }
 
+    [Fact]
+    public void ShouldKeepParallelDelegationAvailableUnderSchemaPressure()
+    {
+        var subtask = Tool("spawn_subtask", "Delegate independent work in parallel " + new string('s', 2_000),
+            ToolRef.AppPrefix + "spawn_subtask");
+        var ordinary = Enumerable.Range(0, 30).Select(index =>
+            Tool($"ordinary_{index}", "generic operation " + new string('x', 2_000), ToolRef.BuiltInPrefix + $"ordinary_{index}"));
+
+        var connection = new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.invalid", "model", true, true, false,
+            ContextWindowTokens: 32_768, ReservedOutputTokens: 4_096);
+        var selection = Selector().Choose(connection,
+            "Translate the document", [], [.. ordinary, subtask]);
+
+        selection.AvailableTokens.ShouldBeGreaterThan(selection.BudgetTokens);
+        selection.Tools.ShouldContain(subtask);
+        selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);
+    }
+
     private AdaptiveContextPolicy Selector() => new(_estimator, new ConnectionContextLimitsResolver());
 
     [Fact]

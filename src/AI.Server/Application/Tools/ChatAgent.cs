@@ -550,16 +550,19 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             // A step is stalled only when none of its calls told the model anything new. An error
             // is information too, unless it is the same error for the same call again.
             var learned = false;
-            // Reads of the built-in servers that need nobody's confirmation start together, so a
-            // batch of searches and file reads takes as long as its slowest call rather than all of
-            // them in turn. Their results are still taken, recorded and shown in the batch's order.
+            // Adjacent read-only calls that need nobody's confirmation start together, so a batch
+            // takes as long as its slowest call rather than all of them in turn. Mutating, waiting
+            // or approval-bound calls are barriers. Results are still recorded in the batch's order.
             using var alongside = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var reads = await StartReadsAsync(calls, selectedTools, session, counts, projectId, chatId, branchId, runKey,
-                alongside.Token, token);
+            var reads = new Dictionary<int, StartedRead>();
             try
             {
                 for (var index = 0; index < calls.Count; index++)
                 {
+                    if (!reads.ContainsKey(index))
+                        foreach (var read in await StartReadsAsync(calls, index, selectedTools, session, counts,
+                                     projectId, chatId, branchId, runKey, alongside.Token, token))
+                            reads.Add(read.Key, read.Value);
                     var call = calls[index];
                     ToolCallResult result;
                     try
@@ -1160,35 +1163,35 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private sealed record StartedRead(AgentTool Tool, string Arguments, Task<ToolCallResult> Result);
 
     /// <summary>
-    /// The read-only tools of the Host's own servers, whose annotations the Host wrote itself. A
-    /// third-party server's hints are its own claims, and a wait or a question takes its time from
-    /// an event or a person rather than from the read.
+    /// A tool declared read-only may run with other reads once the independent policy check has
+    /// already allowed it. The annotation never grants access; it only schedules an allowed call.
+    /// A wait or a question still runs in sequence because its time belongs to an event or person.
     /// </summary>
     private static bool RunsAlongside(AgentTool tool) =>
         tool.Descriptor.Annotations?.ReadOnlyHint == true
-        && (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName != "trigger_wait"
-            || tool.ServerId == AppMcpServer.Id && tool.OriginalName == "app_read");
+        && tool.OriginalName != "trigger_wait"
+        && !AsksTheUser(tool);
 
     /// <summary>
-    /// Starts every call of the batch that may run alongside the others: a read of the Host's own
-    /// servers that its policy allows without confirmation and within its call limit. A batch with
-    /// fewer than two such calls starts nothing here and runs in turn as before.
+    /// Starts every call of the batch that may run alongside the others: a declared read-only call
+    /// that its policy allows without confirmation and within its call limit. A batch with fewer
+    /// than two such calls starts nothing here and runs in turn as before.
     /// </summary>
-    private async Task<Dictionary<int, StartedRead>> StartReadsAsync(List<ChatToolCall> calls,
+    private async Task<Dictionary<int, StartedRead>> StartReadsAsync(List<ChatToolCall> calls, int startIndex,
         IReadOnlyList<AgentTool> selectedTools, RefreshableToolSession? session, IReadOnlyDictionary<string, int> counts,
         Guid projectId, Guid chatId, Guid branchId, WorkspaceRunKey runKey, CancellationToken alongside,
         CancellationToken token)
     {
         var started = new Dictionary<int, StartedRead>();
-        if (session is null || calls.Count < 2) return started;
+        if (session is null || calls.Count - startIndex < 2) return started;
         var candidates = new List<(int Index, AgentTool Tool, string Arguments, EffectiveToolPolicy Policy)>();
         var planned = new Dictionary<string, int>(counts, StringComparer.Ordinal);
-        for (var index = 0; index < calls.Count; index++)
+        for (var index = startIndex; index < calls.Count; index++)
         {
             var call = calls[index];
-            var count = planned[call.Name] = planned.GetValueOrDefault(call.Name) + 1;
             if (selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name) is not { } tool
-                || !RunsAlongside(tool)) continue;
+                || !RunsAlongside(tool)) break;
+            var count = planned[call.Name] = planned.GetValueOrDefault(call.Name) + 1;
             string arguments;
             try
             {
@@ -1196,11 +1199,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             }
             catch (Exception error) when (error is ArgumentException or JsonException)
             {
-                // Its turn in the batch reports the error, as for any other call.
-                continue;
+                // Its turn in the batch reports the error, and it remains a barrier to later calls.
+                break;
             }
             var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
-            if (policy.Decision != "Allow" || count > policy.MaxCalls) continue;
+            if (policy.Decision != "Allow" || count > policy.MaxCalls) break;
             candidates.Add((index, tool, policy.Command?.Subject.Arguments ?? arguments, policy));
         }
         if (candidates.Count < 2) return started;

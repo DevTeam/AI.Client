@@ -38,8 +38,8 @@ public sealed record ToolDescriptor(
 
 /// <summary>
 /// MCP tool annotations. The specification calls these hints: a server describes its own tool, so
-/// for anything but the built-in server they are presentation input only. Host policy, directory
-/// grants and approval prompts must never be derived from them.
+/// for anything but the built-in server they are presentation and scheduling input only. Host
+/// policy, directory grants and approval prompts must never be derived from them.
 /// </summary>
 public sealed record ToolAnnotations(
     string? Title,

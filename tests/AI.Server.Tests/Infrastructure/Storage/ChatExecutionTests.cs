@@ -982,6 +982,76 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task AllowedReadOnlyCallsFromDifferentServersShouldRunTogetherAndReturnInTheirOrder()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferReads = true;
+        fixture.Tools.OfferExternalReads = true;
+        await fixture.AllowExternalReadAsync();
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Inspect two resources"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("external", "mcp_csharp__inspect", "{}"),
+            new ChatToolCall("built-in", "mcp_built_in__read_text_file", "{\"path\":\"C:\\\\file.txt\"}")
+        ];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        next.Request.ContextMessages!.Where(message => message.ToolCallId is not null).Select(message => message.ToolCallId)
+            .ShouldBe(["external", "built-in"]);
+        fixture.Tools.MostReadsAtOnce.ShouldBeGreaterThan(1);
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AChangingCallShouldBeABarrierBetweenReadOnlyGroups()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferReads = true;
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Read, change, then read"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("before", "mcp_built_in__read_text_file", "{\"delayMs\":20}"),
+            new ChatToolCall("change", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("after", "mcp_built_in__read_text_file", "{\"delayMs\":1000}")
+        ];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        fixture.Tools.ChangingCallOverlappedRead.ShouldBeFalse();
+        next.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AThirdPartyReadOnlyHintShouldNotBypassApproval()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferExternalReads = true;
+        await fixture.SetExternalReadPolicyAsync("Ask");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Inspect two resources"));
+
+        var first = await fixture.NextCallAsync();
+        first.ToolCalls =
+        [
+            new ChatToolCall("external-1", "mcp_csharp__inspect", "{}"),
+            new ChatToolCall("external-2", "mcp_csharp__inspect", "{}")
+        ];
+        first.Answer.SetResult("");
+
+        await fixture.WaitAsync(run => run.PendingApproval is not null);
+        fixture.Tools.MostReadsAtOnce.ShouldBe(0);
+        await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
+        await fixture.WaitAsync(run => run.Status != ChatRunStatus.Generating);
+    }
+
+    [Fact]
     public async Task ABatchOfRepeatedCallsShouldCountAsOneStepWithoutNews()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2895,6 +2965,20 @@ public sealed partial class ChatExecutionTests
             await Settings.SaveAsync(global with { ToolPolicies = [.. global.ToolPolicies,
                 new McpToolPolicySettings(AppMcpServer.Id, "tool_search", "schema", "Allow", 20, 120)] }, CancellationToken.None);
         }
+        public Task AllowExternalReadAsync() => SetExternalReadPolicyAsync("Allow");
+        public async Task SetExternalReadPolicyAsync(string decision)
+        {
+            var global = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(global with
+            {
+                McpServers = [CSharpMcpServer.Settings with { Policy = decision }]
+            }, CancellationToken.None);
+            var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
+            await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
+                [new Contracts.Projects.McpServerSettings(CSharpMcpServer.Id, CSharpMcpServer.Settings.Name,
+                    CSharpMcpServer.Transport, true)],
+                [new ToolPolicySettings(CSharpMcpServer.Id, "inspect", "schema", decision, 20, 120)]), CancellationToken.None);
+        }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
         /// <summary>
@@ -2984,10 +3068,12 @@ public sealed partial class ChatExecutionTests
         private int _callCount;
         private int _activeReads;
         private int _mostReadsAtOnce;
+        private int _changingCallOverlappedRead;
         public int CallCount => _callCount;
 
-        /// <summary>The most read_text_file calls that were in flight at the same moment.</summary>
+        /// <summary>The most declared read-only calls that were in flight at the same moment.</summary>
         public int MostReadsAtOnce => _mostReadsAtOnce;
+        public bool ChangingCallOverlappedRead => Volatile.Read(ref _changingCallOverlappedRead) != 0;
 
         /// <summary>Set to offer a built-in read-only tool, which may run alongside the other reads of its batch.</summary>
         public bool OfferReads { get; set; }
@@ -3008,12 +3094,19 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_csharp__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
             CSharpMcpServer.Id, "cs_run", "schema");
 
+        private static readonly AgentTool ExternalRead = new(
+            new ChatToolDefinition("mcp_csharp__inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_csharp__inspect", "inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}"))
+                with { Annotations = new ToolAnnotations(null, true, false, true, false) },
+            CSharpMcpServer.Id, "inspect", "schema");
+
         private static readonly AgentTool TriggerWait = new(
             new ChatToolDefinition("mcp_built_in__trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
             ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "trigger_wait", "schema");
 
         public bool OfferCSharp { get; set; }
+        public bool OfferExternalReads { get; set; }
         public bool OfferTrigger { get; set; }
         public string? LastExecutionArguments { get; private set; }
 
@@ -3056,7 +3149,8 @@ public sealed partial class ChatExecutionTests
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
+            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
+                .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
                 .. OfferReads ? [ReadTextFile] : Array.Empty<AgentTool>()];
@@ -3088,14 +3182,17 @@ public sealed partial class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _callCount);
-            if (tool.OriginalName == "read_text_file")
+            if (tool.Descriptor.Annotations?.ReadOnlyHint == true)
             {
                 var active = Interlocked.Increment(ref _activeReads);
                 for (var most = _mostReadsAtOnce; active > most; most = _mostReadsAtOnce)
                     Interlocked.CompareExchange(ref _mostReadsAtOnce, active, most);
                 try
                 {
-                    await Task.Delay(300, cancellationToken);
+                    var delay = JsonSerializer.Deserialize<JsonElement>(arguments).TryGetProperty("delayMs", out var value)
+                        ? value.GetInt32()
+                        : 300;
+                    await Task.Delay(delay, cancellationToken);
                 }
                 finally
                 {
@@ -3103,6 +3200,8 @@ public sealed partial class ChatExecutionTests
                 }
                 return _codec.Read("{\"structuredContent\":{\"content\":\"text\"}}");
             }
+            if (tool.OriginalName == "process_run" && Volatile.Read(ref _activeReads) > 0)
+                Interlocked.Exchange(ref _changingCallOverlappedRead, 1);
             if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","

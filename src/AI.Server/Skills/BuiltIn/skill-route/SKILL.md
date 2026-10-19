@@ -12,6 +12,8 @@ code. The input is JSON:
 - `message`: the user's latest message, in any language;
 - `previous`: the end of the assistant's previous answer, when there was one;
 - `active_skill`: the id of the skill the conversation is following, when there is one;
+- `directories`: the directories the current project can already reach, as "root: tools", where
+  "recursive" covers everything below the root;
 - `skills`: each available skill as "id: what it is for";
 - `tools`: each available tool as "name: what it does".
 
@@ -24,6 +26,9 @@ Choose:
   talk, questions answered from knowledge, and tasks no skill covers.
   A request to implement a read-only plan or fix review findings changes the task: choose the
   appropriate implementation/fix skill instead of keeping the read-only skill active.
+  A path named in the message is the place to work, not a request for access. Choose
+  project-directory-add only when the message asks to add, grant or open access to a directory,
+  or names a directory that no entry in `directories` covers with the access the task needs.
   Use project-configure for initial configuration of an existing project across its purpose, memory,
   directories, tool permissions, MCP servers, skills and recurring chats. If the user asks to
   create a new project and set it up, run project-create first so setup continues in that

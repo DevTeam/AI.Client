@@ -100,7 +100,9 @@ public sealed class McpToolSession : IToolSession
     public string ValidateArguments(AgentTool tool, string arguments)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        if (arguments.Length > 65536) throw new ArgumentException("Tool arguments exceed the size limit.", nameof(arguments));
+        if (arguments.Length > ToolCallLimits.ArgumentCharacters)
+            throw new ArgumentException($"Tool arguments exceed the {ToolCallLimits.ArgumentCharacters}-character limit. "
+                + "Split the content across several calls.", nameof(arguments));
         var schema = _descriptors[tool.OriginalName].InputSchema;
         var canonical = JsonNode.Parse(arguments) is JsonObject parsed ? Repair(parsed, schema) : null;
         var input = canonical is null

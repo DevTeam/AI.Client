@@ -355,6 +355,8 @@ public sealed class BuiltInToolTests
             File.WriteAllText(crlf, "alpha\r\nbeta\r\n");
             var large = Path.Combine(root, "large.txt");
             File.WriteAllText(large, string.Concat(Enumerable.Range(1, 2500).Select(index => $"line {index}\n")));
+            var wide = Path.Combine(root, "wide.txt");
+            File.WriteAllText(wide, string.Concat(Enumerable.Range(1, 1000).Select(index => $"{index:D4}{new string('x', 95)}\n")));
 
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await using var session = await CreateFactory().OpenAsync(
@@ -378,6 +380,12 @@ public sealed class BuiltInToolTests
             start.GetProperty("content").GetString()!.ShouldEndWith("line 2000\n");
             (await Structured(session, "read_text_file", new { path = large, offset = 2001 }, token))
                 .GetProperty("lineCount").GetInt32().ShouldBe(500);
+            // A range cannot take in more than a whole read: a large file is read in parts.
+            var ranged = await Structured(session, "read_text_file", new { path = wide, offset = 1, limit = 1000 }, token);
+            ranged.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            ranged.GetProperty("lineCount").GetInt32().ShouldBe(512);
+            (await Structured(session, "read_text_file", new { path = wide }, token))
+                .GetProperty("lineCount").GetInt32().ShouldBe(512);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -643,6 +651,19 @@ public sealed class BuiltInToolTests
                 .GetProperty("content").GetString()!.ShouldContain("gamma");
             (await Structured(session, "edit_file", new { path = file, edits }, token))
                 .GetProperty("error").GetString()!.ShouldContain("was not found");
+            // The call carries a long insertion already; its diff shows only the ends of it.
+            var inserted = string.Join('\n', Enumerable.Range(1, 100).Select(index => $"row {index}"));
+            var longDiff = (await Structured(session, "edit_file",
+                new { path = file, edits = new[] { new { oldText = "gamma", newText = "gamma\n" + inserted } } }, token))
+                .GetProperty("diff").GetString()!;
+            longDiff.ShouldContain("+row 11");
+            longDiff.ShouldContain("@@ 77 added lines not shown @@");
+            longDiff.ShouldContain("+row 100");
+            longDiff.ShouldNotContain("+row 50");
+            (await File.ReadAllTextAsync(file, token)).ShouldContain("row 50");
+            (await Structured(session, "edit_file",
+                new { path = file, edits = new[] { new { oldText = "gamma\n" + inserted, newText = "gamma" } } }, token))
+                .GetProperty("diff").GetString()!.ShouldContain("@@ 77 removed lines not shown @@");
 
             (await Structured(session, "read_multiple_files", new { paths = (string[])[file] }, token))
                 .GetProperty("files").EnumerateArray().Single().GetProperty("content").GetString()!.ShouldContain("gamma");

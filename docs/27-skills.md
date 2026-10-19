@@ -433,12 +433,19 @@ So before the first model step of every interactive turn that starts with a new 
 tools, 12 seconds at most. The person waits on it before every turn, so it runs on the first
 enabled connection marked for subtasks — usually a cheaper, faster model — and on the chat's own
 connection when none is marked. It gets the message, the end of the
-previous answer, the active playbook, the selected skill metadata and the permitted tools by their first
+previous answer, the active playbook, the directories the project can already reach (root, tools and
+recursion of each grant), the selected skill metadata and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
 tools, and those the chosen skills declare, receive pending discovery priority before the tool
 selector cuts the list. Their admission still depends on the schema budget. The optional routing
 request is checked by `IChatContextPlanner`; a catalogue too large for the connection is skipped,
 leaving discovery to the main chat instead of sending an oversized model request.
+
+The directories are there because a message that only names a path ("study D:\repo and ...")
+reads like a request for access: without them the router loaded `project-directory-add` for a
+directory the project already covered, and that playbook stayed the active skill for the whole
+turn. The router chooses it only when the message asks for access or names a directory no grant
+covers with the access the task needs.
 
 When the first skill is a playbook without required parameters, `ChatAgent` loads it itself: it
 persists an `mcp_app__run_skill` call with `parameters: {}` and its result, as if the model had made

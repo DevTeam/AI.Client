@@ -49,6 +49,23 @@ public class SkillRouteSkillTests
     }
 
     [Fact]
+    public async Task ShouldTellTheRouterWhichDirectoriesTheProjectAlreadyReaches()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var project = new ProjectDetails(_projectId, "Repo", "", now, now, 1,
+            [new DirectoryGrantSettings(Guid.NewGuid(), "repo", "/work/repo", true, ["read", "write"])], [], []);
+        var routing = CreateRouting("{\"skills\":[],\"tools\":[]}", project: project);
+
+        await routing.RouteAsync(Run, [new ChatCompletionMessage("user", "Study /work/repo and summarize it")], [],
+            TestContext.Current.CancellationToken);
+
+        // Naming a path the project already reaches is not a request for access to it.
+        var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
+        input.GetProperty("directories").EnumerateArray().Select(item => item.GetString())
+            .ShouldBe(["/work/repo: read, write, recursive"]);
+    }
+
+    [Fact]
     public async Task ShouldSayWhenTheMessageContinuesTheActivePlaybook()
     {
         var routing = CreateRouting("{\"skills\":[\"code-feature-implement\"],\"tools\":[]}");
@@ -128,14 +145,15 @@ public class SkillRouteSkillTests
     private static AgentTool Tool(string name, string description) =>
         new(new ChatToolDefinition(name, description, JsonDocument.Parse("{}").RootElement), null!, Guid.Empty, name, "");
 
-    private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null, string? subtaskModel = null)
+    private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null, string? subtaskModel = null,
+        ProjectDetails? project = null)
     {
         var now = DateTimeOffset.UtcNow;
         var chats = new Mock<IChatService>(MockBehavior.Strict);
         chats.Setup(item => item.GetAsync(_projectId, _chatId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatDetails(_chatId, _projectId, "Chat", now, now, 1, _connectionId, []));
         var projects = new Mock<IProjectService>(MockBehavior.Strict);
-        projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>())).ReturnsAsync((ProjectDetails?)null);
+        projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
         var settings = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([new ConnectionSettings(_connectionId, "Main", "https://example.test/v1",

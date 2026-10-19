@@ -17,7 +17,8 @@ public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply, IFil
         {
             Description = "Apply exact text replacements to a file. Each 'oldText' must occur exactly once in the current content, so include "
                           + "enough surrounding lines to make it unique; edits are applied in order and a single failure applies nothing. "
-                          + "Line endings are compared as LF and the file keeps its original style. Pass 'dryRun' to get the diff without "
+                          + "Line endings are compared as LF and the file keeps its original style. The diff shows only the first and last "
+                          + $"{FileLimits.DiffSideLines} lines of a long side. Pass 'dryRun' to get the diff without "
                           + $"writing. At most {FileLimits.Edits} edits per call. "
                           + "The path must be absolute and covered by a directory grant with 'edit' access."
         });
@@ -121,7 +122,28 @@ public sealed class EditFileTool(IPathGuard guard, IBuiltInToolReply reply, IFil
             return;
         }
 
-        foreach (var line in text.Split('\n'))
+        var lines = text.Split('\n');
+        var keep = FileLimits.DiffSideLines;
+        if (lines.Length <= keep * 2 + 1)
+        {
+            foreach (var line in lines)
+            {
+                diff.Append(marker).AppendLine(line);
+            }
+
+            return;
+        }
+
+        // A long side would otherwise come back whole, doubling in the context what the call
+        // itself already carries; its ends show where it landed.
+        foreach (var line in lines.AsSpan(0, keep))
+        {
+            diff.Append(marker).AppendLine(line);
+        }
+
+        diff.Append("@@ ").Append(lines.Length - keep * 2).Append(marker == '+' ? " added" : " removed")
+            .AppendLine(" lines not shown @@");
+        foreach (var line in lines.AsSpan(lines.Length - keep))
         {
             diff.Append(marker).AppendLine(line);
         }

@@ -6,6 +6,7 @@ using AI.Application.Chat;
 using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
+using AI.Contracts.Projects;
 using AI.Contracts.Skills;
 using Microsoft.Extensions.Logging;
 
@@ -81,7 +82,8 @@ public sealed class SkillRouteSkill(
         if (available.Length == 0 && tools.Length == 0)
             return new("Skipped", "There is nothing to route to.", invocation.CurrentChatId);
 
-        var connection = await ConnectionAsync(invocation, token);
+        var project = await projects.GetAsync(invocation.ProjectId, token);
+        var connection = await ConnectionAsync(invocation, project, token);
         if (connection is null) return new("Failed", "No enabled model connection is available.", invocation.CurrentChatId);
         var conversation = new List<ChatCompletionMessage>
         {
@@ -91,6 +93,7 @@ public sealed class SkillRouteSkill(
                 message = Text(parameters, "message"),
                 previous = Text(parameters, "previous"),
                 active_skill = Text(parameters, "active_skill"),
+                directories = project?.DirectoryGrants.Select(GrantText) ?? [],
                 skills = candidates.Select(item => $"{item.Id}: {Purpose(item.Description)}"),
                 tools
             }))
@@ -149,15 +152,22 @@ public sealed class SkillRouteSkill(
         return flat.Length <= MaxPurposeChars ? flat : flat[..MaxPurposeChars] + "...";
     }
 
+    /// <summary>
+    /// A directory the project can already reach, as "root: tools[, recursive]". Without it a message
+    /// that only names a path ("study C:\repo") reads like a request to grant access to it.
+    /// </summary>
+    private static string GrantText(DirectoryGrantSettings grant) =>
+        $"{grant.CanonicalRoot}: {string.Join(", ", grant.ToolNames)}{(grant.Recursive ? ", recursive" : "")}";
+
     private static string? Text(JsonElement parameters, string property) =>
         parameters.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     /// <summary>The chat's own model, as <see cref="ChatReplySuggestSkill"/> picks it.</summary>
-    private async Task<AI.Contracts.Settings.ConnectionSettings?> ConnectionAsync(SkillInvocation invocation, CancellationToken token)
+    private async Task<AI.Contracts.Settings.ConnectionSettings?> ConnectionAsync(SkillInvocation invocation,
+        ProjectDetails? project, CancellationToken token)
     {
         var global = await settings.LoadAsync(token);
         var chat = invocation.CurrentChatId is { } chatId ? await chats.GetAsync(invocation.ProjectId, chatId, token) : null;
-        var project = await projects.GetAsync(invocation.ProjectId, token);
         var connectionId = chat?.ConnectionId ?? project?.ConnectionId;
         // The person waits on this before every turn, and picking from a short list is the kind of
         // work the connections marked for subtasks are for: usually a cheaper, faster model.

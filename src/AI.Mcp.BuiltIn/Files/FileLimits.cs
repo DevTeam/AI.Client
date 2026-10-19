@@ -5,17 +5,23 @@ using System.Collections.Frozen;
 /// <summary>Result caps that keep a single tool call bounded in size and time.</summary>
 internal static class FileLimits
 {
-    public const int ContentCharacters = 262144;
-
     /// <summary>
-    /// Lines a read without a range returns. Asked for a whole file, a model rarely needs more than
-    /// its start to decide where to look, and a large file read whole stays in its context for the
-    /// rest of the run; a range reads further, up to <see cref="ContentCharacters"/>.
+    /// Characters one <c>read_text_file</c> call returns, whole or ranged, ending after a whole line.
+    /// Whatever is read stays in the model's context for the rest of the run and is sent again with
+    /// every later step, so a large file is read in parts, or its parts are handed to subtasks,
+    /// instead of being taken in at once.
     /// </summary>
+    public const int ReadCharacters = 51200;
+
+    /// <summary>Lines a read without a range returns: enough to decide where to look further.</summary>
     public const int WholeReadLines = 2000;
 
-    /// <summary>Characters a read without a range returns, at a line boundary.</summary>
-    public const int WholeReadCharacters = 100000;
+    /// <summary>
+    /// Lines an <c>edit_file</c> diff keeps from the start and from the end of each side of a long
+    /// replacement. The caller sent that text itself, so the result only needs to show where it went.
+    /// </summary>
+    public const int DiffSideLines = 12;
+
     public const int MultipleFilesPaths = 32;
     public const int MultipleFilesCharacters = 262144;
     public const int DirectoryEntries = 5000;

@@ -327,8 +327,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     995, ModelInstructionLifetime.UntilAcknowledged, Required: true));
             if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             toolCatalog.Update(run, permitted);
-            if (subtask)
-                toolCatalog.Pin(run, permitted.Where(IsExecutionTool).Select(tool => tool.ModelDefinition.Name));
+            // An execution tool measures, slices and joins files in one step where file tools take many, and
+            // the parent needs it to prepare work for subtasks; a prompt about the content alone
+            // would not rank it high enough to be offered.
+            toolCatalog.Pin(run, permitted.Where(IsExecutionTool).Select(tool => tool.ModelDefinition.Name));
             // Once per turn, before its first step: which skill fits the new message, and which tools
             // the first steps need. The tools are pinned before the selector cuts the list.
             if (!routed)

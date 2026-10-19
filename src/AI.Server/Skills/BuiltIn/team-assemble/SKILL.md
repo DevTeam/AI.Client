@@ -43,7 +43,8 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    - the contracts between them can be fixed now;
    - each part is substantial work, not a lookup.
    If one fails, do not assemble a team. Say which condition failed and recommend working in this
-   branch, or `spawn_subtask` for short independent lookups whose results only need collecting.
+   branch, or `spawn_subtask` for independent parts whose results only need collecting: lookups,
+   or ranges of one large output, each written to its own file and joined afterwards.
    If the person asked for a team regardless, put both options to them with `ask_user` first;
    for a subteam, send the tradeoff to its parent lead instead.
 5. Choose 2 to 4 teammates, or the size and roles the user asked for. Typical

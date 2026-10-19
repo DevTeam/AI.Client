@@ -82,6 +82,9 @@ public sealed class StandingInstructionsTests : IDisposable
         preview.Layers[0].Content.ShouldContain("spawn_subtask");
         preview.Layers[0].Content.ShouldContain("self-contained tasks whose coordination cost is justified");
         preview.Layers[0].Content.ShouldContain("finish within one context and the subtask step budget");
+        preview.Layers[0].Content.ShouldContain("more than about 20,000 tokens of text");
+        preview.Layers[0].Content.ShouldContain("join the parts in one execution-tool call");
+        preview.Layers[0].Content.ShouldContain("stop checking once they pass");
         preview.Layers[0].Content.ShouldContain("Put all parallel parts in one call");
         preview.Layers[0].Content.ShouldContain("disjoint write targets");
         preview.Layers[0].Content.ShouldContain("sharedInstructions once");

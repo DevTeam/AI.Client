@@ -1,6 +1,7 @@
 namespace AI.Infrastructure.Chat;
 
 using AI.Application.Chat;
+using AI.Application.Tools;
 using AI.Contracts.Chat;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -121,7 +122,7 @@ public sealed class ChatCompletionSseParser(IChatCompletionUsageReader usageRead
                         if (function.TryGetProperty("name", out var name)) call.Name.Append(name.GetString());
                         if (function.TryGetProperty("arguments", out var arguments)) call.Arguments.Append(arguments.GetString());
                     }
-                    if (call.Arguments.Length > 65536 || call.Id.Length > 256 || call.Name.Length > 256)
+                    if (call.Arguments.Length > ToolCallLimits.ArgumentCharacters || call.Id.Length > 256 || call.Name.Length > 256)
                         throw new InvalidOperationException("Tool call exceeds size limits.");
                 }
                 hasContent = true;

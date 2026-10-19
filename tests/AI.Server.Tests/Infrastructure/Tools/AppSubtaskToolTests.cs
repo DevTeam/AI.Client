@@ -176,6 +176,22 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldUseTheCurrentChatsNonDefaultConnectionWhenNoneIsMarkedForSubtasks()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await fixture.SetChatConnectionAsync(fixture.CheapConnectionId);
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null,
+            TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeFalse();
+        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
+    }
+
+    [Fact]
     public async Task ShouldAnswerThroughTheConnectionItWasGiven()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -369,6 +385,13 @@ public sealed class AppSubtaskToolTests
                 Connections = stored.Connections
                     .Select(item => item with { ForSubtasks = connectionIds.Contains(item.Id) }).ToArray()
             }, CancellationToken.None);
+        }
+
+        public async Task SetChatConnectionAsync(Guid connectionId)
+        {
+            var chat = await Chats.GetAsync(ProjectId, ChatId, CancellationToken.None) ?? throw new InvalidOperationException();
+            await Chats.UpdateEndpointAsync(ProjectId, ChatId, new UpdateChatEndpointRequest(connectionId, chat.Revision),
+                CancellationToken.None);
         }
 
         public Task<IToolSession> OpenAsync(bool interactive = true) => Sessions.OpenAsync([],

@@ -108,7 +108,7 @@ public sealed class AppSubtaskTool(
                               + "integrates and verifies them. It runs in your project and chat unless 'projectId' and 'chatId' name others, and inherits their "
                               + "directory grants and tool policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
                               + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
-                              + "are dealt out over them in turn — else the calling chat's. Read the settings resource to "
+                              + "are dealt out over them in turn — else the calling chat's current model. No connection needs to be marked for this tool to remain available. Read the settings resource to "
                               + "see what each connection is worth: a connection may carry a capability rating from 1 to 5, token prices and a line on "
                               + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
                               + "one call run at the same time, while separate calls do not, so put every task you want run in parallel into "

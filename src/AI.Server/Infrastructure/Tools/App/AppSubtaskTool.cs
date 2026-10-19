@@ -77,13 +77,13 @@ public sealed class AppSubtaskTool(
     /// waits for a slot, while nested work never waits behind its own parents and fails instead;
     /// this bounds width without creating a recursive deadlock.
     /// </summary>
-    private const int MaxConcurrentRuns = 8;
+    private const int MaxConcurrentRuns = 32;
 
     /// <summary>
-    /// A fan-out may contain more work than fits at once. The queue starts another task whenever a
-    /// slot is released, so the caller does not need a second model step for item nine.
+    /// One fan-out may use every execution slot. If other calls already occupy slots, queued work
+    /// starts as those calls finish instead of making the model submit the remaining tasks again.
     /// </summary>
-    private const int MaxTasks = 32;
+    private const int MaxTasks = 256;
 
     private const int MaxEntryLength = 2000;
 
@@ -113,7 +113,7 @@ public sealed class AppSubtaskTool(
                               + "are dealt out over them in turn — else the calling chat's current model. No connection needs to be marked for this tool to remain available. Read the settings resource to "
                               + "see what each connection is worth: a connection may carry a capability rating from 1 to 5, token prices and a line on "
                               + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
-                              + $"one call run together with at most {MaxConcurrentRuns} active at once; extra tasks wait in the same call, while separate calls do not, "
+                              + $"one call run together with at most {MaxConcurrentRuns} active at once; tasks wait in the same call when other calls occupy those slots, while separate calls do not, "
                               + "so put every task you want run in parallel into a single call. Put rules shared by every task in 'sharedInstructions' once instead of "
                               + "repeating them in every task and overflowing the call arguments. A subtask has nobody "
                               + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "

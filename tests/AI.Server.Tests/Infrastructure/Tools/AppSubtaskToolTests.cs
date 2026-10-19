@@ -116,11 +116,11 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
         var result = await session.CallAsync(tool,
-            SubtaskFixture.Arguments("a", "b", "c", "d", "e", "f", "g", "h", "i"), null,
+            SubtaskFixture.Arguments(Enumerable.Range(1, 33).Select(index => $"task-{index}").ToArray()), null,
             TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeFalse(result.ModelContent);
-        result.StructuredContent!.Value.GetProperty("results").GetArrayLength().ShouldBe(9);
+        result.StructuredContent!.Value.GetProperty("results").GetArrayLength().ShouldBe(33);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class AppSubtaskToolTests
         result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
             .Select(item => item.GetProperty("task").GetString()).ShouldBe(["translate first", "translate second"], ignoreOrder: true);
         tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
-            .GetProperty("maxItems").GetInt32().ShouldBe(32);
+            .GetProperty("maxItems").GetInt32().ShouldBe(256);
     }
 
     [Fact]
@@ -157,9 +157,9 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
         var error = await Should.ThrowAsync<ArgumentException>(() => session.CallAsync(tool,
-            SubtaskFixture.Arguments(Enumerable.Range(1, 33).Select(index => $"task-{index}").ToArray()), null,
+            SubtaskFixture.Arguments(Enumerable.Range(1, 257).Select(index => $"task-{index}").ToArray()), null,
             TestContext.Current.CancellationToken));
-        error.Message.ShouldContain("at most 32 items");
+        error.Message.ShouldContain("at most 256 items");
     }
 
     [Fact]

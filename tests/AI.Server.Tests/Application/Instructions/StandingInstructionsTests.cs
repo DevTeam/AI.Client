@@ -86,6 +86,8 @@ public sealed class StandingInstructionsTests : IDisposable
         preview.Layers[0].Content.ShouldContain("join the parts in one execution-tool call");
         preview.Layers[0].Content.ShouldContain("never make a worker reproduce its input");
         preview.Layers[0].Content.ShouldContain("cover the source with no gap or overlap");
+        preview.Layers[0].Content.ShouldContain("end each at a natural boundary of the material");
+        preview.Layers[0].Content.ShouldContain("without retelling its input");
         preview.Layers[0].Content.ShouldContain("stop checking once they pass");
         preview.Layers[0].Content.ShouldContain("Put all parallel parts in one call");
         preview.Layers[0].Content.ShouldContain("disjoint write targets");

@@ -1722,6 +1722,24 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task RunShouldDescribeDetectedExecutionCapabilitiesAndTheirPolicy()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Use the available executor"));
+
+        var call = await fixture.NextCallAsync();
+        var context = call.Request.ContextMessages.ShouldNotBeNull();
+        context.ShouldContain(message => message.ForModel.Contains("Execution capabilities detected for this run", StringComparison.Ordinal));
+        context.ShouldContain(message => message.ForModel.Contains("process_run: allowed by current policy", StringComparison.Ordinal));
+        context.ShouldContain(message => message.ForModel.Contains("Programs currently found on PATH", StringComparison.Ordinal));
+        call.Request.Tools.ShouldNotBeNull().ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
+
+        call.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task AnEmptyTurnShouldBeAskedAgainRatherThanEndTheRun()
     {
         await using var fixture = await Fixture.CreateAsync();

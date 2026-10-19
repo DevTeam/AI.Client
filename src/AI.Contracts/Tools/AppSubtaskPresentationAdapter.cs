@@ -40,6 +40,9 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
             ? found.EnumerateArray().ToArray()
             : [];
         var failed = outcomes.Count(item => item.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String);
+        var evidenceIssues = outcomes.Sum(item =>
+            ArrayLength(item, "unresolved") + Array(item, "checks").Count(check =>
+                Text(check, "status") is "Failed" or "NotRun"));
         var facts = new List<ToolFact>();
         for (var index = 0; index < outcomes.Length; index++)
         {
@@ -47,6 +50,9 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
             var calls = Number(outcome, "toolCalls") ?? 0;
             var files = Number(outcome, "filesChanged") ?? 0;
             var elapsed = Number(outcome, "elapsedMilliseconds");
+            var checks = Array(outcome, "checks");
+            var passed = checks.Count(check => Text(check, "status") == "Passed");
+            var unresolved = ArrayLength(outcome, "unresolved");
             var note = Text(outcome, "error") ?? Text(outcome, "answer") ?? string.Empty;
             var connection = Text(outcome, "connection");
             // The label is a label: a whole task prompt runs to several sentences, and a definition
@@ -56,17 +62,28 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
                 + $"{(calls == 0 ? "no tool calls" : Plural(calls, "tool call", "tool calls"))}"
                 + (elapsed is { } milliseconds ? $", {milliseconds} ms" : string.Empty)
                 + (files > 0 ? $", {Plural(files, "file", "files")} changed" : string.Empty)
+                + (passed > 0 ? $", {Plural(passed, "check", "checks")} passed" : string.Empty)
+                + (unresolved > 0 ? $", {Plural(unresolved, "unresolved item", "unresolved items")}" : string.Empty)
                 + (note.Length > 0 ? $" — {(note.Length <= 160 ? note : note[..159] + "…")}" : string.Empty)));
         }
 
         return new ToolResultPresentation(
             failed == 0
-                ? Plural(outcomes.Length, "subtask finished", "subtasks finished")
+                ? evidenceIssues == 0
+                    ? Plural(outcomes.Length, "subtask finished", "subtasks finished")
+                    : $"{evidenceIssues} evidence {(evidenceIssues == 1 ? "issue" : "issues")} need attention"
                 : $"{failed} of {outcomes.Length} subtasks failed",
-            failed == 0 ? ToolResultSeverity.Ok : ToolResultSeverity.Warning,
+            failed == 0 && evidenceIssues == 0 ? ToolResultSeverity.Ok : ToolResultSeverity.Warning,
             facts,
             Transcript(result));
     }
+
+    private static JsonElement[] Array(JsonElement value, string name) =>
+        value.TryGetProperty(name, out var array) && array.ValueKind == JsonValueKind.Array
+            ? array.EnumerateArray().ToArray()
+            : [];
+
+    private static int ArrayLength(JsonElement value, string name) => Array(value, name).Length;
 
     /// <summary>
     /// Renders the exchange the Host kept in <c>_meta</c>. It is absent from a result stored before

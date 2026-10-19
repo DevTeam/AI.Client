@@ -32,11 +32,16 @@ using Xunit;
 [Trait("Category", "Integration")]
 public sealed class AppSubtaskToolTests
 {
+    private static readonly string[] CompleteOutput = ["Output is complete."];
+
     [Fact]
     public async Task ShouldReturnOnlyTheAnswerToTheModelAndTheTranscriptToTheHost()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("the subtask's conclusion");
+        fixture.Completion.Answer("""
+            the subtask's conclusion
+            <subtask_evidence>{"checks":[{"name":"focused check","status":"Passed","details":"exit code 0"}],"unresolved":[]}</subtask_evidence>
+            """);
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 
@@ -47,6 +52,10 @@ public sealed class AppSubtaskToolTests
         var outcome = result.StructuredContent!.Value.GetProperty("results")[0];
         outcome.GetProperty("answer").GetString().ShouldBe("the subtask's conclusion");
         outcome.GetProperty("completed").GetBoolean().ShouldBeTrue();
+        outcome.GetProperty("checks")[0].GetProperty("name").GetString().ShouldBe("focused check");
+        outcome.GetProperty("checks")[0].GetProperty("status").GetString().ShouldBe("Passed");
+        outcome.GetProperty("unresolved").GetArrayLength().ShouldBe(0);
+        outcome.GetProperty("artifacts").GetArrayLength().ShouldBe(0);
 
         // The transcript rides in _meta, which the model-facing projection excludes by contract.
         result.Meta.ShouldNotBeNull();
@@ -133,7 +142,11 @@ public sealed class AppSubtaskToolTests
         var arguments = JsonSerializer.Serialize(new
         {
             sharedInstructions = "Preserve code blocks.",
-            tasks = new[] { new { task = "translate first" }, new { task = "translate second" } }
+            tasks = new[]
+            {
+                new { task = "first part", acceptanceCriteria = CompleteOutput },
+                new { task = "second part", acceptanceCriteria = CompleteOutput }
+            }
         });
 
         var result = await session.CallAsync(tool, arguments, null, TestContext.Current.CancellationToken);
@@ -141,12 +154,17 @@ public sealed class AppSubtaskToolTests
         result.IsError.ShouldBeFalse(result.ModelContent);
         lock (fixture.Completion.Requests)
             fixture.Completion.Requests.ShouldAllBe(request =>
-                request.Message.StartsWith("Preserve code blocks." + Environment.NewLine + Environment.NewLine + "translate ",
-                    StringComparison.Ordinal));
+                request.Message.StartsWith("Preserve code blocks." + Environment.NewLine + Environment.NewLine, StringComparison.Ordinal)
+                && request.Message.Contains("Acceptance criteria:", StringComparison.Ordinal)
+                && request.Message.Contains("Output is complete.", StringComparison.Ordinal)
+                && request.Message.Contains("<subtask_evidence>", StringComparison.Ordinal));
         result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
-            .Select(item => item.GetProperty("task").GetString()).ShouldBe(["translate first", "translate second"], ignoreOrder: true);
+            .Select(item => item.GetProperty("task").GetString()).ShouldBe(["first part", "second part"], ignoreOrder: true);
         tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
             .GetProperty("maxItems").GetInt32().ShouldBe(256);
+        tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
+            .GetProperty("items").GetProperty("properties").GetProperty("acceptanceCriteria")
+            .GetProperty("maxItems").GetInt32().ShouldBe(32);
     }
 
     [Fact]
@@ -167,7 +185,7 @@ public sealed class AppSubtaskToolTests
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
         // An empty reply is what the agent treats as a broken turn, so one task fails on purpose.
-        fixture.Completion.AnswerPerTask(task => task == "broken" ? string.Empty : "fine");
+        fixture.Completion.AnswerPerTask(task => task.StartsWith("broken", StringComparison.Ordinal) ? string.Empty : "fine");
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
 

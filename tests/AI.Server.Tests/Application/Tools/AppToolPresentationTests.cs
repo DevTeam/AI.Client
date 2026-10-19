@@ -111,7 +111,8 @@ public sealed class AppToolPresentationTests
     {
         var structured = JsonDocument.Parse("""
             {"results":[
-              {"task":"count the files","answer":"There are 12.","connection":"Cheap","messages":3,"toolCalls":2,"filesChanged":0,"completed":true,"error":null},
+              {"task":"count the files","answer":"There are 12.","connection":"Cheap","messages":3,"toolCalls":2,"filesChanged":0,"completed":true,"error":null,
+               "checks":[{"name":"count","status":"Passed"}],"unresolved":[]},
               {"task":"break","answer":"","connection":"Cheap","messages":1,"toolCalls":0,"filesChanged":0,"completed":false,"error":"The endpoint refused."}],
              "error":null}
             """).RootElement.Clone();
@@ -128,6 +129,7 @@ public sealed class AppToolPresentationTests
         // A label is a label: the task prompts live in the arguments, not in the definition list.
         // The connection is part of the record: it says what the work was worth.
         presentation.Facts.ShouldContain(fact => fact.Label == "Subtask 1" && fact.Value.Contains("Cheap · 2 tool calls"));
+        presentation.Facts.ShouldContain(fact => fact.Label == "Subtask 1" && fact.Value.Contains("1 check passed"));
         presentation.Facts.ShouldAllBe(fact => fact.Label.Length <= 12);
         // The transcript is what the expandable body is for; the collapsed row never carries it.
         presentation.Body.ShouldNotBeNull().ShouldContain("list_directory");

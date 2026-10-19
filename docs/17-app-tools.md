@@ -100,7 +100,7 @@ Every message `app_runs Submit` writes carries its sender, the chat and branch o
 
 ### spawn_subtask
 
-Delegates work to a separate conversation and returns only the answer. The point is the audience split already built into `ToolCallResult`: `ModelContent` is the only thing that enters the model context, and `_meta` is excluded from that projection by contract. Therefore the subtask's result goes to the calling model, while its entire conversation — reasoning, every tool call, every result — is placed into `_meta` and is visible only in the UI, as a folded block inside the call card.
+Delegates work to a separate conversation and returns a compact structured outcome: its answer, changed artifacts, checks it actually performed and unresolved items. The point is the audience split already built into `ToolCallResult`: `ModelContent` is the only thing that enters the model context, and `_meta` is excluded from that projection by contract. Therefore the subtask's outcome goes to the calling model, while its entire conversation — reasoning, every tool call, every result — is placed into `_meta` and is visible only in the UI, as a folded block inside the call card.
 
 This is fundamentally cheaper than having a second chat do the work and then reading it through `app_read`: reading would pull into context exactly the text whose absence the work was delegated for.
 
@@ -108,9 +108,9 @@ Nothing is saved. The subtask's messages live in the list for the duration of th
 
 `projectId` and `chatId` are passed explicitly: ambient context does not cross the MCP boundary — the server handles the call in its own message loop — so the calling model names the project and chat it is working in. The subtask inherits directory grants and tool policies from them, and by default the connection too. An arbitrary endpoint cannot be set: only what the user has configured can be chosen.
 
-**Confirmations are not available to the subtask.** Nobody is watching the background run, so any tool whose policy is `Ask` is refused, and the subtask reports what it could not do. The necessary tools should be allowed in advance.
+**Confirmations are not available to the subtask.** Nobody is watching the background run, so any tool whose policy is `Ask` is refused, and the subtask reports what it could not do. Before delegation the parent receives a run-specific execution-capability instruction: the available generic execution tools, their effective policy state and a bounded probe of common programs on `PATH`. If a required tool still needs approval and no allowed equivalent exists, the parent asks the user and establishes the narrowest saved permission before spawning the task.
 
-**Model.** Each task is an object with text and an optional `connectionId`. The connection is selected by chain: the task's own, otherwise the call's common one, otherwise one of those marked in settings as connections for subtasks, otherwise the calling chat's connection. The named connection must exist and be enabled; an arbitrary endpoint cannot be set — it is chosen from what the user has configured. The used connection is returned in the result and visible in the card.
+**Model.** Each task is an object with text, optional `acceptanceCriteria`, and an optional `connectionId`. The connection is selected by chain: the task's own, otherwise the call's common one, otherwise one of those marked in settings as connections for subtasks, otherwise the calling chat's connection. The named connection must exist and be enabled; an arbitrary endpoint cannot be set — it is chosen from what the user has configured. The used connection is returned in the result and visible in the card. A subtask is told to verify its own result and end with a small machine-readable evidence envelope; the Host separates that envelope from the answer and exposes it as `checks` and `unresolved`.
 
 Connections for all tasks are resolved before work begins: a batch that would fail on the last task's endpoint anyway should not first spend a minute on the rest.
 
@@ -126,11 +126,11 @@ A task with its own connection exists for parallelism. Tools in a single model r
 
 **Live progress.** The subtask reports what it is doing via MCP `notifications/progress`: "thinking", "writing", or the name of the tool it is currently calling. The message reaches the active call row in the parent card through the same path as progress for any other server. With multiple tasks, the row numbers them and shows how many have already finished. Otherwise a subtask that goes silent is indistinguishable from a stuck one.
 
-**Limits.** Up to 8 tasks per call; they run in parallel; no more than 8 subtask runs simultaneously across the entire Host. A nested subtask keeps its parent open, so the same counter limits both width and depth: runaway recursion hits it, not machine memory. One task failing does not cancel its neighbors.
+**Limits.** Up to 256 tasks may be queued in one call and no more than 32 subtask runs execute simultaneously across the entire Host. Excess root tasks wait in the same call for a slot. A nested subtask keeps its parent open and therefore never waits behind all occupied parents: when no slot is immediately available, it fails with a bounded error instead of deadlocking. Each subtask has a 40-model-step budget. One task failing does not cancel its neighbors.
 
 The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of 24 hours per call, so a looping tool that faithfully reports on itself does not run forever.
 
-The subtask has its own branch for tracking changes in the working directory, so its file edits are attributed to it, not to the parent's summary; the number of changed files is returned in the result.
+The subtask has its own branch for tracking changes in the working directory, so its file edits are attributed to it, not to the parent's summary. The result returns both the count and an `artifacts` list with path, change kind, line counts and previous path when applicable. The parent trusts successful local checks and normally performs only cross-result integration checks.
 
 What is not there: a subtask does not survive a restart; it cannot be resumed or extended. It is a single bounded call, not a place to return to.
 

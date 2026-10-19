@@ -93,7 +93,11 @@ command as the Host parsed it, with the guard's findings and the command rule th
 assessment. Switching the mode while a card
 waits answers it: Full access lets the call through, and "Approve for me" gets one assessment.
 Background subtasks, which have nobody to ask, run what the parent chat's mode would allow and
-refuse the rest. A chat not created yet keeps the mode picked in its composer and is created with it.
+refuse the rest. Before delegation the parent is shown the effective state of available execution
+tools. When a subtask requires a tool that would be refused and no already-allowed equivalent can
+do the work, the parent asks the user first and stores the narrowest suitable tool or command rule;
+it does not broaden permission merely to avoid using an allowed alternative. A chat not created yet
+keeps the mode picked in its composer and is created with it.
 
 ## Command rules
 

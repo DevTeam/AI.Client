@@ -80,11 +80,16 @@ public sealed class StandingInstructionsTests : IDisposable
 
         preview.Layers.Select(layer => layer.Key).ShouldBe(["app.base", "project.instructions", "memory.index", "skills.catalog"]);
         preview.Layers[0].Content.ShouldContain("spawn_subtask");
-        preview.Layers[0].Content.ShouldContain("large divisible work such as translations");
-        preview.Layers[0].Content.ShouldContain("put every parallel task in one call");
-        preview.Layers[0].Content.ShouldContain("separate output files or other disjoint targets");
+        preview.Layers[0].Content.ShouldContain("self-contained tasks whose coordination cost is justified");
+        preview.Layers[0].Content.ShouldContain("finish within one context and the subtask step budget");
+        preview.Layers[0].Content.ShouldContain("Put all parallel parts in one call");
+        preview.Layers[0].Content.ShouldContain("disjoint write targets");
         preview.Layers[0].Content.ShouldContain("sharedInstructions once");
-        preview.Layers[0].Content.ShouldContain("small set of aggregate checks");
+        preview.Layers[0].Content.ShouldContain("explicit acceptanceCriteria");
+        preview.Layers[0].Content.ShouldContain("must ask the user first");
+        preview.Layers[0].Content.ShouldContain("no already-allowed equivalent");
+        preview.Layers[0].Content.ShouldContain("artifacts, checks and unresolved items");
+        preview.Layers[0].Content.ShouldContain("cross-result checks");
         preview.Layers[0].Content.ShouldContain("remains available without one");
         preview.Layers[0].Content.ShouldContain("uses the current chat's model");
         // Access outside the grants is asked for, not worked around.

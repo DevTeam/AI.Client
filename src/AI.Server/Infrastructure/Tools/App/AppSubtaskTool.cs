@@ -14,6 +14,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 /// <summary>One piece of work to delegate, and optionally the connection that should answer it.</summary>
 /// <param name="Task">What the subtask is asked to do.</param>
@@ -22,7 +23,23 @@ using System.ComponentModel.DataAnnotations;
 /// the calling chat's. Naming one per task is what lets several models be exercised at once: tasks
 /// of a single call run together, while separate calls do not.
 /// </param>
-public sealed record SubtaskRequest(string Task, Guid? ConnectionId = null);
+public sealed record SubtaskRequest(
+    string Task,
+    Guid? ConnectionId = null,
+    [property: Description("Concrete conditions this task must verify before it reports completion.")]
+    [property: MaxLength(32)] string[]? AcceptanceCriteria = null);
+
+/// <summary>A file changed by the subtask, measured from that subtask's own workspace baseline.</summary>
+public sealed record SubtaskArtifact(
+    string Path,
+    string Change,
+    int? Additions = null,
+    int? Deletions = null,
+    string? PreviousPath = null);
+
+/// <summary>A check the subtask actually performed, not a check the parent still has to repeat.</summary>
+/// <param name="Status">Passed, Failed or NotRun.</param>
+public sealed record SubtaskCheck(string Name, string Status, string? Details = null);
 
 /// <summary>What one delegated task produced. The transcript is deliberately not here.</summary>
 /// <param name="Answer">The subtask's final reply, which is all the calling model is given.</param>
@@ -37,6 +54,9 @@ public sealed record SubtaskOutcome(
     int FilesChanged,
     bool Completed,
     string? Error,
+    IReadOnlyList<SubtaskArtifact> Artifacts,
+    IReadOnlyList<SubtaskCheck> Checks,
+    IReadOnlyList<string> Unresolved,
     long ElapsedMilliseconds = 0);
 
 public sealed record SubtaskResult(IReadOnlyList<SubtaskOutcome> Results, string? Error);
@@ -72,6 +92,9 @@ public sealed class AppSubtaskTool(
     Func<IToolAutoApprover> autoApprover,
     ITokenUsageMeter usageMeter, IChatBranchSettingsResolver branchSettings) : IAppTool
 {
+    private const string EvidenceStart = "<subtask_evidence>";
+    private const string EvidenceEnd = "</subtask_evidence>";
+
     /// <summary>
     /// How many subtask runs may be in flight across the Host at once. Extra work in a root fan-out
     /// waits for a slot, while nested work never waits behind its own parents and fails instead;
@@ -104,21 +127,12 @@ public sealed class AppSubtaskTool(
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Delegate work to a separate conversation and get back only its answer, so the details never enter your own "
-                              + "context. Use one call with multiple tasks for large divisible work such as translation, generation or the same "
-                              + "transformation across independent files or ranges; tasks that write must use disjoint targets, then the caller "
-                              + "integrates and verifies them. It runs in your project and chat unless 'projectId' and 'chatId' name others, and inherits their "
-                              + "directory grants and tool policies. Each task answers through its own 'connectionId' if it names an enabled one, else the call's "
-                              + "'connectionId', else one of the connections marked for subtasks — several may be, and tasks naming none "
-                              + "are dealt out over them in turn — else the calling chat's current model. No connection needs to be marked for this tool to remain available. Read the settings resource to "
-                              + "see what each connection is worth: a connection may carry a capability rating from 1 to 5, token prices and a line on "
-                              + "what it is good for, so mechanical work can go to a cheaper model and hard work to a stronger one. Tasks of "
-                              + $"one call run together with at most {MaxConcurrentRuns} active at once; tasks wait in the same call when other calls occupy those slots, while separate calls do not, "
-                              + "so put every task you want run in parallel into a single call. Put rules shared by every task in 'sharedInstructions' once instead of "
-                              + "repeating them in every task and overflowing the call arguments. A subtask has nobody "
-                              + "to ask for confirmation, so any tool whose policy is 'Ask' is refused to it — allow such tools beforehand if "
-                              + "a subtask needs them. Nothing is saved: there is no chat to open afterwards, though the full exchange is "
-                              + "attached to this result for the user to read."
+                Description = "Delegate independent self-contained work to separate conversations and return compact answers, artifacts, checks and unresolved items. "
+                              + "Put all parallel tasks in one call, give each explicit acceptance criteria, use disjoint write targets, and put common rules in "
+                              + $"'sharedInstructions'. At most {MaxConcurrentRuns} tasks run at once; excess tasks wait in this call. Omitted project/chat ids use the current ones. "
+                              + "A task's connectionId wins, then the call's, then the marked subtask pool, then the current chat model. Subtasks inherit directory grants "
+                              + "and policies but cannot ask for approval: obtain the narrowest saved permission before delegating when no allowed alternative exists. "
+                              + "Nothing is saved as a chat; the full exchange is attached for the user but excluded from model context."
             });
 
         [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
@@ -173,7 +187,8 @@ public sealed class AppSubtaskTool(
 
         var board = new Board(progress, tasks.Length);
         var runs = tasks.Select((item, index) => RunQueuedAsync(run, projectId, chatId,
-            endpoints[index].Template, endpoints[index].Name, item.Task, Prompt(sharedInstructions, item.Task),
+            endpoints[index].Template, endpoints[index].Name, item.Task,
+            Prompt(sharedInstructions, item.Task, item.AcceptanceCriteria),
             index, board, cancellationToken)).ToArray();
         var completed = await Task.WhenAll(runs);
         return reply.Reply(
@@ -192,7 +207,8 @@ public sealed class AppSubtaskTool(
             : await WaitAsync(cancellationToken);
         if (!entered)
             return (new SubtaskOutcome(task, string.Empty, connection, 0, 0, 0, false,
-                $"No subtask slot is available for nested work ({MaxConcurrentRuns} at most)."), []);
+                $"No subtask slot is available for nested work ({MaxConcurrentRuns} at most).", [], [],
+                [$"The task did not start because all {MaxConcurrentRuns} subtask slots were occupied."]), []);
         try
         {
             return await RunOneAsync(run, projectId, chatId, template, connection, task, prompt, index, board, cancellationToken);
@@ -275,11 +291,14 @@ public sealed class AppSubtaskTool(
                 interactive: false,
                 parentBranchId: run.BranchId,
                 maxModelSteps: 40);
-            var text = answer.ToString();
-            transcript.Add(new SubtaskTranscriptEntry(task, "assistant", text, null));
+            var rawText = answer.ToString();
+            var (text, evidence) = ExtractEvidence(rawText);
+            transcript.Add(new SubtaskTranscriptEntry(task, "assistant", rawText, null));
             board.Finish(index);
+            var artifacts = changes.Files.Select(file => new SubtaskArtifact(file.Path, file.Kind.ToString(),
+                file.Additions, file.Deletions, file.PreviousPath)).ToArray();
             return (new SubtaskOutcome(task, text, connection, transcript.Count, toolCalls, changes.Files.Count, true, null,
-                elapsed.ElapsedMilliseconds), transcript);
+                artifacts, evidence.Checks, evidence.Unresolved, elapsed.ElapsedMilliseconds), transcript);
         }
         catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -287,13 +306,62 @@ public sealed class AppSubtaskTool(
             // keeps whatever the others produced.
             board.Finish(index);
             return (new SubtaskOutcome(task, answer.ToString(), connection, transcript.Count, toolCalls, 0, false, error.Message,
-                elapsed.ElapsedMilliseconds), transcript);
+                [], [], [error.Message], elapsed.ElapsedMilliseconds), transcript);
         }
     }
 
-    private static string Prompt(string? sharedInstructions, string task) => string.IsNullOrWhiteSpace(sharedInstructions)
-        ? task
-        : sharedInstructions.Trim() + Environment.NewLine + Environment.NewLine + task;
+    private static string Prompt(string? sharedInstructions, string task, IReadOnlyList<string>? acceptanceCriteria)
+    {
+        var prompt = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(sharedInstructions))
+            prompt.Append(sharedInstructions.Trim()).AppendLine().AppendLine();
+        prompt.Append(task.Trim());
+        if (acceptanceCriteria is { Count: > 0 })
+        {
+            prompt.AppendLine().AppendLine().AppendLine("Acceptance criteria:");
+            foreach (var criterion in acceptanceCriteria.Where(item => !string.IsNullOrWhiteSpace(item)))
+                prompt.Append("- ").AppendLine(criterion.Trim());
+        }
+        prompt.AppendLine().AppendLine()
+            .AppendLine("Verify your own result before finishing. Report only checks you actually ran; do not mark an inferred or skipped check as passed.")
+            .Append("End the response with one machine-readable line in this exact form: ")
+            .Append(EvidenceStart)
+            .Append("{\"checks\":[{\"name\":\"check performed\",\"status\":\"Passed|Failed|NotRun\",\"details\":\"concise evidence\"}],\"unresolved\":[\"remaining issue\"]}")
+            .Append(EvidenceEnd)
+            .Append(". Use empty arrays when there are no checks or unresolved items.");
+        return prompt.ToString();
+    }
+
+    private static (string Answer, SubtaskEvidence Evidence) ExtractEvidence(string text)
+    {
+        var start = text.LastIndexOf(EvidenceStart, StringComparison.Ordinal);
+        if (start < 0)
+            return (text, new SubtaskEvidence([], ["The subtask did not provide structured verification evidence."]));
+        var jsonStart = start + EvidenceStart.Length;
+        var end = text.IndexOf(EvidenceEnd, jsonStart, StringComparison.Ordinal);
+        if (end < 0)
+            return (text, new SubtaskEvidence([], ["The subtask returned malformed verification evidence."]));
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<ParsedSubtaskEvidence>(text[jsonStart..end], EvidenceJson);
+            if (parsed is null) throw new JsonException("Empty evidence.");
+            var checks = (parsed.Checks ?? []).Where(check => check is not null
+                    && !string.IsNullOrWhiteSpace(check.Name)
+                    && check.Status is "Passed" or "Failed" or "NotRun")
+                .Select(check => check with { Name = check.Name.Trim(), Details = check.Details?.Trim() }).ToArray();
+            var unresolved = (parsed.Unresolved ?? []).Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => item.Trim()).ToArray();
+            return ((text[..start] + text[(end + EvidenceEnd.Length)..]).TrimEnd(), new SubtaskEvidence(checks, unresolved));
+        }
+        catch (JsonException)
+        {
+            return (text, new SubtaskEvidence([], ["The subtask returned malformed verification evidence."]));
+        }
+    }
+
+    private static readonly JsonSerializerOptions EvidenceJson = new(JsonSerializerDefaults.Web);
+    private sealed record ParsedSubtaskEvidence(IReadOnlyList<SubtaskCheck>? Checks, IReadOnlyList<string>? Unresolved);
+    private sealed record SubtaskEvidence(IReadOnlyList<SubtaskCheck> Checks, IReadOnlyList<string> Unresolved);
 
     /// <summary>
     /// Turns one message of a subtask into a line a person can read. A tool result is stored as the

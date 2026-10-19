@@ -336,7 +336,7 @@ when a directory is outside the project grants. Secrets never go into arguments,
 environment values; the settings editor collects them. The report keeps discovery and functional
 calls as separate verdicts.
 
-The comparison uses explicit connection ids in `spawn_subtask`, at most eight tasks per batch and
+The comparison uses explicit connection ids in `spawn_subtask`, one bounded task per candidate and
 two small suites per candidate. Its `elapsedMilliseconds` measures the whole delegated run,
 including application overhead and tool calls, on successes and failures. Cost stays unknown
 unless token prices or reported usage are available; stored Capability values are coarse user

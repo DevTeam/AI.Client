@@ -19,6 +19,7 @@ using Usage;
 using Plans;
 using Contracts.Plans;
 using Contracts.Usage;
+using Commands;
 using System.Text;
 using System.Text.Json;
 using ChatKind = AI.Domain.Chats.ChatKind;
@@ -41,7 +42,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     IStandingInstructions standingInstructions, IContextTokenEstimator tokenEstimator, ISkillGuide skillGuide,
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
-    IConnectionContextWindowDetector contextWindows) : IChatAgent
+    IConnectionContextWindowDetector contextWindows, IExecutableLocator executables,
+    Func<IToolAutoApprover> autoApprover) : IChatAgent
 {
     public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -155,6 +157,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         await using var session = initialSession is not null
             ? new RefreshableToolSession(sessionFactory!, initialSession, grants, servers, run)
             : null;
+        var executionTools = session?.Tools.Where(IsExecutionTool).ToArray() ?? [];
+        var approvalMode = executionTools.Length > 0
+            ? await autoApprover().ModeAsync(projectId, chatId, branchId, token)
+            : ToolApprovalMode.Ask;
+        var installedPrograms = executionTools.Any(tool => tool.OriginalName == ToolPolicyResolver.ProcessRun)
+            ? await InstalledProgramsAsync(executables, token)
+            : [];
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
         await workspace.BeginRunAsync(runKey, grants,
             parentBranchId is { } parent ? new WorkspaceRunKey(projectId, chatId, parent) : null, token);
@@ -201,6 +210,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         // What the request carried in the previous step: kept, so the next request starts the same.
         var compactionMemory = new ContextCompactionMemory();
         IReadOnlyList<AgentTool>? sentTools = null;
+        string? executionCapabilities = null;
         // After a failed or fruitless attempt the next waits until the request has grown again:
         // retried at every step, each would cost a summary.
         long compactAheadFrom = 0;
@@ -302,6 +312,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 var resolved = await policies.ResolveAsync(projectId, chatId, branchId, candidates, token);
                 for (var index = 0; index < candidates.Length; index++)
                     if (resolved[index].Decision != "Deny") permitted.Add(candidates[index]);
+                var capabilityText = ExecutionCapabilities(candidates, resolved, approvalMode, installedPrograms);
+                if (capabilityText != executionCapabilities)
+                {
+                    executionCapabilities = capabilityText;
+                    if (capabilityText is null) instructions.Remove(run, "run.execution-capabilities");
+                    else instructions.Upsert(run, new ModelInstruction("run.execution-capabilities", capabilityText,
+                        985, ModelInstructionLifetime.Run, Required: true));
+                }
             }
             if (maxModelSteps is { } warningLimit && modelSteps == Math.Max(1, warningLimit - 5))
                 instructions.Upsert(run, new ModelInstruction("run.subtask-step-warning",
@@ -309,6 +327,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     995, ModelInstructionLifetime.UntilAcknowledged, Required: true));
             if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             toolCatalog.Update(run, permitted);
+            if (subtask)
+                toolCatalog.Pin(run, permitted.Where(IsExecutionTool).Select(tool => tool.ModelDefinition.Name));
             // Once per turn, before its first step: which skill fits the new message, and which tools
             // the first steps need. The tools are pinned before the selector cuts the list.
             if (!routed)
@@ -722,6 +742,50 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     stalledSteps = 0;
                 }
         }
+    }
+
+    private static bool IsExecutionTool(AgentTool tool) =>
+        tool.OriginalName is ToolPolicyResolver.ProcessRun or "cs_run";
+
+    private static async Task<string[]> InstalledProgramsAsync(
+        IExecutableLocator executables, CancellationToken cancellationToken)
+    {
+        string[] names = ["pwsh", "powershell", "python", "python3", "bash", "dotnet", "node", "git", "cmd"];
+        var found = await Task.WhenAll(names.Select(async name =>
+            await executables.LocateAsync(name, null, cancellationToken) is null ? null : name));
+        return found.OfType<string>().ToArray();
+    }
+
+    private static string? ExecutionCapabilities(
+        IReadOnlyList<AgentTool> tools,
+        IReadOnlyList<EffectiveToolPolicy> policies,
+        ToolApprovalMode approvalMode,
+        string[] installedPrograms)
+    {
+        var offered = tools.Select((tool, index) => (Tool: tool, Policy: policies[index]))
+            .Where(item => IsExecutionTool(item.Tool)).ToArray();
+        if (offered.Length == 0) return null;
+        var text = new StringBuilder("Execution capabilities detected for this run:");
+        foreach (var item in offered)
+        {
+            var state = item.Policy.Decision switch
+            {
+                "Allow" => "allowed by current policy",
+                "Deny" => "denied by current policy",
+                _ when approvalMode == ToolApprovalMode.FullAccess => "allowed by FullAccess mode",
+                _ when approvalMode == ToolApprovalMode.Auto => "subject to automatic risk assessment",
+                _ => "requires user approval unless a narrower saved rule allows the intended invocation"
+            };
+            text.Append("\n- ").Append(item.Tool.OriginalName).Append(": ").Append(state).Append('.');
+        }
+        if (offered.Any(item => item.Tool.OriginalName == ToolPolicyResolver.ProcessRun))
+        {
+            text.Append("\n- Programs currently found on PATH for process_run: ")
+                .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
+                .Append(". Other programs may exist; do not assume one without checking.")
+                .Append(" process_run permissions can be argument-specific, so a saved command rule may allow an intended call even when the general tool state is Ask.");
+        }
+        return text.ToString();
     }
     /// <summary>
     /// How many times a turn that produced nothing at all is asked again before the run gives up.

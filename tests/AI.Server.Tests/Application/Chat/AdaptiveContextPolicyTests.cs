@@ -206,7 +206,8 @@ public sealed class AdaptiveContextPolicyTests
     [Fact]
     public void ShouldKeepBasicFileAndExecutionToolsForARequestNoDescriptionMatches()
     {
-        string[] basic = ["read_text_file", "write_file", "edit_file", "grep_files", "list_directory", "process_run"];
+        string[] basic = ["read_text_file", "write_file", "edit_file", "grep_files", "list_directory", "search_files",
+            "directory_tree", "process_run"];
         var core = basic.Select(name => Tool(name, new string('d', 1_500))).ToArray();
         // Shorter schemas would win every free place, and a pin narrows the ordinary ones to a handful.
         var others = Enumerable.Range(0, 30).Select(index => Tool($"other_{index}", "Short")).ToArray();

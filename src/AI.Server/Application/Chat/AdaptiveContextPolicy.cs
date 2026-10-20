@@ -163,7 +163,7 @@ public sealed partial class AdaptiveContextPolicy(
         // Prioritized tools, especially those pinned by a routed skill, need only a few unrelated
         // schemas beside them. An omitted capability can be added through tool_search when needed.
         var ordinaryToolLimit = pinnedTools is { Count: > 0 }
-            ? Math.Min(profile.MaximumTools, Math.Max(8, pinnedTools.Count + 2))
+            ? Math.Min(profile.MaximumTools, Math.Max(8 - pinnedTools.Count, 2))
             : profile.MaximumTools;
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
@@ -195,13 +195,18 @@ public sealed partial class AdaptiveContextPolicy(
         var selected = new List<AgentTool>();
         var selectionReason = "initial";
         long tokens = 0;
+        // The limit is on ordinary tools only. Counting the core set against it left a pinned
+        // turn no ordinary place at all once the core set had grown past the limit.
+        var ordinary = 0;
         foreach (var item in candidates)
         {
             var ceiling = item.Required || item.Discovered || item.Core ? budget : budget * 4 / 5;
-            if (!item.Required && ((!item.Discovered && !item.Core && selected.Count >= ordinaryToolLimit)
+            var counted = !item.Required && !item.Discovered && !item.Core;
+            if (!item.Required && ((counted && ordinary >= ordinaryToolLimit)
                 || item.Tokens > ceiling - tokens)) continue;
             selected.Add(item.Tool);
             tokens += item.Tokens;
+            if (counted) ordinary++;
         }
         if (previousTools is { Count: > 0 })
         {
@@ -282,7 +287,7 @@ public sealed partial class AdaptiveContextPolicy(
             return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask";
         if (name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal))
             return tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
-                or ToolPolicyResolver.ProcessRun;
+                or "search_files" or "directory_tree" or ToolPolicyResolver.ProcessRun;
         return name.StartsWith(ToolRef.CSharpPrefix, StringComparison.Ordinal) && tool.OriginalName == "cs_run";
     }
     private static ModelInstructionPlacement Position(ModelInstruction item) => item.Placement == ModelInstructionPlacement.Standing

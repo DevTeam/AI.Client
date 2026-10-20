@@ -96,8 +96,14 @@ public sealed class BuiltInToolTests
         tool.ModelDefinition.Description.ShouldContain($"default {ChildProcessLimits.DefaultMemoryMb}");
         var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 86400000 });
         session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
-        Should.Throw<ArgumentException>(() => session.ValidateArguments(tool,
-            JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 86400001 })));
+        // A number past its bound is brought back to it rather than refused: the bound is what the
+        // tool would have applied anyway, and a refusal costs the model a whole step.
+        using (var clamped = JsonDocument.Parse(session.ValidateArguments(tool,
+                   JsonSerializer.Serialize(new { executable = "dotnet", timeoutMs = 86400001, memoryLimitMb = 1 }))))
+        {
+            clamped.RootElement.GetProperty("timeoutMs").GetInt64().ShouldBe(86400000);
+            clamped.RootElement.GetProperty("memoryLimitMb").GetInt64().ShouldBe(ChildProcessLimits.MinimumMemoryMb);
+        }
         var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();

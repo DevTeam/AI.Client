@@ -226,8 +226,11 @@ belongs to. Where a tool knows the run, an omitted id means the current one: pro
 `app_read` resources, `Chat`, `Messages` and `Reviews` in `app_read` (current chat), and
 `spawn_subtask` (current project and chat).
 
-Before the input schema is checked, the Host repairs two common slips in top-level arguments: an
-object or array sent as its JSON text is parsed when the schema does not also accept a string, and
-an enum value in the wrong case is replaced by the one value it matches. Anything else still fails
+Before the input schema is checked, the Host repairs three common slips in top-level arguments: an
+object or array sent as its JSON text is parsed when the schema does not also accept a string, an
+enum value in the wrong case is replaced by the one value it matches, and a number past its
+inclusive `minimum` or `maximum` is brought back to that bound. Those bounds cap how much a call
+returns or waits, so the bound is what the tool would have applied anyway; models kept asking for
+200 matches or 15 context lines, and each refusal cost a whole step. Anything else still fails
 with the property and reason in the error. Labels quoted in tool descriptions, such as
 "(Recommended)", are examples: questions and options are written in the user's language.

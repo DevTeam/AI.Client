@@ -127,8 +127,8 @@ public sealed class McpToolSession : IToolSession
     }
 
     /// <summary>
-    /// Undoes the two slips models make most often with otherwise correct calls: an object or array
-    /// sent as its JSON text, and an enum value in the wrong case. Only top-level properties whose
+    /// Undoes the slips models make most often with otherwise correct calls: an object or array
+    /// sent as its JSON text, an enum value in the wrong case, and a number past its bound. Only top-level properties whose
     /// schema leaves no other reading are changed, so a value that was meant as a string stays one.
     /// </summary>
     private static JsonObject Repair(JsonObject arguments, JsonElement schema)
@@ -137,6 +137,12 @@ public sealed class McpToolSession : IToolSession
             return arguments;
         foreach (var property in properties.EnumerateObject())
         {
+            if (arguments[property.Name] is JsonValue number && number.GetValueKind() == JsonValueKind.Number
+                && Clamp(number.GetValue<double>(), property.Value) is { } bounded)
+            {
+                arguments[property.Name] = bounded;
+                continue;
+            }
             if (arguments[property.Name] is not JsonValue value || !value.TryGetValue<string>(out var text)) continue;
             var types = Types(property.Value).ToHashSet(StringComparer.Ordinal);
             if (!types.Contains("string") && (types.Contains("object") || types.Contains("array")))
@@ -159,6 +165,23 @@ public sealed class McpToolSession : IToolSession
                 arguments[property.Name] = match;
         }
         return arguments;
+    }
+
+    /// <summary>
+    /// A number past its schema's inclusive bound, brought back to that bound, or null when it is
+    /// within them. The bounds are caps on how much a call returns or waits, so the bound is what
+    /// the tool would have done anyway; a refusal instead cost the model a whole step to resend
+    /// the call with the same intent.
+    /// </summary>
+    private static JsonValue? Clamp(double number, JsonElement schema)
+    {
+        var bounded = number;
+        if (schema.TryGetProperty("maximum", out var maximum) && maximum.ValueKind == JsonValueKind.Number)
+            bounded = Math.Min(bounded, maximum.GetDouble());
+        if (schema.TryGetProperty("minimum", out var minimum) && minimum.ValueKind == JsonValueKind.Number)
+            bounded = Math.Max(bounded, minimum.GetDouble());
+        if (bounded.Equals(number)) return null;
+        return Types(schema).Contains("integer") ? JsonValue.Create((long)bounded) : JsonValue.Create(bounded);
     }
 
     private static IEnumerable<string> Types(JsonElement schema)

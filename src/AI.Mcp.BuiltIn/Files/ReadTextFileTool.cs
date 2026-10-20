@@ -21,7 +21,8 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
                           + "'lineEndings': 'CRLF' (write_file restores them). 'head', 'tail' and 'offset' return whole lines joined by LF "
                           + "and are mutually exclusive; 'offset' starts at that 1-based line and 'limit' caps the line count, so a large "
                           + "file is read in parts: find the place with grep_files, then read the lines around it. 'firstLine' and 'lineCount' "
-                          + $"say which lines came back. A range is limited to {FileLimits.ReadCharacters} characters. "
+                          + $"say which lines came back. A range is limited to {FileLimits.ReadCharacters} characters; for 'head', 'tail' and "
+                          + "'offset', 'truncated' means that limit cut the requested lines short, not that the file goes on. "
                           + "The path must be absolute and covered by a directory grant with 'read' access."
         });
 
@@ -155,7 +156,9 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
         {
             if (head is { } limit)
             {
-                if (selected.Count == limit || characters + line.Length + 1 > FileLimits.ReadCharacters)
+                // Lines the caller asked for are not a cut; only the character limit is.
+                if (selected.Count == limit) break;
+                if (characters + line.Length + 1 > FileLimits.ReadCharacters)
                 {
                     truncated = true;
                     break;
@@ -171,10 +174,12 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
             while (selected.Count > 1
                    && (characters > FileLimits.ReadCharacters || (tail is { } window && selected.Count > window)))
             {
+                // Lines before the requested window are dropped by request; dropping one of the
+                // requested lines for the character limit is the cut the flag reports.
+                truncated |= tail is not { } kept || selected.Count <= kept;
                 characters -= selected[0].Length + 1;
                 selected.RemoveAt(0);
                 firstLine++;
-                truncated = true;
             }
         }
 
@@ -196,7 +201,9 @@ public sealed class ReadTextFileTool(IPathGuard guard, IBuiltInToolReply reply, 
         await foreach (var line in files.ReadLinesAsync(path, cancellationToken))
         {
             if (++number < offset) continue;
-            if (selected.Count == limit || (selected.Count > 0 && characters + line.Length + 1 > FileLimits.ReadCharacters))
+            // Reaching 'limit' returns exactly what was asked for; only the character limit cuts it short.
+            if (selected.Count == limit) break;
+            if (selected.Count > 0 && characters + line.Length + 1 > FileLimits.ReadCharacters)
             {
                 truncated = true;
                 break;

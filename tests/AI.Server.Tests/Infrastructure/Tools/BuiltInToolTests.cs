@@ -648,15 +648,17 @@ public sealed class BuiltInToolTests
                 .GetProperty("created").GetBoolean().ShouldBeTrue();
             (await Structured(session, "read_text_file", new { path = file }, token))
                 .GetProperty("content").GetString().ShouldBe("alpha\nbeta\n");
-            (await Structured(session, "read_text_file", new { path = file, tail = 1 }, token))
-                .GetProperty("content").GetString().ShouldBe("beta");
+            var last = await Structured(session, "read_text_file", new { path = file, tail = 1 }, token);
+            last.GetProperty("content").GetString().ShouldBe("beta");
+            last.GetProperty("truncated").GetBoolean().ShouldBeFalse();
             var range = await Structured(session, "read_text_file", new { path = file, offset = 2, limit = 1 }, token);
             range.GetProperty("content").GetString().ShouldBe("beta");
             range.GetProperty("firstLine").GetInt32().ShouldBe(2);
             range.GetProperty("truncated").GetBoolean().ShouldBeFalse();
             var first = await Structured(session, "read_text_file", new { path = file, offset = 1, limit = 1 }, token);
             first.GetProperty("content").GetString().ShouldBe("alpha");
-            first.GetProperty("truncated").GetBoolean().ShouldBeTrue();
+            // Exactly the lines asked for came back: that is not a cut, though the file goes on.
+            first.GetProperty("truncated").GetBoolean().ShouldBeFalse();
             (await Structured(session, "read_text_file", new { path = file, offset = 9 }, token))
                 .GetProperty("error").GetString()!.ShouldContain("past its end");
 

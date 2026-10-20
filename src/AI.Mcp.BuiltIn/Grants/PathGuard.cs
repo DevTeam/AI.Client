@@ -77,10 +77,22 @@ public sealed class PathGuard : IPathGuard
         }
 
         var name = capability.ToString().ToLowerInvariant();
-        throw new GrantException(_grants.Length == 0
-            ? $"No directory grant is configured for this session, so '{name}' access is denied. Use list_allowed_directories."
-            : $"No directory grant allows '{name}' access to {canonical}. Use list_allowed_directories.");
+        if (_grants.Length == 0)
+            throw new GrantException($"No directory grant is configured for this session, so '{name}' access is denied. Use list_allowed_directories.");
+
+        // Naming the roots that would allow it saves the step a model needs to look them up, and a
+        // weaker model that mistyped a path tends to give up rather than take that step.
+        var allowed = _grants.Where(grant => grant.Capabilities.Contains(capability)).Select(grant => grant.Root).ToArray();
+        var hint = allowed.Length switch
+        {
+            0 => $"No grant allows '{name}' at all. Use list_allowed_directories.",
+            <= MaximumNamedRoots => $"Directories that allow it: {string.Join("; ", allowed)}.",
+            _ => $"Directories that allow it include {string.Join("; ", allowed.Take(MaximumNamedRoots))}; use list_allowed_directories for all {allowed.Length}."
+        };
+        throw new GrantException($"No directory grant allows '{name}' access to {canonical}. {hint}");
     }
+
+    private const int MaximumNamedRoots = 5;
 
     /// <summary>
     /// Containment is a segment-wise walk over the contract rather than a hand-built string prefix:

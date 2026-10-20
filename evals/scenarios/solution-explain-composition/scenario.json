@@ -1,0 +1,47 @@
+{
+  "id": "solution-explain-composition",
+  "description": "Pure.DI.Solution: explain how the app gets its service and console, changing nothing.",
+  "tags": [
+    "solution",
+    "read",
+    "question",
+    "real"
+  ],
+  "turns": [
+    "In the solution at {workspace}: how does the App get its IService, and where does its console output come from? Name the setups and bindings involved and their lifetimes. Do not change any files."
+  ],
+  "timeoutSeconds": 600,
+  "checks": [
+    {
+      "type": "noWorkspaceChanges"
+    },
+    {
+      "type": "answerMatches",
+      "name": "DependsOn",
+      "pattern": "DependsOn"
+    },
+    {
+      "type": "answerMatches",
+      "name": "Lib.Composition",
+      "pattern": "Lib\\.Composition"
+    },
+    {
+      "type": "answerMatches",
+      "name": "MyService",
+      "pattern": "MyService"
+    },
+    {
+      "type": "answerMatches",
+      "name": "ConsoleAdapter as singleton",
+      "pattern": "ConsoleAdapter[\\s\\S]{0,300}Singleton|Singleton[\\s\\S]{0,300}ConsoleAdapter"
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 20
+    }
+  ],
+  "repository": {
+    "path": "../Pure.DI.Solution",
+    "commit": "fc07ea1f0df03acc6617ef2ac54c84730c38fa13"
+  }
+}

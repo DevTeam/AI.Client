@@ -1,0 +1,10 @@
+{
+  // Copy to evals/connection.json (ignored by git) and fill in. AI_AGENT_EVAL_* variables override fields.
+  "baseUrl": "https://api.example.com/v1",
+  "model": "model-name",
+  "apiKey": "",
+  "contextWindow": 128000,
+  "reasoningEffort": null,
+  // Per million tokens, for endpoints that do not price their usage; null leaves cost unknown.
+  "prices": null
+}

@@ -1,0 +1,75 @@
+{
+  "id": "solution-quiet-option-ru",
+  "description": "Pure.DI.Solution, asked in Russian: add a --quiet switch that hides the log line.",
+  "tags": [
+    "solution",
+    "feature",
+    "dotnet",
+    "real",
+    "russian"
+  ],
+  "turns": [
+    "В решении в {workspace} добавь приложению App параметр командной строки --quiet: с ним не выводится строка лога «Running...», всё остальное работает как раньше. Без параметра поведение не меняется. Тесты должны проходить."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "command",
+      "name": "Lib.Tests pass",
+      "executable": "dotnet",
+      "arguments": [
+        "test",
+        "Lib.Tests",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "quiet hides the log line",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "App",
+        "--",
+        "--quiet"
+      ],
+      "input": "\n",
+      "exitCode": 0,
+      "outputPattern": "\\A(?![\\s\\S]*Running)[\\s\\S]*Hello!",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "without the switch the log line stays",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "App",
+        "--"
+      ],
+      "input": "\n",
+      "exitCode": 0,
+      "outputPattern": "Running\\.\\.\\.[\\s\\S]*Hello!",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Lib/",
+        "Lib.Tests/",
+        "App/",
+        ".packages/"
+      ]
+    }
+  ],
+  "repository": {
+    "path": "../Pure.DI.Solution",
+    "commit": "fc07ea1f0df03acc6617ef2ac54c84730c38fa13"
+  }
+}

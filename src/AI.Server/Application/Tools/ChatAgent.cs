@@ -196,6 +196,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         }
 
         var empty = 0;
+        var compactedAfterEmpty = false;
         var interrupted = 0;
         var truncated = 0;
         var continuedAnswer = new StringBuilder();
@@ -494,6 +495,20 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 instructions.Upsert(run, new ModelInstruction("response.empty",
                     "Your last response was empty. Give your answer, or call a tool if the request still needs work.",
                     980, ModelInstructionLifetime.UntilAcknowledged));
+                // Long contexts are where weaker models stop answering, well inside the window they
+                // declare. Before giving up, a turn with something worth summarizing is compacted once
+                // and asked again; a short one has nothing to gain and fails as before.
+                if (attempt > MaxEmptyTurns && !compactedAfterEmpty && await CompactAheadAsync(run, stepBudget, token))
+                {
+                    compactedAfterEmpty = true;
+                    empty = 0;
+                    observedResults.Clear();
+                    firstReads.Clear();
+                    modelContext = checkpoints.Apply(run, context);
+                    compactAheadFrom = estimator.EstimateMessages(instructionComposer.Compose(run, modelContext, configuredConnection).Messages)
+                        + stepBudget.RetryGrowthTokens;
+                    continue;
+                }
                 if (attempt > MaxEmptyTurns)
                     throw new InvalidOperationException(
                         $"The model returned an empty response {attempt} times "

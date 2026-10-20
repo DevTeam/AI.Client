@@ -1,0 +1,58 @@
+{
+  "id": "csi-search-ci-detection",
+  "description": "csharp-interactive: find how CI systems are detected, by which variables and in what order, changing nothing.",
+  "tags": [
+    "csharp-interactive",
+    "search",
+    "read",
+    "question",
+    "real"
+  ],
+  "repository": {
+    "path": "../csharp-interactive",
+    "commit": "c1f0528d836192d7f4babe70e368cf40b148f381"
+  },
+  "turns": [
+    "In the csharp-interactive repository at {workspace}: which CI systems does it detect, by which environment variables, and in what order of priority? Name the class that decides it. Do not change any files."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "noWorkspaceChanges"
+    },
+    {
+      "type": "answerMatches",
+      "name": "names CISettings",
+      "pattern": "\\bCISettings\\b"
+    },
+    {
+      "type": "answerMatches",
+      "name": "TeamCity variables",
+      "pattern": "TEAMCITY_VERSION[\\s\\S]*TEAMCITY_PROJECT_NAME|TEAMCITY_PROJECT_NAME[\\s\\S]*TEAMCITY_VERSION"
+    },
+    {
+      "type": "answerMatches",
+      "name": "GitLab variable",
+      "pattern": "CI_PIPELINE_ID"
+    },
+    {
+      "type": "answerMatches",
+      "name": "Azure DevOps variable",
+      "pattern": "TF_BUILD"
+    },
+    {
+      "type": "answerMatches",
+      "name": "priority TeamCity, GitLab, Azure DevOps",
+      "pattern": "TeamCity[\\s\\S]*GitLab[\\s\\S]*Azure"
+    },
+    {
+      "type": "callsNotMatch",
+      "name": "did not run the tests",
+      "pattern": "\\[\\s*\\\"test\\\"|dotnet(\\.exe)?\\s+test\\b|vstest"
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 25
+    }
+  ]
+}

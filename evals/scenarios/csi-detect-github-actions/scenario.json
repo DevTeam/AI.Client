@@ -1,0 +1,66 @@
+{
+  "id": "csi-detect-github-actions",
+  "description": "csharp-interactive: detect GitHub Actions as a CI system, following every use of CIType, checked by a build only.",
+  "tags": [
+    "csharp-interactive",
+    "feature",
+    "search",
+    "dotnet",
+    "real"
+  ],
+  "repository": {
+    "path": "../csharp-interactive",
+    "commit": "c1f0528d836192d7f4babe70e368cf40b148f381"
+  },
+  "turns": [
+    "In the csharp-interactive repository at {workspace}: detect GitHub Actions as a CI system: it is recognized by the GITHUB_ACTIONS environment variable and checked after Azure DevOps. Add it as `CIType.GitHubActions` and handle it wherever the other CI types are handled, behaving like an unknown CI where nothing GitHub-specific exists. Do not run the tests, they take too long; make sure the whole solution builds."
+  ],
+  "timeoutSeconds": 1800,
+  "checks": [
+    {
+      "type": "command",
+      "name": "solution builds",
+      "executable": "dotnet",
+      "arguments": [
+        "build",
+        "CSharpInteractive.sln",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 900
+    },
+    {
+      "type": "fileContains",
+      "name": "CIType has GitHubActions",
+      "path": "CSharpInteractive/Core/CIType.cs",
+      "pattern": "\\bGitHubActions\\b"
+    },
+    {
+      "type": "fileContains",
+      "name": "detected by GITHUB_ACTIONS",
+      "path": "CSharpInteractive/Core/CISettings.cs",
+      "pattern": "GITHUB_ACTIONS"
+    },
+    {
+      "type": "fileContains",
+      "name": "checked after Azure DevOps",
+      "path": "CSharpInteractive/Core/CISettings.cs",
+      "pattern": "CIType\\.AzureDevOps[\\s\\S]*CIType\\.GitHubActions"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "CSharpInteractive/",
+        "CSharpInteractive.Tests/",
+        "CSharpInteractive.HostApi/"
+      ]
+    },
+    {
+      "type": "callsNotMatch",
+      "name": "did not run the tests",
+      "pattern": "\\[\\s*\\\"test\\\"|dotnet(\\.exe)?\\s+test\\b|vstest"
+    }
+  ]
+}

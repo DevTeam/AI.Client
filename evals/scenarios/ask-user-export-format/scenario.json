@@ -1,0 +1,62 @@
+{
+  "id": "ask-user-export-format",
+  "description": "Ask the person for an export format before changing code, then implement the chosen one.",
+  "tags": [
+    "ask_user",
+    "edit",
+    "dotnet"
+  ],
+  "turns": [
+    "Add an option to the report app in {workspace} that saves the report to a file instead of printing it. There are several possible formats; ask me which one I want before you change anything."
+  ],
+  "prompts": [
+    {
+      "match": "format|csv|json|excel|markdown",
+      "option": "csv",
+      "answer": "CSV"
+    }
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "minPrompts",
+      "value": 1
+    },
+    {
+      "type": "maxPrompts",
+      "value": 2
+    },
+    {
+      "type": "workspaceContains",
+      "name": "writes CSV",
+      "pattern": "csv",
+      "paths": [
+        "Report"
+      ]
+    },
+    {
+      "type": "workspaceNotContains",
+      "name": "no other format",
+      "pattern": "JsonSerializer|\\.xlsx",
+      "paths": [
+        "Report"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "builds",
+      "executable": "dotnet",
+      "arguments": [
+        "build",
+        "Report"
+      ],
+      "exitCode": 0
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Report"
+      ]
+    }
+  ]
+}

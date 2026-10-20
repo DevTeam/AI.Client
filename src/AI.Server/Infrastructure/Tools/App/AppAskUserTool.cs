@@ -133,8 +133,10 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                         + "the user owns — target version, scope of a refactor, naming, where new code goes — or when a parameter "
                         + "cannot be inferred from the project at all. If the task is concrete enough to do, do it and state your "
                         + "assumption in the reply instead of asking. Put the option you recommend first and append "
-                        + "' (Recommended)' to its label, translated like every label into the user's language (' (рекомендуется)' "
-                        + "in Russian). Prefer one question; up to five may be asked in one call, and asking "
+                        // A translated example here read as a hint about the language: models answered
+                        // English requests with Russian labels and replies once it was in the schema.
+                        + "' (Recommended)' to its label, translated like every label into the language the user writes in. "
+                        + "Prefer one question; up to five may be asked in one call, and asking "
                         + "them together is better than one call after another. Keep option labels short and concrete, and put "
                         + "nuance in 'description'. When the answer is a path on the user's machine, set 'pathKind' to "
                         + "'directory', 'directories' or 'file': the user then picks it out of their own file system. A single path comes back in "

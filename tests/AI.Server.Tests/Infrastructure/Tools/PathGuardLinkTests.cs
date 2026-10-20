@@ -73,6 +73,23 @@ public sealed class PathGuardLinkTests
         resolved.ShouldBe(@"C:\data\granted\real\file.txt");
     }
 
+    /// <summary>
+    /// A refusal names the directories that would allow the access: a model that mistyped the
+    /// workspace path can retry at once, where a weaker one told only to look them up gave up.
+    /// </summary>
+    [Fact]
+    public void ARefusalShouldNameTheDirectoriesThatAllowTheAccess()
+    {
+        // Given a grant and nothing that is a link,
+        var guard = NewGuard(AnswersLinksResolvingOnly(link: null, target: null), Granted);
+
+        // When a path beside the grant is resolved,
+        var error = Should.Throw<GrantException>(() => guard.Resolve(@"C:\data\grant\file.txt", GrantCapability.Read));
+
+        // Then the refusal says where reading is allowed.
+        error.Message.ShouldContain(@"Directories that allow it: C:\data\granted.");
+    }
+
     private static PathGuard NewGuard(Mock<IFileSystem> files, string granted) =>
         new(new Grants(new DirectoryGrantSpec(granted, true, new HashSet<GrantCapability> { GrantCapability.Read })),
             new SystemPath(), files.Object);

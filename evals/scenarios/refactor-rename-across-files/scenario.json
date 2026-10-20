@@ -1,0 +1,51 @@
+{
+  "id": "refactor-rename-across-files",
+  "description": "Rename a class used across several files, its file, variables and docs, keeping behavior.",
+  "tags": [
+    "edit",
+    "refactor",
+    "dotnet"
+  ],
+  "turns": [
+    "In {workspace}, rename `StockService` to `InventoryService` everywhere: the class, its file, parameters and variables named after it, comments and the README. Behavior must not change."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "fileExists",
+      "path": "Inventory/InventoryService.cs"
+    },
+    {
+      "type": "fileAbsent",
+      "path": "Inventory/StockService.cs"
+    },
+    {
+      "type": "workspaceNotContains",
+      "name": "no StockService left",
+      "pattern": "StockService|stockService"
+    },
+    {
+      "type": "workspaceContains",
+      "name": "README updated",
+      "pattern": "InventoryService",
+      "paths": [
+        "README.md"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "self-checks pass",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "Inventory"
+      ],
+      "exitCode": 0
+    },
+    {
+      "type": "maxToolErrors",
+      "value": 3
+    }
+  ]
+}

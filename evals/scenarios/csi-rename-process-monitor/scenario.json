@@ -1,0 +1,72 @@
+{
+  "id": "csi-rename-process-monitor",
+  "description": "csharp-interactive: rename IProcessMonitor/ProcessMonitor across code and tests, checked by a build only.",
+  "tags": [
+    "csharp-interactive",
+    "refactor",
+    "search",
+    "dotnet",
+    "real"
+  ],
+  "repository": {
+    "path": "../csharp-interactive",
+    "commit": "c1f0528d836192d7f4babe70e368cf40b148f381"
+  },
+  "turns": [
+    "In the csharp-interactive repository at {workspace}: rename `IProcessMonitor` to `IProcessObserver` and `ProcessMonitor` to `ProcessObserver` everywhere: the types, their files, fields, parameters, variables and test classes named after them. Do not run the tests, they take too long; make sure the whole solution builds."
+  ],
+  "timeoutSeconds": 1800,
+  "checks": [
+    {
+      "type": "command",
+      "name": "solution builds",
+      "executable": "dotnet",
+      "arguments": [
+        "build",
+        "CSharpInteractive.sln",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 900
+    },
+    {
+      "type": "fileExists",
+      "path": "CSharpInteractive/Core/IProcessObserver.cs"
+    },
+    {
+      "type": "fileExists",
+      "path": "CSharpInteractive/Core/ProcessObserver.cs"
+    },
+    {
+      "type": "fileAbsent",
+      "path": "CSharpInteractive/Core/IProcessMonitor.cs"
+    },
+    {
+      "type": "fileAbsent",
+      "path": "CSharpInteractive/Core/ProcessMonitor.cs"
+    },
+    {
+      "type": "workspaceNotContains",
+      "name": "no ProcessMonitor left",
+      "pattern": "ProcessMonitor|processMonitor",
+      "paths": [
+        "CSharpInteractive/",
+        "CSharpInteractive.Tests/"
+      ]
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "CSharpInteractive/",
+        "CSharpInteractive.Tests/"
+      ]
+    },
+    {
+      "type": "callsNotMatch",
+      "name": "did not run the tests",
+      "pattern": "\\[\\s*\\\"test\\\"|dotnet(\\.exe)?\\s+test\\b|vstest"
+    }
+  ]
+}

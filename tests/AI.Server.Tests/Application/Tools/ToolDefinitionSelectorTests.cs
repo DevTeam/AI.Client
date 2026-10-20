@@ -123,6 +123,27 @@ public sealed class ToolDefinitionSelectorTests
     }
 
     [Fact]
+    public void ShouldLeaveOrdinaryToolsTheRequestDoesNotNameToToolSearch()
+    {
+        var issue = Tool("github_issue_get", "Read a GitHub issue and the file it names");
+        var unrelated = Enumerable.Range(0, 10).Select(index => Tool($"tool_{index}", $"Manage the file of schedule {index}")).ToArray();
+
+        var selection = Selector().Choose(null, "Read the GitHub issue about the file", [], [issue, .. unrelated]);
+
+        selection.Tools.ShouldBe([issue]);
+    }
+
+    [Fact]
+    public void ShouldKeepFillingOrdinaryToolsWhenTheRequestMatchesNoDescription()
+    {
+        var tools = Enumerable.Range(0, 5).Select(index => Tool($"tool_{index}", $"Manage schedule {index}")).ToArray();
+
+        var selection = Selector().Choose(null, "Исправь ошибку в расписании", [], tools);
+
+        selection.Tools.Count.ShouldBe(tools.Length);
+    }
+
+    [Fact]
     public void ShouldDropAPreviousToolThatIsNoLongerAvailable()
     {
         var kept = Tool("kept", "kept");

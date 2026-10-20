@@ -66,3 +66,7 @@ nunit-*.xml
 /.vs
 *.user
 /.data
+# Agent evaluation runs (evals/AI.Agent.Evals)
+evals/results/
+evals/connection*.json
+!evals/connection.example.json

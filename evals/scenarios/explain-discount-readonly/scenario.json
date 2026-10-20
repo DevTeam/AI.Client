@@ -1,0 +1,18 @@
+{
+  // A question about code: the model must find the rule, read it and answer without changing anything.
+  "id": "explain-discount-readonly",
+  "description": "Explain how an order discount is calculated in a small C# project, changing nothing.",
+  "tags": ["read", "question"],
+  "turns": [
+    "In the project in {workspace}, how is the order discount calculated? Answer briefly with the exact thresholds and rates. Do not change any files."
+  ],
+  "timeoutSeconds": 600,
+  "checks": [
+    { "type": "noWorkspaceChanges" },
+    { "type": "answerMatches", "name": "bulk threshold 1000", "pattern": "1[ ,.]?000" },
+    { "type": "answerMatches", "name": "bulk rate 10%", "pattern": "10\\s*%|0\\.10?\\b" },
+    { "type": "answerMatches", "name": "loyalty rate 5%", "pattern": "(?<!\\d)5\\s*%|0\\.05\\b" },
+    { "type": "answerMatches", "name": "cap 12%", "pattern": "12\\s*%|0\\.12\\b" },
+    { "type": "maxToolCalls", "value": 12 }
+  ]
+}

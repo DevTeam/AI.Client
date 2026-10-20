@@ -1,0 +1,53 @@
+{
+  "id": "incident-logs-two-turns",
+  "description": "Find the first failure across twelve service logs, then write a report in a second turn, in a small context window.",
+  "tags": [
+    "read",
+    "multi-turn",
+    "compaction"
+  ],
+  "contextWindow": 64000,
+  "turns": [
+    "Last night's incident logs are in {workspace}/logs, one file per service. Find which service failed first, its first error code and the exact time. Warnings are noise. Do not modify or delete anything under logs/.",
+    "Now write a short incident report to report.md in the workspace root: the service that failed first, the time, the error code, and which services failed after it, in order."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "fileContains",
+      "name": "names payments",
+      "path": "report.md",
+      "pattern": "payments"
+    },
+    {
+      "type": "fileContains",
+      "name": "first error code",
+      "path": "report.md",
+      "pattern": "E-4127"
+    },
+    {
+      "type": "fileContains",
+      "name": "first error time",
+      "path": "report.md",
+      "pattern": "03:14:07"
+    },
+    {
+      "type": "fileContains",
+      "name": "orders failed after",
+      "path": "report.md",
+      "pattern": "orders"
+    },
+    {
+      "type": "fileContains",
+      "name": "gateway failed after",
+      "path": "report.md",
+      "pattern": "gateway"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "report.md"
+      ]
+    }
+  ]
+}

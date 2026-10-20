@@ -84,7 +84,11 @@ Core tools are the ones every run keeps whatever its request says: `ask_user`, `
 `edit_file`, `grep_files`, `list_directory`, `search_files`, `directory_tree` and `process_run`
 from the built-in server, and `cs_run`; without the navigation tools a model guessed paths and
 narrowed its way through a repository with dozens of greps. Relevance is word overlap with the English tool descriptions, so a request in another
-language ranks nothing and the shortest schemas would take the free places. Core tools also
+language ranks nothing and the shortest schemas would take the free places. Words that at least a
+third of the descriptions share (and at least three of them) do not count. When the request matches
+some ordinary tool, ordinary tools it matches nothing of are not offered at all and stay reachable
+through `tool_search`: filling the budget with them put schemas such as `app_schedule` into a bug fix
+and cost every step thousands of tokens. A request that matches no description keeps the fill. Core tools also
 never count as pins: a pin narrows the ordinary tools to a few beside it, which suits a skill's
 first tools for one turn, not tools a run needs on every step. That narrowed limit counts ordinary
 tools only (`max(8 - pins, 2)` of them): counted against the whole selection, the grown core set

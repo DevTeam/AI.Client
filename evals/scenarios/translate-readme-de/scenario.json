@@ -1,0 +1,39 @@
+{
+  "id": "translate-readme-de",
+  "description": "Translate a 128 KB README into German: far more than one response can hold, so it must be written in parts.",
+  "tags": [
+    "translation",
+    "large-file",
+    "long"
+  ],
+  "turns": [
+    "Translate {workspace}/README.md into German and save it as README.de.md next to it. Translate the prose and the headings; keep the Markdown structure, links, images, HTML and every code block exactly as they are. Do not change README.md."
+  ],
+  "timeoutSeconds": 3000,
+  "checks": [
+    {
+      "type": "fileUnchanged",
+      "path": "README.md"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "README.de.md"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "translation is complete and faithful",
+      "executable": "python",
+      "arguments": [
+        "-I",
+        "{scenario}/../.shared/check_translation.py",
+        "README.md",
+        "README.de.md",
+        "de"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 120
+    }
+  ]
+}

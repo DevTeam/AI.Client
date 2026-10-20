@@ -64,6 +64,8 @@ Model quality comparisons are separate experiments under `evals/AI.Context.Evals
 permits explicit, opt-in endpoint calls there; the unit-test rules above remain unchanged.
 Shared continuation fixtures keep budget/retention contract tests and live quality comparisons
 aligned. Configuration and interpretation are in [context evaluation](31-context-evaluation.md).
+Whole tasks run through a real Host and model by `evals/AI.Agent.Evals`, a console runner with its own
+scenarios and reports; see [headless chat testing and agent evaluation](13-headless-chat-testing.md).
 
 ## Test structure
 

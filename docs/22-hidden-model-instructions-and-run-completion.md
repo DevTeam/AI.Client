@@ -58,7 +58,11 @@ What remains of the earlier machinery:
 - **Truncation.** An answer cut off at the output token limit (`length`, or the Anthropic spelling)
   is fed back and continued, up to five times, into one message.
 - **Empty responses.** A response with neither text nor calls is asked for again with a
-  `response.empty` note, at most twice, then the run fails with the finish reason and chunk count.
+  `response.empty` note, at most twice. Before the run fails, a turn with history worth summarizing
+  is compacted once, the same way as ahead of the limit, and asked again: in agent evaluations a
+  weaker model stopped answering at 150–220K tokens of a 250K window, long before any compaction.
+  A turn with nothing to summarize, or still empty after that, fails with the finish reason and
+  chunk count.
 - **Stalls.** A step is counted as bringing no new information when none of its calls returned
   something the turn had not already seen: the same tool, arguments and result again. An error is
   information like any other result unless it repeats exactly, so failing tests with changing

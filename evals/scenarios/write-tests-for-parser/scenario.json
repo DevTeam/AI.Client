@@ -1,0 +1,52 @@
+{
+  "id": "write-tests-for-parser",
+  "description": "Write meaningful unit tests for a parser without changing it; a hidden mutant must make them fail.",
+  "tags": [
+    "tests",
+    "dotnet"
+  ],
+  "turns": [
+    "The project in {workspace} has a DurationParser with only one test. Add unit tests that cover what its documentation promises: every unit, combinations, spaces, and the inputs it must reject. Do not change the parser itself."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "fileUnchanged",
+      "path": "Durations/DurationParser.cs"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Durations.Tests/"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "at least 8 passing tests",
+      "executable": "dotnet",
+      "arguments": [
+        "test",
+        "Durations.Tests",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "outputPattern": "Passed:\\s+([8-9]|[1-9]\\d+)\\b",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "tests catch a parser that accepts units out of order",
+      "executable": "powershell",
+      "arguments": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Copy-Item -Force '{scenario}/mutant/DurationParser.cs' 'Durations/DurationParser.cs'; dotnet test Durations.Tests --no-incremental --nologo -v q | Out-Null; exit $LASTEXITCODE"
+      ],
+      "exitCode": 1,
+      "timeoutSeconds": 600
+    }
+  ]
+}

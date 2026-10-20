@@ -16,7 +16,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 10. [Operations and diagnostics](10-operations.md)
 11. [Implementation progress](11-implementation-progress.md)
 12. [UX decisions](12-ux-decisions.md)
-13. [Headless chat testing](13-headless-chat-testing.md)
+13. [Headless chat testing and agent evaluation](13-headless-chat-testing.md)
 14. [Concurrent chat runs](14-concurrent-chat-runs.md)
 15. [Logging](14-logging.md)
 16. [Composer rules](15-composer-rules.md)

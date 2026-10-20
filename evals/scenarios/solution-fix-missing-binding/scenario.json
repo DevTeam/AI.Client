@@ -1,0 +1,62 @@
+{
+  "id": "solution-fix-missing-binding",
+  "description": "Pure.DI.Solution: the build broke after a binding was lost; find and restore it.",
+  "tags": [
+    "solution",
+    "bugfix",
+    "dotnet",
+    "real"
+  ],
+  "turns": [
+    "The solution in {workspace} stopped building after a recent change. Find out why and fix it."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "command",
+      "name": "Lib.Tests pass",
+      "executable": "dotnet",
+      "arguments": [
+        "test",
+        "Lib.Tests",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "app runs",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "App",
+        "--"
+      ],
+      "input": "\n",
+      "exitCode": 0,
+      "outputPattern": "Hello![\\s\\S]*Press the Enter key",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "fileContains",
+      "name": "MyService bound in Lib.Composition",
+      "path": "Lib/Composition.cs",
+      "pattern": "MyService"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Lib/Composition.cs",
+        ".packages/"
+      ]
+    }
+  ],
+  "repository": {
+    "path": "../Pure.DI.Solution",
+    "commit": "fc07ea1f0df03acc6617ef2ac54c84730c38fa13"
+  }
+}

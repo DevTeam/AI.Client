@@ -829,3 +829,43 @@ Checks: `AI.Server.Tests` 1343 tests (one Unix-only skipped) and `AI.Web.Tests` 
 tests cover ignore rules (info/exclude, anchored and negated patterns, a nested `.gitignore`, the
 switch that turns them off), CRLF reads and the CRLF-preserving write, a cut read with its total line
 count, a repeated read sent as a pointer, and null fields left out of the model view.
+
+## 2026-10-20 — Agent evaluation runner
+
+`evals/AI.Agent.Evals` runs whole scenarios through a real Host and model and reports what they did
+and cost. Each attempt starts its own Host on a fresh data directory and port, copies the scenario's
+workspace, sends the turns through the Submit API, answers approvals and `ask_user` prompts by the
+scenario's rules, and saves the chat, usage, run events and Host data. Deterministic checks (a command's
+exit code, files, workspace changes, the final answer, tool-call limits) decide the verdict; `summary.md`
+aggregates repeats per scenario, and `compare` sets two runs side by side. Two synthetic scenarios ship
+in `evals/scenarios`: a bug fix proven by a self-checking program, and a read-only question.
+
+The endpoint is read from `evals/connection.json`, ignored by git, with `evals/connection.example.json` as
+its template.
+
+Files: `evals/AI.Agent.Evals/*`, `evals/scenarios/*`, `evals/connection.example.json`, `.gitignore`, docs 09, 13
+and README.
+
+Checks: the runner builds without warnings; runs against a scripted OpenAI-compatible endpoint
+exercised Host start-up, configuration, a tool call, repeats in parallel, the checks, both reports and
+`compare`. A first run on DeepSeek-V4.1-Flash passed 4 of 4 attempts (2 per scenario).
+
+## 2026-10-20 — Real-repository scenarios and attempt timelines
+
+Agent scenarios can start from a commit of a real repository (exported without history) and reveal the
+fix commit's tests only to the checks, as SWE-bench does. Five Pure.DI issues (#149, #150, #152, #154,
+#162) ship this way, each verified to fail before and pass after its fix, with a read-only question on
+the same repository, an `ask_user` scenario and a two-turn scenario in a small window. Workspaces are
+git repositories; programs exiting non-zero are counted apart from failed tool calls; compactions,
+`workspaceContains`, `minPrompts`/`maxPrompts` and a per-scenario `contextWindow` were added; `trace`
+prints one attempt as a timeline; a turn ends only once its own run has moved, not on the previous
+turn's status. The project skill `.claude/skills/agent-eval` drives the run–analyze–change–compare loop.
+
+## 2026-10-20 — Pure.DI scenarios dropped
+
+The Pure.DI issue and question scenarios were removed: models ran large parts of its integration
+suite, so an attempt took up to 40 minutes and millions of tokens, and nearly all failed or timed out.
+Real-repository scenarios now use the small Pure.DI.Solution sample (`solution-*`), which builds and
+tests in seconds. Runs comparing the harness changes of this day (tool selection, refusal messages
+naming the allowed roots, compaction before failing on empty responses) passed as often or more
+often on DeepSeek-V4.1-Flash and Qwen3.6-35B-A3B-FP8, with 12–44% fewer input tokens on DeepSeek.

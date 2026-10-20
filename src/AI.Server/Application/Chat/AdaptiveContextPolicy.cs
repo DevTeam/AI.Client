@@ -166,10 +166,18 @@ public sealed partial class AdaptiveContextPolicy(
             ? Math.Min(profile.MaximumTools, Math.Max(8 - pinnedTools.Count, 2))
             : profile.MaximumTools;
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var candidates = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
-            .Select(tool => new Candidate(tool, estimator.EstimateTools([tool.ModelDefinition]),
-                requiredNames.Contains(tool.ModelDefinition.Name), Core(tool), pinnedTools?.Contains(tool.ModelDefinition.Name) == true,
-                Words(tool.ModelDefinition.Name).Concat(Words(tool.ModelDefinition.Description)).Distinct(StringComparer.OrdinalIgnoreCase).Count(query.Contains)))
+        var unique = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
+            .Select(tool => (Tool: tool, Words: Words(tool.ModelDefinition.Name).Concat(Words(tool.ModelDefinition.Description))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase))).ToArray();
+        // A word most descriptions share ("the", "file", "run") says nothing about which tool a request
+        // needs, yet it made almost every tool look relevant to every request.
+        var common = unique.SelectMany(item => item.Words).GroupBy(word => word, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() >= 3 && group.Count() * 3 >= unique.Length).Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var candidates = unique
+            .Select(item => new Candidate(item.Tool, estimator.EstimateTools([item.Tool.ModelDefinition]),
+                requiredNames.Contains(item.Tool.ModelDefinition.Name), Core(item.Tool), pinnedTools?.Contains(item.Tool.ModelDefinition.Name) == true,
+                item.Words.Count(word => query.Contains(word) && !common.Contains(word))))
             .OrderByDescending(item => item.Required).ThenByDescending(item => item.Core)
             .ThenByDescending(item => item.Discovered).ThenByDescending(item => item.Relevance)
             .ThenByDescending(item => item.Tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
@@ -198,11 +206,16 @@ public sealed partial class AdaptiveContextPolicy(
         // The limit is on ordinary tools only. Counting the core set against it left a pinned
         // turn no ordinary place at all once the core set had grown past the limit.
         var ordinary = 0;
+        // When the request names what some tools do, an ordinary tool it does not name is left for
+        // tool_search to find; filling the budget with them cost every step thousands of tokens.
+        // A request that matches no description at all — one in another language — ranks nothing,
+        // so it keeps the fill: the model would otherwise have only the core set to start from.
+        var ranked = candidates.Any(item => item.Relevance > 0 && !item.Required && !item.Discovered && !item.Core);
         foreach (var item in candidates)
         {
             var ceiling = item.Required || item.Discovered || item.Core ? budget : budget * 4 / 5;
             var counted = !item.Required && !item.Discovered && !item.Core;
-            if (!item.Required && ((counted && ordinary >= ordinaryToolLimit)
+            if (!item.Required && ((counted && (ordinary >= ordinaryToolLimit || ranked && item.Relevance == 0))
                 || item.Tokens > ceiling - tokens)) continue;
             selected.Add(item.Tool);
             tokens += item.Tokens;

@@ -1,0 +1,58 @@
+{
+  "id": "solution-greet-by-name",
+  "description": "Pure.DI.Solution: ask for the user's name and greet them, updating the tests.",
+  "tags": [
+    "solution",
+    "feature",
+    "dotnet",
+    "real"
+  ],
+  "turns": [
+    "In the solution at {workspace}, make the app greet the user by name: before the greeting it should print \"What is your name?\", read the name and then print \"Hello, <name>!\" instead of \"Hello!\". Keep the rest of the behavior and update the tests to match."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "command",
+      "name": "Lib.Tests pass",
+      "executable": "dotnet",
+      "arguments": [
+        "test",
+        "Lib.Tests",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "app asks and greets by name",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "App",
+        "--"
+      ],
+      "input": "Ann\n\n",
+      "exitCode": 0,
+      "outputPattern": "What is your name\\?[\\s\\S]*Hello, Ann![\\s\\S]*Press the Enter key",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Lib/",
+        "Lib.Tests/",
+        "App/",
+        ".packages/"
+      ]
+    }
+  ],
+  "repository": {
+    "path": "../Pure.DI.Solution",
+    "commit": "fc07ea1f0df03acc6617ef2ac54c84730c38fa13"
+  }
+}

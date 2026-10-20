@@ -1160,6 +1160,34 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task RepeatedEmptyResponsesAfterALongHistoryShouldCompactItOnceAndAskAgain()
+    {
+        // Given a chat whose earlier turn left a long answer behind, in a window it still fits,
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(65_536, 4_096);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Describe the system"));
+        (await fixture.NextCallAsync()).Answer.SetResult(string.Concat(Enumerable.Repeat("The system has many parts. ", 2_000)));
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+
+        // When the next turn gets nothing but empty responses,
+        fixture.Completion.SummaryAnswer = "Earlier the user asked for a description of a system with many parts.";
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Now summarize it"));
+        for (var attempt = 0; attempt < 3; attempt++)
+            (await fixture.NextCallAsync()).Answer.SetResult("");
+
+        // Then the history is summarized and the turn is asked once more, with the summary in place
+        // of the long answer, instead of the run failing.
+        var retry = await fixture.NextCallAsync();
+        fixture.Completion.SummaryRequests.ShouldBeGreaterThan(0);
+        retry.Request.ContextMessages!.ShouldNotContain(message => message.ForModel.Length > 40_000);
+        retry.Answer.SetResult("It has many parts.");
+
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+        var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
+        chat!.Messages[^1].Content.ShouldBe("It has many parts.");
+    }
+
+    [Fact]
     public async Task WorkspaceChangesShouldBeLiveBeforeBecomingPartOfTheFinalReply()
     {
         var workspace = new TestWorkspaceChangeTracker();

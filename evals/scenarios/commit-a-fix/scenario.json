@@ -1,0 +1,64 @@
+{
+  "id": "commit-a-fix",
+  "description": "Fix a spelling mistake across docs and commit it with the requested message, leaving a clean tree.",
+  "tags": [
+    "git",
+    "edit"
+  ],
+  "turns": [
+    "The docs in {workspace} misspell \"receive\" as \"recieve\". Fix every occurrence and commit the change with the message \"Fix spelling of receive\"."
+  ],
+  "prompts": [
+    {
+      "match": "file|commit|stage|message",
+      "option": "all|both|every",
+      "answer": "Commit every file you changed, with the message I gave."
+    }
+  ],
+  "timeoutSeconds": 600,
+  "checks": [
+    {
+      "type": "workspaceNotContains",
+      "name": "no misspelling left",
+      "pattern": "recieve"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "docs/"
+      ]
+    },
+    {
+      "type": "command",
+      "name": "committed with the message",
+      "executable": "git",
+      "arguments": [
+        "log",
+        "-1",
+        "--format=%s"
+      ],
+      "outputPattern": "\\AFix spelling of receive\\s*\\z"
+    },
+    {
+      "type": "command",
+      "name": "exactly one new commit",
+      "executable": "git",
+      "arguments": [
+        "rev-list",
+        "--count",
+        "HEAD"
+      ],
+      "outputPattern": "\\A2\\s*\\z"
+    },
+    {
+      "type": "command",
+      "name": "clean working tree",
+      "executable": "git",
+      "arguments": [
+        "status",
+        "--porcelain"
+      ],
+      "outputPattern": "\\A\\s*\\z"
+    }
+  ]
+}

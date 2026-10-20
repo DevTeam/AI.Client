@@ -1,0 +1,17 @@
+{
+  // A bug fix with a program that proves it: the model has to run, read, fix and run again.
+  "id": "fix-failing-self-check",
+  "description": "Fix Median so the self-checks of a small console project pass, without touching the checks.",
+  "tags": ["edit", "dotnet", "process"],
+  "turns": [
+    "The self-checks fail: `dotnet run --project Stats` in {workspace} exits with 1. Find the bug and fix it. Do not change the checks in Program.cs."
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    { "type": "command", "name": "self-checks pass", "executable": "dotnet", "arguments": ["run", "--project", "Stats"], "exitCode": 0 },
+    { "type": "fileUnchanged", "path": "Stats/Program.cs" },
+    { "type": "onlyChanged", "paths": ["Stats/Statistics.cs"] },
+    { "type": "maxToolErrors", "value": 3 },
+    { "type": "maxToolCalls", "value": 25 }
+  ]
+}

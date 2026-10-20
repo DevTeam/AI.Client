@@ -1,0 +1,64 @@
+{
+  "id": "solution-add-clock",
+  "description": "Pure.DI.Solution: add the time to the greeting through an injectable clock; a hidden test composes it.",
+  "tags": [
+    "solution",
+    "feature",
+    "di",
+    "dotnet",
+    "real"
+  ],
+  "turns": [
+    "In the solution at {workspace}, change the greeting to \"Hello! It is HH:mm.\" with the current time. Take the time from a new abstraction `public interface IClock { DateTimeOffset Now { get; } }` in the Lib namespace with a real implementation bound in the composition, so tests can substitute the time. Update the existing tests and add one for the time."
+  ],
+  "hiddenFiles": [
+    {
+      "path": "Lib.Tests/Integration/ClockGreetingTests.cs"
+    }
+  ],
+  "timeoutSeconds": 900,
+  "checks": [
+    {
+      "type": "command",
+      "name": "Lib.Tests pass, the hidden clock test among them",
+      "executable": "dotnet",
+      "arguments": [
+        "test",
+        "Lib.Tests",
+        "--nologo",
+        "-v",
+        "q"
+      ],
+      "exitCode": 0,
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "command",
+      "name": "app greets with the time",
+      "executable": "dotnet",
+      "arguments": [
+        "run",
+        "--project",
+        "App",
+        "--"
+      ],
+      "input": "\n",
+      "exitCode": 0,
+      "outputPattern": "Hello! It is \\d\\d:\\d\\d\\.",
+      "timeoutSeconds": 600
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "Lib/",
+        "Lib.Tests/",
+        "App/",
+        ".packages/"
+      ]
+    }
+  ],
+  "repository": {
+    "path": "../Pure.DI.Solution",
+    "commit": "fc07ea1f0df03acc6617ef2ac54c84730c38fa13"
+  }
+}

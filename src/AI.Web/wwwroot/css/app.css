@@ -4192,11 +4192,17 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     box-sizing: border-box;
     padding-inline: var(--chat-content-inset) calc(var(--chat-content-inset) + var(--chat-scrollbar-width, 0px));
 }
-/* Keep open cards usable while the composer remains beside the newest turn's controls. */
-.composer-dock .workspace-changes-list,
-.composer-dock .chat-plan-steps,
-.composer-dock .queue-items,
-.composer-dock .tool-approval-details-content { max-height: min(28vh, 16rem); overflow-y: auto; }
+/* Keep open cards usable while the composer remains beside the newest turn's controls. The whole
+   open body of a card scrolls, not one list inside it: a plan's criteria sit below its steps, and
+   an uncapped part let the plan and the changes together push the transcript down to nothing,
+   leaving a feed too short to scroll up from while a run kept it pinned to its end. Two open
+   cards share the room, so the transcript keeps a readable height whatever is expanded. */
+.composer-dock { --dock-details-max-height: min(28vh, 16rem); }
+.composer-dock:has(> .is-expanded ~ .is-expanded) { --dock-details-max-height: min(16vh, 10rem); }
+/* The cap stays on while a card closes, so the closing animation starts from the capped height. */
+.composer-dock .chat-summary-details-inner { max-height: var(--dock-details-max-height); }
+.composer-dock .chat-summary-card.is-expanded .chat-summary-details-inner,
+.composer-dock .tool-approval-details-content { max-height: var(--dock-details-max-height); overflow-y: auto; overscroll-behavior: contain; }
 /* Details precede the header so opening a live card leaves its click target in place. */
 .chat-summary-card.opens-upward { display: flex; flex-direction: column-reverse; }
 /* A transcript card restores the clicked header after rendering; its height must settle in that

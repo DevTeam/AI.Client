@@ -14,6 +14,11 @@ const PinThresholdPx = 80;
 
 const distanceFromBottom = scroller => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
 
+// The slack never exceeds a quarter of the visible feed. When open cards above the composer leave
+// the transcript only a few lines high, a fixed 80 px is most of what is on screen: the first
+// wheel steps up still count as "at the bottom", and the next streamed token pulls the feed back.
+const isNearBottom = scroller => distanceFromBottom(scroller) <= Math.min(PinThresholdPx, scroller.clientHeight / 4);
+
 // End belongs to the feed only when the user isn't typing — in a textarea it means "end of line".
 const isTextEntry = target =>
     target instanceof HTMLElement
@@ -190,7 +195,7 @@ const attachSizeWarmup = scroller => {
 };
 
 export function attach(scroller, owner) {
-    let pinned = distanceFromBottom(scroller) <= PinThresholdPx;
+    let pinned = isNearBottom(scroller);
     let notified = null;
     let watchedElementId = null;
     let watchedElement = null;
@@ -297,7 +302,7 @@ export function attach(scroller, owner) {
     };
 
     const onScroll = () => {
-        pinned = distanceFromBottom(scroller) <= PinThresholdPx;
+        pinned = isNearBottom(scroller);
         captureAnchor();
         notify();
     };
@@ -305,7 +310,7 @@ export function attach(scroller, owner) {
     // Shrinking content or growing the viewport can reveal the tail without a scroll event.
     // Only resume following here: newly appended content must not unpin a reader at the bottom.
     const resumeIfAtBottom = () => {
-        if (!pinned && distanceFromBottom(scroller) <= PinThresholdPx) {
+        if (!pinned && isNearBottom(scroller)) {
             pinned = true;
             anchor = null;
             notify();
@@ -484,7 +489,7 @@ export function attach(scroller, owner) {
             scroller.scrollTop = scroller.scrollHeight;
             return true;
         },
-        isAtBottom: () => distanceFromBottom(scroller) <= PinThresholdPx,
+        isAtBottom: () => isNearBottom(scroller),
         scrollToBottom: () => toBottom(false),
         // Called after the feed has been put somewhere deliberately — a restored reading position.
         // The anchor still holds whatever was under the top edge before that move, and the next

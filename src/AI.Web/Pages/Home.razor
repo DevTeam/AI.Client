@@ -30,6 +30,7 @@
 @inject IChatUnfinishedStatisticsCalculator UnfinishedStatistics
 @inject IChatComposerService Composer
 @inject AI.Web.Resources.IResourceApi ResourceApi
+@inject AI.Web.Resources.IFilePreviewApi FilePreviewApi
 @inject AI.Web.Resources.IDropAccessPlanner DropAccessPlanner
 @inject AI.Web.Resources.IReviewApi ReviewApi
 @inject IChatFeedProjection Feed
@@ -216,12 +217,11 @@
                             @foreach (var directory in _security.DirectoryGrants)
                             {
                                 <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
-                                    <span class="directory-row-main">
+                                    <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
                                         <AppIcon Name="folder" />
-                                        <span class="nav-item-label directory-name" title="@directory.CanonicalRoot">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
-                                    </span>
-                                    @* Read and write is the usual mode, so its open lock shows only on hover; a
-                                       read-only directory keeps its closed lock in view. *@
+                                        <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                    </button>
+                                    @* The lock always shows the access mode: open for read and write, closed for read only. *@
                                     <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
                                     <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
                                     <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
@@ -234,7 +234,11 @@
                                             }
                                             else
                                             {
+                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)"><AppIcon Name="eye" />Show in preview</button>
+                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
+                                                <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
                                                 <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
+                                                <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
                                             }
                                         </div>
                                     }
@@ -248,7 +252,7 @@
                            grant, deleted with the chat. A clock in place of the folder says it is
                            temporary; the tooltip and the menu say the rest. *@
                         <div class="directory-nav-row directory-chat-files-row @(_security.DirectoryGrants.Count > 0 ? "directory-nav-row-child" : string.Empty)">
-                            <button class="directory-row-main directory-chat-files-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
+                            <button class="directory-row-main directory-row-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
                                 <AppIcon Name="clock" />
                                 <span class="nav-item-label directory-name">Chat files</span>
                             </button>
@@ -256,7 +260,8 @@
                             @if (_directoryMenuId == ChatFilesMenuId)
                             {
                                 <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                    <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="folder" />Open this chat's files</button>
+                                    <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="eye" />Show in preview</button>
+                                    <button type="button" role="menuitem" @onclick="OpenChatFilesInFileManagerAsync"><AppIcon Name="folder" />Open in file manager</button>
                                     <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
                                     <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
                                 </div>

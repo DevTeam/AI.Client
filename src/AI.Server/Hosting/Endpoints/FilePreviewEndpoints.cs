@@ -18,6 +18,9 @@ public sealed class FilePreviewEndpoints : IEndpointModule
         routes.MapGet("/api/projects/{projectId:guid}/resources/preview-text",
             (Guid projectId, string path, int? offset, IFilePreviewService service, CancellationToken token) =>
                 GuardAsync(async () => Results.Ok(await service.ReadTextAsync(projectId, path, offset ?? 0, token))));
+        routes.MapPost("/api/projects/{projectId:guid}/resources/open",
+            (Guid projectId, string path, IFilePreviewService service, CancellationToken token) =>
+                GuardAsync(async () => { await service.OpenAsync(projectId, path, token); return Results.NoContent(); }));
         // Media elements cannot send the bridge's Authorization header. A short-lived, random
         // ticket grants this one file only; every range request checks project access again.
         routes.MapGet("/file-preview-content/{ticket}", async (string ticket, bool? download,

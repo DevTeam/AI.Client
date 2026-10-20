@@ -8,7 +8,7 @@ using AI.Contracts.Resources;
 using Microsoft.AspNetCore.StaticFiles;
 
 public sealed class FilePreviewService(IProjectService projects, IWorkspacePathResolver resolver,
-    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text, IFileSystem files)
+    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text, IFileSystem files, ISystemShell shell)
     : IFilePreviewService
 {
     private readonly ConcurrentDictionary<string, (Guid Project, string Path, DateTimeOffset Expires)> _tickets = new();
@@ -49,6 +49,12 @@ public sealed class FilePreviewService(IProjectService projects, IWorkspacePathR
     {
         var canonical = await ReadablePathAsync(projectId, path, cancellationToken);
         return await text.ReadAsync(canonical, offset, cancellationToken);
+    }
+
+    public async Task OpenAsync(Guid projectId, string path, CancellationToken cancellationToken)
+    {
+        var canonical = await ReadablePathAsync(projectId, path, cancellationToken);
+        shell.Open(canonical, await files.DirectoryExistsAsync(canonical, cancellationToken));
     }
 
     private async Task<string> ReadablePathAsync(Guid projectId, string path, CancellationToken cancellationToken)

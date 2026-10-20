@@ -100,7 +100,7 @@ internal sealed class Composition
                 ChatBranchSettingsResolver,
                 ChatCompletionSseParser, ContextPlanDiagnostics, ChatTransportPolicy, ProtectedGlobalSecretStore,
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
-                ChatTemporaryDirectory,
+                ChatTemporaryDirectory, SystemShell,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
                 TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles>()
             .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,

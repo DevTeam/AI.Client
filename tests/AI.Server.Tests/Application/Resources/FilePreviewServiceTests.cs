@@ -157,6 +157,7 @@ public sealed class FilePreviewServiceTests
         /// <summary>Supplies the file-system contract the service gained; this fixture runs on the real disk.</summary>
         private static FilePreviewService NewPreviewService(IProjectService projects,
             IWorkspacePathResolver resolver, IProjectPathAccess access, IFilePreviewFormats formats,
-            IFilePreviewTextReader text) => new(projects, resolver, access, formats, text, new SystemFileSystem());
+            IFilePreviewTextReader text) => new(projects, resolver, access, formats, text, new SystemFileSystem(),
+                Mock.Of<ISystemShell>());
     }
 }

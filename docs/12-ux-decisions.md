@@ -524,3 +524,11 @@ This replaces the last two points above: unfolding the project and scrolling to 
 - **The open branch speaks for itself.** Its turn status reads `Stopped by the restart at HH:mm; what was written is kept`, or `Stopped when the application closed unexpectedly` (a crash commits nothing of what was only streamed, so nothing is promised), and names a tool whose outcome is unknown; the mark is the power icon, the action is `Continue`. The sidebar tooltip reads `Stopped by the restart - action required`.
 - **Settings → Chat → After a restart.** `Ask me` (default) as above; `Resume automatically` counts down 10 seconds in the cue and the widget (`Cancel`, `Resume now`) and then resumes everything but a tool call with an unknown outcome; `Leave stopped` shows nothing and lists the runs with the rest of the unfinished work.
 - **Dealt with is per start and per device.** `Leave stopped`, closing the cue, or resuming the whole group stores that start's moment as `ClientSettings.RestartSeenAt`; the group and the cue go, and the runs still stopped are listed with the rest. A later restart is news again.
+
+## Directory rows open like Chat files; the preview opens with the system (2026-10-20)
+
+This replaces the parts of the 2026-10-13 Chat files and 2026-10-14 sidebar decisions that disagree with it.
+
+- Every directory row shows its lock at all times: open for read and write, closed for read only. Hiding the usual mode until hover left most rows without one, so the mode could not be read at a glance.
+- A click on a directory's name opens the directory in the file preview panel, as `Chat files` does. Its menu lists `Show in preview`, `Open in file manager`, `Copy path` and `Remove access`, with a note on the assistant's access. The `Chat files` menu has the same first three items; `Open this chat's files` is now `Show in preview`.
+- The file preview header has an Open button for anything on disk: a directory opens in the file manager, a file in its default application (`POST /api/projects/{projectId}/resources/open`, checked against the project's read access like the preview). A file the system would run instead of open (`.exe`, `.bat`, `.ps1`, `.lnk`, `.sh` and the like) is only shown selected in its folder, so Open never launches a program. Chat attachments and archive entries have no Open, because they are not files on disk.

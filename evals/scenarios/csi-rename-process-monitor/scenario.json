@@ -26,7 +26,8 @@
         "CSharpInteractive.sln",
         "--nologo",
         "-v",
-        "q"
+        "q",
+        "-p:NuGetAudit=false"
       ],
       "exitCode": 0,
       "timeoutSeconds": 900

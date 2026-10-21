@@ -229,25 +229,17 @@ public sealed class AppSubtaskToolTests
             new SynchronousProgress(value => { lock (reports) reports.Add(value); }),
             TestContext.Current.CancellationToken);
 
-        // Progress travels as MCP notifications, which the client hands on independently of the
-        // call's response, so the last one can arrive just after the call returned.
-        for (var waited = 0; waited < 5000 && !Reported(2); waited += 50)
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-
         // The caller's live row is fed from these, so a subtask that reports nothing is
-        // indistinguishable from one that has hung.
+        // indistinguishable from one that has hung. What is asserted is what the subtasks report
+        // while they run: progress travels as MCP notifications, and the client stops listening
+        // for a call's notifications once its response is in, so the last "2/2" report, sent just
+        // before that response, may never reach the caller.
         lock (reports)
         {
             reports.ShouldNotBeEmpty();
             reports.Select(value => value.Message).OfType<string>()
                 .ShouldContain(message => message.Contains("1:", StringComparison.Ordinal));
-            reports.ShouldContain(value => value.Total == 2);
-            reports.ShouldContain(value => value.Progress == 2);
-        }
-
-        bool Reported(double progress)
-        {
-            lock (reports) return reports.Any(value => value.Progress == progress);
+            reports.ShouldAllBe(value => value.Total == 2);
         }
     }
 

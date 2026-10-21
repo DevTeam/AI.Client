@@ -219,9 +219,11 @@ public sealed class BuiltInToolTests
     public async Task ShouldReportTheProcessLimitOfTheProcessTree()
     {
         if (!OperatingSystem.IsWindows()) return;
-        var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
-            ["-NoProfile", "-NonInteractive", "-Command", "1..4 | ForEach-Object { Start-Process cmd.exe -ArgumentList '/c','ping -n 5 127.0.0.1' -WindowStyle Hidden }"],
-            AppContext.BaseDirectory, 60000, ChildProcessLimits.Create(null, 2)), CancellationToken.None);
+        // cmd rather than PowerShell: a cold PowerShell on a fresh CI runner could take the whole
+        // deadline before it started anything. With one process allowed, the first child is refused.
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest("cmd.exe",
+            ["/d", "/c", "cmd /d /c exit 0"],
+            AppContext.BaseDirectory, 60000, ChildProcessLimits.Create(null, 1)), CancellationToken.None);
         result.LimitExceeded.ShouldBe(ChildProcessJob.Processes, result.ToString());
     }
 

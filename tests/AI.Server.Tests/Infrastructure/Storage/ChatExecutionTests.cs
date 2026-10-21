@@ -3031,7 +3031,9 @@ public sealed partial class ChatExecutionTests
                     ExternalServer.Transport, true)],
                 [new ToolPolicySettings(ExternalServer.Id, "inspect", "schema", decision, 20, 120)]), CancellationToken.None);
         }
-        public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        // Generous on purpose: some steps wait for a policy re-check every 2 s, and a CI runner that
+        // runs every test module at once can take several of them. A passing test never waits it out.
+        public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(20));
 
         /// <summary>
         /// Submits a message, lets its call stream <paramref name="text"/>, and leaves the call

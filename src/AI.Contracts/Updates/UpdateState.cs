@@ -7,7 +7,7 @@ public sealed record UpdatePreferences(bool CheckAutomatically = true, bool Down
     bool InstallAutomatically = false, UpdateChannel Channel = UpdateChannel.Preview);
 
 public sealed record UpdateRelease(string Version, bool Prerelease, string NotesUrl, string PackageUrl,
-    string PackageName, string Sha256, long Size, string? CompanionUrl = null, string? CompanionSha256 = null);
+    string PackageName, string Sha256, long Size);
 
 public sealed record UpdateState(string Product, string CurrentVersion, string Runtime, UpdatePreferences Preferences,
     UpdatePhase Phase = UpdatePhase.Idle, UpdateRelease? Release = null, DateTimeOffset? LastChecked = null,

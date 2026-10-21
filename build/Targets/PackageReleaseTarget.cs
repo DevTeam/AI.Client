@@ -24,12 +24,11 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var output = Path.Combine(paths.SolutionDirectory, "artifacts", "release");
         var host = Path.Combine(output, runtime, "host");
         var desktop = Path.Combine(output, runtime, "desktop");
-        var csharp = Path.Combine(output, runtime, "csharp-mcp");
         var packages = Path.Combine(output, "packages");
         Directory.CreateDirectory(packages);
         // Publish and staging directories contain only generated files. Start with an empty
-        // payload so repeated releases cannot retain an optional component from an earlier run.
-        foreach (var directory in new[] { host, desktop, csharp, Path.Combine(output, runtime, "stage") })
+        // payload so repeated releases cannot retain files from an earlier run.
+        foreach (var directory in new[] { host, desktop, Path.Combine(output, runtime, "stage") })
         {
             if (!Path.GetFullPath(directory).StartsWith(Path.GetFullPath(output) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 throw new InvalidOperationException("The generated payload must be inside artifacts/release.");
@@ -39,20 +38,14 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         var hostArguments = new List<string>
         {
             "publish", "src/AI.Host/AI.Host.csproj", "--nologo", "-c", "Release",
-            "-r", runtime, "--self-contained", "--output", host, $"-p:Version={version}", "-p:IncludeCSharpMcp=false"
+            "-r", runtime, "--self-contained", "--output", host, $"-p:Version={version}"
         };
         if (prefix == "win") hostArguments.Add("-p:HostWindowsService=true");
         var result = await processes.RunAsync($"Publish Host {runtime}", "dotnet", hostArguments, cancellationToken);
         if (result != 0) return result;
         result = await processes.RunAsync($"Publish Desktop {runtime}", "dotnet",
             ["publish", "src/AI.Desktop/AI.Desktop.csproj", "--nologo", "-c", "Release",
-                "-r", runtime, "--self-contained", "--output", desktop, $"-p:Version={version}", "-p:IncludeCSharpMcp=false"], cancellationToken);
-        if (result != 0) return result;
-        // The C# scripting server publishes independently; Inno Setup consumes it as a subcomponent
-        // of Host and Desktop, macOS offers a package choice, and Linux ships a companion package.
-        result = await processes.RunAsync($"Publish CSharp MCP {runtime}", "dotnet",
-            ["publish", "src/AI.Mcp.CSharp/AI.Mcp.CSharp.csproj", "--nologo", "-c", "Release",
-                "-r", runtime, "--self-contained", "--output", csharp, $"-p:Version={version}"], cancellationToken);
+                "-r", runtime, "--self-contained", "--output", desktop, $"-p:Version={version}"], cancellationToken);
         if (result != 0) return result;
 
         foreach (var (product, directory) in new[] { ("Host", host), ("Desktop", desktop) })
@@ -64,21 +57,17 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
                 throw new InvalidDataException($"{product} {runtime} publish does not contain the Web interface.");
         }
 
-        var csharpExecutable = "AI.Mcp.CSharp" + (OperatingSystem.IsWindows() ? ".exe" : "");
-        if (!File.Exists(Path.Combine(csharp, csharpExecutable)))
-            throw new InvalidDataException($"CSharp MCP {runtime} publish does not contain {csharpExecutable}.");
-
         return prefix switch
         {
-            "win" => await PackageWindowsAsync(runtime, version, host, desktop, csharp, packages, cancellationToken),
-            "osx" => await PackageMacAsync(runtime, version, host, desktop, csharp, packages, cancellationToken),
-            "linux" => await PackageLinuxAsync(runtime, version, host, desktop, csharp, packages, cancellationToken),
+            "win" => await PackageWindowsAsync(runtime, version, host, desktop, packages, cancellationToken),
+            "osx" => await PackageMacAsync(runtime, version, host, desktop, packages, cancellationToken),
+            "linux" => await PackageLinuxAsync(runtime, version, host, desktop, packages, cancellationToken),
             _ => throw new ArgumentException($"Unsupported runtime: {runtime}", nameof(runtime))
         };
     }
 
     private async Task<int> PackageWindowsAsync(string runtime, string version, string host, string desktop,
-        string csharp, string packages, CancellationToken token)
+        string packages, CancellationToken token)
     {
         var compiler = Environment.GetEnvironmentVariable("INNO_SETUP_COMPILER")
             ?? new[]
@@ -99,7 +88,7 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         {
             var script = Path.Combine(paths.SolutionDirectory, "build", "Packaging", "windows", $"{product}.iss");
             var result = await processes.RunAsync($"Package {product} {runtime}", compiler,
-                [$"/DSourceDir={source}", $"/DCSharpSourceDir={csharp}", $"/DOutputDir={packages}", $"/DBaseName=AI.{product}-{runtime}",
+                [$"/DSourceDir={source}", $"/DOutputDir={packages}", $"/DBaseName=AI.{product}-{runtime}",
                     $"/DVersion={version}", $"/DArchitecture={architecture}", script], token);
             if (result != 0) return result;
         }
@@ -107,7 +96,7 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
     }
 
     private async Task<int> PackageMacAsync(string runtime, string version, string host, string desktop,
-        string csharp, string packages, CancellationToken token)
+        string packages, CancellationToken token)
     {
         var stage = Path.Combine(paths.SolutionDirectory, "artifacts", "release", runtime, "stage");
         var hostRoot = Path.Combine(stage, "host");
@@ -159,21 +148,6 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
                 Path.Combine(stage, "AI.Desktop.pkg")], token);
         if (result != 0) return result;
 
-        // Both installers share one optional package and receipt. Runtime discovery uses this
-        // shared location, so installation order and updates to either application do not matter.
-        var csharpRoot = Path.Combine(stage, "csharp-mcp");
-        CopyTree(csharp, Path.Combine(csharpRoot, "Library", "Application Support", "AI Client", "McpCsharp"));
-        MakeExecutable(Path.Combine(csharpRoot, "Library", "Application Support", "AI Client", "McpCsharp", "AI.Mcp.CSharp"));
-        var csharpUninstall = Path.Combine(csharpRoot, "Library", "Application Support", "AI Client", "McpCsharp", "uninstall.sh");
-        File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "macos", "uninstall-csharp-mcp"),
-            csharpUninstall, true);
-        MakeExecutable(csharpUninstall);
-        result = await processes.RunAsync($"Package CSharp MCP {runtime}", "pkgbuild",
-            ["--root", csharpRoot,
-                "--identifier", "org.devteam.aiclient.csharpmcp", "--version", version,
-                Path.Combine(stage, "AI.Mcp.CSharp.pkg")], token);
-        if (result != 0) return result;
-
         foreach (var product in new[] { "Host", "Desktop" })
         {
             var distribution = Path.Combine(stage, $"{product}.xml");
@@ -187,7 +161,7 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
     }
 
     private async Task<int> PackageLinuxAsync(string runtime, string version, string host, string desktop,
-        string csharp, string packages, CancellationToken token)
+        string packages, CancellationToken token)
     {
         var stage = Path.Combine(paths.SolutionDirectory, "artifacts", "release", runtime, "stage");
         var architecture = runtime.EndsWith("arm64", StringComparison.Ordinal) ? "arm64" : "amd64";
@@ -250,40 +224,22 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
             File.Copy(Path.Combine(paths.SolutionDirectory, "build", "Packaging", "linux", "desktop-stop"), target, true);
             MakeExecutable(target);
         }
-        result = await processes.RunAsync($"Package Desktop {runtime}", "dpkg-deb",
+        return await processes.RunAsync($"Package Desktop {runtime}", "dpkg-deb",
             ["--build", "--root-owner-group", desktopRoot, Path.Combine(packages, $"AI.Desktop-{runtime}.deb")], token);
-        if (result != 0) return result;
-
-        // Linux package managers offer the scripting server as an optional companion. Both
-        // applications discover it in this shared directory, including when it is installed first.
-        var csharpRoot = Path.Combine(stage, "csharp-mcp");
-        CopyTree(csharp, Path.Combine(csharpRoot, "opt", "ai-client-csharp-mcp"));
-        MakeExecutable(Path.Combine(csharpRoot, "opt", "ai-client-csharp-mcp", "AI.Mcp.CSharp"));
-        WriteDebControl(csharpRoot, "ai-client-csharp-mcp", version, architecture,
-            "Optional C# scripting MCP server for the AI Client");
-        return await processes.RunAsync($"Package CSharp MCP {runtime}", "dpkg-deb",
-            ["--build", "--root-owner-group", csharpRoot, Path.Combine(packages, $"AI.Mcp.CSharp-{runtime}.deb")], token);
     }
 
     private static void WriteMacDistribution(string path, string product, string version)
     {
         var mainId = $"org.devteam.aiclient.{product.ToLowerInvariant()}";
-        const string csharpId = "org.devteam.aiclient.csharpmcp";
         new XDocument(new XElement("installer-gui-script", new XAttribute("minSpecVersion", "1"),
             new XElement("title", $"AI Client {product}"),
-            new XElement("options", new XAttribute("customize", "always"), new XAttribute("require-scripts", "false")),
+            new XElement("options", new XAttribute("require-scripts", "false")),
             new XElement("choices-outline",
-                new XElement("line", new XAttribute("choice", "main")),
-                new XElement("line", new XAttribute("choice", "csharp"))),
+                new XElement("line", new XAttribute("choice", "main"))),
             new XElement("choice", new XAttribute("id", "main"), new XAttribute("title", $"AI Client {product}"),
                 new XAttribute("enabled", "false"), new XAttribute("selected", "true"),
                 new XElement("pkg-ref", new XAttribute("id", mainId))),
-            new XElement("choice", new XAttribute("id", "csharp"), new XAttribute("title", "C# scripting tools"),
-                new XAttribute("description", "Optional MCP server that compiles and runs C# scripts with Roslyn."),
-                new XAttribute("start_selected", "false"),
-                new XElement("pkg-ref", new XAttribute("id", csharpId))),
-            new XElement("pkg-ref", new XAttribute("id", mainId), new XAttribute("version", version), $"AI.{product}.pkg"),
-            new XElement("pkg-ref", new XAttribute("id", csharpId), new XAttribute("version", version), "AI.Mcp.CSharp.pkg")))
+            new XElement("pkg-ref", new XAttribute("id", mainId), new XAttribute("version", version), $"AI.{product}.pkg")))
             .Save(path);
     }
 
@@ -305,7 +261,9 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "control"),
             $"Package: {name}\nVersion: {version}\nArchitecture: {architecture}\nMaintainer: DevTeam <devteam@dev-team.org>\nDescription: {description}\n"
-            + (name is "ai-client-host" or "ai-client-desktop" ? "Suggests: ai-client-csharp-mcp\n" : ""));
+            // C# scripts now run in the built-in tools. Conflicts together with Replaces makes
+            // dpkg -i remove the retired optional companion package while installing this one.
+            + "Conflicts: ai-client-csharp-mcp\nReplaces: ai-client-csharp-mcp\n");
     }
 
     private static void MakeExecutable(string path)

@@ -18,20 +18,11 @@ CloseApplications=yes
 
 [Files]
 Source: "{#SourceDir}\stop-installed-app.ps1"; Flags: dontcopy noencryption
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "mcp-csharp\*"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
-Source: "{#CSharpSourceDir}\*"; DestDir: "{app}\mcp-csharp"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: csharp
-
-[Types]
-Name: "standard"; Description: "Standard installation"
-Name: "full"; Description: "Full installation"
-Name: "custom"; Description: "Custom installation"; Flags: iscustom
-
-[Components]
-Name: "main"; Description: "AI Client Desktop"; Types: full standard custom; Flags: fixed
-Name: "csharp"; Description: "C# scripting tools (optional, compiles and runs scripts with Roslyn)"; Types: full
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-Type: filesandordirs; Name: "{app}\mcp-csharp"; Components: main
+; The retired optional C# scripting tools lived here; C# scripts now run in the built-in tools.
+Type: filesandordirs; Name: "{app}\mcp-csharp"
 
 [Icons]
 Name: "{autoprograms}\AI Client"; Filename: "{app}\AI.Desktop.exe"

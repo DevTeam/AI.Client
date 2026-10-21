@@ -33,10 +33,8 @@ public sealed class PublishedUpdateFeed(HttpClient http) : IUpdateFeed
             var asset = candidate.Release.Assets.FirstOrDefault(item => item.Name == name);
             if (asset is null) continue;
             var digest = Digest(asset.Digest);
-            var companion = candidate.Release.Assets.FirstOrDefault(item => item.Name == $"AI.Mcp.CSharp-{runtime}.deb");
             return (new UpdateRelease(candidate.Release.Tag.TrimStart('v', 'V'), candidate.Release.Prerelease,
-                TrustedUrl(candidate.Release.Url), TrustedUrl(asset.Url), name, digest, asset.Size,
-                companion is null ? null : TrustedUrl(companion.Url), companion is null ? null : Digest(companion.Digest)), stable);
+                TrustedUrl(candidate.Release.Url), TrustedUrl(asset.Url), name, digest, asset.Size), stable);
         }
         return (null, stable);
     }

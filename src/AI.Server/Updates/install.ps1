@@ -16,9 +16,8 @@ try {
         $task = Get-ScheduledTask -TaskName 'AI.Client.Host' -ErrorAction SilentlyContinue
         if ($task) { Disable-ScheduledTask -TaskName 'AI.Client.Host' | Out-Null; $taskStopped = $true }
     }
-    $component = if ($plan.CSharp) { 'main,csharp' } else { 'main' }
     $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/SP-', '/NORESTART', '/UPDATE=1',
-        "/DIR=`"$($plan.InstallDirectory)`"", "/COMPONENTS=`"$component`"", "/LOG=`"$logPath`"")
+        "/DIR=`"$($plan.InstallDirectory)`"", "/LOG=`"$logPath`"")
     $installer = Start-Process -FilePath $plan.Package -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
     $success = $installer.ExitCode -eq 0
     if (-not $success) { throw "Installer exit code: $($installer.ExitCode)" }

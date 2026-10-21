@@ -11,14 +11,8 @@ public sealed class UpdateInstaller(IFileSystem files) : IUpdateInstaller
     {
         var executable = Environment.ProcessPath ?? throw new InvalidOperationException("The application executable could not be located.");
         var installDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-        var hasCSharpTools = await files.DirectoryExistsAsync(Path.Combine(installDirectory, "mcp-csharp"), token);
-        var hasCompanionPackage = OperatingSystem.IsLinux()
-            && await files.DirectoryExistsAsync("/opt/ai-client-csharp-mcp", token);
         var plan = new InstallationPlan(Environment.ProcessId, state.Product, state.Release!.Version, package,
-            state.Release.Sha256, result, executable, installDirectory, Environment.GetCommandLineArgs().Skip(1).ToArray(),
-            hasCSharpTools,
-            hasCompanionPackage ? Path.Combine(directory, "companion.deb") : null,
-            state.Release.CompanionSha256);
+            state.Release.Sha256, result, executable, installDirectory, Environment.GetCommandLineArgs().Skip(1).ToArray());
         var script = Path.Combine(directory, OperatingSystem.IsWindows() ? "install.ps1" : "install.sh");
         var resource = "AI.Updates." + Path.GetFileName(script);
         await using (var stream = typeof(UpdateInstaller).Assembly.GetManifestResourceStream(resource)
@@ -50,7 +44,7 @@ public sealed class UpdateInstaller(IFileSystem files) : IUpdateInstaller
             start.ArgumentList.Add("/bin/sh");
             foreach (var argument in new[] { script, plan.Pid.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 plan.Product, plan.Version, plan.Package, plan.Sha256, plan.Result, plan.Executable,
-                plan.InstallDirectory, plan.Companion ?? "", plan.CompanionSha256 ?? "" }) start.ArgumentList.Add(argument);
+                plan.InstallDirectory }) start.ArgumentList.Add(argument);
             foreach (var argument in plan.Arguments) start.ArgumentList.Add(argument);
         }
         using var helper = Process.Start(start) ?? throw new InvalidOperationException("The update helper did not start.");
@@ -61,6 +55,5 @@ public sealed class UpdateInstaller(IFileSystem files) : IUpdateInstaller
     }
 
     public sealed record InstallationPlan(int Pid, string Product, string Version, string Package, string Sha256,
-        string Result, string Executable, string InstallDirectory, string[] Arguments, bool CSharp,
-        string? Companion, string? CompanionSha256);
+        string Result, string Executable, string InstallDirectory, string[] Arguments);
 }

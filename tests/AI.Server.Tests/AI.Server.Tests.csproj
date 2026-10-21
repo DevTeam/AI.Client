@@ -6,7 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Mcp.BuiltIn\AI.Mcp.BuiltIn.csproj" />
-    <ProjectReference Include="..\..\src\AI.Mcp.CSharp\AI.Mcp.CSharp.csproj" />
     <ProjectReference Include="..\..\src\AI.Server\AI.Server.csproj" />
     <Compile Include="..\..\src\AI.Contracts\Composition.cs" Link="Contracts\Composition.cs" />
     <Compile Include="..\..\src\AI.Server\Composition.cs" Link="Server\Composition.cs" />

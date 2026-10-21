@@ -19,8 +19,8 @@ public class AppNavigationLinksTests
         skill.ShouldNotBeNull().SkillId.ShouldBe("my skill");
         skill.ProjectId.ShouldBe(Project);
         skill.Action.ShouldBe("show");
-        var tool = _links.Parse("aiclient://navigate/settings.tools?toolName=mcp_csharp__cs_run", null);
-        tool.ShouldNotBeNull().ToolName.ShouldBe("mcp_csharp__cs_run");
+        var tool = _links.Parse("aiclient://navigate/settings.tools?toolName=mcp_built_in__cs_run", null);
+        tool.ShouldNotBeNull().ToolName.ShouldBe("mcp_built_in__cs_run");
         tool.Action.ShouldBe("show");
     }
 
@@ -36,7 +36,7 @@ public class AppNavigationLinksTests
 
     [Theory]
     [InlineData("settings.skills?skillId=skill-create", "mention-skill")]
-    [InlineData("settings.tools?toolName=mcp_csharp__cs_run", "mention-tool")]
+    [InlineData("settings.tools?toolName=mcp_built_in__cs_run", "mention-tool")]
     public void ShouldRenderCatalogLinksWithSharedIconClasses(string destination, string iconClass)
     {
         var renderer = new AI.Web.Markdown.SafeMarkdownRenderer();

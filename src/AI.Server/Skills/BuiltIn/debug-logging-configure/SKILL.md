@@ -46,7 +46,7 @@ write secret values into configuration or the answer. Report in the user's langu
    (request bodies, SQL parameters, headers) and the performance cost. Prefer the environment-
    specific file or an environment override over the shared base file so the change does not ship
    to every environment.
-6. Confirm with `ask_user`: show the exact files and keys with old and new values, the reload or
+6. Confirm with `ask_user` (answerStyle='buttons'): show the exact files and keys with old and new values, the reload or
    restart requirement, the expected volume and retention, the sensitive-data note and the revert
    step. Options: "Apply (Recommended)", "Apply without retention change" when retention changes,
    "Cancel". A value the user already gave exactly is not asked again. A declined, dismissed,
@@ -59,7 +59,7 @@ write secret values into configuration or the answer. Report in the user's langu
 8. Make it take effect. When the framework reloads on change, one bounded `trigger_wait` on the
    active log file can confirm that entries at the new level appear. When a restart is needed,
    never stop, kill or restart a process this run did not start: say which process needs it and
-   that the user restarts it. A process this run started may be restarted only after `ask_user`
+   that the user restarts it. A process this run started may be restarted only after `ask_user` (answerStyle='buttons')
    names it or its PID and the answer is an explicit yes.
 9. A raised level is temporary. Remind the user of the end time and offer to restore it with this
    skill (`restore`); do not leave Debug or Trace active silently. Do not commit or push.

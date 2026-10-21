@@ -19,7 +19,7 @@ tools: ["app_read","ask_user","app_projects"]
      separators such as " - ".
    - 2 to 5 words, at most 60 characters, no quotes, emoji or trailing period.
    - `hint`, when given, outranks everything but meaning.
-   Call `ask_user` once with one question labelled "Name": the best candidate first with
+   Call `ask_user` (answerStyle='buttons') once with one question labelled "Name": the best candidate first with
    " (Recommended)" appended, then the other two, then "Keep current name" with the current name
    as its description. Leave `allowOther` on so the user can type their own.
    - Remove the recommendation suffix, in whatever language you wrote it, from the chosen label.

@@ -68,7 +68,7 @@ Clean up only task-created records/resources using recorded identifiers and auth
    Direct `process_run` already waits. A check that cannot start because another process holds
    the build output or a locked file is blocked, not failed: report the holding process and name
    it. Never stop, kill or restart a process this run did not start; for a run this skill started,
-   call `ask_user` naming it or its PID and act only on an explicit affirmative answer, while a
+   call `ask_user` (answerStyle='buttons') naming it or its PID and act only on an explicit affirmative answer, while a
    declined, dismissed, expired or interrupted answer leaves it running.
 7. For every scenario/check distinguish passed, failed, blocked and not run; pending/running is
 not passed. Attach the expected/actual outcome and evidence to the actual revision/environment.

@@ -74,6 +74,37 @@ In `spawn_subtask` nobody is watching the run, and it has no card of its own. Th
 
 A violation is a tool error with text the model can correct itself by, not a schema rejection it can only repeat. Such a call does not reach the broker.
 
+### Reply buttons
+
+`answerStyle: "buttons"` (the default is `"form"`) asks a quick question as reply buttons: pressing an option is the
+answer and sends it at once, with no `Answer` step. It is for one short choice — yes/no, which of two approaches — so the
+call must ask exactly one question, without `multiSelect`, `pathKind` or `pickerKind`, with 2–6 options, and without
+`timeoutBehavior: "submit_defaults"`; anything else is `invalid` with a message naming the rule. The result is the same as
+for a form: the chosen label in `selected`, its `value` in `values`.
+
+```json
+{"answerStyle":"buttons","questions":[{"id":"apply","text":"Apply the fix to `Orders.cs`?","allowOther":false,
+  "options":[{"label":"Yes, apply it (Recommended)","recommended":true},{"label":"No, only explain"}]}]}
+```
+
+The application guides (`app-guide-*`, and the "control is not in this view" menu of `app_navigate`) ask every
+single-choice question this way, and built-in skills use it for their single-choice confirmations: save, apply,
+stop a process, run a test. Questions that combine choices, pick paths or values, or ask several things in one call stay
+forms.
+
+The card has to tell the person that there is nothing more to press, because a card full of options usually waits for a
+confirmation:
+
+| Cue | Behavior |
+|---|---|
+| Shape | each option is a full-width button, not a radio row; the recommended one has an accent edge, nothing is preselected |
+| Send arrow | every button ends in the composer's send arrow, which fills in the send button's colours on hover and focus |
+| No `Answer` | the action row keeps only `Decline` and `Decide yourself`; there is no submit button to look for |
+| Hint | the note under the question says "Click an answer to send it right away, or press 1–N" |
+| Keys | digits 1–9 send the matching option while focus is in the card; Enter on a focused button sends it |
+| Sending | the pressed button keeps its accent and turns its arrow into a spinner; the others fade and are disabled |
+| Own answer | with `allowOther`, a single field below the buttons, "Or type your own answer and press Enter"; the composer answers too |
+
 ### Git pickers
 
 Set `pickerKind` to `branch` or `commit`, and `repositoryPath` to an absolute directory in the
@@ -154,7 +185,7 @@ The card sits at the end of the feed, where the confirmation card sits, and for 
 | Delegation | `Decide yourself` button → `dismissed`: the model chooses and carries on. An empty "answer" also becomes `dismissed`: it is the same thing with a worse record |
 | Refusal | `Decline` button (left edge, apart from the other two) → `declined`: the model does not choose, stops that work and waits for the person. Unlike `Stop`, the turn ends with the model's own short reply, so the chat stays coherent |
 | Composer | while the question is open, sent text becomes a free answer to the first question that accepts it. Placeholder is "Answer the question above…". A queue would mean a quiet deadlock: the person writes an answer at the bottom and gets it delivered after 15 minutes |
-| Keyboard | standard radio/checkbox semantics. Once every question has an answer, the card says so and Enter submits the answers and continues the chat; action buttons keep their native Enter behavior |
+| Keyboard | standard radio/checkbox semantics (reply buttons: see [Reply buttons](#reply-buttons)). Once every question has an answer, the card says so and Enter submits the answers and continues the chat; action buttons keep their native Enter behavior |
 | Markdown | inline subset in the question text (emphasis, code, links). Options and descriptions are always plain text: they are button captions |
 | "Other" | a field next to the option; typing text selects it. With zero options, the card looks like a regular input with the question as its heading |
 | Attention | an "attention required" marker in the chat list, the same one a confirmation uses. No system notifications or sound |

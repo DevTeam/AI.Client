@@ -75,7 +75,7 @@ or scripts, and a dedicated tool when it better serves the task.
    Never stop, kill or restart a process this run did not start — another chat's tests or build,
    an IDE, a server. A timeout, a hang, a locked output file and an earlier approval for other
    work are not permission: report the process holding it, because freeing it is the user's
-   decision. For a process this run started, call `ask_user` naming that exact process or PID and
+   decision. For a process this run started, call `ask_user` (answerStyle='buttons') naming that exact process or PID and
    act only on an explicit affirmative answer; a declined, dismissed, expired or interrupted
    answer leaves it running.
 6. Estimate duration: builds, data processing and automation may take hours. Check tool/client

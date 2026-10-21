@@ -16,7 +16,7 @@ tools: ["app_read","list_directory","read_text_file","ask_user","app_projects"]
 3. Write one to three sentences, at most 300 characters, in the language of the project's name:
    what it is, what it is for and its main technology. No Markdown, paths or marketing words.
    Put `focus` first when given.
-4. Call `ask_user` with one question labelled "Description" whose text shows the draft, with the
+4. Call `ask_user` (answerStyle='buttons') with one question labelled "Description" whose text shows the draft, with the
    options "Apply (Recommended)" and "Keep current description"; the user may type their own text.
    Dismissed applies the draft; expired or interrupted changes nothing.
 5. On apply, `app_projects` Update with only `description`, the project id and revision.

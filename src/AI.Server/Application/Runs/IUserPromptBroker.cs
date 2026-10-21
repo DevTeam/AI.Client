@@ -9,7 +9,7 @@ using Tools;
 /// protocol, so a prompt is identified by its own and shown for as long as the call runs.
 /// </summary>
 public sealed record UserPromptRequest(IReadOnlyList<UserPromptQuestion> Questions,
-    string Presentation = "chat", bool SubmitDefaults = false);
+    string Presentation = "chat", bool SubmitDefaults = false, bool ReplyButtons = false);
 
 /// <summary>
 /// Puts a question to the person watching a run and waits for their answer.

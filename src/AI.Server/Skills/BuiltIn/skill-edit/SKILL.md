@@ -15,7 +15,7 @@ tools: ["app_read","ask_user","app_skills"]
 3. Apply `change` and keep the conventions from `skill-create`: the id system, an `icon` from
    its list, one-line JSON schemas, and playbooks that list `tools` and have no `result`. Leave
    the `revision` and `enabled` lines to the application.
-4. Show only the changed lines as a short before and after, and call `ask_user` labelled "Save"
+4. Show only the changed lines as a short before and after, and call `ask_user` (answerStyle='buttons') labelled "Save"
    with "Save (Recommended)" and "Discard"; a typed answer is a further change. Dismissed saves;
    expired or interrupted discards.
 5. `app_skills` Save with the full content, the skill's scope and the revision you read. On a

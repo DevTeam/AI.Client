@@ -181,11 +181,11 @@ search snippets.
 9. Prepare one to three small representative calls from the server's actually discovered tool
    schemas, with concrete test inputs and observable expected results. Settle availability first
    with the check above and branch on its result:
-   - Tools found: ask with `ask_user` labelled "Functional test": "Would you like to test the
+   - Tools found: ask with `ask_user` (answerStyle='buttons') labelled "Functional test": "Would you like to test the
      imported MCP server's tools?" Offer "Run tests (Recommended)" and "Skip tests" with
      allowOther=true.
    - No tools found: the calls cannot happen in this run, so do not ask a question that implies
-     they can. Ask with `ask_user` labelled "Functional test": "The server is not in this run's
+     they can. Ask with `ask_user` (answerStyle='buttons') labelled "Functional test": "The server is not in this run's
      tool catalogue. Test it in a new chat?" Offer "Create a chat for the test (Recommended)",
      "Test after restarting the application" and "Skip tests", with allowOther=true. Explain that
      this run's catalogue is already fixed, so either a new chat or a restarted application is
@@ -226,7 +226,7 @@ search snippets.
     disposable objects created by the tests when authorized, using verified tool capabilities;
     report artifacts left behind.
 12. If a functional test still fails after the bounded correction/retry, explain the failure
-    and ask with `ask_user` labelled "Failed test": "Remove this import and find an alternative?"
+    and ask with `ask_user` (answerStyle='buttons') labelled "Failed test": "Remove this import and find an alternative?"
     Offer "Remove and find an alternative (Recommended)" and "Keep for manual correction",
     with allowOther=true and labels in the user's language. Name the exact server and explain
     that removal affects its global application definition and dependent projects/skills. A

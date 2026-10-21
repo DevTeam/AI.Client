@@ -33,7 +33,7 @@ never inherited: each branch has its own (`app_schedule`, the `chat-schedule-*` 
    unknown, explain that the provider may reject the request and prefer inheritance.
 4. Loosening approvals needs the person's word: a change to Full access, or from Ask to Approve for
    me — directly or because inheriting brings a looser mode — is applied only when the user asked
-   for exactly that in this conversation. Otherwise ask once with `ask_user`, saying that tool
+   for exactly that in this conversation. Otherwise ask once with `ask_user` (answerStyle='buttons'), saying that tool
    calls on this branch and the branches below it that inherit will run without asking (or after
    only a risk check); anything but a clear yes leaves the mode unchanged. Never loosen approvals to
    avoid a pending approval card. Making approvals stricter needs no confirmation.

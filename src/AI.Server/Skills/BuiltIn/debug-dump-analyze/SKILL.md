@@ -24,7 +24,7 @@ Keep this skill read-only: do not edit source or configuration, install debugger
 or change symbol settings globally. Never stop, kill or restart a process. Capturing a dump of a
 live process is done only when the user asks for it: name the process, its PID, the dump type
 (mini, heap, full), the expected size and that the process is suspended while it is written, in
-`ask_user`, and act only on an explicit affirmative answer; a declined, dismissed, expired or
+`ask_user` (answerStyle='buttons'), and act only on an explicit affirmative answer; a declined, dismissed, expired or
 interrupted answer captures nothing. Use a capture mode that does not terminate the process.
 
 1. Find the dump from `paths` or the message; otherwise search before reading the usual places
@@ -68,7 +68,7 @@ interrupted answer captures nothing. Use a capture mode that does not terminate 
    for next time (type, trigger such as an exception or a memory threshold, the tool, where it is
    written and the disk space it needs, and the data sensitivity of a full dump).
 8. When the user asks for a new capture of `processId` or a named process, prepare the exact
-   command, then confirm it with `ask_user` as described above; after an affirmative answer run it
+   command, then confirm it with `ask_user` (answerStyle='buttons') as described above; after an affirmative answer run it
    once and analyze the result.
 9. Report the dump (kind, time against now, version, symbols state), the faulting thread, deadlock
    or leak with the commands and output excerpts that show it, the cause or ranked hypotheses, the

@@ -50,7 +50,7 @@ tools: ["app_read","app_security","ask_user","run_skill"]
    re-read Settings and review that entry before deciding whether to retry. On failure, report
    what was saved and what was not; do not claim success. Read Settings after saving to verify
    the intended entries and flags.
-7. Offer "Compare connections (Recommended)" / "Finish" with `ask_user`: explain that the
+7. Offer "Compare connections (Recommended)" / "Finish" with `ask_user` (answerStyle='buttons'): explain that the
    comparison sends small synthetic tasks to the selected providers and may use paid tokens.
    Dismissed, declined, expired or interrupted finishes without testing. If selected, call
    `run_skill` id=settings-review-connections with the connection names as connections.

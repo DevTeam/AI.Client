@@ -1042,6 +1042,56 @@ public sealed partial class AppToolTests
         fixture.Broker.LastRequest.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task AskUserShouldAskAQuickQuestionAsReplyButtons()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("go", [1], null)]);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "go", text = "Apply the fix?", options = new[] { new { label = "Yes" }, new { label = "No" } } } },
+            answerStyle = "buttons"
+        });
+
+        fixture.Broker.LastRequest!.ReplyButtons.ShouldBeTrue();
+        result.GetProperty("answers")[0].GetProperty("selected")[0].GetString().ShouldBe("No");
+    }
+
+    [Theory]
+    // A click that sends at once has to be the whole answer: one question, one choice, a few buttons.
+    [InlineData("two questions")]
+    [InlineData("multiple")]
+    [InlineData("one option")]
+    [InlineData("picker")]
+    [InlineData("unknown style")]
+    public async Task AskUserShouldRefuseReplyButtonsForAQuestionOneClickCannotAnswer(string kind)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var options = new[] { new { label = "Yes" }, new { label = "No" } };
+        object arguments = kind switch
+        {
+            "two questions" => new
+            {
+                answerStyle = "buttons",
+                questions = new[] { new { id = "a", text = "One?", options }, new { id = "b", text = "Two?", options } }
+            },
+            "multiple" => new { answerStyle = "buttons", questions = new[] { new { id = "a", text = "One?", options, multiSelect = true } } },
+            "one option" => new { answerStyle = "buttons", questions = new[] { new { id = "a", text = "One?", options = options[..1] } } },
+            "picker" => new { answerStyle = "buttons", questions = new[] { new { id = "a", text = "When?", options, pickerKind = "date" } } },
+            _ => new { answerStyle = "chips", questions = new[] { new { id = "a", text = "One?", options } } }
+        };
+
+        var result = await AppFixture.CallAsync(session, "ask_user", arguments, expectError: true);
+
+        result.GetProperty("outcome").GetString().ShouldBe("invalid");
+        result.GetProperty("error").GetString()!.ShouldContain("answerStyle");
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
     [Theory]
     // Every limit here is about the card staying readable, and each one is reported in words the
     // model can act on rather than as a schema failure it can only repeat.

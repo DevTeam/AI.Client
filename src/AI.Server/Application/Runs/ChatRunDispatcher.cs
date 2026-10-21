@@ -1139,7 +1139,7 @@ public sealed class ChatRunDispatcher(
         var prompt = new UserPrompt(ids.Create(), request.Questions,
             timeout == Timeout.InfiniteTimeSpan ? 0 : (long)timeout.TotalSeconds,
             request.Presentation, request.SubmitDefaults,
-            timeout == Timeout.InfiniteTimeSpan ? null : clock.UtcNow.Add(timeout), defaultSubmitAt);
+            timeout == Timeout.InfiniteTimeSpan ? null : clock.UtcNow.Add(timeout), defaultSubmitAt, request.ReplyButtons);
         var unanswerable = new UserPromptResponse(prompt.Id, UserPromptOutcome.Interrupted, []);
         // Nobody to ask: a background run, or one already on its way out. Answered at once rather
         // than waited out, so a subtask reports what it could not decide instead of stalling on it.

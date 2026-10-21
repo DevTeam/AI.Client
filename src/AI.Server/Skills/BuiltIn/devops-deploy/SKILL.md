@@ -40,7 +40,7 @@ chat. Use configured credential stores and existing secret references. Report in
 Prepare a concrete, reviewable plan before mutation: exact account/context, environment,
 service/resources, immutable artifact or state, commands, expected effects, checks and recovery.
 Proceed only when the user's authorization covers that action and target. Otherwise show the
-completed plan and request the missing approval with `ask_user`; approval is the final decision,
+completed plan and request the missing approval with `ask_user` (answerStyle='buttons'); approval is the final decision,
 not an excuse to skip preparation. Do not ask again for an already authorized exact operation.
 Declined, expired, interrupted or dismissed approval applies nothing; keep the prepared result.
 An authorized source/configuration change never implicitly authorizes destructive replacement,

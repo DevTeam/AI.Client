@@ -60,7 +60,8 @@ Skill conventions:
   Put input fields inside `properties`, not at the schema root, for example:
   `parameters: {"type":"object","properties":{"path":{"type":"string"}},"additionalProperties":false}`.
 - A playbook body is numbered steps. Every change is confirmed with `ask_user` unless the exact
-  value came from the user; the recommended option comes first with " (Recommended)"; say what
+  value came from the user; the recommended option comes first with " (Recommended)"; a single
+  choice of 2-6 options is asked with answerStyle='buttons', so one click answers; say what
   dismissed, expired and interrupted answers do. A playbook whose result is something to read (a
   report, a list, a draft) says in its last step that the final answer contains that result in
   full; one that only changes something finishes with a one-line report without ids or revisions.
@@ -81,7 +82,7 @@ asks for it there by name.
   another chat's tests or build, an IDE, a service. A timeout, a hang or a locked file is not
   permission: it reports the process holding the file and names it, because freeing it is the
   user's decision. For a process the playbook itself started it names that exact process or PID in
-  `ask_user` and acts only on an explicit affirmative answer; a declined, dismissed, expired or
+  `ask_user` (answerStyle='buttons') and acts only on an explicit affirmative answer; a declined, dismissed, expired or
   interrupted answer leaves it running. Such a skill lists `ask_user` in `tools`.
 - Write the body in English. Quoted labels in it are examples: the calling model writes questions,
   options and answers in the user's language.
@@ -91,7 +92,7 @@ asks for it there by name.
    Project for this one), the inputs, and whether it may change data.
 3. Draft the full SKILL.md: frontmatter lines `id`, `name`, `icon`, `kind`, `description`,
    `parameters`, then `tools` or `result`, then `---` and the body.
-4. Show the draft in your answer and call `ask_user` labelled "Save" with "Save (Recommended)" and
+4. Show the draft in your answer and call `ask_user` (answerStyle='buttons') labelled "Save" with "Save (Recommended)" and
    "Change something"; a typed answer is the change to make, after which you ask again. Dismissed
    saves; expired or interrupted leaves the draft unsaved in your answer.
 5. `app_skills` Save with the content, the scope, revision 0 and enabled true. On a validation

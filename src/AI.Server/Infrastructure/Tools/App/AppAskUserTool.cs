@@ -112,6 +112,8 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         private const int MaxOptionLength = 80;
         private const int MaxDescriptionLength = 160;
         private const int MaxValueLength = 2000;
+        private const int MinReplyButtons = 2;
+        private const int MaxReplyButtons = 6;
 
         private const string DirectoryPath = "directory";
         private const string DirectoriesPath = "directories";
@@ -162,13 +164,15 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                         + "Automatic invitations must still expire. "
                         + "Mark recommended options with recommended=true. timeoutBehavior='submit_defaults' displays a countdown "
                         + "only when every question has explicit recommended options; use it for choices within a guide the user started, "
-                        + "never to start a guide, change settings, send messages or create objects. Editing stops automatic submission."
+                        + "never to start a guide, change settings, send messages or create objects. Editing stops automatic submission. "
+                        + "answerStyle='buttons' sends one click as the answer: for one single-choice question with 2-6 short options."
                 });
 
         [McpServerTool(Name = "ask_user", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false,
             UseStructuredContent = true, OutputSchemaType = typeof(AskUserResult))]
         private async Task<CallToolResult> AskAsync(AskUserQuestion[] questions, string presentation = "chat",
-            int? timeoutSeconds = null, string timeoutBehavior = "cancel", CancellationToken cancellationToken = default)
+            int? timeoutSeconds = null, string timeoutBehavior = "cancel", string answerStyle = "form",
+            CancellationToken cancellationToken = default)
         {
             var behavior = kindPolicies.Resolve(run.Kind == default ? ChatKind.Conversation : run.Kind).Behavior;
             if (behavior.ForceOverlayQuestions) presentation = "overlay";
@@ -183,6 +187,11 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                 || !question.MultiSelect && question.Options.Count(option => option.Recommended) != 1
                 || question.PathKind is not null || question.PickerKind is not null))
                 return reply.Reply(new AskUserResult([], "invalid", "Automatic answers require explicit recommended options for every question."), true);
+            if (answerStyle is not ("form" or "buttons"))
+                return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", "'answerStyle' must be 'form' or 'buttons'."), true);
+            var replyButtons = answerStyle == "buttons";
+            if (replyButtons && ValidateReplyButtons(questions, submitDefaults) is { } unfit)
+                return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again, or use answerStyle='form'.", unfit), true);
 
             // A background run has nobody watching it, so it is told so at once rather than made to wait
             // out a timeout no one will interrupt. The caller that started it is the one with a user.
@@ -193,7 +202,7 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                     + "conversation that started you can put it to the user."));
 
             var response = await broker().AskAsync(run,
-                new UserPromptRequest(questions.Select(Question).ToArray(), presentation, submitDefaults),
+                new UserPromptRequest(questions.Select(Question).ToArray(), presentation, submitDefaults, replyButtons),
                 timeoutSeconds == 0 ? Timeout.InfiniteTimeSpan
                     : timeoutSeconds is { } seconds ? TimeSpan.FromSeconds(seconds)
                     : presentation == "overlay" || submitDefaults ? TimeSpan.FromSeconds(30) : Patience, cancellationToken);
@@ -348,6 +357,24 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                 }
             }
 
+            return null;
+        }
+
+        /// <summary>
+        /// A click that sends at once only works for a question one click can answer: a single
+        /// question with one choice, and few enough short choices to be read as a row of buttons.
+        /// </summary>
+        private static string? ValidateReplyButtons(AskUserQuestion[] questions, bool submitDefaults)
+        {
+            if (questions.Length != 1) return "answerStyle='buttons' asks exactly one question.";
+            var question = questions[0];
+            if (question.MultiSelect) return "answerStyle='buttons' cannot use 'multiSelect': one click is the whole answer.";
+            if (!string.IsNullOrWhiteSpace(question.PathKind) || !string.IsNullOrWhiteSpace(question.PickerKind))
+                return "answerStyle='buttons' cannot use 'pathKind' or 'pickerKind'.";
+            var options = question.Options ?? [];
+            if (options.Length is < MinReplyButtons or > MaxReplyButtons)
+                return $"answerStyle='buttons' needs {MinReplyButtons}-{MaxReplyButtons} options.";
+            if (submitDefaults) return "answerStyle='buttons' cannot use timeoutBehavior='submit_defaults'.";
             return null;
         }
     }

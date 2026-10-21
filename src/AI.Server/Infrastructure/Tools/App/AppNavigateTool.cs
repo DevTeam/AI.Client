@@ -127,7 +127,7 @@ public sealed class AppNavigateTool(IProjectService projects, IChatService chats
                         ? "That control is not in the current view, so it cannot be shown yet. Do not stop the guide. "
                           + "Call action='targets' to see what is visible. Then, beside a visible control that leads there, say what is "
                           + "missing and what the person can do to bring it up (for example open a chat that has a reply, or send a first message). "
-                          + "Ask with ask_user (timeoutSeconds=0, timeoutBehavior='cancel') whether to continue once they have, "
+                          + "Ask with ask_user (timeoutSeconds=0, timeoutBehavior='cancel', answerStyle='buttons') whether to continue once they have, "
                           + "offering 'Done, continue', 'Create a demo chat' when the topic needs a conversation, 'Show something else' "
                           + "and 'Stop the guide'. For 'Create a demo chat' call app_navigate with target='chat.demo'. After 'Done', "
                           + "check action='targets' again and go on; if it is still missing, offer the other choices."

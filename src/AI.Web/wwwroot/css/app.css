@@ -5971,6 +5971,42 @@ textarea {
 .user-prompt-actions > button > span { display: inline-flex; align-items: baseline; line-height: 1.25; }
 .user-prompt-actions > button:not(.secondary-action) kbd { display: inline-block; margin-left: .35rem; padding: .2rem .3rem; border-color: var(--color-border-translucent); box-shadow: 0 1px 0 var(--color-border-translucent); background: var(--color-overlay-sunken); line-height: 1; }
 .user-prompt-error { margin: 0; color: var(--color-danger-text-strong); font-size: var(--font-size-md); }
+/* Reply buttons: each option is the answer and sends on a click. Every row ends in the composer's
+   send arrow, which fills in the send button's own colours under the pointer, so the row reads as
+   "send this" rather than "select this"; the number on its other edge is the key that does the same. */
+.user-prompt-replies { display: grid; gap: .4rem; }
+.user-prompt-reply {
+    display: flex; align-items: center; gap: .65rem; width: 100%; min-width: 0; margin: 0; padding: .5rem .5rem .5rem .6rem;
+    border: 1px solid var(--color-border); border-radius: var(--chat-card-action-radius);
+    background: var(--color-surface-raised); color: var(--color-text); text-align: left;
+    transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease, color var(--duration-fast) ease,
+        opacity var(--duration-fast) ease, transform var(--duration-base) ease;
+}
+.user-prompt-reply.is-recommended { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)); }
+.user-prompt-reply:hover:not(:disabled) { border-color: var(--color-accent); background: var(--color-accent-bg); color: var(--color-text-strong); }
+.user-prompt-reply:active:not(:disabled) { background: var(--color-accent-bg-active); transform: translateY(1px); }
+.user-prompt-reply:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.user-prompt-reply:disabled { cursor: default; }
+.user-prompt-reply:disabled:not(.is-chosen) { opacity: .45; }
+.user-prompt-reply.is-chosen { border-color: var(--color-accent); background: var(--color-accent-bg); color: var(--color-text-strong); opacity: 1; }
+.user-prompt .user-prompt-reply-key { flex: none; min-width: 1.35rem; text-align: center; color: var(--color-text-muted); }
+.user-prompt-reply-text { display: grid; flex: 1; gap: .1rem; min-width: 0; }
+.user-prompt-reply-label { font-size: var(--font-size-base); font-weight: 500; overflow-wrap: anywhere; }
+.user-prompt-reply-description { color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.user-prompt-reply-send {
+    display: inline-grid; flex: none; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: 50%;
+    background: var(--color-fill); color: var(--color-text-muted);
+    transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease, transform var(--duration-base) ease;
+}
+.user-prompt-reply-send .app-icon { width: .95rem; height: .95rem; }
+.user-prompt-reply:hover:not(:disabled) .user-prompt-reply-send,
+.user-prompt-reply:focus-visible .user-prompt-reply-send,
+.user-prompt-reply.is-chosen .user-prompt-reply-send { background: var(--color-inverse); color: var(--color-on-inverse); }
+.user-prompt-reply:hover:not(:disabled) .user-prompt-reply-send { transform: translateY(-1px); }
+.user-prompt-reply-other { display: block; }
+.user-prompt-reply-other .user-prompt-other-input { margin-top: 0; padding: .45rem .6rem; border-radius: var(--chat-card-action-radius); }
+.user-prompt-reply-hint { display: inline-flex; align-items: center; gap: .35rem; }
+.user-prompt-reply-hint .app-icon { width: .85rem; height: .85rem; flex: none; color: var(--color-accent-text); }
 /* A question on a timer counts down like a guide step: timer line, a bar draining along the bottom
    edge, and the last seconds warn — amber before it closes, accent and a glowing Continue before
    the recommended answers are sent. */

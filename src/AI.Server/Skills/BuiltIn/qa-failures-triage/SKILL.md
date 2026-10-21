@@ -77,7 +77,7 @@ complete coverage from absence of findings. Compare final status with the baseli
 only task-created scratch artifacts; preserve unrelated work. A rerun that cannot start because
 another process holds the test binaries is blocked, not failed: report the holding process and
 name it. Never stop, kill or restart a process this run did not start; for a test host this run
-started, call `ask_user` naming it or its PID and act only on an explicit affirmative answer,
+started, call `ask_user` (answerStyle='buttons') naming it or its PID and act only on an explicit affirmative answer,
 while a declined, dismissed, expired or interrupted answer leaves it running.
 
 8. Report grouped causes or ranked hypotheses, reproduction commands/attempts, evidence,

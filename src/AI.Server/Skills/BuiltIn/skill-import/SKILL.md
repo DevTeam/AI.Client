@@ -107,7 +107,7 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
    state and dependencies. This verifies the installation, not its runtime behavior. Do not
    execute the imported skill before the user agrees to a functional test.
 9. Prepare a small representative test with sample inputs and an observable expected result.
-   Ask with `ask_user` labelled "Functional test": "Would you like to test the imported skill?"
+   Ask with `ask_user` (answerStyle='buttons') labelled "Functional test": "Would you like to test the imported skill?"
    Offer "Run test (Recommended)" and "Skip test" with allowOther=true. Describe the concrete
    test, any temporary files, external requests or model cost it requires. Write the question
    and options in the user's language. Reuse an explicit testing decision already supplied in
@@ -133,7 +133,7 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
     retry the affected test once; do not loosen policies or hide a failure. Remove only disposable
     artifacts created by this test when authorized, and report anything left for inspection.
 12. If a functional test still fails after the bounded correction/retry, explain the failure
-    and ask with `ask_user` labelled "Failed test": "Remove this import and find an alternative?"
+    and ask with `ask_user` (answerStyle='buttons') labelled "Failed test": "Remove this import and find an alternative?"
     Offer "Remove and find an alternative (Recommended)" and "Keep for manual correction",
     with allowOther=true and labels in the user's language. Name the exact skill and scope
     affected. A blocked or skipped test is not evidence of failed behavior: explain its missing

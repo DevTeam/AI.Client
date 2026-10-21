@@ -42,7 +42,7 @@ Remove task-created scratch files when finished.
    another chat's run, a build, an IDE — is a blocked check: report the holding process and name
    it, because freeing it is the user's decision. Never stop, kill or restart a process this run
    did not start. For a test host this run started that has stalled and holds a locked report
-   file, call `ask_user` naming that process or PID and act only on an explicit affirmative
+   file, call `ask_user` (answerStyle='buttons') naming that process or PID and act only on an explicit affirmative
    answer; a declined, dismissed, expired or interrupted answer leaves it running.
 3. If an independent test job is already running and exposes a known local PID or a read-granted
    report path, use one bounded `trigger_wait` call when offered for process exit or file change
@@ -57,6 +57,6 @@ Remove task-created scratch files when finished.
    each distinct failure its representative test name, assertion or error and file link. Group
    repeated failures by cause and retain the full report when available. Point out a failure
    that looks environmental (missing tool, port, network) rather than a bug.
-6. When a test failed, call `ask_user` labelled "Failures" with "Fix them (Recommended)" and "Only
+6. When a test failed, call `ask_user` (answerStyle='buttons') labelled "Failures" with "Fix them (Recommended)" and "Only
    report"; dismissed, expired or interrupted only reports. On fix, run `code-bug-fix` with
    `run_skill`, passing the failures as `problem`.

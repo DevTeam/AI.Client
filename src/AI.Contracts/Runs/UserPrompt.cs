@@ -15,12 +15,16 @@ namespace AI.Contracts.Runs;
 /// <see cref="UserPromptOutcome.Expired"/>, because a person who walked away has not refused.
 /// A nonpositive value with no ExpiresAt means it waits for an answer or cancellation without a timer.
 /// </param>
+/// <param name="ReplyButtons">
+/// The single question's options are drawn as reply buttons: pressing one is the answer, so the card
+/// has no Answer button. Only a single-choice question with plain options is asked this way.
+/// </param>
 public sealed record UserPrompt(
     Guid Id,
     IReadOnlyList<UserPromptQuestion> Questions,
     long TimeoutSeconds,
     string Presentation = "chat", bool SubmitDefaults = false, DateTimeOffset? ExpiresAt = null,
-    DateTimeOffset? DefaultSubmitAt = null);
+    DateTimeOffset? DefaultSubmitAt = null, bool ReplyButtons = false);
 
 /// <param name="Text">
 /// Question text. An inline subset of markdown is rendered — emphasis, code spans, links — because

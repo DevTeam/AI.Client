@@ -46,7 +46,7 @@ Keep this skill read-only: do not edit configuration, restart services, change i
 rotate secrets, trigger jobs, restore over data or deploy. Never stop, kill or restart a process
 this run did not start — an application, a service, another chat's job. Freeing a stuck process is
 part of the proposed recovery plan, not something this diagnostic does; if the user asks for it,
-name the exact process or PID in `ask_user` and act only on an explicit affirmative answer, while
+name the exact process or PID in `ask_user` (answerStyle='buttons') and act only on an explicit affirmative answer, while
 a declined, dismissed, expired or interrupted answer leaves it running. Use queries with no live side effects.
 If a diagnostic would mutate state, report that limitation and the proposed next action instead.
 

@@ -43,7 +43,7 @@ run database migrations, stage, commit, checkout, stash, reset or push as part o
    holds the output binaries or a locked file — another chat's tests or build, an IDE — is such an
    environmental blocker, not a source defect: report the holding process and name it, because
    freeing it is the user's decision. Never stop, kill or restart a process this run did not
-   start. For a build this run started that has hung, call `ask_user` naming that process or PID
+   start. For a build this run started that has hung, call `ask_user` (answerStyle='buttons') naming that process or PID
    and act only on an explicit affirmative answer; a declined, dismissed, expired or interrupted
    answer leaves it running.
 4. Group diagnostics by root cause, then fix upstream causes before cascading errors. Match

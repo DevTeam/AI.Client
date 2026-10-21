@@ -17,7 +17,7 @@ tools: ["app_schedule","app_read","app_chats","ask_user"]
    archive the chat, follow chat-archive: archiving skips a chat with any branch schedule unless
    the user explicitly asks to remove every schedule first. A schedule removed for archiving is
    not restored by UndoArchive.
-3. Confirm with one `ask_user` question that names the schedule in words, the next run and what
+3. Confirm with one `ask_user` (answerStyle='buttons') question that names the schedule in words, the next run and what
    stays: "Remove the schedule (Recommended)" keeps every message and branch and stops future runs;
    "Delete the chat" removes it with its history; "Pause instead" keeps the schedule for later.
    Skip the question when the user's request already says exactly which and that they are sure.

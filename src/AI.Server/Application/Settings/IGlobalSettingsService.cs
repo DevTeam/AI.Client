@@ -24,6 +24,9 @@ public interface IGlobalSettingsService
     /// <summary>Applied on its own, like a theme: the switches are not part of the connections editor's save.</summary>
     Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken);
 
+    /// <summary>Applied on its own, like the automation switches; takes effect for tool sessions opened afterwards.</summary>
+    Task<GlobalSettings> SetSandboxAsync(ToolSandboxSettings sandbox, CancellationToken cancellationToken);
+
     /// <summary>
     /// Asks the endpoint in <paramref name="request"/> for the models it serves through
     /// <c>GET /v1/models</c>. The key typed in the request wins; otherwise the credential saved for

@@ -55,6 +55,6 @@ public sealed class ToolDefaultDecisionTests
     {
         _defaults.GetDecision(DefaultMcpServer.Id, "new_tool").ShouldBe("Ask");
         _defaults.GetDecision(Guid.NewGuid(), "read_text_file").ShouldBe("Ask");
-        _defaults.GetDecision(CSharpMcpServer.Id, "cs_run").ShouldBe("Ask");
+        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run").ShouldBe("Ask");
     }
 }

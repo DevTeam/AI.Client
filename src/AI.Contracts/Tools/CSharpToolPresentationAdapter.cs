@@ -4,9 +4,10 @@ using System.Text.Json;
 namespace AI.Contracts.Tools;
 
 /// <summary>
-/// The optional C# scripting server. A script runs inside the server's own process and is not
-/// sandboxed — it reaches whatever that process can, exactly like <c>process_run</c> — so a call is
-/// marked as dangerous as a command. The result is the script's own: what it returned, what it
+/// The built-in server's C# script runner, <c>cs_run</c>. A script runs inside the server's own
+/// process and reaches whatever that process can, exactly like <c>process_run</c>, so a call is
+/// marked as dangerous as a command. Calls recorded under the retired optional C# server's prefix
+/// in older chat history are described the same way. The result is the script's own: what it returned, what it
 /// declared, what it printed and what the compiler said about it, never a restatement of the code
 /// that was sent.
 /// </summary>
@@ -19,7 +20,8 @@ public sealed class CSharpToolPresentationAdapter : BuiltInToolPresentationAdapt
 
     protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "cs_run" };
 
-    protected override string Prefix => ToolRef.CSharpPrefix;
+    protected override bool HandlesPrefix(string prefix) =>
+        prefix is ToolRef.BuiltInPrefix or ToolRef.LegacyCSharpPrefix;
 
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
     {

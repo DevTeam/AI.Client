@@ -72,7 +72,8 @@ public sealed class GlobalSettingsService(
                 };
             })),
             settings.ToolPolicies,
-            settings.ChatAutomation ?? new ChatAutomationSettings());
+            settings.ChatAutomation ?? new ChatAutomationSettings(),
+            settings.Sandbox ?? new ToolSandboxSettings());
     }
 
     public async Task<GlobalSettings> SaveAsync(
@@ -126,7 +127,7 @@ public sealed class GlobalSettingsService(
         var stored = await repository.LoadAsync(cancellationToken);
         connections = connections.Select(item =>
             KeepDetection(item, stored.Connections.SingleOrDefault(current => current.Id == item.Id))).ToArray();
-        var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation);
+        var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation, stored.Sandbox);
         await repository.SaveAsync(settings, cancellationToken);
         return await GetAsync(cancellationToken);
     }
@@ -205,7 +206,7 @@ public sealed class GlobalSettingsService(
     public async Task<GlobalSettings> RemoveMcpServerAsync(Guid id, McpServerSettings expected,
         CancellationToken cancellationToken)
     {
-        if (id == DefaultMcpServer.Id || id == AppMcpServer.Id || id == CSharpMcpServer.Id)
+        if (id == DefaultMcpServer.Id || id == AppMcpServer.Id)
             throw new InvalidOperationException("Host-provided MCP servers cannot be removed. Disable the server instead.");
         await repository.UpdateAsync((stored, _) =>
         {
@@ -314,6 +315,13 @@ public sealed class GlobalSettingsService(
     {
         ArgumentNullException.ThrowIfNull(automation);
         await repository.UpdateAsync((settings, _) => Task.FromResult(settings with { ChatAutomation = automation }), cancellationToken);
+        return await GetAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSettings> SetSandboxAsync(ToolSandboxSettings sandbox, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sandbox);
+        await repository.UpdateAsync((settings, _) => Task.FromResult(settings with { Sandbox = sandbox }), cancellationToken);
         return await GetAsync(cancellationToken);
     }
 

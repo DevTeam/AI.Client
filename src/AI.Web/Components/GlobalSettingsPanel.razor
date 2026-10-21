@@ -187,6 +187,15 @@
                                 </details>
                             </div>
                         </section>
+                        <section class="settings-group" aria-labelledby="settings-tools">
+                            <h3 id="settings-tools">Tools</h3>
+                            <div class="settings-card">
+                                <label @attributes="@(ControlHints.Attributes("settings.tools.sandbox"))" class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Run commands and C# scripts in a sandbox</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.tools.sandbox")</span></span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_sandbox.Enabled" disabled="@(!_loaded)" @onchange="args => SetSandboxAsync(_sandbox with { Enabled = args.Value is true })" />
+                                </label>
+                            </div>
+                        </section>
                         <CorrectionLanguagesSettings />
                         <section class="settings-group" aria-labelledby="settings-guide">
                             <h3 id="settings-guide">Application guide</h3>
@@ -355,7 +364,7 @@
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <SettingsFilterField @bind-Value="_mcpFilter" Placeholder="Filter servers and tools" Shown="@ShownMcpServers.Count" Total="@_globalMcpServers.Count" Hotkey="@(_mcpTab != McpTab.Tools || GetSelectedMcpServer() is null)" Submitted="() => SelectFirst(ShownMcpServers.Select(item => item.Id), SelectFilteredMcpServer)" />
-                            <nav class="settings-list">@if (_globalMcpServers.Count > 0 && ShownMcpServers.Count == 0) { <p class="empty-hint">No servers or tools match “@_mcpFilter.Trim()”.</p> }@foreach (var serverItem in ShownMcpServers) { var itemProblems = McpProblemCount(serverItem); <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectFilteredMcpServer(serverItem.Id)"><span><SettingsFilterText Text="@serverItem.Name" Query="@_mcpFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small>@if (MatchingToolCount(serverItem) is > 0 and var toolMatches) { <span class="settings-filter-tools">@Plural(toolMatches, "matching tool")</span> } else { <SettingsFilterText Text="@McpServerStatus(serverItem)" Query="@_mcpFilter" /> }</small> }</button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button>@if (serverItem.Id != CSharpMcpServer.Id) { <button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button> }</span> }</div> }</nav>
+                            <nav class="settings-list">@if (_globalMcpServers.Count > 0 && ShownMcpServers.Count == 0) { <p class="empty-hint">No servers or tools match “@_mcpFilter.Trim()”.</p> }@foreach (var serverItem in ShownMcpServers) { var itemProblems = McpProblemCount(serverItem); <div class="settings-list-item @(serverItem.Id == _selectedMcpServerId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectFilteredMcpServer(serverItem.Id)"><span><SettingsFilterText Text="@serverItem.Name" Query="@_mcpFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small>@if (MatchingToolCount(serverItem) is > 0 and var toolMatches) { <span class="settings-filter-tools">@Plural(toolMatches, "matching tool")</span> } else { <SettingsFilterText Text="@McpServerStatus(serverItem)" Query="@_mcpFilter" /> }</small> }</button>@if (serverItem.Id == _selectedMcpServerId && !IsHostProvided(serverItem.Id)) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without secrets)" aria-label="Copy MCP server as JSON" @onclick="() => CopyMcpServerAsync(serverItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove MCP server" aria-label="Remove MCP server" @onclick="RemoveGlobalMcpServer"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button class="icon-action settings-list-add" type="button" title="Add MCP server" aria-label="Add MCP server" @onclick="AddGlobalMcpServer"><AppIcon Name="plus" /></button>
                         </div>
                         @if (GetSelectedMcpServer() is { } server)
@@ -546,7 +555,7 @@
         _appliedSelection = LinkSelection;
         var tool = AI.Contracts.Tools.ToolRef.Parse(ToolToEdit);
         Guid? serverId = tool.IsBuiltIn ? DefaultMcpServer.Id : tool.IsApp ? AppMcpServer.Id
-            : tool.IsCSharp ? CSharpMcpServer.Id
+            : tool.IsLegacyCSharp && tool.Name == LegacyCSharpMcpServer.ScriptToolName ? DefaultMcpServer.Id
             : tool.ServerPrefix.Length > 6 && tool.ServerPrefix.StartsWith("mcp_", StringComparison.Ordinal)
                 && Guid.TryParse(tool.ServerPrefix[4..^2], out var id) ? id : null;
         var matches = _toolPolicies.Where(item => item.Name == tool.Name
@@ -691,6 +700,7 @@
         await ClientSettings.UpdateAsync(current => current with { CompletedGuideTopics = [], GuideLastOfferedAt = DateTimeOffset.UtcNow });
     }
     private ChatAutomationSettings _chatAutomation = new();
+    private ToolSandboxSettings _sandbox = new();
     private ElementReference _drawer;
     private IJSObjectReference? _transferModule;
     private IJSObjectReference? _transferSubscription;
@@ -744,6 +754,7 @@
         _toolPolicies.Clear();
         _toolPolicies.AddRange(settings.ToolPolicies.Select(McpToolPolicyEditor.From));
         _chatAutomation = settings.ChatAutomation ?? new ChatAutomationSettings();
+        _sandbox = settings.Sandbox ?? new ToolSandboxSettings();
         // A save reloads, and switching between Connections and MCP saves: keep the selection
         // where it was instead of jumping back to the first item every time.
         if (_connections.All(item => item.Id != _selectedConnectionId)) _selectedConnectionId = _connections.FirstOrDefault()?.Id;
@@ -931,6 +942,22 @@
         {
             _chatAutomation = previous;
             Notifications.ShowError($"Could not save the model helper. {DescribeHostFailure(error)}");
+        }
+    }
+
+    /// <summary>Applied on click like the model helpers, and stored on the Host.</summary>
+    private async Task SetSandboxAsync(ToolSandboxSettings sandbox)
+    {
+        var previous = _sandbox;
+        _sandbox = sandbox;
+        try
+        {
+            _sandbox = (await GlobalSettingsApi.SetSandboxAsync(sandbox, CancellationToken.None)).Sandbox ?? sandbox;
+        }
+        catch (Exception error) when (IsHostFailure(error))
+        {
+            _sandbox = previous;
+            Notifications.ShowError($"Could not save the sandbox setting. {DescribeHostFailure(error)}");
         }
     }
 

@@ -15,9 +15,9 @@ using Xunit;
 /// the project actually ships, the same way the server starts it.
 /// </summary>
 /// <remarks>
-/// These two hosts cannot be checked the way the others are. Their setups live in their own
-/// executables as <c>internal</c> with no test visibility, and their graphs reach members that are
-/// internal to their assembly, so neither linking the setup nor resolving it from the test assembly
+/// The built-in host cannot be checked the way the others are. Its setup lives in its own
+/// executable as <c>internal</c> with no test visibility, and its graph reaches members that are
+/// internal to its assembly, so neither linking the setup nor resolving it from the test assembly
 /// compiles. Running the host is the honest substitute and the stronger statement: opening a session
 /// makes the host build its whole graph, and every tool factory in it takes <see cref="IFileSystem"/>
 /// and <see cref="IPath"/>, so a session that lists tools is a graph that resolved the contract.
@@ -39,16 +39,15 @@ public sealed class McpHostCompositionTests
     }
 
     [Fact]
-    public async Task TheCSharpHostResolvesTheFileSystemContractItsScriptRunnerTakes()
+    public async Task TheBuiltInHostRunsCSharpScriptsThroughTheFileSystemContract()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "mcp-csharp");
-        await using var session = await OpenAsync("mcp-csharp", directory, Token);
+        var directory = Path.Combine(AppContext.BaseDirectory, "mcp");
+        await using var session = await OpenAsync("mcp", directory, Token);
 
-        var tool = session.Tools.ShouldHaveSingleItem();
-        tool.OriginalName.ShouldBe("cs_run");
+        var tool = session.Tools.Single(item => item.OriginalName == "cs_run");
 
-        // The call reaches ScriptRunner, which takes the contract; a graph that could not resolve it
-        // would not have produced this tool, and the value proves the runner really ran.
+        // The call reaches the script runner, which takes the contract; a graph that could not
+        // resolve it would not have produced this tool, and the value proves the runner really ran.
         var result = await session.CallAsync(tool, "{\"code\":\"40 + 2\"}", null, Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent!.Value.GetProperty("returnValue").GetString().ShouldBe("42");
@@ -59,7 +58,7 @@ public sealed class McpHostCompositionTests
 
     private static McpServerSettings Server(string folder, string directory) =>
         new(Guid.NewGuid(), folder, "Stdio", true, "Ask", null,
-            "AI.Mcp." + (folder == "mcp" ? "BuiltIn" : "CSharp") + (OperatingSystem.IsWindows() ? ".exe" : ""),
+            "AI.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : ""),
             [], directory, [], false);
 
     private static ExternalToolSessionFactory Factory() =>

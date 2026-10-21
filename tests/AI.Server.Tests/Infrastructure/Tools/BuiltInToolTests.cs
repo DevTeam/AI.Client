@@ -5,11 +5,14 @@ using AI.Mcp.BuiltIn.Web;
 
 namespace AI.Infrastructure.Tests.Tools;
 
+using AI.Application.Settings;
 using AI.Application.Tools;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Processes;
+using AI.Contracts.Settings;
 using AI.Contracts.Tools;
 using AI.Infrastructure.Tools;
+using Moq;
 using Shouldly;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -83,7 +86,7 @@ public sealed class BuiltInToolTests
         [
             "process_run", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
-            "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create"
+            "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create", "cs_run"
         ], ignoreOrder: true);
         var tool = session.Tools.Single(item => item.OriginalName == "process_run");
         tool.SchemaHash.Length.ShouldBe(64);
@@ -135,7 +138,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary)
+            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary, SandboxOff())
                              .OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true), timeout.Token))
             {
                 var description = session.Tools.Single(item => item.OriginalName == "list_allowed_directories")
@@ -1007,7 +1010,16 @@ public sealed class BuiltInToolTests
     }
 
     private static DefaultToolSessionFactory CreateFactory() =>
-        new(new ToolResultModelProjector(), NewTemporaryDirectory());
+        new(new ToolResultModelProjector(), NewTemporaryDirectory(), SandboxOff());
+
+    /// <summary>Global settings with the sandbox off, as a fresh installation has them.</summary>
+    private static IGlobalSettingsRepository SandboxOff()
+    {
+        var settings = new Mock<IGlobalSettingsRepository>();
+        settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GlobalSettings([], [], []));
+        return settings.Object;
+    }
 
     /// <summary>The scratch directory over the real file system, as these integration tests drive it.</summary>
     private static ChatTemporaryDirectory NewTemporaryDirectory() =>

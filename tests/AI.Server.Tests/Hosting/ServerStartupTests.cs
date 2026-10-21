@@ -141,14 +141,16 @@ public sealed class ServerStartupTests
             using var http = new HttpClient { BaseAddress = server.Address };
             using var health = await http.GetAsync("/api/health", token);
             health.EnsureSuccessStatusCode();
-            var command = "AI.Mcp.CSharp" + (OperatingSystem.IsWindows() ? ".exe" : "");
-            var settings = new McpServerSettings(Guid.NewGuid(), "CSharp", "Stdio", true, "Ask", null,
-                command, [], Path.Combine(AppContext.BaseDirectory, "mcp-csharp"), [], false);
+            // The built-in server's executable stands in for any external stdio server here.
+            var command = "AI.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : "");
+            var settings = new McpServerSettings(Guid.NewGuid(), "External", "Stdio", true, "Ask", null,
+                command, [], Path.Combine(AppContext.BaseDirectory, "mcp"), [], false);
             using var response = await http.PostAsJsonAsync("/api/mcp/tools/discover",
                 new DiscoverMcpToolsRequest(settings), token);
             response.EnsureSuccessStatusCode();
             var tools = await response.Content.ReadFromJsonAsync<McpToolInfo[]>(token);
-            tools.ShouldNotBeNull().ShouldHaveSingleItem().Name.ShouldBe("cs_run");
+            tools.ShouldNotBeNull().ShouldContain(tool => tool.Name == "cs_run");
+            tools.ShouldAllBe(tool => tool.ServerId == settings.Id);
         }
         finally
         {

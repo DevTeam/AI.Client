@@ -105,12 +105,15 @@
     private string? GetSummary() => _stats.Calls == 0 ? null
         : $"{_stats.Calls} {(_stats.Calls == 1 ? "call" : "calls")}" + (_stats.Count(ChatToolOutcome.Failed) > 0
             ? $" · {_stats.Count(ChatToolOutcome.Failed)} {(_stats.Count(ChatToolOutcome.Failed) == 1 ? "error" : "errors")}" : "");
-    /// <summary>The tile of a tool says where it comes from: the Host, the application, C# or an MCP server.</summary>
+    /// <summary>
+    /// The tile of a tool says where it comes from: the Host, the application or an MCP server. C#
+    /// scripts keep their own icon, whether recorded under the built-in server or the retired one.
+    /// </summary>
     private static string ServerIcon(string callName) => AI.Contracts.Tools.ToolRef.Parse(callName) switch
     {
+        { IsCSharpScript: true } => "code",
         { IsBuiltIn: true } => "tool",
         { IsApp: true } => "zap",
-        { IsCSharp: true } => "code",
         _ => "mcp"
     };
     private static string OutcomeLabel(ChatToolOutcome outcome) => outcome switch

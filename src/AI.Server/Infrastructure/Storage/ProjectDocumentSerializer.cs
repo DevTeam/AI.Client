@@ -1,5 +1,7 @@
 using AI.Application.Projects;
+using AI.Contracts.Settings;
 using AI.Domain.Projects;
+using AI.Infrastructure.Settings;
 using System.Text.Json;
 // ReSharper disable UseCollectionExpression
 
@@ -82,7 +84,10 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                 document.UpdatedAt);
         }
 
-        foreach (var server in document.McpServers)
+        // The retired C# scripting server's binding goes; whether it was switched off for this
+        // project decides whether its cs_run policies move to the built-in server as Deny.
+        var legacyCSharp = document.McpServers.SingleOrDefault(server => server.Id == LegacyCSharpMcpServer.Id);
+        foreach (var server in document.McpServers.Where(server => server.Id != LegacyCSharpMcpServer.Id))
         {
             project.AddMcpServer(
                 new McpServerBinding(
@@ -93,7 +98,23 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
                 document.UpdatedAt);
         }
 
-        foreach (var policy in document.ToolPolicies)
+        var policies = legacyCSharp is not null || document.ToolPolicies.Any(policy => policy.ServerId == LegacyCSharpMcpServer.Id)
+            ? LegacyCSharpToolMigration.Migrate(document.ToolPolicies, legacyCSharp is { Enabled: false },
+                policy => (policy.ServerId, policy.Name, policy.SchemaHash),
+                (policy, deny) => policy with
+                {
+                    ServerId = DefaultMcpServer.Id, Decision = deny ? ToolPolicyDecision.Deny : policy.Decision
+                },
+                schemaHash => new ToolPolicyDocument(DefaultMcpServer.Id, LegacyCSharpMcpServer.ScriptToolName,
+                    schemaHash, ToolPolicyDecision.Deny, null, null)).ToArray()
+            : document.ToolPolicies;
+        // A project policy needs its server bound to the project, so moved policies bring the
+        // built-in server's binding along, switched on like the one the security editor adds.
+        if (policies.Any(policy => policy.ServerId == DefaultMcpServer.Id)
+            && project.McpServers.All(server => server.Id.Value != DefaultMcpServer.Id))
+            project.AddMcpServer(new McpServerBinding(new McpServerId(DefaultMcpServer.Id),
+                DefaultMcpServer.Settings.Name, McpTransportKind.Stdio, true), document.UpdatedAt);
+        foreach (var policy in policies)
         {
             project.SetToolPolicy(
                 new ToolPolicy(

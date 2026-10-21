@@ -19,6 +19,7 @@ public interface IGlobalSettingsApi
     Task SetMcpCredentialAsync(Guid id, string? value, CancellationToken cancellationToken);
     Task<GlobalSettings> RemoveToolPolicyAsync(Guid serverId, string name, string schemaHash, CancellationToken cancellationToken);
     Task<GlobalSettings> SetChatAutomationAsync(ChatAutomationSettings automation, CancellationToken cancellationToken);
+    Task<GlobalSettings> SetSandboxAsync(ToolSandboxSettings sandbox, CancellationToken cancellationToken);
 
     /// <summary>The global command rules, and those of the project and chat when they are given.</summary>
     Task<IReadOnlyList<CommandRule>> GetCommandRulesAsync(Guid? projectId, Guid? chatId, CancellationToken cancellationToken);

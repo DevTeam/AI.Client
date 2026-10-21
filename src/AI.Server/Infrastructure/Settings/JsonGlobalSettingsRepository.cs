@@ -17,14 +17,35 @@ public sealed class JsonGlobalSettingsRepository(IFileSystem fileSystem, IGlobal
         var json = await fileSystem.ReadTextAsync(paths.SettingsPath, cancellationToken);
         var settings = json is null ? new GlobalSettings([], [], []) :
             JsonSerializer.Deserialize<GlobalSettings>(json, Options) ?? throw new JsonException("Settings are empty.");
-        settings = settings with { ToolPolicies = settings.ToolPolicies ?? [] };
+        settings = MigrateLegacyCSharpServer(settings with { ToolPolicies = settings.ToolPolicies ?? [] });
         // The Host's own servers are always present in the settings the rest of the application
         // reads, whether or not the stored document has caught up with them yet.
         var servers = settings.McpServers;
         if (servers.All(server => server.Id != DefaultMcpServer.Id)) servers = [DefaultMcpServer.Settings, .. servers];
         if (servers.All(server => server.Id != AppMcpServer.Id)) servers = [.. servers, AppMcpServer.Settings];
-        if (servers.All(server => server.Id != CSharpMcpServer.Id)) servers = [.. servers, CSharpMcpServer.Settings];
         return ReferenceEquals(servers, settings.McpServers) ? settings : settings with { McpServers = servers };
+    }
+
+    /// <summary>
+    /// Drops the retired C# scripting server's entry and moves its <c>cs_run</c> policies to the
+    /// built-in server, denying the tool there when the old server was switched off or denied.
+    /// </summary>
+    private static GlobalSettings MigrateLegacyCSharpServer(GlobalSettings settings)
+    {
+        var legacy = settings.McpServers.SingleOrDefault(server => server.Id == LegacyCSharpMcpServer.Id);
+        if (legacy is null && settings.ToolPolicies.All(policy => policy.ServerId != LegacyCSharpMcpServer.Id))
+            return settings;
+
+        var denied = legacy is { Enabled: false } or { Policy: "Deny" };
+        return settings with
+        {
+            McpServers = settings.McpServers.Where(server => server.Id != LegacyCSharpMcpServer.Id).ToArray(),
+            ToolPolicies = LegacyCSharpToolMigration.Migrate(settings.ToolPolicies, denied,
+                policy => (policy.ServerId, policy.Name, policy.SchemaHash),
+                (policy, deny) => policy with { ServerId = DefaultMcpServer.Id, Decision = deny ? "Deny" : policy.Decision },
+                schemaHash => new McpToolPolicySettings(DefaultMcpServer.Id, LegacyCSharpMcpServer.ScriptToolName, schemaHash,
+                    "Deny", McpToolPolicySettings.DefaultMaxCallsPerRun, McpToolPolicySettings.DefaultTimeoutSeconds))
+        };
     }
 
     public async Task SaveAsync(GlobalSettings settings, CancellationToken cancellationToken)

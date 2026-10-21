@@ -22,8 +22,11 @@ public abstract class BuiltInToolPresentationAdapter : IToolPresentationAdapter
     public bool CanHandle(ToolRef tool)
     {
         ArgumentNullException.ThrowIfNull(tool);
-        return tool.ServerPrefix == Prefix && Names.Contains(tool.Name);
+        return HandlesPrefix(tool.ServerPrefix) && Names.Contains(tool.Name);
     }
+
+    /// <summary>Whether a call under <paramref name="prefix"/> is one of this adapter's server's.</summary>
+    protected virtual bool HandlesPrefix(string prefix) => prefix == Prefix;
 
     public abstract ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments);
 

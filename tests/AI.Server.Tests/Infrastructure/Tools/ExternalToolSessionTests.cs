@@ -42,12 +42,12 @@ public sealed class ExternalToolSessionTests
         var address = app.Services.GetRequiredService<IServer>().Features
             .Get<IServerAddressesFeature>()!.Addresses.Single();
         using var http = new HttpClient { BaseAddress = new Uri(address) };
-        var directory = Path.Combine(AppContext.BaseDirectory, "mcp-csharp");
-        var server = Server("Stdio", "AI.Mcp.CSharp" + (OperatingSystem.IsWindows() ? ".exe" : ""), directory);
+        var server = Server("Stdio", BuiltInCommand, BuiltInDirectory);
         using var response = await http.PostAsJsonAsync("/api/mcp/tools/discover", new DiscoverMcpToolsRequest(server), Token);
         response.EnsureSuccessStatusCode();
         var tools = await response.Content.ReadFromJsonAsync<McpToolInfo[]>(Token);
-        tools.ShouldNotBeNull().ShouldHaveSingleItem().Name.ShouldBe("cs_run");
+        tools.ShouldNotBeNull().ShouldContain(tool => tool.Name == "cs_run");
+        tools.ShouldAllBe(tool => tool.ServerId == server.Id);
         repository.VerifyNoOtherCalls();
 
         using var denied = await http.PostAsJsonAsync("/api/mcp/tools/discover",
@@ -63,11 +63,11 @@ public sealed class ExternalToolSessionTests
     [Fact]
     public async Task ConnectsConfiguredStdioServersAndRoutesIdenticalToolNames()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "mcp-csharp");
-        var command = "AI.Mcp.CSharp" + (OperatingSystem.IsWindows() ? ".exe" : "");
-        File.Exists(Path.Combine(directory, command)).ShouldBeTrue();
-        var first = Server("Stdio", command, directory);
-        var second = first with { Id = Guid.NewGuid(), Name = "Second CSharp" };
+        // The built-in server's executable, configured twice, stands in for two external stdio servers
+        // that declare the same tool names.
+        File.Exists(Path.Combine(BuiltInDirectory, BuiltInCommand)).ShouldBeTrue();
+        var first = Server("Stdio", BuiltInCommand, BuiltInDirectory);
+        var second = first with { Id = Guid.NewGuid(), Name = "Second external" };
         var repository = new Mock<IGlobalSettingsRepository>();
         repository.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([], [first, second], []));
@@ -83,10 +83,11 @@ public sealed class ExternalToolSessionTests
 
         await using var session = await factory.OpenAsync([], new HashSet<Guid> { first.Id, second.Id },
             ToolRunContext.None, Token);
-        session.Tools.Count.ShouldBe(2);
-        session.Tools.Select(tool => tool.ModelDefinition.Name).Distinct().Count().ShouldBe(2);
-        session.Tools.ShouldAllBe(tool => tool.OriginalName == "cs_run");
-        var tool = session.Tools.Single(tool => tool.ServerId == first.Id);
+        var scripts = session.Tools.Where(tool => tool.OriginalName == "cs_run").ToArray();
+        scripts.Length.ShouldBe(2);
+        scripts.Select(tool => tool.ServerId).ShouldBe([first.Id, second.Id], ignoreOrder: true);
+        session.Tools.Select(tool => tool.ModelDefinition.Name).Distinct().Count().ShouldBe(session.Tools.Count);
+        var tool = scripts.Single(tool => tool.ServerId == first.Id);
         var result = await session.CallAsync(tool,
             "{\"code\":\"Environment.GetEnvironmentVariable(\\\"SCRIPT_TEST_VALUE\\\")\"}", null, Token);
         result.IsError.ShouldBeFalse();
@@ -95,8 +96,13 @@ public sealed class ExternalToolSessionTests
         var catalog = new ToolCatalogRegistry();
         using var scope = catalog.Begin(ToolRunContext.None);
         catalog.Update(ToolRunContext.None, session.Tools);
-        catalog.SearchAndPin(ToolRunContext.None, "C# script", 5).Count.ShouldBe(2);
+        var matches = catalog.SearchAndPin(ToolRunContext.None, "C# script", 10).Select(match => match.Name).ToArray();
+        foreach (var script in scripts) matches.ShouldContain(script.ModelDefinition.Name);
     }
+
+    private static string BuiltInDirectory => Path.Combine(AppContext.BaseDirectory, "mcp");
+
+    private static string BuiltInCommand => "AI.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : "");
 
     [Theory]
     [InlineData(false)]
@@ -177,7 +183,7 @@ public sealed class ExternalToolSessionTests
     }
 
     private static McpServerSettings Server(string transport, string? command = null, string? directory = null) =>
-        new(Guid.NewGuid(), "CSharp", transport, true, "Ask", null, command, [], directory, [], false);
+        new(Guid.NewGuid(), "External", transport, true, "Ask", null, command, [], directory, [], false);
 
     /// <summary>Supplies the path algebra and file-system contract the factory gained.</summary>
     private static ExternalToolSessionFactory NewFactory(IGlobalSecretStore secrets,

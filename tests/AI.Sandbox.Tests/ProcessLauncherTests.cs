@@ -218,7 +218,9 @@ public sealed class ProcessLauncherTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Process limits are applied through a Windows job object.");
 
-        var result = await RunAsync(Command(Shell.Nested(Shell.Exit(0))), policy: null,
+        // The pause comes first: the process joins its job just after it starts, and a child started
+        // in that moment would not be counted.
+        var result = await RunAsync(Command("ping -n 2 127.0.0.1 > nul & " + Shell.Nested(Shell.Exit(0))), policy: null,
             limits: ChildProcessLimits.Create(memoryLimitMb: null, processLimit: 1));
 
         result.LimitExceeded.ShouldBe(ChildProcessJob.Processes);

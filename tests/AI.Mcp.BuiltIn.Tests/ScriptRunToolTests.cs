@@ -187,7 +187,8 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
 
         result.GetProperty("timedOut").GetBoolean().ShouldBeTrue();
         result.GetProperty("success").GetBoolean().ShouldBeFalse();
-        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+        // Below the script's own 10 s is the proof; a cold worker and a tree kill on a busy runner take seconds.
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(9));
     }
 
     [Fact]

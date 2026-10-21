@@ -1,10 +1,8 @@
 #!/bin/sh
 # Runs outside the application directory and survives the parent process.
 set -u
-pid=$1; product=$2; version=$3; package=$4; digest=$5; result=$6; executable=$7; install_dir=$8; companion=$9
-shift 9
-companion_digest=$1
-shift
+pid=$1; product=$2; version=$3; package=$4; digest=$5; result=$6; executable=$7; install_dir=$8
+shift 8
 log_dir=$(dirname "$result")
 exec >>"$log_dir/installer.log" 2>&1
 success=false
@@ -28,11 +26,7 @@ verify() {
 quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 if verify "$package" "$digest"; then
     if [ "$(uname -s)" = Darwin ]; then
-        choices="$log_dir/choices.xml"
-        selected=0
-        [ -d '/Library/Application Support/AI Client/McpCsharp' ] && selected=1
-        printf '<?xml version="1.0"?><plist version="1.0"><array><dict><key>choiceIdentifier</key><string>csharp</string><key>choiceAttribute</key><string>selected</string><key>attributeSetting</key><integer>%s</integer></dict></array></plist>' "$selected" > "$choices"
-        command="/usr/sbin/installer -pkg $(quote "$package") -target / -applyChoiceChangesXML $(quote "$choices")"
+        command="/usr/sbin/installer -pkg $(quote "$package") -target /"
         # Pass the command as argv, rather than embedding it in AppleScript source.
         if /usr/bin/osascript - "$command" <<'APPLESCRIPT'
 on run argv
@@ -41,11 +35,9 @@ end run
 APPLESCRIPT
         then success=true; fi
     else
+        # The package Conflicts with and Replaces the retired ai-client-csharp-mcp companion, so
+        # dpkg removes that companion while installing this one.
         command="dpkg -i $(quote "$package")"
-        if [ -n "$companion" ]; then
-            if verify "$companion" "$companion_digest"; then command="$command $(quote "$companion")"
-            else command=false; fi
-        fi
         if command -v pkexec >/dev/null 2>&1; then
             if pkexec /bin/sh -c "$command"; then success=true; fi
         elif command -v zenity >/dev/null 2>&1; then
@@ -61,7 +53,6 @@ APPLESCRIPT
 fi
 if [ "$success" = true ]; then
     rm -f "$package" || true
-    if [ -n "$companion" ]; then rm -f "$companion" || true; fi
 fi
 printf '{"Success":%s,"Version":"%s"}' "$success" "$version" > "$result.tmp"
 mv "$result.tmp" "$result"

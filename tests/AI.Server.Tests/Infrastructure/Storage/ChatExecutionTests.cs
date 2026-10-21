@@ -993,7 +993,7 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("external", "mcp_csharp__inspect", "{}"),
+            new ChatToolCall("external", "mcp_external__inspect", "{}"),
             new ChatToolCall("built-in", "mcp_built_in__read_text_file", "{\"path\":\"C:\\\\file.txt\"}")
         ];
         first.Answer.SetResult("");
@@ -1040,8 +1040,8 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("external-1", "mcp_csharp__inspect", "{}"),
-            new ChatToolCall("external-2", "mcp_csharp__inspect", "{}")
+            new ChatToolCall("external-1", "mcp_external__inspect", "{}"),
+            new ChatToolCall("external-2", "mcp_external__inspect", "{}")
         ];
         first.Answer.SetResult("");
 
@@ -1734,7 +1734,7 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         var name = toolName switch
         {
-            "cs_run" => "mcp_csharp__cs_run",
+            "cs_run" => "mcp_built_in__cs_run",
             "trigger_wait" => "mcp_built_in__trigger_wait",
             _ => "mcp_built_in__process_run"
         };
@@ -2851,6 +2851,12 @@ public sealed partial class ChatExecutionTests
 
         public void ReleaseCancellation() => _cancellationRelease?.TrySetResult(true);
     }
+
+    /// <summary>A third-party stdio server whose tools the fake session offers next to the built-in ones.</summary>
+    private static readonly AI.Contracts.Settings.McpServerSettings ExternalServer = new(
+        Guid.Parse("4d1f2a7e-9c3b-4e5a-8f6d-2b1c0a9e8d7f"), "External", "Stdio", true, "Ask", null, "probe.exe",
+        [], null, [], false);
+
     private sealed class Fixture : IAsyncDisposable
     {
         private ChatExecutionComposition _composition;
@@ -2997,7 +3003,7 @@ public sealed partial class ChatExecutionTests
         public async Task SetPolicyAsync(string decision, long? timeoutSeconds = McpToolPolicySettings.DefaultTimeoutSeconds,
             int maxCalls = 20, string toolName = "process_run")
         {
-            var server = toolName == "cs_run" ? CSharpMcpServer.Settings : DefaultMcpServer.Settings;
+            var server = DefaultMcpServer.Settings;
             var global = await Settings.LoadAsync(CancellationToken.None);
             await Settings.SaveAsync(global with { McpServers = [server with { Policy = "Allow" }] }, CancellationToken.None);
             var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
@@ -3017,13 +3023,13 @@ public sealed partial class ChatExecutionTests
             var global = await Settings.LoadAsync(CancellationToken.None);
             await Settings.SaveAsync(global with
             {
-                McpServers = [CSharpMcpServer.Settings with { Policy = decision }]
+                McpServers = [ExternalServer with { Policy = decision }]
             }, CancellationToken.None);
             var project = await Projects.GetAsync(ProjectId, CancellationToken.None);
             await Projects.UpdateSecurityAsync(ProjectId, new UpdateProjectSecurityRequest(project!.Revision, [],
-                [new Contracts.Projects.McpServerSettings(CSharpMcpServer.Id, CSharpMcpServer.Settings.Name,
-                    CSharpMcpServer.Transport, true)],
-                [new ToolPolicySettings(CSharpMcpServer.Id, "inspect", "schema", decision, 20, 120)]), CancellationToken.None);
+                [new Contracts.Projects.McpServerSettings(ExternalServer.Id, ExternalServer.Name,
+                    ExternalServer.Transport, true)],
+                [new ToolPolicySettings(ExternalServer.Id, "inspect", "schema", decision, 20, 120)]), CancellationToken.None);
         }
         public async Task<Call> NextCallAsync() => await Completion.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -3136,15 +3142,15 @@ public sealed partial class ChatExecutionTests
             DefaultMcpServer.Id, "process_run", "schema");
 
         private static readonly AgentTool ScriptRun = new(
-            new ChatToolDefinition("mcp_csharp__cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
-            ToolDescriptor.Basic("mcp_csharp__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
-            CSharpMcpServer.Id, "cs_run", "schema");
+            new ChatToolDefinition("mcp_built_in__cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
+            DefaultMcpServer.Id, "cs_run", "schema");
 
         private static readonly AgentTool ExternalRead = new(
-            new ChatToolDefinition("mcp_csharp__inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}")),
-            ToolDescriptor.Basic("mcp_csharp__inspect", "inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}"))
+            new ChatToolDefinition("mcp_external__inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_external__inspect", "inspect", "Inspect", JsonSerializer.Deserialize<JsonElement>("{}"))
                 with { Annotations = new ToolAnnotations(null, true, false, true, false) },
-            CSharpMcpServer.Id, "inspect", "schema");
+            ExternalServer.Id, "inspect", "schema");
 
         private static readonly AgentTool TriggerWait = new(
             new ChatToolDefinition("mcp_built_in__trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),

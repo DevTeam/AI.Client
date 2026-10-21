@@ -471,7 +471,8 @@ Tool use on the visible branch (`ChatToolsWidget`, `IChatToolStatisticsCalculato
   call count then name, six shown with Show more. A tool's label comes from `IToolPresentations`,
   so a dedicated adapter names it here exactly as the message feed does and an unknown tool is
   only reformatted from its call name. Each tool is a widget row: a tile by origin (`tool` built-in,
-  `zap` application, `code` C#, `mcp` a server), its server and errors, the count and a relative
+  `zap` application, `code` the built-in `cs_run`, also under the retired C# server's
+  `mcp_csharp__` prefix in older history, `mcp` a server), its server and errors, the count and a relative
   bar. The row opens the tool in tool settings (`settings.tools?toolName=`), where its permission
   is set; locate steps through the messages that called it. The raw call name is in the tooltip;
   different servers remain separate. In the whole-chat scope the footer shows turns with calls.

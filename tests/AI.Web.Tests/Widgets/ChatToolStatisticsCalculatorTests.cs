@@ -15,10 +15,13 @@ public class ChatToolStatisticsCalculatorTests
         new ToolResultCodec(new ToolResultModelProjector()),
         new ToolPresentations(new GenericToolPresentationAdapter(), [new CSharpToolPresentationAdapter()]));
 
-    [Fact]
-    public void ShouldLabelAToolThroughItsPresentationAdapter()
+    [Theory]
+    [InlineData("mcp_built_in__cs_run")]
+    // Older history keeps the name the retired optional C# server gave the tool.
+    [InlineData("mcp_csharp__cs_run")]
+    public void ShouldLabelAToolThroughItsPresentationAdapter(string callName)
     {
-        var stats = Calculate([User(), Calls(new ChatToolCall("a", "mcp_csharp__cs_run", "{\"code\":\"1+1\"}")),
+        var stats = Calculate([User(), Calls(new ChatToolCall("a", callName, "{\"code\":\"1+1\"}")),
             Result("a", "{\"isError\":false}")]);
 
         // The adapter claims cs_run, so the row reads "Run C#" and not a reformatted call name.

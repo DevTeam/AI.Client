@@ -16,7 +16,7 @@ public class ToolPresentationsTests
     // Same tool name, but another server: the built-in adapters must not claim it.
     [InlineData("mcp_default__process_run", "Process run")]
     [InlineData("weather-lookup", "Weather lookup")]
-    // A name the generic adapter has no knowledge of is only reformatted; the C# server's own tool
+    // A name the generic adapter has no knowledge of is only reformatted; the built-in cs_run
     // is claimed by CSharpToolPresentationAdapter before the fallback is ever reached, so no
     // abbreviation is expanded here.
     [InlineData("cs_run", "Cs run")]

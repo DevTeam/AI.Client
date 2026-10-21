@@ -177,12 +177,6 @@ public sealed class UpdateManager : IUpdateManager
         var release = _state.Release ?? throw new InvalidOperationException("Check for a new version first.");
         _state = _state with { Phase = UpdatePhase.Downloading, Error = null };
         await DownloadFileAsync(release.PackageUrl, release.Sha256, PackagePath(release), token);
-        if (OperatingSystem.IsLinux() && await _files.DirectoryExistsAsync("/opt/ai-client-csharp-mcp", token))
-        {
-            if (release.CompanionUrl is null || release.CompanionSha256 is null)
-                throw new InvalidOperationException("This release has no update for the installed C# scripting tools.");
-            await DownloadFileAsync(release.CompanionUrl, release.CompanionSha256, Path.Combine(_directory, "companion.deb"), token);
-        }
         _state = _state with { Phase = UpdatePhase.Ready };
         await SaveAsync(token);
     }

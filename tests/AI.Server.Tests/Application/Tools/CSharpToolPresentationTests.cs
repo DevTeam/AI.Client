@@ -10,10 +10,10 @@ public class CSharpToolPresentationTests
     private readonly ToolsComposition _tools = new();
 
     private ToolCallPresentation Call(string arguments) =>
-        _tools.Presentations.DescribeCall("mcp_csharp__cs_run", arguments);
+        _tools.Presentations.DescribeCall("mcp_built_in__cs_run", arguments);
 
     private ToolResultPresentation Result(string structured) =>
-        _tools.Presentations.DescribeResult("mcp_csharp__cs_run", "{}",
+        _tools.Presentations.DescribeResult("mcp_built_in__cs_run", "{}",
             _tools.Codec.Read($$"""{"structuredContent":{{structured}}}"""));
 
     [Fact]
@@ -121,6 +121,18 @@ public class CSharpToolPresentationTests
         // A third-party server may well declare a tool called cs_run; its result shape is its own.
         _tools.Presentations.DescribeCall("mcp_other__cs_run", """{"code":"1"}""")
             .Safety.ShouldBe(ToolSafety.Unknown);
+    }
+
+    [Fact]
+    public void ShouldStillDescribeCallsRecordedByTheRetiredCSharpServer()
+    {
+        // Older chat history keeps the name the optional C# server gave the tool.
+        var call = _tools.Presentations.DescribeCall("mcp_csharp__cs_run", """{"code":"1 + 1"}""");
+        call.Title.ShouldBe("Run C#");
+        call.Safety.ShouldBe(ToolSafety.Destructive);
+        _tools.Presentations.DescribeResult("mcp_csharp__cs_run", "{}",
+                _tools.Codec.Read("""{"structuredContent":{"success":true,"returnValue":"2","diagnostics":[],"timedOut":false,"truncated":false}}"""))
+            .Summary.ShouldBe("Returned 2");
     }
 
     [Fact]

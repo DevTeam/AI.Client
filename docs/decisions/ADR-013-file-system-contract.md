@@ -108,8 +108,8 @@ These keep a direct operating-system call, by decision, with the exact sites:
 | # | Exception | Sites | Why no member |
 | --- | --- | --- | --- |
 | 1 | the two adapters | `SystemFileSystem`, `SystemPath` | they *are* the platform seam |
-| 2 | process working directory | `AI.Mcp.CSharp/Scripts/ScriptRunner.cs` | a process-global side effect of running a script, not a file operation |
-| 3 | executable start-up paths | `AppContext.BaseDirectory` (`DefaultToolSessionFactory`, `CSharpToolSessionFactory`, `UpdateInstaller`, `UpdateInstallationProvider`, `AiClientServer`, `AI.Desktop/WindowsTaskbarBadge`, `AI.Host/HostProcess`); `Environment.GetFolderPath` (`ServerCommandLine`, `InstalledDesktop`, `PhysicalDirectoryBrowser`, `ChatTemporaryDirectory`, `UpdateInstaller`, `SharedHostLocator`) | they describe the running process, not data |
+| 2 | process working directory | the C# script runner behind `cs_run`, now in `AI.Mcp.BuiltIn` (formerly `AI.Mcp.CSharp/Scripts/ScriptRunner.cs`) | a process-global side effect of running a script, not a file operation |
+| 3 | executable start-up paths | `AppContext.BaseDirectory` (`DefaultToolSessionFactory`, `UpdateInstaller`, `UpdateInstallationProvider`, `AiClientServer`, `AI.Desktop/WindowsTaskbarBadge`, `AI.Host/HostProcess`); `Environment.GetFolderPath` (`ServerCommandLine`, `InstalledDesktop`, `PhysicalDirectoryBrowser`, `ChatTemporaryDirectory`, `UpdateInstaller`, `SharedHostLocator`) | they describe the running process, not data |
 | 4 | adapter tests | tests tagged `Category=Integration` | the platform is the behavior under test |
 | 5 | POSIX file modes | `Infrastructure/Tools/ChatTemporaryDirectory.cs:11,59`, `Infrastructure/Credentials/FileMasterKeyStore.cs:31,40` | a Windows test run cannot assert them, so a member would be a promise no test holds |
 | 6 | exclusive file lock | `Infrastructure/Storage/DataDirectoryLock.cs:17`, `Updates/UpdateManager.cs:72` (`owner.lock`, `FileShare.None`) | single-instance protection is a cross-process guarantee no in-process fake can model; expressing it through `OpenWriteAsync` (which shares read on purpose) would silently weaken it |

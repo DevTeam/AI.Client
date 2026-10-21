@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# C# scripts now run in the built-in tools: remove the retired optional C# scripting
+# package and forget its receipt, whichever application installed it.
+rm -rf '/Library/Application Support/AI Client/McpCsharp'
+pkgutil --pkg-info org.devteam.aiclient.csharpmcp >/dev/null 2>&1 \
+    && pkgutil --forget org.devteam.aiclient.csharpmcp >/dev/null 2>&1 || true
+
 executable='/Applications/AI Client.app/Contents/MacOS/AI.Desktop'
 pids=$(ps -axww -o pid= -o command= | while read -r pid command; do
     case "$command" in

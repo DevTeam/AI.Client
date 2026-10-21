@@ -5,7 +5,9 @@ public sealed record GlobalSettings(
     IReadOnlyList<McpServerSettings> McpServers,
     IReadOnlyList<McpToolPolicySettings> ToolPolicies,
     // Absent in documents written before these switches existed, which means both are on.
-    ChatAutomationSettings? ChatAutomation = null);
+    ChatAutomationSettings? ChatAutomation = null,
+    // Absent in documents written before the sandbox existed, which means it is off.
+    ToolSandboxSettings? Sandbox = null);
 
 public sealed record SaveGlobalSettingsRequest(
     IReadOnlyList<ConnectionSettings> Connections,

@@ -25,8 +25,11 @@ public sealed record ToolRef(
     /// <summary>The provider-facing name of the application's permitted-tool discovery endpoint.</summary>
     public const string ToolSearchName = AppPrefix + "tool_search";
 
-    /// <summary>Prefix for the optional C# scripting server, which only exists when the user opted in.</summary>
-    public const string CSharpPrefix = "mcp_csharp__";
+    /// <summary>
+    /// Prefix of the retired optional C# scripting server. Its <c>cs_run</c> now lives in the built-in
+    /// server; the prefix is kept only so that calls in older chat history still parse and present.
+    /// </summary>
+    public const string LegacyCSharpPrefix = "mcp_csharp__";
 
     /// <summary>
     /// Splits a persisted call name into server prefix and tool name. A name with no recognizable
@@ -45,7 +48,11 @@ public sealed record ToolRef(
 
     public bool IsApp => ServerPrefix == AppPrefix;
 
-    public bool IsCSharp => ServerPrefix == CSharpPrefix;
+    /// <summary>A call recorded by the retired C# scripting server, found only in older chat history.</summary>
+    public bool IsLegacyCSharp => ServerPrefix == LegacyCSharpPrefix;
+
+    /// <summary>The C# script runner, under the built-in server or, in older history, the retired one.</summary>
+    public bool IsCSharpScript => Name == "cs_run" && (IsBuiltIn || IsLegacyCSharp);
 
     /// <summary>
     /// A last-resort human label for a tool nothing knows anything about: <c>read_text_file</c>

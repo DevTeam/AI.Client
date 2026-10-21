@@ -2,6 +2,8 @@ using AI.Application.Chats;
 using AI.Domain.Chats;
 using AI.Domain.Projects;
 using AI.Application.Resources;
+using AI.Contracts.Settings;
+using AI.Infrastructure.Settings;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 // ReSharper disable UseCollectionExpression
@@ -91,9 +93,10 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
             branch.Member is { } member ? new ChatBranchMember(member.Name, member.Role, member.Color) : null,
             branch.Settings is { } settings ? new ChatBranchSettings(
                 settings.ConnectionId is { } connection ? new ConnectionId(connection) : null,
-                settings.ApprovalMode, settings.ToolPolicies?.Select(ToDomain).ToArray(),
+                settings.ApprovalMode, settings.ToolPolicies is { } branchPolicies
+                    ? MigrateLegacyCSharp(branchPolicies).Select(ToDomain).ToArray() : null,
                 settings.ReasoningEffort) : null)));
-        foreach (var policy in document.ToolPolicies ?? [])
+        foreach (var policy in MigrateLegacyCSharp(document.ToolPolicies ?? []))
             chat.SetToolPolicy(new ToolPolicy(new ToolIdentity(new McpServerId(policy.ServerId), policy.Name,
                 policy.SchemaHash), policy.Decision, policy.MaxCallsPerRun, policy.Timeout), document.UpdatedAt);
         chat.Rename(document.Title, document.UpdatedAt);
@@ -223,6 +226,14 @@ public sealed class ChatDocumentSerializer : IChatDocumentSerializer
 
     private static ToolPolicyDocument ToDocument(ToolPolicy policy) => new(policy.Tool.ServerId.Value,
         policy.Tool.Name, policy.Tool.SchemaHash, policy.Decision, policy.MaxCallsPerRun, policy.Timeout);
+
+    /// <summary>Moves policies for the retired C# scripting server's cs_run to the built-in server.</summary>
+    private static IEnumerable<ToolPolicyDocument> MigrateLegacyCSharp(ToolPolicyDocument[] policies) =>
+        policies.Any(policy => policy.ServerId == LegacyCSharpMcpServer.Id)
+            ? LegacyCSharpToolMigration.Migrate(policies, denied: false,
+                policy => (policy.ServerId, policy.Name, policy.SchemaHash),
+                (policy, _) => policy with { ServerId = DefaultMcpServer.Id })
+            : policies;
 
     private static ToolPolicy ToDomain(ToolPolicyDocument policy) => new(
         new ToolIdentity(new McpServerId(policy.ServerId), policy.Name, policy.SchemaHash),

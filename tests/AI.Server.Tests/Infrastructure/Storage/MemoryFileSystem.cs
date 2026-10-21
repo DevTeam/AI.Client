@@ -190,7 +190,7 @@ internal sealed class MemoryFileSystem : IFileSystem
     public Task<IReadOnlyList<string>> ListFilesAsync(string directoryPath, string searchPattern,
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>(DirectoryExists(directoryPath)
-            ? Files.Keys.Where(file => Equals(Path.GetDirectoryName(file), directoryPath)
+            ? Files.Keys.Where(file => PathComparer.Equals(Path.GetDirectoryName(file), Canon(directoryPath))
                 && FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(file))).ToArray()
             : []);
 
@@ -222,7 +222,7 @@ internal sealed class MemoryFileSystem : IFileSystem
     private void Collect(string directory, FileEnumerationOptions options, List<FileSystemEntry> entries)
     {
         foreach (var child in KnownDirectories()
-                     .Where(candidate => Equals(Path.GetDirectoryName(candidate), directory)))
+                     .Where(candidate => PathComparer.Equals(Path.GetDirectoryName(candidate), Canon(directory))))
         {
             if ((options.AttributesToSkip & FileAttributes.Directory) != 0) continue;
             // The pattern is asked about what is reported, not about what is walked: a directory is
@@ -233,7 +233,7 @@ internal sealed class MemoryFileSystem : IFileSystem
             if (options.Recursive) Collect(child, options, entries);
         }
 
-        foreach (var file in Files.Keys.Where(candidate => Equals(Path.GetDirectoryName(candidate), directory)))
+        foreach (var file in Files.Keys.Where(candidate => PathComparer.Equals(Path.GetDirectoryName(candidate), Canon(directory))))
         {
             if ((options.AttributesToSkip & FileAttributes.Normal) != 0) continue;
             if (!FileSystemName.MatchesSimpleExpression(options.SearchPattern, Path.GetFileName(file))) continue;
@@ -343,7 +343,15 @@ internal sealed class MemoryFileSystem : IFileSystem
 
     private bool Existing(string path) => Files.ContainsKey(path) || DirectoryExists(path);
 
-    private bool DirectoryExists(string path) => KnownDirectories().Contains(path, PathComparer);
+    private bool DirectoryExists(string path) => KnownDirectories().Contains(Canon(path), PathComparer);
+
+    /// <summary>
+    /// The path with the alternative separator read as the main one, which is how the platform
+    /// these semantics model reads it: on Windows <c>C:\data/x</c> and <c>C:\data\x</c> are one
+    /// path. The fake keeps documents under the strings it was given; this is only how it compares
+    /// them, so a consumer that builds paths with the host's separator still finds what it wrote.
+    /// </summary>
+    private string Canon(string path) => path.Replace(Path.AltDirectorySeparator, Path.DirectorySeparator);
 
     private StringComparer PathComparer => Path.IsCaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
 
@@ -354,7 +362,7 @@ internal sealed class MemoryFileSystem : IFileSystem
     /// </summary>
     private HashSet<string> KnownDirectories()
     {
-        var known = new HashSet<string>(_directoryPool, PathComparer);
+        var known = new HashSet<string>(_directoryPool.Select(Canon), PathComparer);
         foreach (var file in Files.Keys)
         {
             for (var parent = Path.GetDirectoryName(file); parent is not null; parent = Path.GetDirectoryName(parent))
@@ -364,10 +372,14 @@ internal sealed class MemoryFileSystem : IFileSystem
         return known;
     }
 
-    private bool IsBelow(string path, string directory) =>
-        path.StartsWith(directory, Path.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase)
-        && path.Length > directory.Length
-        && path[directory.Length] == Path.DirectorySeparator;
+    private bool IsBelow(string path, string directory)
+    {
+        path = Canon(path);
+        directory = Canon(directory);
+        return path.StartsWith(directory, Path.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase)
+               && path.Length > directory.Length
+               && path[directory.Length] == Path.DirectorySeparator;
+    }
 
     /// <summary>Records the document's directory and every directory above it, as a write would create them.</summary>
     private void Adopt(string path)
@@ -378,13 +390,13 @@ internal sealed class MemoryFileSystem : IFileSystem
 
     private void RegisterDirectory(string? path)
     {
-        for (var current = path; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
+        for (var current = path is null ? null : Canon(path); !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
             if (!_directoryPool.Contains(current, PathComparer)) _directoryPool.Enqueue(current);
     }
 
     private void UnregisterDirectory(string path)
     {
-        var kept = _directoryPool.Where(directory => !PathComparer.Equals(directory, path)).ToArray();
+        var kept = _directoryPool.Where(directory => !PathComparer.Equals(Canon(directory), Canon(path))).ToArray();
         while (_directoryPool.TryDequeue(out _)) { }
         foreach (var directory in kept) _directoryPool.Enqueue(directory);
     }

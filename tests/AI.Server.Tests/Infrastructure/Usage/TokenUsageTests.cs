@@ -162,7 +162,7 @@ public class TokenUsageTests
 
         all.Select(record => record.Tokens.InputTokens).ShouldBe([1L, 2L]);
         august.Single().Tokens.InputTokens.ShouldBe(1);
-        _files.Files.Keys.ShouldAllBe(path => path.Contains(Path.Combine("root", "usage"), StringComparison.Ordinal));
+        _files.Files.Keys.ShouldAllBe(path => path.Contains(_files.Path.Combine("root", "usage"), StringComparison.Ordinal));
     }
 
     [Fact]

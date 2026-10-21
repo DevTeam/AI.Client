@@ -14,7 +14,17 @@ public sealed partial class ChatTemporaryDirectory(
 {
     private const UnixFileMode PrivateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "AI.Client-" + UserKey());
+    /// <summary>
+    /// Built on where the OS temporary directory really is: on macOS <c>/var/folders</c> is a link to
+    /// <c>/private/var/folders</c>, and a root spelled through it failed the link checks below on
+    /// every Mac. Resolving the temporary directory itself keeps those checks for what they guard,
+    /// links planted inside the scratch space.
+    /// </summary>
+    private readonly Lazy<string> _rootPath = new(() => Path.Combine(
+        files.ResolveLinkTargetAsync(Path.GetTempPath(), CancellationToken.None).GetAwaiter().GetResult(),
+        "AI.Client-" + UserKey()));
+
+    private string Root => _rootPath.Value;
 
     public string GetOrCreate(Guid projectId, Guid chatId)
     {
@@ -23,7 +33,7 @@ public sealed partial class ChatTemporaryDirectory(
 
         var project = ProjectPath(projectId);
         var chat = Path.Combine(project, chatId.ToString("N"));
-        EnsurePrivateDirectory(_root);
+        EnsurePrivateDirectory(Root);
         EnsurePrivateDirectory(project);
         EnsurePrivateDirectory(chat);
         return chat;
@@ -47,7 +57,7 @@ public sealed partial class ChatTemporaryDirectory(
         return ProjectPath(projectId);
     }
 
-    private string ProjectPath(Guid projectId) => Path.Combine(_root, projectId.ToString("N"));
+    private string ProjectPath(Guid projectId) => Path.Combine(Root, projectId.ToString("N"));
 
     private static string UserKey()
     {
@@ -82,8 +92,8 @@ public sealed partial class ChatTemporaryDirectory(
     {
         try
         {
-            if (!files.DirectoryExistsAsync(_root, CancellationToken.None).GetAwaiter().GetResult()) return;
-            if (IsLink(_root))
+            if (!files.DirectoryExistsAsync(Root, CancellationToken.None).GetAwaiter().GetResult()) return;
+            if (IsLink(Root))
                 throw new IOException("The chat temporary root is a link.");
             if (files.DirectoryExistsAsync(path, CancellationToken.None).GetAwaiter().GetResult()) DeleteTree(path);
         }

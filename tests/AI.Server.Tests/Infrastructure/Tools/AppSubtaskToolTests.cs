@@ -225,11 +225,14 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
         var reports = new List<ToolProgress>();
 
-        // Recorded synchronously: Progress<T> posts each report to the thread pool, so the last
-        // one could still be on its way when the call returns.
         await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second"),
             new SynchronousProgress(value => { lock (reports) reports.Add(value); }),
             TestContext.Current.CancellationToken);
+
+        // Progress travels as MCP notifications, which the client hands on independently of the
+        // call's response, so the last one can arrive just after the call returned.
+        for (var waited = 0; waited < 5000 && !Reported(2); waited += 50)
+            await Task.Delay(50, TestContext.Current.CancellationToken);
 
         // The caller's live row is fed from these, so a subtask that reports nothing is
         // indistinguishable from one that has hung.
@@ -238,8 +241,13 @@ public sealed class AppSubtaskToolTests
             reports.ShouldNotBeEmpty();
             reports.Select(value => value.Message).OfType<string>()
                 .ShouldContain(message => message.Contains("1:", StringComparison.Ordinal));
-            reports[^1].Total.ShouldBe(2);
+            reports.ShouldContain(value => value.Total == 2);
             reports.ShouldContain(value => value.Progress == 2);
+        }
+
+        bool Reported(double progress)
+        {
+            lock (reports) return reports.Any(value => value.Progress == progress);
         }
     }
 

@@ -1,6 +1,7 @@
 namespace AI.Infrastructure.Tests.Tools;
 
 using AI.Contracts.FileSystem;
+using AI.Infrastructure.Tests.Storage;
 using AI.Mcp.BuiltIn.Grants;
 using Moq;
 using Shouldly;
@@ -92,7 +93,8 @@ public sealed class PathGuardLinkTests
 
     private static PathGuard NewGuard(Mock<IFileSystem> files, string granted) =>
         new(new Grants(new DirectoryGrantSpec(granted, true, new HashSet<GrantCapability> { GrantCapability.Read })),
-            new SystemPath(), files.Object);
+            // Windows path semantics on every machine: the paths here are Windows paths.
+            new InMemoryPath(PathSemantics.Windows, @"C:\data"), files.Object);
 
     /// <summary>
     /// A contract whose resolver answers every path with itself except one, which answers

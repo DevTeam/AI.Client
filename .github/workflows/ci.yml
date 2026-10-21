@@ -37,6 +37,13 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build
         run: dotnet build AI.slnx --nologo
+      - name: Point TMPDIR at a real directory on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        # macOS's temporary directory lives behind the /var -> /private/var link. The application
+        # resolves links and reports the real path, while tests build expected paths from the
+        # temporary directory as spelled, so they would compare two names of one place.
+        run: echo "TMPDIR=${{ runner.temp }}/" >> "$GITHUB_ENV"
       - name: Test
         shell: bash
         run: |
@@ -49,6 +56,8 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          # head ends the pipe early on purpose; that is not a failure of this step.
+          set +e +o pipefail
           log=artifacts/test-results/test.log
           # perl rather than sed: BSD sed on macOS does not understand \x1b.
           plain() { perl -pe 's/\e\[[0-9;]*[A-Za-z]//g; s/\r$//' "$@"; }

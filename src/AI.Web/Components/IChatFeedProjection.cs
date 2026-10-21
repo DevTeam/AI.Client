@@ -36,6 +36,12 @@ public interface IChatFeedProjection
         IReadOnlyList<ChatMessageView> chain,
         bool lastTurnEndedWithoutFinalAnswer = false);
 
+    /// <summary>
+    /// Cuts a turn's intermediate items at each message the person added during the turn and at
+    /// each answer to a question, in order. The last segment is always open and may be empty.
+    /// </summary>
+    List<TurnSegment> BuildSegments(FeedTurn turn);
+
     /// <summary>Returns the root-to-leaf message chain for the selected branch.</summary>
     IReadOnlyList<ChatMessageView> BuildBranch(
         IReadOnlyList<ChatMessageView> messages,

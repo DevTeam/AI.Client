@@ -134,22 +134,25 @@
             @foreach (var entry in feedTurn.Entries)
             {
                 var item = entry.Item;
-                @if (entry.Summary is { } summary)
+                @if (entry is { Summary: { } summary, Segment: { } segment })
                 {
                     var turnId = summary.Id!.Value;
-                    var expanded = IsTurnExpanded(summary);
-                    var canExpand = CanExpandTurn(summary);
-                    var summaryKey = (turnId, "turn-summary");
-                    var usageKey = (turnId, "turn-usage");
+                    var segmentKey = new TurnSegmentKey(turnId, segment.Index);
+                    var expanded = IsSegmentExpanded(summary, segment);
+                    var canExpand = CanExpandSegment(summary, segment, entry.IsLastSegment);
+                    var loading = expanded && _loadingTurnIds.Contains(turnId);
+                    var segmentRunning = entry.IsLastSegment && IsRunningTurn(summary);
+                    var summaryKey = (segmentKey, "turn-summary");
+                    var usageKey = (segmentKey, "turn-usage");
                     RenderFragment summaryContent = @<text>
-                        @if (_loadingTurnIds.Contains(turnId))
+                        @if (loading)
                         {
                             <span class="turn-summary-spinner" aria-hidden="true"><AppIcon Name="spinner" Class="tool-row-spinner" /></span>
                         }
-                        <span class="turn-summary-text @(IsTurnBusy(summary) && !_loadingTurnIds.Contains(turnId) ? "text-sheen" : null)">@(_loadingTurnIds.Contains(turnId) ? "Loading details…" : GetTurnSummaryText(summary))</span>
+                        <span class="turn-summary-text @(entry.IsLastSegment && IsTurnBusy(summary) && !loading ? "text-sheen" : null)">@(loading ? "Loading details…" : GetSegmentSummaryText(summary, segment, entry.SegmentOpener, entry.IsLastSegment))</span>
                         @* Only a finished turn says what it used: a figure ticking up beside the timer
                            would pull the eye away from the answer being written under it. *@
-                        @if (ShowTurnTokens && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)
+                        @if (ShowTurnTokens && entry.ShowsUsage && !IsRunningTurn(summary) && GetTurnUsage(turnId) is { } turnUsage)
                         {
                             <span class="turn-summary-tokens" title="Input → output tokens">· @Usage.FormatFlow(turnUsage.Totals)</span>
                         }
@@ -160,7 +163,7 @@
                         @* The running turn's file changes, in the one line of the turn that never moves.
                            The full card is docked above the composer; under the live text it was pushed
                            up and down by every note that replaced the last. *@
-                        @if (IsRunningTurn(summary) && GetLiveChanges() is { } summaryChanges)
+                        @if (segmentRunning && GetLiveChanges() is { } summaryChanges)
                         {
                             <span class="turn-summary-changes" title="Files changed so far · the list is above the composer"
                                   aria-label="@summaryChanges.Files.Count @(summaryChanges.Files.Count == 1 ? "file" : "files") changed, @summaryChanges.Additions additions, @summaryChanges.Deletions deletions">
@@ -173,30 +176,30 @@
                     </text>;
                     @if (canExpand)
                     {
-                        <button @key="summaryKey" id="turn-summary-@turnId" type="button"
-                                class="turn-summary @(expanded ? "is-expanded" : string.Empty) @GetTurnSummaryStateClasses(summary)"
+                        <button @key="summaryKey" id="@segmentKey.SummaryElementId" type="button"
+                                class="turn-summary @(expanded ? "is-expanded" : string.Empty) @GetTurnSummaryStateClasses(segment.Messages)"
                                 aria-expanded="@(expanded ? "true" : "false")"
-                                @onclick="() => ToggleTurnAsync(turnId)">
+                                @onclick="() => ToggleSegmentAsync(segmentKey)">
                             @summaryContent
                         </button>
                     }
                     else
                     {
-                        <div @key="summaryKey" id="turn-summary-@turnId"
-                             class="turn-summary is-static @GetTurnSummaryStateClasses(summary)">
+                        <div @key="summaryKey" id="@segmentKey.SummaryElementId"
+                             class="turn-summary is-static @GetTurnSummaryStateClasses(segment.Messages)">
                             @summaryContent
                         </div>
                     }
-                    @if (expanded && GetTurnUsage(turnId) is { } expandedUsage)
+                    @if (expanded && entry.ShowsUsage && GetTurnUsage(turnId) is { } expandedUsage)
                     {
                         <TurnUsageDetails @key="usageKey" Turn="@expandedUsage" />
                     }
                     @* A branch leaving a folded step would vanish with it. Its picker stands in under
                        the summary line, which is where the lines part: on the branch that left, the
                        step is the last of the turn. Expanding puts it back under its own step. *@
-                    @if (!expanded && summary.IntermediateMessages.Where(HasBranchPicker).ToArray() is { Length: > 0 } foldedForks)
+                    @if (!expanded && segment.Messages.Where(HasBranchPicker).ToArray() is { Length: > 0 } foldedForks)
                     {
-                        var forksKey = (turnId, "turn-forks");
+                        var forksKey = (segmentKey, "turn-forks");
                         <div @key="forksKey" class="turn-forks">
                             @foreach (var fork in foldedForks)
                             {
@@ -237,15 +240,15 @@
                                            ProjectId="@SelectedChat.ProjectId" OnOpenAsset="OnOpenAsset" IsLive="true" />
                     </article>
                 }
-                else if (entry.CollapseTurnId is { } collapseTurnId)
+                else if (entry.CollapseSegment is { } collapseSegment)
                 {
-                    var collapseKey = (collapseTurnId, "turn-collapse");
+                    var collapseKey = (collapseSegment, "turn-collapse");
                     <button @key="collapseKey"
-                            id="turn-collapse-@collapseTurnId"
+                            id="@collapseSegment.CollapseElementId"
                             class="turn-collapse-footer"
                             type="button"
-                            title="Collapse the intermediate steps of this turn"
-                            @onclick="() => CollapseTurnFromEndAsync(collapseTurnId)">
+                            title="Collapse these intermediate steps"
+                            @onclick="() => CollapseSegmentFromEndAsync(collapseSegment)">
                         <AppIcon Name="chevron-up" /><span>Hide steps</span>
                     </button>
                 }
@@ -256,7 +259,7 @@
                        text arrives, so nothing around it moves. Notes are keyed by the note, not the
                        turn: a new note mounts a fresh element, which plays the entry animation, while
                        growth of the same text only patches it. *@
-                    var notesKey = (entry.TurnId, "live-notes");
+                    var notesKey = (entry.TurnId, entry.Segment?.Index, "live-notes");
                     <div @key="notesKey" class="live-notes @(liveNotes.Count == 0 ? "is-empty" : string.Empty) @(entry.LiveLeaving ? "is-leaving" : string.Empty)"
                          data-live-limit="@entry.LiveNoteLimit"
                          aria-hidden="@(entry.LiveLeaving ? "true" : null)"
@@ -966,7 +969,7 @@
         if (SelectedRun is not { Status: ChatRunStatus.Generating } run) return null;
         var activeMessageId = run.ActiveMessageId
             ?? run.Queue.FirstOrDefault(item => item.Stage == QueuedMessageStage.UserCommitted)?.Id;
-        return activeMessageId is { } id ? $"turn-summary-{id}" : null;
+        return activeMessageId is { } id ? OpenSegmentElementId(id) : null;
     }
 
     [JSInvokable]
@@ -1133,10 +1136,14 @@
         var owner = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
             .FirstOrDefault(turn => turn.Id is not null
                 && turn.IntermediateMessages.Any(message => message.Id == messageId));
-        if (owner?.Id is { } turnId && !_expandedTurns.Contains(turnId))
-            await ToggleTurnAsync(turnId);
+        // A message the person added to the turn is a pin, drawn whether its segment is folded or not.
+        var segment = owner is null ? null : Feed.BuildSegments(owner)
+            .FirstOrDefault(item => item.Messages.Any(message => message.Id == messageId));
+        if (owner?.Id is { } turnId && segment is not null
+            && !_expandedTurns.Contains(new TurnSegmentKey(turnId, segment.Index)))
+            await ToggleSegmentAsync(new TurnSegmentKey(turnId, segment.Index));
 
-        var targetItem = owner?.IntermediateItems
+        var targetItem = segment?.Items
             .FirstOrDefault(item => ChatFeed.MessagesOf(item).Any(message => message.Id == messageId));
         return targetItem is { ToolGroup: { Count: > 0 } group }
             ? group[^1].Id
@@ -1323,6 +1330,7 @@
             _expandedTurnsChatId = SelectedChat?.Id;
             _expandedTurnItemLimits.Clear();
             _turnExpansionsPending.Clear();
+            _openSegmentElementIds.Clear();
             if (_expandedTurns.Count > 0)
             {
                 _expandedTurns.Clear();
@@ -1491,12 +1499,16 @@
     private readonly record struct RenderedFeedEntry(
         FeedItem? Item = null,
         FeedTurn? Summary = null,
+        TurnSegment? Segment = null,
+        ChatMessageView? SegmentOpener = null,
+        bool IsLastSegment = false,
+        bool ShowsUsage = false,
         ChatMessageView? ChangesMessage = null,
         int? RevealIndex = null,
         bool IsExpandedIntermediate = false,
         IReadOnlyList<ActiveToolInvocation>? ActiveTools = null,
         Guid? TurnId = null,
-        Guid? CollapseTurnId = null,
+        TurnSegmentKey? CollapseSegment = null,
         ChatRunSnapshot? StreamingRun = null,
         string? LiveText = null,
         int LiveVersion = 0,
@@ -1535,9 +1547,19 @@
             ? changes
             : null;
 
-    private readonly HashSet<Guid> _expandedTurns = [];
-    private readonly Dictionary<Guid, int> _expandedTurnItemLimits = [];
-    private readonly HashSet<Guid> _turnExpansionsPending = [];
+    /// <summary>One segment of one turn: what folds and unfolds as a unit.</summary>
+    private readonly record struct TurnSegmentKey(Guid TurnId, int Index)
+    {
+        // The first segment keeps the turn's own ids, which a turn without pins has always had.
+        public string SummaryElementId => Index == 0 ? $"turn-summary-{TurnId}" : $"turn-summary-{TurnId}-{Index}";
+        public string CollapseElementId => Index == 0 ? $"turn-collapse-{TurnId}" : $"turn-collapse-{TurnId}-{Index}";
+    }
+
+    private readonly HashSet<TurnSegmentKey> _expandedTurns = [];
+    private readonly Dictionary<TurnSegmentKey, int> _expandedTurnItemLimits = [];
+    private readonly HashSet<TurnSegmentKey> _turnExpansionsPending = [];
+    // The row of each turn's open segment, where a running turn's "Working for …" is.
+    private readonly Dictionary<Guid, string> _openSegmentElementIds = [];
     private int _expandedTurnsVersion;
     private Guid? _expandedTurnsChatId;
     private const int InitialExpandedTurnItemCount = 0;
@@ -1565,107 +1587,46 @@
             // Orphaned legacy messages have no turn id; their first message is just as stable.
             object key = turn.Id is { } turnKey ? turnKey : messages.Count > 0 ? messages[0].Id : turns.Count;
             turns.Add(new RenderedFeedTurn(key, IsCurrentTurn(turn), messages, entries));
-            IReadOnlyList<FeedItem> visibleIntermediateItems = [];
             if (turn.UserMessage is { } user)
             {
                 entries.Add(new RenderedFeedEntry(Item: new FeedItem(user, null)));
             }
 
             // Orphaned legacy messages have no stable turn id and therefore keep their existing
-            // presentation. Normal turns get one summary when there is something to fold. A run
-            // which has only just started is the sole zero-item exception: "Working for ..."
-            // gives it a stable place before the first progress note lands.
+            // presentation. Normal turns get one summary per segment with something to fold. A
+            // run's open segment with no steps yet is the sole exception: "Working for ..." gives
+            // it a stable place before the first progress note lands.
             if (turn.Id is null)
             {
                 entries.AddRange(turn.IntermediateItems.Select(item => new RenderedFeedEntry(Item: item)));
             }
             else if (turn.IntermediateItems.Count > 0 || IsCurrentUnfinishedTurn(turn))
             {
-                entries.Add(new RenderedFeedEntry(Summary: turn));
-                if (IsTurnExpanded(turn))
+                // What the person added to the turn or answered in it cuts the steps into
+                // segments that fold on their own. Each pin is drawn between the steps before and
+                // after it, folded or not, so unfolding never moves it past a step.
+                var segments = Feed.BuildSegments(turn);
+                var unfinished = IsCurrentUnfinishedTurn(turn);
+                bool HasRow(TurnSegment segment) =>
+                    segment.Items.Count > 0 || segment.Index == segments.Count - 1 && unfinished;
+                var usageSegment = segments.LastOrDefault(HasRow);
+                _openSegmentElementIds[turn.Id.Value] = new TurnSegmentKey(turn.Id.Value, segments.Count - 1).SummaryElementId;
+                foreach (var segment in segments)
                 {
-                    var visibleCount = Math.Min(GetExpandedTurnItemLimit(turn.Id!.Value), turn.IntermediateItems.Count);
-                    visibleIntermediateItems = turn.IntermediateItems.Take(visibleCount).ToArray();
-                    // The person's answer to a question follows the steps that asked it.
-                    entries.AddRange(visibleIntermediateItems
-                        .SelectMany((item, index) => ChatFeed.MessagesOf(item)
-                            .Where(message => message.UserAnswer is not null)
-                            .Select(message => new RenderedFeedEntry(AnswerMessage: message))
-                            .Prepend(new RenderedFeedEntry(
-                                Item: item,
-                                RevealIndex: index % ExpandedTurnBatchSize,
-                                IsExpandedIntermediate: true))));
-                    // File-change receipts and answers from later chunks stay visible while the
-                    // detailed blocks are mounted over several frames.
-                    entries.AddRange(turn.IntermediateItems.Skip(visibleCount)
-                        .SelectMany(ChatFeed.MessagesOf)
-                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.UserAnswer is not null)
-                        .Select(message => message.UserAnswer is not null
-                            ? new RenderedFeedEntry(AnswerMessage: message)
-                            : new RenderedFeedEntry(ChangesMessage: message)));
-                }
-                else
-                {
-                    // The message itself is folded, not its durable workspace receipt, nor what the
-                    // person added to the turn or answered in it: that is theirs, not the model's work.
-                    entries.AddRange(turn.IntermediateMessages
-                        .Where(message => message.WorkspaceChanges is { IsEmpty: false } || message.Delivery == MessageDelivery.InTurn
-                                          || message.UserAnswer is not null)
-                        .Select(message => message.Delivery == MessageDelivery.InTurn
-                            ? new RenderedFeedEntry(Item: new FeedItem(message, null))
-                            : message.UserAnswer is not null
-                                ? new RenderedFeedEntry(AnswerMessage: message)
-                                : new RenderedFeedEntry(ChangesMessage: message)));
-                }
-
-                // The final answer arriving as StreamingContent is shown below as it is; the live
-                // notes step aside at once rather than making the reader wait for it, folding away
-                // the way each of them left the stack before.
-                var answerStreaming = !string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent);
-                if (IsRunningTurn(turn))
-                {
-                    liveTurnPresented = true;
-                    _liveFrame = LiveText.Present(turn.Id, GetLiveTexts(turn), _liveTextHeld, DateTimeOffset.UtcNow);
-                    ScheduleLiveTextCheck(_liveFrame.NextCheck);
-                    if (!IsTurnExpanded(turn))
+                    var opener = segment.Index == 0 ? turn.UserMessage : segments[segment.Index - 1].Pin;
+                    if (HasRow(segment)
+                        && AddSegmentEntries(entries, turn, segment, opener, segment.Index == segments.Count - 1,
+                            ReferenceEquals(segment, usageSegment)))
                     {
-                        AddLiveNotes(entries, turn, answerStreaming);
-                        if (!answerStreaming)
-                            entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity(turn) ?? TurnActivity.None, TurnId: turn.Id));
+                        liveTurnPresented = true;
                     }
-                    // Expanded, the notes are already there as themselves; only the step still in
-                    // flight has nowhere else to appear.
-                    else if (!answerStreaming && SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
+
+                    if (segment.Pin is { } pin)
                     {
-                        entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
-                            LiveWriting: SelectedRun.DraftToolCall is null));
+                        entries.Add(pin.UserAnswer is not null
+                            ? new RenderedFeedEntry(AnswerMessage: pin)
+                            : new RenderedFeedEntry(Item: new FeedItem(pin, null)));
                     }
-                }
-
-                if (IsRunningTurn(turn) && IsTurnExpanded(turn)
-                    && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
-                {
-                    var representedCallIds = visibleIntermediateItems
-                        .Where(item => item.ToolGroup is not null)
-                        .SelectMany(item => item.ToolGroup!)
-                        .SelectMany(message => message.ToolCalls ?? [])
-                        .Select(call => call.Id)
-                        .ToHashSet(StringComparer.Ordinal);
-                    var unrepresented = activeTools
-                        .Where(active => !representedCallIds.Contains(active.CallId))
-                        .ToArray();
-                    if (unrepresented.Length > 0)
-                        entries.Add(new RenderedFeedEntry(ActiveTools: unrepresented, TurnId: turn.Id));
-                }
-
-                // Once every progressively mounted intermediate block is present, close the
-                // expanded region with a second affordance. A long turn can put its summary far
-                // above the viewport, so requiring the user to find that first button again
-                // defeats the purpose of folding the detail.
-                if (_expandedTurns.Contains(turn.Id.Value)
-                    && !_turnExpansionsPending.Contains(turn.Id.Value))
-                {
-                    entries.Add(new RenderedFeedEntry(CollapseTurnId: turn.Id));
                 }
 
                 if (IsCurrentTurn(turn) && turn.FinalAnswer is null && SelectedRun is { } streamingRun
@@ -1697,6 +1658,95 @@
         }
 
         return turns;
+    }
+
+    /// <summary>
+    /// One segment's row and, unfolded, its steps. Only the open segment of a running turn carries
+    /// the live notes, the activity line and the step in flight. Returns whether it presented the
+    /// running turn's live text.
+    /// </summary>
+    private bool AddSegmentEntries(List<RenderedFeedEntry> entries, FeedTurn turn, TurnSegment segment,
+        ChatMessageView? opener, bool isLast, bool showsUsage)
+    {
+        var key = new TurnSegmentKey(turn.Id!.Value, segment.Index);
+        var expanded = IsSegmentExpanded(turn, segment);
+        entries.Add(new RenderedFeedEntry(Summary: turn, Segment: segment, SegmentOpener: opener, IsLastSegment: isLast,
+            ShowsUsage: showsUsage));
+        IReadOnlyList<FeedItem> visibleItems = [];
+        if (expanded)
+        {
+            var visibleCount = Math.Min(GetExpandedTurnItemLimit(key), segment.Items.Count);
+            visibleItems = segment.Items.Take(visibleCount).ToArray();
+            entries.AddRange(visibleItems.Select((item, index) => new RenderedFeedEntry(
+                Item: item,
+                RevealIndex: index % ExpandedTurnBatchSize,
+                IsExpandedIntermediate: true)));
+            // File-change receipts of later steps stay visible while the detailed blocks are
+            // mounted over several frames. Steps mount above them and above the pin closing the
+            // segment, never below it.
+            entries.AddRange(segment.Items.Skip(visibleCount)
+                .SelectMany(ChatFeed.MessagesOf)
+                .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+        }
+        else
+        {
+            // The steps are folded, not their durable workspace receipts.
+            entries.AddRange(segment.Messages
+                .Where(message => message.WorkspaceChanges is { IsEmpty: false })
+                .Select(message => new RenderedFeedEntry(ChangesMessage: message)));
+        }
+
+        var presented = false;
+        if (isLast && IsRunningTurn(turn))
+        {
+            presented = true;
+            // The final answer arriving as StreamingContent is shown below as it is; the live
+            // notes step aside at once rather than making the reader wait for it, folding away
+            // the way each of them left the stack before.
+            var answerStreaming = !string.IsNullOrWhiteSpace(SelectedRun?.StreamingContent);
+            // Notes said before a pin stay above it: the open segment starts its window afresh.
+            _liveFrame = LiveText.Present(opener?.Id, GetLiveTexts(segment.Messages), _liveTextHeld, DateTimeOffset.UtcNow);
+            ScheduleLiveTextCheck(_liveFrame.NextCheck);
+            if (!expanded)
+            {
+                AddLiveNotes(entries, turn, segment, answerStreaming);
+                if (!answerStreaming)
+                    entries.Add(new RenderedFeedEntry(Activity: GetTurnActivity(turn) ?? TurnActivity.None, TurnId: turn.Id));
+            }
+            // Expanded, the notes are already there as themselves; only the step still in
+            // flight has nowhere else to appear.
+            else if (!answerStreaming && SelectedRun?.DraftContent is { } draft && !string.IsNullOrWhiteSpace(draft))
+            {
+                entries.Add(new RenderedFeedEntry(LiveText: draft, LiveVersion: -1, TurnId: turn.Id,
+                    LiveWriting: SelectedRun.DraftToolCall is null));
+            }
+
+            if (expanded && SelectedRun?.ActiveTools is { Count: > 0 } activeTools)
+            {
+                var representedCallIds = visibleItems
+                    .Where(item => item.ToolGroup is not null)
+                    .SelectMany(item => item.ToolGroup!)
+                    .SelectMany(message => message.ToolCalls ?? [])
+                    .Select(call => call.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+                var unrepresented = activeTools
+                    .Where(active => !representedCallIds.Contains(active.CallId))
+                    .ToArray();
+                if (unrepresented.Length > 0)
+                    entries.Add(new RenderedFeedEntry(ActiveTools: unrepresented, TurnId: turn.Id));
+            }
+        }
+
+        // Once every progressively mounted block is present, close the expanded segment with a
+        // second affordance. A long segment can put its row far above the viewport, so requiring
+        // the user to find that first button again defeats the purpose of folding the detail.
+        if (_expandedTurns.Contains(key) && !_turnExpansionsPending.Contains(key))
+        {
+            entries.Add(new RenderedFeedEntry(CollapseSegment: key));
+        }
+
+        return presented;
     }
 
     private TranscriptTurnStamp GetTurnStamp(RenderedFeedTurn turn, IReadOnlyList<ModelSwitch>? modelSwitches)
@@ -1735,10 +1785,10 @@
     private CancellationTokenSource? _liveTextTimer;
     private DateTimeOffset? _liveTextTimerDue;
 
-    /// <summary>The turn's notes, oldest first, then the step in flight when the model is writing.</summary>
-    private List<string> GetLiveTexts(FeedTurn turn)
+    /// <summary>The open segment's notes, oldest first, then the step in flight when the model is writing.</summary>
+    private List<string> GetLiveTexts(IEnumerable<ChatMessageView> messages)
     {
-        var texts = turn.IntermediateMessages
+        var texts = messages
             .Where(message => message.Role == "Assistant" && !string.IsNullOrWhiteSpace(message.Content))
             .Select(message => message.Content)
             .ToList();
@@ -1754,7 +1804,7 @@
     /// start of the turn, empty, so the first note grows it. While the answer streams, the whole
     /// window folds away under it.
     /// </summary>
-    private void AddLiveNotes(List<RenderedFeedEntry> entries, FeedTurn turn, bool answerStreaming)
+    private void AddLiveNotes(List<RenderedFeedEntry> entries, FeedTurn turn, TurnSegment segment, bool answerStreaming)
     {
         var notes = _liveFrame.Notes;
         var count = Math.Clamp(LiveNoteCount, AI.Web.Settings.ClientSettings.MinLiveNoteCount, AI.Web.Settings.ClientSettings.MaxLiveNoteCount);
@@ -1766,7 +1816,8 @@
             shown.Add(new LiveNoteView(note.Id, note.Text, Current: age == 0,
                 Writing: age == 0 && IsBeingWritten(note.Text), Older: age >= count));
         }
-        entries.Add(new RenderedFeedEntry(LiveNotes: shown, LiveNoteLimit: count, LiveLeaving: answerStreaming, TurnId: turn.Id));
+        entries.Add(new RenderedFeedEntry(LiveNotes: shown, LiveNoteLimit: count, LiveLeaving: answerStreaming, TurnId: turn.Id,
+            Segment: segment));
     }
 
     /// <summary>
@@ -1890,55 +1941,59 @@
         return GetLastTurnId() == activeMessageId;
     }
 
-    private bool IsTurnExpanded(FeedTurn turn) =>
+    private string OpenSegmentElementId(Guid turnId) =>
+        _openSegmentElementIds.GetValueOrDefault(turnId) ?? new TurnSegmentKey(turnId, 0).SummaryElementId;
+
+    private bool IsSegmentExpanded(FeedTurn turn, TurnSegment segment) =>
         turn.Id is { } id
-        && (_expandedTurns.Contains(id)
+        && (_expandedTurns.Contains(new TurnSegmentKey(id, segment.Index))
             || (ForkSourceId is { } forkSource
-                && turn.IntermediateMessages.Any(message => message.Id == forkSource)));
+                && segment.Messages.Any(message => message.Id == forkSource)));
 
-    private bool CanExpandTurn(FeedTurn turn) =>
-        turn.IntermediateItems.Count > 0
-        || IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
+    private bool CanExpandSegment(FeedTurn turn, TurnSegment segment, bool isLast) =>
+        segment.Items.Count > 0
+        || isLast && IsCurrentTurn(turn) && SelectedRun?.ActiveTools is { Count: > 0 };
 
-    private async Task ToggleTurnAsync(Guid turnId)
+    private async Task ToggleSegmentAsync(TurnSegmentKey key)
     {
         if (_messageScrollHandle is { } handle)
         {
-            try { await handle.InvokeVoidAsync("anchorElement", $"turn-summary-{turnId}"); }
+            try { await handle.InvokeVoidAsync("anchorElement", key.SummaryElementId); }
             catch (Exception error) when (error is JSException or ObjectDisposedException) { }
         }
 
-        if (_expandedTurns.Remove(turnId))
+        if (_expandedTurns.Remove(key))
         {
-            _expandedTurnItemLimits.Remove(turnId);
-            _turnExpansionsPending.Remove(turnId);
+            _expandedTurnItemLimits.Remove(key);
+            _turnExpansionsPending.Remove(key);
         }
         else
         {
-            _expandedTurns.Add(turnId);
-            _expandedTurnItemLimits[turnId] = InitialExpandedTurnItemCount;
+            _expandedTurns.Add(key);
+            _expandedTurnItemLimits[key] = InitialExpandedTurnItemCount;
             var turn = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
-                .FirstOrDefault(item => item.Id == turnId);
-            if (turn is not null && NeedsActivity(turn))
+                .FirstOrDefault(item => item.Id == key.TurnId);
+            var segment = turn is null ? null : Feed.BuildSegments(turn).ElementAtOrDefault(key.Index);
+            if (turn is not null && segment is not null && NeedsActivity(segment.Messages))
             {
-                _loadingTurnIds.Add(turnId);
+                _loadingTurnIds.Add(key.TurnId);
                 _expandedTurnsVersion++;
                 StateHasChanged();
                 // A running turn stays open when its activity could not be loaded: what the run's
                 // snapshots carry is enough to list the steps, and each step loads its own result
                 // when opened. Folding it back made the turn spring shut under the click.
-                if (!await LoadTurnActivityAsync(turnId) && !IsRunningTurn(turn))
+                if (!await LoadTurnActivityAsync(key.TurnId) && !IsRunningTurn(turn))
                 {
-                    _expandedTurns.Remove(turnId);
-                    _expandedTurnItemLimits.Remove(turnId);
+                    _expandedTurns.Remove(key);
+                    _expandedTurnItemLimits.Remove(key);
                 }
             }
-            if (_expandedTurns.Contains(turnId)) _turnExpansionsPending.Add(turnId);
+            if (_expandedTurns.Contains(key)) _turnExpansionsPending.Add(key);
         }
         _expandedTurnsVersion++;
     }
 
-    private static bool NeedsActivity(FeedTurn turn) => turn.IntermediateMessages.Any(message =>
+    private static bool NeedsActivity(IEnumerable<ChatMessageView> messages) => messages.Any(message =>
         message.ContentOmitted
         || message.ToolCalls?.Any(call => call.Arguments.Length == 0) == true);
 
@@ -1982,9 +2037,9 @@
         }
     }
 
-    private async Task CollapseTurnFromEndAsync(Guid turnId)
+    private async Task CollapseSegmentFromEndAsync(TurnSegmentKey key)
     {
-        if (!_expandedTurns.Contains(turnId)) return;
+        if (!_expandedTurns.Contains(key)) return;
 
         if (_messageScrollHandle is { } handle)
         {
@@ -1994,20 +2049,20 @@
                 // answer rise naturally into view instead of jumping back to the summary at the
                 // beginning of a potentially very long turn. Focus still returns to that summary
                 // for keyboard users, without changing the scroll position.
-                await handle.InvokeVoidAsync("anchorFollowingElement", $"turn-collapse-{turnId}");
-                await handle.InvokeVoidAsync("focusElement", $"turn-summary-{turnId}");
+                await handle.InvokeVoidAsync("anchorFollowingElement", key.CollapseElementId);
+                await handle.InvokeVoidAsync("focusElement", key.SummaryElementId);
             }
             catch (Exception error) when (error is JSException or ObjectDisposedException) { }
         }
 
-        _expandedTurns.Remove(turnId);
-        _expandedTurnItemLimits.Remove(turnId);
-        _turnExpansionsPending.Remove(turnId);
+        _expandedTurns.Remove(key);
+        _expandedTurnItemLimits.Remove(key);
+        _turnExpansionsPending.Remove(key);
         _expandedTurnsVersion++;
     }
 
-    private int GetExpandedTurnItemLimit(Guid turnId) =>
-        _expandedTurnItemLimits.GetValueOrDefault(turnId, int.MaxValue);
+    private int GetExpandedTurnItemLimit(TurnSegmentKey key) =>
+        _expandedTurnItemLimits.GetValueOrDefault(key, int.MaxValue);
 
     private async Task<bool> AdvanceTurnExpansionAsync()
     {
@@ -2021,24 +2076,25 @@
         var turns = Feed.BuildTurns(GetVisibleBranchMessages(), LastTurnEndedWithoutFinalAnswer())
             .Where(turn => turn.Id is not null)
             .ToDictionary(turn => turn.Id!.Value);
-        foreach (var turnId in _turnExpansionsPending.ToArray())
+        foreach (var key in _turnExpansionsPending.ToArray())
         {
-            if (!turns.TryGetValue(turnId, out var turn) || !_expandedTurns.Contains(turnId))
+            if (!turns.TryGetValue(key.TurnId, out var turn) || !_expandedTurns.Contains(key)
+                || Feed.BuildSegments(turn).ElementAtOrDefault(key.Index) is not { } segment)
             {
-                _turnExpansionsPending.Remove(turnId);
-                _expandedTurnItemLimits.Remove(turnId);
+                _turnExpansionsPending.Remove(key);
+                _expandedTurnItemLimits.Remove(key);
                 continue;
             }
 
-            var next = GetExpandedTurnItemLimit(turnId) + ExpandedTurnBatchSize;
-            if (next >= turn.IntermediateItems.Count)
+            var next = GetExpandedTurnItemLimit(key) + ExpandedTurnBatchSize;
+            if (next >= segment.Items.Count)
             {
-                _expandedTurnItemLimits[turnId] = int.MaxValue;
-                _turnExpansionsPending.Remove(turnId);
+                _expandedTurnItemLimits[key] = int.MaxValue;
+                _turnExpansionsPending.Remove(key);
             }
             else
             {
-                _expandedTurnItemLimits[turnId] = next;
+                _expandedTurnItemLimits[key] = next;
             }
         }
 
@@ -2074,21 +2130,20 @@
         if (SelectedRun is { } run
             && !string.IsNullOrWhiteSpace(run.StreamingContent)) return "message-streaming";
         var turnId = GetLastTurnId();
-        return turnId is { } id ? $"turn-summary-{id}" : "message-streaming";
+        return turnId is { } id ? OpenSegmentElementId(id) : "message-streaming";
     }
 
-    private string GetTurnSummaryText(FeedTurn turn)
+    private string GetSegmentSummaryText(FeedTurn turn, TurnSegment segment, ChatMessageView? opener, bool isLast)
     {
-        var elapsed = GetTurnDuration(turn);
-        var duration = Feed.FormatDuration(elapsed);
-        if (IsRunningTurn(turn))
+        var duration = Feed.FormatDuration(GetSegmentDuration(turn, segment, opener, isLast));
+        if (isLast && IsRunningTurn(turn))
         {
             // The model's words are under the row in full, and what it is doing with its hands is
             // the line under them; the row only keeps time.
             return $"Working for {duration}";
         }
 
-        if (IsCurrentTurn(turn))
+        if (isLast && IsCurrentTurn(turn))
         {
             return SelectedRun?.Status switch
             {
@@ -2099,6 +2154,27 @@
         }
 
         return $"Worked for {duration}";
+    }
+
+    /// <summary>
+    /// The time a segment's own steps took: from the message that opened it (the turn's question,
+    /// or the pin before it) to its last step. A segment closed by an answer ends at the question,
+    /// so the time the person took to answer is not counted as work.
+    /// </summary>
+    private TimeSpan GetSegmentDuration(FeedTurn turn, TurnSegment segment, ChatMessageView? opener, bool isLast)
+    {
+        if (segment.Index == 0 && isLast) return GetTurnDuration(turn);
+        if (opener is null || turn.UserMessage is not { } user) return TimeSpan.Zero;
+        if (isLast && IsRunningTurn(turn) && GeneratingElapsed is { } generating)
+        {
+            var before = opener.CreatedAt - user.CreatedAt;
+            return generating > before ? generating - before : TimeSpan.Zero;
+        }
+
+        var last = isLast
+            ? turn.LastMessage
+            : segment.Messages.LastOrDefault(message => message.Id != segment.Pin?.Id);
+        return last is not null && last.CreatedAt > opener.CreatedAt ? last.CreatedAt - opener.CreatedAt : TimeSpan.Zero;
     }
 
     private TurnTokenUsage? GetTurnUsage(Guid turnId) =>
@@ -2117,9 +2193,9 @@
         ? Math.Max(0, (int)elapsed.TotalSeconds)
         : null;
 
-    private string GetTurnSummaryStateClasses(FeedTurn turn)
+    private string GetTurnSummaryStateClasses(IEnumerable<ChatMessageView> segmentMessages)
     {
-        var messages = turn.IntermediateMessages.ToArray();
+        var messages = segmentMessages.ToArray();
         return string.Join(' ', new[]
         {
             messages.Any(message => message.Id == BranchLeafId) ? "branch-leaf" : null,

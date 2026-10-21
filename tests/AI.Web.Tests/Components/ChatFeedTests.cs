@@ -49,6 +49,68 @@ public sealed class ChatFeedTests
     }
 
     [Fact]
+    public void ShouldCutATurnIntoSegmentsAtWhatThePersonAddedAndAnswered()
+    {
+        var question = User("Fix the build");
+        var firstNote = Assistant("Reading the project");
+        var added = User("Do not touch migrations") with { Delivery = MessageDelivery.InTurn };
+        var ask = Message("Assistant", "", [new ChatToolCall("ask-1", "mcp_app__ask_user", "{}")]);
+        var reply = ToolResult("ask-1") with
+        {
+            UserAnswer = new AI.Contracts.Tools.AskUserAnswer("answered",
+                [new AI.Contracts.Tools.AskUserAnswerItem(null, "Which branch?", "master", false)])
+        };
+        var lastNote = Assistant("Building", "call-2");
+        var lastResult = ToolResult("call-2");
+        var answer = Assistant("Fixed");
+
+        var turn = _feed.BuildTurns([question, firstNote, added, ask, reply, lastNote, lastResult, answer])
+            .ShouldHaveSingleItem();
+        var segments = _feed.BuildSegments(turn);
+
+        segments.Count.ShouldBe(3);
+        segments[0].Messages.ShouldBe([firstNote]);
+        segments[0].Pin.ShouldBe(added);
+        // The step that asked stays with the steps before the reply; the reply is the pin.
+        segments[1].Messages.ShouldBe([ask, reply]);
+        segments[1].Pin.ShouldBe(reply);
+        segments[2].Messages.ShouldBe([lastNote, lastResult]);
+        segments[2].Pin.ShouldBeNull();
+        segments.Select(segment => segment.Index).ShouldBe([0, 1, 2]);
+    }
+
+    [Fact]
+    public void ShouldKeepATurnWithoutPinsInOneOpenSegment()
+    {
+        var question = User("do it");
+        var note = Assistant("working", "call-1");
+        var result = ToolResult("call-1");
+
+        var turn = _feed.BuildTurns([question, note, result]).ShouldHaveSingleItem();
+
+        var segment = _feed.BuildSegments(turn).ShouldHaveSingleItem();
+        segment.Items.ShouldBe(turn.IntermediateItems);
+        segment.Pin.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ShouldLeaveAnEmptyOpenSegmentAfterAPinThatEndsTheSteps()
+    {
+        var question = User("do it");
+        var note = Assistant("working");
+        var added = User("and the docs") with { Delivery = MessageDelivery.InTurn };
+
+        var turn = _feed.BuildTurns([question, note, added], lastTurnEndedWithoutFinalAnswer: true)
+            .ShouldHaveSingleItem();
+        var segments = _feed.BuildSegments(turn);
+
+        segments.Count.ShouldBe(2);
+        segments[0].Pin.ShouldBe(added);
+        segments[1].Items.ShouldBeEmpty();
+        segments[1].Pin.ShouldBeNull();
+    }
+
+    [Fact]
     public void AsideAfterAnAnswerShouldStandAsItsOwnItemWithoutTakingTheAnswer()
     {
         var question = User("Summarize");

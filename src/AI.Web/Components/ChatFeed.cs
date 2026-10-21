@@ -161,6 +161,38 @@ public sealed class ChatFeed : IChatFeedProjection
         return turns;
     }
 
+    /// <summary>
+    /// Cuts a turn's intermediate items at each message the person added during the turn and at
+    /// each answer to a question, in order. A step that holds an answer ends the stretch before
+    /// it; the added message itself belongs to no stretch. The last segment is always open (no
+    /// pin) and may be empty: it is where a running turn's next step lands.
+    /// </summary>
+    public List<TurnSegment> BuildSegments(FeedTurn turn)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+        var segments = new List<TurnSegment>();
+        var items = new List<FeedItem>();
+        foreach (var item in turn.IntermediateItems)
+        {
+            if (item.Message is { Delivery: MessageDelivery.InTurn } added)
+            {
+                segments.Add(new TurnSegment(segments.Count, items.ToArray(), added));
+                items = [];
+                continue;
+            }
+
+            items.Add(item);
+            foreach (var answered in MessagesOf(item).Where(message => message.UserAnswer is not null))
+            {
+                segments.Add(new TurnSegment(segments.Count, items.ToArray(), answered));
+                items = [];
+            }
+        }
+
+        segments.Add(new TurnSegment(segments.Count, items.ToArray(), null));
+        return segments;
+    }
+
     /// <summary>Returns the root-to-leaf message chain for the selected branch.</summary>
     public IReadOnlyList<ChatMessageView> BuildBranch(
         IReadOnlyList<ChatMessageView> messages,

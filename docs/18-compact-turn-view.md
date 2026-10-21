@@ -30,7 +30,7 @@ A turn can end without a final answer (stopped, failed) — then all elements of
 
 ### Collapsed row
 
-One row per turn, in place of all intermediate messages — that is, between the user message and the final answer.
+One row per [segment](#segments), in place of its intermediate messages. A turn the person did not step into has one segment, so one row between the user message and the final answer.
 
 | Turn state | Row text |
 | --- | --- |
@@ -40,9 +40,31 @@ One row per turn, in place of all intermediate messages — that is, between the
 | Failed | `Failed after 22s` |
 | No intermediate messages | no row at all |
 
-Only time — no step count, no call count, no error badge. Errors are visible after expanding: today's `ToolActivityGroup` is there with its own `N failed`.
+Only time — no step count, no call count, no error badge. Each row counts its own segment (see [Segments](#segments)); a turn of one segment counts the whole turn. Errors are visible after expanding: today's `ToolActivityGroup` is there with its own `N failed`.
 
 The row no longer carries the model's text: a single truncated line of it was unreadable. The text moved under the row, in full — see [Live text](#live-text).
+
+### Segments
+
+What the person puts into a running turn is theirs, not the model's work, so it is never folded: a message added during the turn (`MessageDelivery.InTurn`, see [Asides and team messages](34-asides-and-team-messages.md)) and the answer to a question (`ChatMessageView.UserAnswer`, see [Ask user](19-ask-user.md)). These **pins** cut the turn's intermediate steps into segments (`ChatFeed.BuildSegments`), and each segment folds on its own:
+
+```
+Fix the build
+▸ Worked for 40s
+  Do not touch migrations                ← added during the turn
+▸ Worked for 12s
+  Which branch? → master                 ← the answer
+▸ Worked for 1m 5s
+Fixed: …                                 ← final answer
+```
+
+- **A pin closes the segment before it.** An added message belongs to no segment. An answer is the result of the step that asked, so that step ends the segment before the answer and is drawn with it when that segment is open.
+- **Pins never move past a step.** Folded or open, a pin is drawn after every step of the segment before it and before every step of the one after it. Opening a segment mounts its steps a couple per frame, so a long one does not freeze the page; they mount between its row and the pin, and the pin only moves down. One expanded row for the whole turn used to draw every answer right under the row and then mount the steps above it, and dropped the added messages until their step was mounted.
+- **Rows.** A segment with steps has a row; one without steps (a pin straight after another, or after the question) has none. The last segment is always open-ended: while the turn runs it has a row even before its first step lands, and it is the one that says `Working for …`, `Stopped after …` or `Failed after …`, carries the live notes, the activity line and the running changes chip. Earlier segments always say `Worked for …`.
+- **Time.** A segment's row counts from the message that opened it (the question or the pin before it) to its last step; a segment closed by an answer ends at the question, so the time the person took to answer is not counted as work. The running segment counts the run's elapsed time minus what came before its opener.
+- **Tokens and usage details** belong to the whole turn and are shown on its last row.
+- **State.** Expansion is held per segment (`turn id`, `segment index`); segment indexes never change, because pins only ever arrive at the end of a running turn. The first segment's row and **Hide steps** keep the turn's own element ids (`turn-summary-{turn}`), the others add the index (`turn-summary-{turn}-{index}`). A search hit inside a folded step opens only its segment.
+- **Branches** leaving a folded step hang under the row of the segment that holds the step.
 
 ### Live text
 
@@ -57,6 +79,7 @@ Source, newest first: the draft of the model step in flight (`ChatRunSnapshot.Dr
 - **No going back.** A text the turn has moved past is not shown again.
 - **The end is immediate.** Final answer, stop or failure replace the live text at once; the reader is not made to wait for the thing the wait was for.
 - **Expanded turn:** the notes are shown as themselves, so only the draft of the step in flight is added at the end.
+- **After a pin** the window under the new segment's row starts empty: notes said before the pin stay folded above it, so nothing the model wrote earlier is drawn after what the person added.
 - A new text surfaces in place out of a soft blur (300 ms); growth of the same text is patched in place. The notes move the same way under `prefers-reduced-motion`: this motion is how the window says the turn is at work.
 
 #### Notes window
@@ -130,7 +153,7 @@ If the turn ends with an error, the row keeps `Failed after …` and shows no ba
 
 The row is the click target. Hover highlights the row and shows a chevron; keyboard focus adds a frame. Click or Enter/Space toggles the section.
 
-An expanded turn ends with a **Hide steps** control (`.turn-collapse-footer`), so a long turn can be folded from where the reader is. It mirrors the row it closes: it starts at the left edge of the column, uses the row's muted type, a `chevron-up` and the visible label, and a hairline after the label marks where the intermediate steps end. It stays in the flow and has no fill, border or shadow at rest. Collapsing from it keeps the content below in place.
+An expanded segment ends with a **Hide steps** control (`.turn-collapse-footer`), so a long one can be folded from where the reader is; it sits before the pin that closes the segment. It mirrors the row it closes: it starts at the left edge of the column, uses the row's muted type, a `chevron-up` and the visible label, and a hairline after the label marks where the intermediate steps end. It stays in the flow and has no fill, border or shadow at rest. Collapsing from it keeps the content below in place.
 
 It must not be confused with the jump to the latest message (`.messages-jump`, see [UX decisions](12-ux-decisions.md)), which is the opposite in every cue:
 
@@ -235,7 +258,7 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 
 ## Acceptance criteria
 
-1. The feed shows only the user message, the final answer, the workspace changes card, and a single row between the user message and the final answer.
+1. The feed shows only the user message, the final answer, the workspace changes card, what the person added to the turn or answered in it, and one row per segment of steps between them.
 2. The row's text matches the table by turn state.
 3. Click on the row expands the intermediate items into today's view without changes.
 4. A running turn shows the model's current text in full under the row, streamed; a new text replaces it only after the reading delay (see [Live text](#live-text)).
@@ -244,6 +267,7 @@ The row is rendered in a muted color, smaller text, single line with ellipsis on
 7. Stopped and failed turns show `Stopped after …` / `Failed after …`.
 8. The file changes card is visible with the turn collapsed.
 9. Nothing has changed above the input area.
+10. Expanding a segment never draws one of its steps after the pin that closes it, at any moment of the progressive mount.
 
 ## How others do it
 

@@ -24,6 +24,16 @@ public sealed record FeedTurn(
 }
 
 /// <summary>
+/// A stretch of a turn's intermediate steps, closed by what the person put into the turn: a
+/// message added during it, or an answer to the model's question. The pin is drawn after the
+/// stretch whether it is folded or not, so folding and unfolding never move it past a step.
+/// </summary>
+public sealed record TurnSegment(int Index, IReadOnlyList<FeedItem> Items, ChatMessageView? Pin)
+{
+    public IEnumerable<ChatMessageView> Messages => Items.SelectMany(ChatFeed.MessagesOf);
+}
+
+/// <summary>
 /// One call paired with its result, plus the window it actually occupied. The agent runs a
 /// group's calls in order and persists each result as it lands, so a call's elapsed time is
 /// the gap between the previous landing and its own — an observed number, not an estimate.

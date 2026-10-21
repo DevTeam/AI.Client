@@ -38,7 +38,25 @@ jobs:
       - name: Build
         run: dotnet build AI.slnx --nologo
       - name: Test
-        run: dotnet test --solution AI.slnx --no-build --results-directory artifacts/test-results
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/test-results
+          dotnet test --solution AI.slnx --no-build --results-directory artifacts/test-results 2>&1 | tee artifacts/test-results/test.log
+      # Each failed test becomes an annotation with its message, so a failure can be read from the
+      # run page and the checks API without downloading the logs.
+      - name: Report failed tests
+        if: failure()
+        shell: bash
+        run: |
+          awk '
+            /^failed / { if (block != "") print block; block = $0; lines = 0; next }
+            block != "" && lines < 14 { block = block "%0A" $0; lines++; next }
+            block != "" { print block; block = "" }
+            END { if (block != "") print block }
+          ' artifacts/test-results/test.log | head -n 40 | while IFS= read -r failure; do
+            echo "::error title=${failure%%\%0A*}::${failure}"
+          done
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7

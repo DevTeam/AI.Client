@@ -91,6 +91,7 @@ internal sealed class Composition
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
+            // Server hosting, storage and the chat services built on them.
             .Transient<CompositeToolSessionFactory, ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
                 ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
@@ -102,9 +103,12 @@ internal sealed class Composition
                 ResourceService, ResourceModelProjection, ProjectPathAccess, WorkspacePathResolver, ReviewService,
                 ChatTemporaryDirectory, SystemShell,
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
-                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles>()
-            .Transient<WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
-                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief, ChatAgent, ContextTokenEstimator,
+                TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles,
+                WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
+                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief>()
+            // Tools, their policies and the skills and schedules that drive them. Kept as a second
+            // call because the generator declares a limited number of type parameters per overload.
+            .Transient<ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
                 AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,

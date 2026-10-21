@@ -135,9 +135,9 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Singleton<TextCorrectionLanguages, UpdateClient, ChatTipsState, ChatUsageStore,
                 DesktopBadgeNotificationService, HostConnection, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceUndoState, SenderLocations,
-                WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService>()
-            // Remembers the waits it saw since the open plan last changed.
-            .Singleton<ChatPlanClock>()
+                WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService,
+                // Remembers the waits it saw since the open plan last changed.
+                ChatPlanClock>()
             .Transient<GitPickerState, DropAccessPlanner, ChatFeed, TurnLiveText, DirectoryPickerState,
                 SettingsTransferCodec, SettingsImportPlanner, RunStatusPresentation, ComposerHistoryNavigator,
                 ReplySuggestionState, NavigationCues, AppNavigationLinks, AppGuideApi, AppControlHints,
@@ -157,9 +157,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
-            .Transient<DesktopUnreadCountPublisher>()
-            .Transient<ChatSkillStatisticsCalculator>()
-            .Transient<ChatPlanStatisticsCalculator>()
+            .Transient<DesktopUnreadCountPublisher, ChatSkillStatisticsCalculator, ChatPlanStatisticsCalculator>()
             .Bind<TimeProvider>().To(_ => TimeProvider.System)
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)

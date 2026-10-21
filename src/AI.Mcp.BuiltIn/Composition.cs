@@ -27,15 +27,14 @@ internal sealed partial class Composition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Program>(nameof(Root))
             .Root<ScriptRunner>(nameof(Worker))
+            // File system: the platform is one implementation of the contract, a fake in tests is another.
+            // The spare script worker is state the whole session shares.
+            .Singleton<SystemFileSystem, SystemPath, ScriptWorkers>()
             // Tools
             .Transient<ProcessRunTool, ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
-            // File system: the platform is one implementation of the contract, a fake in tests is another.
-            .Singleton<SystemFileSystem, SystemPath>()
-            // The spare script worker is state the whole session shares.
-            .Singleton<ScriptWorkers>()
             .Transient<ProcessRunner, ProcessScriptRunner, ProcessLauncher, ToolSandbox, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             .Transient((IEnumerable<IToolFactory> toolFactories) =>

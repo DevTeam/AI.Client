@@ -342,6 +342,7 @@ export function attach(scroller, owner) {
         resumeIfAtBottom();
         bindWatchedElement();
         sizeWarmup.enqueue();
+        observeBlocks();
     });
     observer.observe(scroller, { childList: true, subtree: true, characterData: true });
 
@@ -352,6 +353,27 @@ export function attach(scroller, owner) {
         captureAnchor();
     });
     resizeObserver.observe(scroller);
+
+    // The transcript's blocks are watched too, not just the scroller's own box. Some content
+    // changes height with no mutation at all: the live notes window grows on a CSS height
+    // transition, an image or a diagram finishes its layout. Between two streamed renders the
+    // pinned feed then fell behind its tail frame by frame and snapped back on the next token —
+    // a visible jitter. ResizeObserver delivers after layout and before paint, so following
+    // from it keeps the tail in place on every frame of the transition.
+    const observedBlocks = new Set();
+    const observeBlocks = () => {
+        for (const block of observedBlocks) {
+            if (block.parentElement === scroller) continue;
+            resizeObserver.unobserve(block);
+            observedBlocks.delete(block);
+        }
+        for (const block of scroller.children) {
+            if (observedBlocks.has(block)) continue;
+            observedBlocks.add(block);
+            resizeObserver.observe(block);
+        }
+    };
+    observeBlocks();
 
     const toBottom = smooth => {
         pinned = true;

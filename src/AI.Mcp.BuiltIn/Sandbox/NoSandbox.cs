@@ -7,9 +7,9 @@ internal sealed class NoSandbox : IToolSandbox
 {
     public static readonly NoSandbox Instance = new();
 
-    public SandboxPolicy? Policy => null;
+    public SandboxPolicy? Policy(SandboxedTool tool) => null;
 
     public string? TemporaryDirectory => null;
 
-    public string Describe() => "The program is not sandboxed: it can read and write anything the host user can. ";
+    public string Describe(SandboxedTool tool) => "The program is not sandboxed: it can read and write anything the host user can. ";
 }

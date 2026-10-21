@@ -3,7 +3,10 @@ namespace AI.Mcp.BuiltIn.Scripts;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AI.Contracts.FileSystem;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -316,7 +319,12 @@ public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
         return variables.ToArray();
     }
 
-    /// <summary>Renders a value for a reader, as JSON when it is JSON and as text otherwise.</summary>
+    /// <summary>
+    /// Renders a value for a reader: a scalar as invariant text, and anything else (a collection, a
+    /// record, an anonymous object, a tuple) as compact JSON. An object's own <c>ToString</c> is
+    /// usually its type name, which made a model run the script again just to serialize what it
+    /// had already computed.
+    /// </summary>
     private static string? Value(object? value)
     {
         if (value is null)
@@ -331,15 +339,68 @@ public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
             {
                 JsonElement element => element.GetRawText(),
                 string line => line,
-                _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
+                IConvertible or IFormattable => Convert.ToString(value, CultureInfo.InvariantCulture) ?? "",
+                _ => Json(value)
             };
         }
-        catch (Exception error) when (error is NotSupportedException or InvalidOperationException)
+        // Serializing reads the script's own properties, and a getter may throw anything: the value
+        // then falls back to its text rather than failing the run that produced it.
+        catch (Exception error) when (error is not OutOfMemoryException)
         {
-            text = $"<{value.GetType().FullName}>";
+            text = Convert.ToString(value, CultureInfo.InvariantCulture) is { Length: > 0 } fallback ? fallback : $"<{value.GetType().FullName}>";
         }
 
         return text.Length > ScriptLimits.ValueCharacters ? text[..ScriptLimits.ValueCharacters] + "…" : text;
+    }
+
+    private static readonly JsonSerializerOptions ValueJson = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        IncludeFields = true,
+        MaxDepth = 32,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        ReferenceHandler = ReferenceHandler.IgnoreCycles,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    /// <summary>
+    /// The value as JSON, written only as far as a reader will be shown: a variable holding a million
+    /// records is cut off while it is serialized rather than after all of it was.
+    /// </summary>
+    private static string Json(object value)
+    {
+        using var buffer = new BoundedStream(ScriptLimits.ValueCharacters * 4 + 4);
+        try
+        {
+            JsonSerializer.Serialize(buffer, value, value.GetType(), ValueJson);
+        }
+        catch (IOException) when (buffer.Full)
+        {
+            // What was written so far is what is shown; the cut is marked by the caller.
+        }
+
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+    }
+
+    /// <summary>A memory stream that refuses to grow past its limit.</summary>
+    private sealed class BoundedStream(int limit) : MemoryStream
+    {
+        // The array overload does the work: MemoryStream's span overload calls it in a derived type.
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            var room = Math.Max(0, limit - (int)Length);
+            base.Write(buffer, offset, Math.Min(room, count));
+            if (count <= room) return;
+            Full = true;
+            throw new IOException("The value is longer than a reader is shown.");
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer) => Write(buffer.ToArray(), 0, buffer.Length);
+
+        public override void WriteByte(byte value) => Write([value], 0, 1);
+
+        /// <summary>Whether a write was refused; the refusal is the only way to stop the serializer early.</summary>
+        public bool Full { get; private set; }
     }
 
     private static string Describe(Exception error) => error switch

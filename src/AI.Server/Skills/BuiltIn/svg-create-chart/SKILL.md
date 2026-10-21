@@ -5,11 +5,15 @@ icon: svg-create-chart
 kind: playbook
 description: Draw an SVG data chart from supplied values with honest scales, units, labels and a readable visual encoding.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"Requested image or visual change"},"source":{"type":"string","description":"Supplied SVG source or requirements"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Explicitly supplied or selected source/destination paths"},"target":{"type":"string","description":"Requested size, embedding mode or output destination"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","fetch","tool_search","run_skill","write_file","edit_file","create_directory"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","cs_run","ask_user","fetch","tool_search","run_skill","write_file","edit_file","create_directory"]
 ---
 
 The user's instructions take precedence. Follow project visual conventions and preserve unrelated
 work. Use ordinary permission-checked tools, and process_run with executable/argument arrays.
+
+Compute scales, ticks, coordinates and path data with one `cs_run` script rather than by mental
+arithmetic, and have it return the computed values or the SVG elements so every mark matches its
+data.
 
 1. Establish subject/change, source, intended size, background and destination from the request.
    Return a complete ```svg fenced document in chat by default; save .svg/assets only when

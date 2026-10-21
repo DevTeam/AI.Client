@@ -5,7 +5,7 @@ icon: devops-backup-verify
 kind: playbook
 description: Check backup freshness, integrity and restoration of selected data in an explicitly isolated test destination, report recoverability; never overwrites live data.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The source environment"},"service":{"type":"string","description":"The data service or backup set"},"backup":{"type":"string","description":"The backup version or identifier"},"destination":{"type":"string","description":"The explicitly isolated restoration destination"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
 ---
 
 The user's instructions take precedence. Follow repository instructions, deployment runbooks
@@ -13,6 +13,9 @@ and the existing toolchain. Use ordinary permission-checked tools; this playbook
 Use `process_run` with an executable and argument arrays, never interpolated shell commands.
 Do not expose secret values in arguments, logs, diffs or the final answer, or ask for secrets in
 chat. Use configured credential stores and existing secret references. Report in the user's language.
+
+Compare a backup with its source in one `cs_run` script that lists both trees and compares sizes and
+SHA-256 hashes, returning only what is missing, extra or different.
 
 1. Establish the requested goal and scope from the message and parameters. Search before reading
    instructions, manifests, CI/deployment configuration and relevant application contracts.

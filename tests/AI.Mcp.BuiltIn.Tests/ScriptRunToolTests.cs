@@ -91,6 +91,30 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ReturnsObjectsAndCollectionsAsJson()
+    {
+        var result = await CallAsync(new { code = "new { Total = 3, Names = new[] { \"a\", \"b\" }, Kind = DayOfWeek.Monday }" });
+
+        result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
+        var value = JsonDocument.Parse(result.GetProperty("returnValue").GetString()!).RootElement;
+        value.GetProperty("Total").GetInt32().ShouldBe(3);
+        value.GetProperty("Names").EnumerateArray().Select(item => item.GetString()).ShouldBe(["a", "b"]);
+        value.GetProperty("Kind").GetString().ShouldBe("Monday");
+    }
+
+    [Fact]
+    public async Task CutsAHugeCollectionWhileSerializingIt()
+    {
+        var result = await CallAsync(new { code = "var all = Enumerable.Range(0, 2_000_000).ToList(); all.Count" });
+
+        result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
+        var all = result.GetProperty("variables").EnumerateArray().Single(item => item.GetProperty("name").GetString() == "all");
+        var text = all.GetProperty("value").GetString()!;
+        text.ShouldStartWith("[0,1,2,");
+        text.ShouldEndWith("…");
+    }
+
+    [Fact]
     public async Task SetsTheWorkingDirectoryForTheRunAndRestoresIt()
     {
         var directory = Directory.CreateDirectory(

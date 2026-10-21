@@ -264,13 +264,13 @@ public sealed class AppReadTool(
                         return Paging.Page("McpTools", declared.Select(tool => new
                         {
                             tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
-                            DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
+                            DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName, global.Sandbox),
                             tool.Descriptor.Description, tool.Descriptor.InputSchema, tool.Descriptor.Annotations
                         }).ToArray(), cursor, limit, reply.Json);
                     return Paging.Page("McpTools", declared.Select(tool => new
                     {
                         tool.ServerId, Name = tool.OriginalName, tool.SchemaHash,
-                        DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName),
+                        DefaultDecision = toolDefaults.GetDecision(tool.ServerId, tool.OriginalName, global.Sandbox),
                         Description = tool.Descriptor.Description is { Length: > 240 } description
                             ? description[..240] + "…" : tool.Descriptor.Description,
                         Parameters = ParameterNames(tool.Descriptor.InputSchema),

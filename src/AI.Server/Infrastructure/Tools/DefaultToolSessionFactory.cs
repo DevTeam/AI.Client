@@ -23,9 +23,15 @@ public sealed class DefaultToolSessionFactory(
 
     /// <summary>
     /// Name of the environment variable that switches the built-in server's process sandbox on for
-    /// commands and C# scripts. It is set to <c>1</c> only when the global sandbox setting is on.
+    /// <c>process_run</c> commands. It is set to <c>1</c> only when the setting is on.
     /// </summary>
     public const string SandboxVariable = "AI_CLIENT_SANDBOX";
+
+    /// <summary>
+    /// Name of the environment variable that switches the sandbox on for <c>cs_run</c> scripts. The
+    /// setting is on by default, so this is normally set; the server itself treats its absence as off.
+    /// </summary>
+    public const string ScriptSandboxVariable = "AI_CLIENT_SCRIPT_SANDBOX";
 
     public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
     {
@@ -54,8 +60,8 @@ public sealed class DefaultToolSessionFactory(
 
     /// <summary>
     /// The whole environment the built-in server process starts with: a minimal inherited set, the
-    /// directory grants (the project's and the chat's temporary directory), and the sandbox switch
-    /// when the global setting asks for it.
+    /// directory grants (the project's and the chat's temporary directory), and the sandbox switches
+    /// for commands and scripts that the global settings turn on.
     /// </summary>
     public async Task<IDictionary<string, string?>> CreateEnvironmentAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
@@ -76,10 +82,11 @@ public sealed class DefaultToolSessionFactory(
                 capabilities = (IReadOnlyList<string>)["read", "write", "edit", "delete"], purpose = "chatTemporary"
             });
         environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(effectiveGrants);
-        // Off unless the user switched it on: the variable is left out rather than set to 0, so the
-        // server never inherits a value it did not get from this setting.
-        if ((await settings.LoadAsync(cancellationToken)).Sandbox is { Enabled: true })
-            environment[SandboxVariable] = "1";
+        // A switched-off sandbox leaves its variable out rather than set to 0, so the server never
+        // inherits a value it did not get from these settings.
+        var sandbox = (await settings.LoadAsync(cancellationToken)).Sandbox ?? new ToolSandboxSettings();
+        if (sandbox.Commands) environment[SandboxVariable] = "1";
+        if (sandbox.Scripts) environment[ScriptSandboxVariable] = "1";
         return environment;
     }
 }

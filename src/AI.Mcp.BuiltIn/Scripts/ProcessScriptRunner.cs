@@ -27,7 +27,7 @@ public sealed class ProcessScriptRunner(IScriptWorkers workers, IToolSandbox san
             return Failure(stopwatch, $"Timeout must be between 1 and {ScriptLimits.MaxTimeoutMs} milliseconds.");
         }
 
-        var mechanism = sandbox.Policy is null ? null : launcher.Support.Mechanism;
+        var mechanism = sandbox.Policy(SandboxedTool.Scripts) is null ? null : launcher.Support.Mechanism;
         ScriptResult result;
         try
         {

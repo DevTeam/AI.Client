@@ -5,7 +5,7 @@ icon: code-performance-optimize
 kind: playbook
 description: Measure a selected performance problem, optimize its demonstrated cause and compare equivalent before-and-after runs while preserving behavior; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The performance problem to improve"},"metric":{"type":"string","description":"Latency, throughput, allocations, memory or another metric to measure"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
 ---
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
@@ -17,6 +17,10 @@ The user's instructions take precedence over this playbook. Follow AGENTS.md, CL
 CONTRIBUTING and the repository's build, test and style conventions. Ask questions and report
 results in the user's language. Use `process_run` with an executable and argument arrays, not
 interpolated shell commands. Directory grants and ordinary tool approvals still apply.
+
+Compute statistics from measurements (mean, median, deviation, before and after) with one `cs_run`
+script that parses the benchmark or profiler output, rather than by reading numbers into the
+conversation.
 
 1. Establish the scope from the user's request and `paths`, or infer it from named symbols,
    diagnostics and project structure. Search before reading. Ask only when the scope is genuinely

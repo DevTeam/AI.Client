@@ -6,7 +6,7 @@ aliases: ["logs"]
 kind: playbook
 description: Analyze application or system logs over a bounded time window, including rolled and compressed files, against the host's actual current time; report the causal chain, gaps and whether the verbosity and retention were enough, and propose a targeted increase; changes nothing.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"The failure, error text or behavior to explain"},"since":{"type":"string","description":"Start of the time window, absolute or relative (\"last hour\")"},"until":{"type":"string","description":"End of the time window"},"timeZone":{"type":"string","description":"The time zone the user means, when it differs from the host"},"correlationId":{"type":"string","description":"A request, trace, operation or user-visible error id to follow"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Log files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","trigger_wait","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","trigger_wait","ask_user","run_skill"]
 ---
 
 For decompressed copies, extracts and intermediate counts, use the `purpose: "chatTemporary"`
@@ -23,6 +23,10 @@ service. Report in the user's language.
 Keep this skill read-only: do not edit logging configuration, delete, truncate, move or rotate
 log files, restart services or clear caches. A log file is often held open by the process writing
 it; read it as it is and never stop, kill or restart a process this run did not start to free it.
+
+Read large or many logs with one `cs_run` script that filters the window, counts by level and
+source, finds the first and last occurrence of each signature and returns a compact JSON summary
+with file and line references, instead of paging through them with read calls.
 
 1. Establish "now" from the host, never from your own sense of the date. Call `process_run` once
    for the clock: on Windows `powershell` with `-NoProfile -Command [DateTimeOffset]::Now.ToString('o')`

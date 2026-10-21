@@ -21,7 +21,7 @@ public sealed class ProcessRunTool(IProcessRunner processRunner, IBuiltInToolRep
                           $"Arguments are passed as a JSON array of strings; each element becomes one argv entry, with no shell parsing, " +
                           $"glob expansion, or environment-variable substitution. The process's standard input is closed immediately after launch. " +
                           $"On timeout, cancellation, or hard error the process tree is killed. " +
-                          sandbox.Describe() +
+                          sandbox.Describe(SandboxedTool.Commands) +
                           ChildProcessLimits.Describe()
         });
 

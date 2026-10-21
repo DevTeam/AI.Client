@@ -190,9 +190,13 @@
                         <section class="settings-group" aria-labelledby="settings-tools">
                             <h3 id="settings-tools">Tools</h3>
                             <div class="settings-card">
+                                <label @attributes="@(ControlHints.Attributes("settings.tools.script_sandbox"))" class="settings-row">
+                                    <span class="settings-row-text"><span class="settings-row-label">Run C# scripts in a sandbox</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.tools.script_sandbox")</span></span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_sandbox.Scripts" disabled="@(!_loaded)" @onchange="args => SetSandboxAsync(_sandbox with { Scripts = args.Value is true })" />
+                                </label>
                                 <label @attributes="@(ControlHints.Attributes("settings.tools.sandbox"))" class="settings-row">
-                                    <span class="settings-row-text"><span class="settings-row-label">Run commands and C# scripts in a sandbox</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.tools.sandbox")</span></span>
-                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_sandbox.Enabled" disabled="@(!_loaded)" @onchange="args => SetSandboxAsync(_sandbox with { Enabled = args.Value is true })" />
+                                    <span class="settings-row-text"><span class="settings-row-label">Run commands in a sandbox</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.tools.sandbox")</span></span>
+                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_sandbox.Commands" disabled="@(!_loaded)" @onchange="args => SetSandboxAsync(_sandbox with { Commands = args.Value is true })" />
                                 </label>
                             </div>
                         </section>
@@ -1429,7 +1433,7 @@
 
     private void SetToolDefaults(IEnumerable<McpToolPolicyEditor> tools)
     {
-        foreach (var tool in tools) tool.Decision = ToolDefaults.GetDecision(tool.ServerId, tool.Name);
+        foreach (var tool in tools) tool.Decision = ToolDefaults.GetDecision(tool.ServerId, tool.Name, _sandbox);
     }
 
     private static string ToolDecisionSummary(IReadOnlyCollection<McpToolPolicyEditor> tools) =>
@@ -1558,7 +1562,7 @@
                 var previous = _toolPolicies.SingleOrDefault(item => item.ServerId == tool.ServerId
                     && item.Name == tool.Name && item.SchemaHash == tool.SchemaHash);
                 _toolPolicies.RemoveAll(item => item.ServerId == tool.ServerId && item.Name == tool.Name);
-                _toolPolicies.Add(previous ?? McpToolPolicyEditor.From(tool, ToolDefaults.GetDecision(tool.ServerId, tool.Name)));
+                _toolPolicies.Add(previous ?? McpToolPolicyEditor.From(tool, ToolDefaults.GetDecision(tool.ServerId, tool.Name, _sandbox)));
             }
             if (tools.Count == 0) Notifications.ShowInfo("No tools were found.");
             else Notifications.ShowSuccess($"Discovered {tools.Count} tool(s).");

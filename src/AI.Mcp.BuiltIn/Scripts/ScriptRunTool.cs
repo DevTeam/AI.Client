@@ -20,13 +20,13 @@ public sealed class ScriptRunTool(IScriptRunner runner, IBuiltInToolReply reply,
             Description = "Compile and run a C# script with Roslyn scripting on .NET, in a fresh child process per call. "
                           + "Use it for calculations, data transformations, parsing and checks that a few lines of C# do more reliably than reasoning or a shell pipeline; "
                           + "prefer the file tools for plain reads and edits and process_run for existing programs. "
-                          + "The code is the body of a script: top-level statements, `using` directives, and a last expression without a semicolon, whose value is `returnValue`. "
+                          + "The code is the body of a script: top-level statements, `using` directives, and a last expression without a semicolon, whose value is `returnValue`: a scalar as text, an object or collection as compact JSON, so return the answer rather than printing it. "
                           + "Pass data through `arguments` (the string array `Args`) or `globals` (`Globals`, a dictionary of JsonElement) rather than pasting it into the code. "
                           + "Calls share no state. Everything the script writes to the console comes back in `stdout`/`stderr`, and the values of its variables in `variables`. "
                           + $"`workingDirectory` and `environment` apply to the run. Output is limited to {ScriptLimits.OutputCharacters} characters per stream "
                           + $"and the run to {ScriptLimits.MaxTimeoutMs} ms, after which the result is reported as timed out. "
                           + $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture}), .NET {Environment.Version}. "
-                          + sandbox.Describe()
+                          + sandbox.Describe(SandboxedTool.Scripts)
                           + ChildProcessLimits.Describe()
         });
 

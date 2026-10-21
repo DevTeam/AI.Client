@@ -11,26 +11,31 @@ using Xunit;
 
 public sealed class DefaultToolSessionFactoryTests
 {
-    [Theory]
-    [InlineData(null)]
-    [InlineData(false)]
-    public async Task ShouldLeaveTheSandboxOffUnlessTheSettingIsOn(bool? enabled)
+    [Fact]
+    public async Task ShouldSandboxScriptsButNotCommandsByDefault()
     {
-        var environment = await Factory(enabled is null ? null : new ToolSandboxSettings(enabled.Value))
+        var environment = await Factory(null)
             .CreateEnvironmentAsync([], ToolRunContext.None, TestContext.Current.CancellationToken);
 
         environment.ContainsKey(DefaultToolSessionFactory.SandboxVariable).ShouldBeFalse();
+        environment[DefaultToolSessionFactory.ScriptSandboxVariable].ShouldBe("1");
         environment.ContainsKey(DefaultToolSessionFactory.DirectoryGrantsVariable).ShouldBeTrue();
     }
 
-    [Fact]
-    public async Task ShouldSwitchTheSandboxOnWhenTheSettingIsOn()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ShouldPassEachSandboxSwitchOnlyWhenItIsOn(bool commands, bool scripts)
     {
-        var environment = await Factory(new ToolSandboxSettings(Enabled: true))
+        var environment = await Factory(new ToolSandboxSettings(commands, scripts))
             .CreateEnvironmentAsync([], ToolRunContext.None, TestContext.Current.CancellationToken);
 
         DefaultToolSessionFactory.SandboxVariable.ShouldBe("AI_CLIENT_SANDBOX");
-        environment[DefaultToolSessionFactory.SandboxVariable].ShouldBe("1");
+        DefaultToolSessionFactory.ScriptSandboxVariable.ShouldBe("AI_CLIENT_SCRIPT_SANDBOX");
+        environment.ContainsKey(DefaultToolSessionFactory.SandboxVariable).ShouldBe(commands);
+        environment.ContainsKey(DefaultToolSessionFactory.ScriptSandboxVariable).ShouldBe(scripts);
     }
 
     private static DefaultToolSessionFactory Factory(ToolSandboxSettings? sandbox)

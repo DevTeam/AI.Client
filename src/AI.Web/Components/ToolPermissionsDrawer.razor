@@ -189,7 +189,7 @@
             if (server is not { Enabled: true } || server.Policy == "Deny"
                 || _project?.McpServers.SingleOrDefault(item => item.Id == tool.ServerId) is { Enabled: false }) continue;
             policies[(tool.ServerId, tool.Name, tool.SchemaHash)] = new ViewPolicy(
-                tool.ServerId, tool.Name, tool.SchemaHash, ToolDefaults.GetDecision(tool.ServerId, tool.Name),
+                tool.ServerId, tool.Name, tool.SchemaHash, ToolDefaults.GetDecision(tool.ServerId, tool.Name, _global?.Sandbox),
                 server.Name, "Default", false, null);
         }
         foreach (var item in _global?.ToolPolicies ?? []) policies[(item.ServerId, item.Name, item.SchemaHash)] =
@@ -208,7 +208,7 @@
         new(item.ServerId, item.Name, item.SchemaHash, item.Decision, ServerName(item.ServerId), source, canReset, fallback);
     private string ServerName(Guid id) => _global?.McpServers.SingleOrDefault(item => item.Id == id)?.Name ?? "MCP server";
     private string? GlobalFallback(ToolPolicySettings item) => _global?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision
-        ?? ToolDefaults.GetDecision(item.ServerId, item.Name);
+        ?? ToolDefaults.GetDecision(item.ServerId, item.Name, _global?.Sandbox);
     private string? ProjectFallback(ToolPolicySettings item) => _project?.ToolPolicies.SingleOrDefault(policy => Same(policy, item))?.Decision ?? GlobalFallback(item);
     private ChatBranchView? CurrentBranch => _chat?.Branches?.FirstOrDefault(branch => branch.Id == BranchId);
     private IEnumerable<ChatBranchView> BranchLineage()

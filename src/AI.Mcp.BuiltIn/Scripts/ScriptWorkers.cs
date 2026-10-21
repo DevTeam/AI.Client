@@ -111,7 +111,7 @@ public sealed class ScriptWorkers(IProcessLauncher launcher, IToolSandbox sandbo
         }
 
         start.ArgumentList.Add(WorkerArgument);
-        var policy = sandbox.Policy;
+        var policy = sandbox.Policy(SandboxedTool.Scripts);
         if (policy is not null)
         {
             // The worker loads the compiler and its own assemblies from the server's directory.

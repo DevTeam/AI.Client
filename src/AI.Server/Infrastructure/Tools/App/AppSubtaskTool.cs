@@ -347,7 +347,8 @@ public sealed class AppSubtaskTool(
         }
         prompt.AppendLine().AppendLine()
             .AppendLine("Verify your own result before finishing with as few tool calls as possible, usually one that compares the result "
-                + "with its source or runs the relevant check. Fix only what failed and recheck only that; do not explore further once the "
+                + "with its source or runs the relevant check; when cs_run is available, one script that reads both and returns only what differs "
+                + "is usually that call. Fix only what failed and recheck only that; do not explore further once the "
                 + "checks pass. Report only checks you actually ran; do not mark an inferred or skipped check as passed.")
             .Append("End the response with one machine-readable line in this exact form: ")
             .Append(EvidenceStart)

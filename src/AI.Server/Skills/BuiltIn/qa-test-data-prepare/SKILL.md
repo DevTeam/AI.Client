@@ -5,13 +5,17 @@ icon: qa-test-data-prepare
 kind: playbook
 description: Prepare reproducible synthetic test datasets and fixtures for selected cases, validate their setup and define safe task-owned cleanup; never alters live data.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The cases and data conditions to support"},"environment":{"type":"string","description":"The isolated destination, when data will be loaded"},"seed":{"type":"string","description":"The requested reproducibility seed"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file"]
 ---
 
 The user's instructions take precedence. Follow project instructions, test conventions and
 runbooks. Use ordinary permission-checked tools; this skill grants no access. Use `process_run`
 with executable/argument arrays, never shell interpolation. Report in the user's language and
 redact credentials, personal data and sensitive request/response content.
+
+Generate test data with one `cs_run` script with a fixed seed, so the same data can be produced
+again; let the script validate counts, uniqueness and constraints before it writes, and return a
+summary rather than the data.
 
 1. Define the requested scope from the message, parameters, requirements and available evidence.
    Search before reading. Infer exact values when justified instead of asking again.

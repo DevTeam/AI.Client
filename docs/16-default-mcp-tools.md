@@ -2,7 +2,7 @@
 
 ## Composition
 
-The built-in server ships 23 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, `cs_run`, and network `fetch` default to `Ask`. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
+The built-in server ships 23 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, and network `fetch` default to `Ask`. `cs_run` defaults to `Allow` while C# scripts run in the [sandbox](38-process-sandbox.md), which is the default, and to `Ask` when that sandbox is switched off. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 

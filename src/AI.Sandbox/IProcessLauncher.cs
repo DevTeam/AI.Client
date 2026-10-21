@@ -72,7 +72,11 @@ public interface ILaunchedProcess : IDisposable
 /// <param name="Available">Whether a policy is enforced on this machine.</param>
 /// <param name="Mechanism">The OS facility that enforces it: AppContainer, Landlock or Seatbelt.</param>
 /// <param name="Reason">Why it is not available, when it is not.</param>
-public sealed record SandboxSupport(bool Available, string Mechanism, string? Reason = null);
+/// <param name="ClosesNetwork">
+/// Whether a policy with <see cref="SandboxPolicy.AllowNetwork"/> off is enforced here; Landlock
+/// needs ABI 4 for that, and a launch that asks for it on an older kernel fails.
+/// </param>
+public sealed record SandboxSupport(bool Available, string Mechanism, string? Reason = null, bool ClosesNetwork = false);
 
 public sealed class SandboxUnavailableException : InvalidOperationException
 {

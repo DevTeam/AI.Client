@@ -6,7 +6,7 @@ aliases: ["trace"]
 kind: playbook
 description: Analyze distributed traces, spans and runtime or performance traces (OpenTelemetry, Jaeger/Zipkin JSON, .nettrace, ETW, perf, strace, browser HAR or performance profiles) to find the critical path, the failing or slow span and its cause; changes nothing.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"The slow, failing or unexpected operation"},"traceId":{"type":"string","description":"A trace, operation or request id to follow"},"since":{"type":"string","description":"Start of the time window, absolute or relative"},"until":{"type":"string","description":"End of the time window"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Trace files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","ask_user","run_skill"]
 ---
 
 For converted traces, extracts and reports, use the `purpose: "chatTemporary"` root from
@@ -24,6 +24,10 @@ Keep this skill read-only: do not change sampling or exporter configuration, res
 install tools. Collecting a new trace attaches to a running process and slows it; do it only when
 the user asks for a capture, name the exact process or PID and the duration in `ask_user`, and act
 only on an explicit affirmative answer. Never stop, kill or restart a process this run did not start.
+
+Aggregate large traces with one `cs_run` script (durations by operation, the slowest spans, error
+spans with their parents) and return a compact JSON summary instead of reading the trace piece by
+piece.
 
 1. Establish "now" from the host clock with one `process_run` call (on Windows `powershell` with
    `-NoProfile -Command [DateTimeOffset]::Now.ToString('o')`; elsewhere `date` with

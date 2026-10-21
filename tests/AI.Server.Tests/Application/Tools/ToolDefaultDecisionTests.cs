@@ -55,6 +55,17 @@ public sealed class ToolDefaultDecisionTests
     {
         _defaults.GetDecision(DefaultMcpServer.Id, "new_tool").ShouldBe("Ask");
         _defaults.GetDecision(Guid.NewGuid(), "read_text_file").ShouldBe("Ask");
-        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run").ShouldBe("Ask");
+        _defaults.GetDecision(Guid.NewGuid(), "cs_run").ShouldBe("Ask");
+    }
+
+    [Fact]
+    public void ScriptsRunWithoutApprovalOnlyWhileTheyAreSandboxed()
+    {
+        // The defaults sandbox scripts, so a script runs unasked unless the sandbox is switched off.
+        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run").ShouldBe("Allow");
+        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run", new ToolSandboxSettings(Scripts: true)).ShouldBe("Allow");
+        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run", new ToolSandboxSettings(Commands: true, Scripts: false)).ShouldBe("Ask");
+        // The command sandbox changes nothing for process_run's default: commands keep the network.
+        _defaults.GetDecision(DefaultMcpServer.Id, "process_run", new ToolSandboxSettings(Commands: true)).ShouldBe("Ask");
     }
 }

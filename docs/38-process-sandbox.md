@@ -5,8 +5,10 @@ Status: Accepted
 `process_run` and `cs_run` start programs. Without a sandbox those programs run with everything the
 Host user can do, and the project's directory grants bind only the file tools. The sandbox closes
 that gap: when it is switched on, a started program and everything it starts reach only the
-session's grants. It is off by default and switched on in the global settings ("Run commands and C#
-scripts in a sandbox"). The Host then starts the built-in server with `AI_CLIENT_SANDBOX=1`.
+session's grants. Settings → Tools switches it separately: for C# scripts it is on by default
+("Run C# scripts in a sandbox", `AI_CLIENT_SCRIPT_SANDBOX=1`), for commands off ("Run commands in a
+sandbox", `AI_CLIENT_SANDBOX=1`). While scripts are sandboxed, `cs_run` runs without asking by
+default (`ToolDefaultDecision`), which is also what lets subtasks, which cannot ask, use it.
 
 ## What a confined program may do
 
@@ -21,13 +23,17 @@ scripts in a sandbox"). The Host then starts the built-in server with `AI_CLIENT
 | Anything else, the user profile with its package caches and credentials included | denied |
 
 A non-recursive grant is left out of the policy: the OS mechanisms open whole trees, and opening the
-tree would give more than the grant does. The network stays open, because restoring packages,
-fetching from git and calling HTTP services are ordinary work for these tools. The policy type can
-close it (`SandboxPolicy.AllowNetwork`). On Linux this needs Landlock ABI 4.
+tree would give more than the grant does.
+
+Commands keep the network, because restoring packages, fetching from git and calling HTTP services
+are ordinary work for them. Scripts run without it wherever the OS can close it
+(`SandboxSupport.ClosesNetwork`: Windows, macOS, and Linux with Landlock ABI 4): a sandboxed script
+runs unasked, and one that could read the grants and send them anywhere would be a way out of the
+boundary. On an older Linux kernel the network stays open and the tool description says so.
 
 Programs that keep caches or configuration in the user profile, such as NuGet, npm, pip and git,
-fail under the sandbox unless those directories are granted. This is why the sandbox is off by
-default. A program also cannot start in a working directory outside the grants.
+fail under the sandbox unless those directories are granted. This is why the command sandbox is off
+by default. A program also cannot start in a working directory outside the grants.
 
 ## Design
 

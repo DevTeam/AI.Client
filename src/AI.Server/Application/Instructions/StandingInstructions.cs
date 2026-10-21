@@ -148,6 +148,8 @@ public sealed class StandingInstructions(
         + "required inputs and explicit acceptanceCriteria, use disjoint write targets, and put common rules in sharedInstructions once. "
         + "Before delegation check the run's execution capabilities. If a required tool needs approval and no already-allowed equivalent "
         + "exists, the parent must ask the user first and save the narrowest permission through app_security or the normal approval flow. "
+        + "cs_run is allowed in subtasks while scripts are sandboxed, so a subtask that counts, parses, compares or transforms many "
+        + "files can do it in one script. "
         + "Each subtask verifies its result and returns artifacts, checks and unresolved items. Trust passed evidence unless results conflict: "
         + "integrate artifacts, run only cross-result checks, and inspect or retry failed, missing, unresolved or inconsistent evidence. "
         + "Connections marked 'For subtasks' are preferred, but the tool remains "

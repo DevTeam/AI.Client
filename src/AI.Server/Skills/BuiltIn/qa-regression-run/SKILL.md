@@ -5,7 +5,7 @@ icon: qa-regression-run
 kind: playbook
 description: Select regression checks from changed files, branches or commits, execute them in the authorized test environment and report coverage gaps and defects.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The authorized test environment"},"branch":{"type":"string","description":"The source branch to assess"},"commits":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The explicitly selected commits"},"base":{"type":"string","description":"The agreed comparison base"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","trigger_wait","ask_user","tool_search","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -17,6 +17,9 @@ The user's instructions take precedence. Follow project instructions, test conve
 runbooks. Use ordinary permission-checked tools; this skill grants no access. Use `process_run`
 with executable/argument arrays, never shell interpolation. Report in the user's language and
 redact credentials, personal data and sensitive request/response content.
+
+Compare the run with its baseline in one `cs_run` script that parses both result sets and returns
+only new failures, fixed tests and changed durations.
 
 1. Define the requested scope from the message, parameters, requirements and available evidence.
    Search before reading. Infer exact values when justified instead of asking again.

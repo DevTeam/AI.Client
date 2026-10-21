@@ -50,7 +50,8 @@ public sealed class SandboxedToolTests : IAsyncLifetime
             EnvironmentVariables = new Dictionary<string, string?>
             {
                 ["AI_CLIENT_DIRECTORY_GRANTS"] = grants,
-                ["AI_CLIENT_SANDBOX"] = "1"
+                ["AI_CLIENT_SANDBOX"] = "1",
+                ["AI_CLIENT_SCRIPT_SANDBOX"] = "1"
             },
             ShutdownTimeout = TimeSpan.FromMilliseconds(500)
         }), cancellationToken: Token);
@@ -161,6 +162,43 @@ public sealed class SandboxedToolTests : IAsyncLifetime
         {
             temporary.ShouldBe(Path.TrimEndingDirectorySeparator(_temporary));
         }
+    }
+
+    /// <summary>
+    /// A sandboxed script runs without asking, so it must not be able to send what it read
+    /// anywhere: where the OS can close the network, a connection to a listener on this machine is
+    /// refused.
+    /// </summary>
+    [Fact]
+    public async Task AScriptCannotOpenANetworkConnection()
+    {
+        RequireSandbox();
+        if (!new ProcessLauncher().Support.ClosesNetwork) Assert.Skip("This kernel cannot close the network to a sandboxed process.");
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+
+        var result = await RunScriptAsync(
+            """
+            string Probe()
+            {
+                try
+                {
+                    using var client = new System.Net.Sockets.TcpClient();
+                    client.Connect("127.0.0.1", int.Parse(Args[0]));
+                    return "connected";
+                }
+                catch (Exception error)
+                {
+                    return error.GetType().Name;
+                }
+            }
+            Probe()
+            """,
+            port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
+        result.GetProperty("returnValue").GetString().ShouldNotBe("connected");
     }
 
     [Fact]

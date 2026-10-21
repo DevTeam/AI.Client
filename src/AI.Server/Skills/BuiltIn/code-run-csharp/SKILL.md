@@ -29,9 +29,9 @@ executing a script.
    and continue with a suitable available tool or runtime through `process_run`; report a concrete
    blocker if no available mechanism can complete the task.
 2. Design one script for the whole job rather than a series of calls. Read the inputs inside the
-   script, compute, verify, and return only the compact answer: serialize structured results with
-   `JsonSerializer.Serialize` as the final expression instead of printing raw contents, which costs
-   context. Select an algorithm and estimate time, memory and output size. Pass data through
+   script, compute, verify, and return only the compact answer as the final expression instead of
+   printing raw contents, which costs context: an object, anonymous object, tuple or collection
+   comes back as compact JSON by itself. Select an algorithm and estimate time, memory and output size. Pass data through
    `arguments` (`Args`) or `globals` (`Globals`, a read-only dictionary of `JsonElement`), rather
    than injecting user text into source code. Use top-level C# statements and optional `using`
    directives; no `Program` or `Main` is needed. A final expression without a semicolon is the
@@ -43,10 +43,12 @@ executing a script.
    assembly names or DLL paths, not NuGet package names. Never assume automatic package installation.
 3. Assess real risks before execution: deletion, overwrite, moves, database/network mutations,
    resource exhaustion and side effects of invoked programs. A script runs in a disposable child
-   process. When the tool description says it is sandboxed, the script reaches only the granted
-   directories (read-only grants only for reading) and the chat's temporary directory, and every
-   result carries `sandbox`; an access error outside them is the boundary, not a bug: ask for a
-   grant as the access rules say, never work around it. Without a sandbox the script reaches
+   process. When the tool description says it is sandboxed (the default), the script reaches only
+   the granted directories (read-only grants only for reading) and the chat's temporary directory,
+   usually without the network, and every result carries `sandbox`; it then runs without asking,
+   in subtasks too. An access error outside the grants is the boundary, not a bug: ask for a grant
+   as the access rules say, never work around it; use `fetch` or `process_run` for anything online.
+   Without a sandbox the script reaches
    whatever the host user can, and its working directory restricts nothing. Client files may not
    exist on the server. Resolve and verify full source/destination paths, empty inputs, existing
    outputs, symlinks/junctions and source/destination overlap. Before recursive deletion or moves
@@ -84,8 +86,8 @@ executing a script.
    Check a short non-ASCII round trip when its preservation is important. Avoid logging secrets.
 6. Run the self-contained script with a verified server-side absolute `workingDirectory` when
    needed; under a sandbox it must be inside a grant. A missing directory can leave the previous
-   directory unchanged, so verify existence. `returnValue` and `variables` are textual renderings,
-   not automatically JSON objects. Known limits are 262144 code characters, 32768 characters per
+   directory unchanged, so verify existence. `returnValue` and `variables` are strings: scalars as
+   text, everything else as JSON cut at 4096 characters. Known limits are 262144 code characters, 32768 characters per
    output stream, 4096 per value and 64 returned variables. Save large authorized results to a
    file, verify it and ensure the user can access it if the server is remote. Avoid
    Environment.Exit and unjoined background work.

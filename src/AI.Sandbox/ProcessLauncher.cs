@@ -157,7 +157,7 @@ public sealed class ProcessLauncher : IProcessLauncher
         {
             // AppContainer capabilities derived from names arrived with Windows 10.
             return OperatingSystem.IsWindowsVersionAtLeast(10)
-                ? new SandboxSupport(true, "AppContainer")
+                ? new SandboxSupport(true, "AppContainer", ClosesNetwork: true)
                 : new SandboxSupport(false, "AppContainer", "Windows 10 or later is required.");
         }
 
@@ -165,14 +165,14 @@ public sealed class ProcessLauncher : IProcessLauncher
         {
             var abi = Landlock.Abi();
             return abi > 0
-                ? new SandboxSupport(true, $"Landlock ABI {abi}")
+                ? new SandboxSupport(true, $"Landlock ABI {abi}", ClosesNetwork: abi >= 4)
                 : new SandboxSupport(false, "Landlock", "The kernel does not support Landlock or it is disabled (Linux 5.13 or later with Landlock enabled is required).");
         }
 
         if (OperatingSystem.IsMacOS())
         {
             return File.Exists(SandboxExec)
-                ? new SandboxSupport(true, "Seatbelt")
+                ? new SandboxSupport(true, "Seatbelt", ClosesNetwork: true)
                 : new SandboxSupport(false, "Seatbelt", $"{SandboxExec} is missing.");
         }
 

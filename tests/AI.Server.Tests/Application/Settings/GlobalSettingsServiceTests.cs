@@ -228,7 +228,7 @@ public class GlobalSettingsServiceTests
         var result = await CreateInstance().GetAsync(CancellationToken.None);
 
         result.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: true));
-        result.Sandbox.ShouldBe(new ToolSandboxSettings(Enabled: false));
+        result.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: false, Scripts: true));
     }
 
     [Fact]
@@ -250,15 +250,15 @@ public class GlobalSettingsServiceTests
             .ReturnsAsync(false);
         var service = CreateInstance();
 
-        var result = await service.SetSandboxAsync(new ToolSandboxSettings(Enabled: true), CancellationToken.None);
-        result.Sandbox.ShouldBe(new ToolSandboxSettings(Enabled: true));
+        var result = await service.SetSandboxAsync(new ToolSandboxSettings(Commands: true, Scripts: false), CancellationToken.None);
+        result.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
 
         await service.SaveAsync(new SaveGlobalSettingsRequest(
             [new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one", true, true, false)], [], []),
             CancellationToken.None);
 
-        saved.Sandbox.ShouldBe(new ToolSandboxSettings(Enabled: true));
-        (await service.GetAsync(CancellationToken.None)).Sandbox.ShouldBe(new ToolSandboxSettings(Enabled: true));
+        saved.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
+        (await service.GetAsync(CancellationToken.None)).Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
     }
 
     [Fact]

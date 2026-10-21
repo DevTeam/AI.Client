@@ -115,7 +115,7 @@ public sealed class ProcessRunner : IProcessRunner
         start.Environment["PYTHONUTF8"] = "1";
         start.Environment["PYTHONIOENCODING"] = "utf-8";
 
-        if (_sandbox.Policy is not null && _sandbox.TemporaryDirectory is { } temporary)
+        if (_sandbox.Policy(SandboxedTool.Commands) is not null && _sandbox.TemporaryDirectory is { } temporary)
         {
             // The user's own temporary directory is outside the sandbox; one the program may write is.
             foreach (var name in TemporaryVariables)
@@ -129,7 +129,7 @@ public sealed class ProcessRunner : IProcessRunner
         ILaunchedProcess launched;
         try
         {
-            launched = _launcher.Start(new ProcessLaunch(start, _sandbox.Policy, request.Limits, request.TimeoutMs));
+            launched = _launcher.Start(new ProcessLaunch(start, _sandbox.Policy(SandboxedTool.Commands), request.Limits, request.TimeoutMs));
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
@@ -170,7 +170,7 @@ public sealed class ProcessRunner : IProcessRunner
     }
 
     /// <summary>The sandbox the run is confined by, reported with the result so a denied access can be told apart.</summary>
-    private string? Mechanism => _sandbox.Policy is null ? null : _launcher.Support.Mechanism;
+    private string? Mechanism => _sandbox.Policy(SandboxedTool.Commands) is null ? null : _launcher.Support.Mechanism;
     /// <summary>Raw bytes, enough for <see cref="OutputLimit"/> characters in any encoding.</summary>
     private const int OutputBytes = OutputLimit * 4;
 

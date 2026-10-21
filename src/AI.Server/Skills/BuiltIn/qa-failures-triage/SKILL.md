@@ -5,7 +5,7 @@ icon: qa-failures-triage
 kind: playbook
 description: Investigate test failures and flakiness with bounded isolated reruns, distinguish product, test and environment causes and report evidence; never disables tests.
 parameters: {"type":"object","properties":{"failures":{"type":"string","description":"The failing tests, run identifiers or diagnostics"},"environment":{"type":"string","description":"The authorized test target"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","tool_search","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -17,6 +17,10 @@ The user's instructions take precedence. Follow project instructions, test conve
 runbooks. Use ordinary permission-checked tools; this skill grants no access. Use `process_run`
 with executable/argument arrays, never shell interpolation. Report in the user's language and
 redact credentials, personal data and sensitive request/response content.
+
+When there are many failures or result files (TRX, JUnit XML, logs), group them with one `cs_run`
+script by test, exception type and normalized message, and return the groups with counts and one
+example each.
 
 1. Define the requested scope from the message, parameters, requirements and available evidence.
    Search before reading. Infer exact values when justified instead of asking again.

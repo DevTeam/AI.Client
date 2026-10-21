@@ -5,7 +5,7 @@ icon: devops-config-review
 kind: playbook
 description: Review deployment and environment configuration for missing settings, conflicting values, secret exposure and unsafe defaults, reporting findings; changes nothing.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The environment to inspect"},"service":{"type":"string","description":"The service to inspect"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","cs_run","ask_user"]
 ---
 
 The user's instructions take precedence. Follow repository instructions, deployment runbooks
@@ -13,6 +13,10 @@ and the existing toolchain. Use ordinary permission-checked tools; this playbook
 Use `process_run` with an executable and argument arrays, never interpolated shell commands.
 Do not expose secret values in arguments, logs, diffs or the final answer, or ask for secrets in
 chat. Use configured credential stores and existing secret references. Report in the user's language.
+
+Cross-check many configuration files with one `cs_run` script that parses them and returns missing
+keys, conflicting values between environments and suspicious defaults, instead of comparing them by
+reading.
 
 1. Establish the requested goal and scope from the message and parameters. Search before reading
    instructions, manifests, CI/deployment configuration and relevant application contracts.

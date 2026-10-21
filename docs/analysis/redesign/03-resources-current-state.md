@@ -73,7 +73,7 @@ what reads and writes them.
 | Live file/directory contents for preview | Wherever the grant points; nothing is copied | `FilePreview` (metadata) + a random one-file ticket `file-preview-content/{key}` | `FilePreviewEndpoints.cs:15,18,23` | Nothing — preview is read-only |
 | Chat scratch files produced by tools | OS temporary directory: `%TEMP%/AI.Client-<userkey>/<projectN>/<chatN>/` | Absolute path; granted to the run as a `ToolDirectoryGrant` | Any tool in the run | Any tool in the run (`ChatTemporaryDirectory.cs:17,19`) |
 | Diff text of a saved change set | Inside the assistant message's `WorkspaceChangeSet` | Per-file `Diff` string in the metadata document | `ReviewService.ValidateComments`, `ReviewModelProjection` | `WorkspaceChangeTracker` + `ILineDiff` |
-| C# tool scripts | Chat scratch or a script directory owned by the C# MCP server | Absolute path | `AI.Mcp.CSharp` | `AI.Mcp.CSharp` (not analysed here, listed for completeness) |
+| C# tool scripts | Chat scratch or a script directory owned by the built-in MCP server | Absolute path | `AI.Mcp.BuiltIn` (`cs_run`) | `AI.Mcp.BuiltIn` (`cs_run`; not analysed here, listed for completeness) |
 
 Two independent addressing schemes already coexist in this table: **path-addressed** (project files,
 previews, scratch) and **content-addressed** (assets, undo blobs). Only the second one is ready for

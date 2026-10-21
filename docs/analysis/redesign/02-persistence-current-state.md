@@ -290,11 +290,13 @@ re-reads each file to find its branch id (`:46-69`).
 
 ### 3.4 Global settings and secrets
 
-`GlobalSettings` = `Connections[], McpServers[], ToolPolicies[], ChatAutomation?`, in
+`GlobalSettings` = `Connections[], McpServers[], ToolPolicies[], ChatAutomation?, Sandbox?`, in
 `AI.Contracts.Settings` (`src/AI.Contracts/Settings/GlobalSettings.cs:3-8`). There is no schema
 version and no document revision; compatibility is handled field by field at load
-(`JsonGlobalSettingsRepository.cs:17-33`), and the loader **injects the three host-provided MCP
-servers** into the returned value if the stored document does not list them yet (`:23-32`).
+(`JsonGlobalSettingsRepository.cs`), and the loader **injects the two host-provided MCP
+servers** into the returned value if the stored document does not list them yet. It also drops the
+retired optional C# scripting server's entry and moves its `cs_run` policies to the built-in server
+(`LegacyCSharpToolMigration`); project and chat documents get the same move when they are read.
 Conflict detection is per item, by comparing the item the editor read with the stored one
 (`GlobalSettingsService.cs:52-57,59-67`), which is a different concurrency model from the revision
 number used everywhere else.
@@ -306,7 +308,7 @@ bytes live in a separate `<root>/credentials/...` file protected by `IUserDataPr
 (`GlobalSettingsService.cs:104,183,254`). MCP environment secrets are stored as one JSON object per
 server id (`:257-260`).
 
-`ChatAutomation` is a field of global settings that the settings editor does not own; it is read back
+`ChatAutomation` and `Sandbox` are fields of global settings that the settings editor does not own; they are read back
 from storage and written unchanged on every settings save (`GlobalSettingsService.cs:139-142`), with
 the comment that the request carries only what the editors own.
 

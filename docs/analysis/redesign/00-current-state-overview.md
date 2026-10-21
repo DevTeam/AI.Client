@@ -22,7 +22,7 @@ runtime:
 | `src/AI.Server` | Domain / Application / Infrastructure / Hosting — **everything else**: metadata storage, byte storage, the run dispatcher, model clients, the agent loop, tools, git, HTTP API, SSE |
 | `src/AI.Web` | Blazor WASM UI served by the host |
 | `src/AI.Desktop` | Desktop shell around the same host |
-| `src/AI.Mcp.BuiltIn`, `src/AI.Mcp.CSharp` | MCP tool servers, launched as child processes over stdio |
+| `src/AI.Mcp.BuiltIn` | The built-in MCP tool server (files, processes, web, archives, triggers and C# scripts), launched as a child process over stdio |
 | `src/AI.TextCorrection` | Separate helper |
 
 There is exactly **one formal process boundary** in the product today, and it is already an HTTP one:

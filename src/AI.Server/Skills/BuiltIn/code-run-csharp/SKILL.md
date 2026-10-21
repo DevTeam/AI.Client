@@ -21,9 +21,9 @@ checks and complex data transformations when a script improves reliability. Pref
 tool for simple operations. A normal C# development request does not require executing a script.
 
 1. Establish the goal, input, output and authorized changes from the message and parameters.
-   Check available tools; discover `cs_run` through `tool_search` when necessary. It is an optional
-   external tool and may not be installed or connected. Source files or a .NET runtime do not prove
-   availability. Read the actual tool description and schema, including its host OS and limits.
+   Check available tools; discover `cs_run` through `tool_search` when necessary. It belongs to the
+   built-in tools, but a policy or a switched-off server can still withhold it. Source files or a
+   .NET runtime do not prove availability. Read the actual tool description and schema, including its host OS and limits.
    If unavailable, explain briefly and continue with a suitable available tool or runtime through
    `process_run`; do not install or connect a server automatically. Report a concrete blocker if
    no available mechanism can complete the task.

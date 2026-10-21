@@ -81,8 +81,8 @@ its fitting tools offered and receives trailing guidance to stop calling them.
 
 Core tools are the ones every run keeps whatever its request says: `ask_user`, `tool_search`,
 `plan_update` and `spawn_subtask` from the App server, `read_text_file`, `write_file`,
-`edit_file`, `grep_files`, `list_directory`, `search_files`, `directory_tree` and `process_run`
-from the built-in server, and `cs_run`; without the navigation tools a model guessed paths and
+`edit_file`, `grep_files`, `list_directory`, `search_files`, `directory_tree`, `process_run` and
+`cs_run` from the built-in server; without the navigation tools a model guessed paths and
 narrowed its way through a repository with dozens of greps. Relevance is word overlap with the English tool descriptions, so a request in another
 language ranks nothing and the shortest schemas would take the free places. Words that at least a
 third of the descriptions share (and at least three of them) do not count. When the request matches

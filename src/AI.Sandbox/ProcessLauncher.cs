@@ -2,6 +2,7 @@ namespace AI.Sandbox;
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 /// <summary>
 /// Starts a confined process by starting something else in its place: on Windows and Linux this
@@ -44,7 +45,32 @@ public sealed class ProcessLauncher : IProcessLauncher
         var confined = launch.Policy is { } policy ? Confine(start, policy) : start;
         // Created before the process starts: a limit the OS cannot apply fails the call, not the machine.
         var job = new ChildProcessJob(launch.Limits ?? ChildProcessLimits.Default);
-        var process = new Process { StartInfo = confined };
+        try
+        {
+            return OperatingSystem.IsWindows() ? StartInJob(confined, job, launch.TimeoutMs) : StartAndAttach(confined, job, launch.TimeoutMs);
+        }
+        catch
+        {
+            job.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>On Windows the program is created inside the job, before any of its code runs.</summary>
+    [SupportedOSPlatform("windows")]
+    private static LaunchedProcess StartInJob(ProcessStartInfo start, ChildProcessJob job, int? timeoutMs)
+    {
+        var started = WindowsProcess.Start(start, job.Handle);
+        return new LaunchedProcess(started.Process, started.Input, started.Output, started.Error, job, started.Handle, timeoutMs);
+    }
+
+    /// <summary>
+    /// Elsewhere the job only lowers the priority of what the program starts from now on, so the
+    /// program is started as usual and given its job right after.
+    /// </summary>
+    private static LaunchedProcess StartAndAttach(ProcessStartInfo start, ChildProcessJob job, int? timeoutMs)
+    {
+        var process = new Process { StartInfo = start };
         try
         {
             process.Start();
@@ -52,10 +78,10 @@ public sealed class ProcessLauncher : IProcessLauncher
         catch
         {
             process.Dispose();
-            job.Dispose();
             throw;
         }
 
+        var launched = new LaunchedProcess(process, process.StandardInput, process.StandardOutput, process.StandardError, job, null, timeoutMs);
         try
         {
             job.Attach(process);
@@ -63,11 +89,11 @@ public sealed class ProcessLauncher : IProcessLauncher
         catch
         {
             // An unbounded tree is not what was asked for.
-            using var unbounded = new LaunchedProcess(process, job, null);
+            launched.Dispose();
             throw;
         }
 
-        return new LaunchedProcess(process, job, launch.TimeoutMs);
+        return launched;
     }
 
     private ProcessStartInfo Confine(ProcessStartInfo start, SandboxPolicy policy)

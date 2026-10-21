@@ -44,9 +44,15 @@ program with everything that bounds it:
 - the `ChildProcessLimits` of the whole tree, applied by `ChildProcessJob` (a Job Object on Windows);
 - the deadline, after which the tree is killed.
 
-It returns an `ILaunchedProcess`: the ordinary `Process` with its redirected streams, a `Deadline`
+It returns an `ILaunchedProcess`: the program's standard streams, its id and exit code, a `Deadline`
 token for reads, `TimedOut`, `LimitExceeded`, `WaitForExitAsync` (which kills the tree at the deadline
-or on cancellation) and `Dispose` (which kills whatever is left). `ProcessRunner` (`process_run`) and
+or on cancellation) and `Dispose` (which kills whatever is left).
+
+On Windows every program, confined or not, is created by `WindowsProcess` rather than
+`Process.Start`: `CreateProcess` suspended, with the job in its attribute list and three pipes the
+launcher made for its standard streams. The program is in its job before any of its code runs, so a
+child it starts at once is counted and killed with it; with `Process.Start` the job could only be
+assigned after the program was already running. `ProcessRunner` (`process_run`) and
 `ScriptWorkers` (`cs_run`) only describe what to start; neither handles jobs, deadlines or the
 sandbox itself.
 
@@ -65,9 +71,10 @@ program after it. The launcher:
 1. creates the `AI.Client.Sandbox` AppContainer profile once, or derives its SID;
 2. derives a capability SID for each path and access from `AI.Client.Sandbox.<access>.<hash of the path>`;
 3. adds an inheritable access entry for that capability to the path's ACL if it is not there yet;
-4. starts the program suspended in the container with exactly those capabilities, plus the network
-   capabilities when the network is allowed, and with the launcher's standard handles;
-5. puts the program in a kill-on-close job, resumes it, waits and exits with its exit code.
+4. starts the program in the container with exactly those capabilities, plus the network
+   capabilities when the network is allowed, with the launcher's standard handles and already
+   inside a kill-on-close job of its own (the launcher itself is in the caller's job);
+5. waits for it and exits with its exit code.
 
 Granting to capabilities rather than to the container lets one container serve every policy while a
 launch reaches only its own policy's paths. The access entries stay: Windows copies an inheritable

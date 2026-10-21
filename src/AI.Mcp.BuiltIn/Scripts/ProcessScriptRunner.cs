@@ -65,7 +65,7 @@ public sealed class ProcessScriptRunner(IScriptWorkers workers, IToolSandbox san
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(request.TimeoutMs);
-        var process = worker.Process;
+        var process = worker;
         try
         {
             var stdout = ReadBoundedAsync(process.StandardOutput, MaxResultCharacters, deadline.Token);

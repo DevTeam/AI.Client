@@ -220,11 +220,9 @@ public sealed class BuiltInToolTests
     {
         if (!OperatingSystem.IsWindows()) return;
         // cmd rather than PowerShell: a cold PowerShell on a fresh CI runner could take the whole
-        // deadline before it started anything. With one process allowed, the first child is refused. The
-        // pause comes first because the process joins its job just after it starts, and a child started
-        // in that moment would not be counted.
+        // deadline before it started anything. With one process allowed, the first child is refused.
         var result = await new ProcessRunner().RunAsync(new ProcessRequest("cmd.exe",
-            ["/d", "/c", "ping -n 2 127.0.0.1 > nul & cmd /d /c exit 0"],
+            ["/d", "/c", "cmd /d /c exit 0"],
             AppContext.BaseDirectory, 60000, ChildProcessLimits.Create(null, 1)), CancellationToken.None);
         result.LimitExceeded.ShouldBe(ChildProcessJob.Processes, result.ToString());
     }

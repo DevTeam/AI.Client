@@ -160,9 +160,9 @@ public sealed class ProcessLauncherTests : IDisposable
         var start = Command(OperatingSystem.IsWindows() ? "more" : "cat");
 
         using var launched = _launcher.Start(new ProcessLaunch(start, Policy, TimeoutMs: 30000));
-        var output = launched.Process.StandardOutput.ReadToEndAsync(Token);
-        await launched.Process.StandardInput.WriteLineAsync("piped-line");
-        launched.Process.StandardInput.Close();
+        var output = launched.StandardOutput.ReadToEndAsync(Token);
+        await launched.StandardInput.WriteLineAsync("piped-line");
+        launched.StandardInput.Close();
         await launched.WaitForExitAsync(Token);
 
         (await output).ShouldContain("piped-line");
@@ -190,7 +190,7 @@ public sealed class ProcessLauncherTests : IDisposable
 
         await Should.ThrowAsync<OperationCanceledException>(() => launched.WaitForExitAsync(cancellation.Token));
 
-        launched.Process.HasExited.ShouldBeTrue();
+        launched.HasExited.ShouldBeTrue();
         launched.TimedOut.ShouldBeFalse();
     }
 
@@ -218,12 +218,32 @@ public sealed class ProcessLauncherTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Process limits are applied through a Windows job object.");
 
-        // The pause comes first: the process joins its job just after it starts, and a child started
-        // in that moment would not be counted.
-        var result = await RunAsync(Command("ping -n 2 127.0.0.1 > nul & " + Shell.Nested(Shell.Exit(0))), policy: null,
+        var result = await RunAsync(Command(Shell.Nested(Shell.Exit(0))), policy: null,
             limits: ChildProcessLimits.Create(memoryLimitMb: null, processLimit: 1));
 
         result.LimitExceeded.ShouldBe(ChildProcessJob.Processes);
+    }
+
+    /// <summary>
+    /// The race the Windows start closes: a program that starts a child the moment it runs. Started
+    /// first and put in its job after, such a child escaped the job now and then, so it is tried
+    /// many times; created inside the job, every child counts, confined or not.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AChildStartedAtOnceIsAlwaysInsideTheJob(bool confined)
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Process limits are applied through a Windows job object.");
+        if (confined) Shell.RequireSandbox(_launcher);
+
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var result = await RunAsync(Command(Shell.Nested(Shell.Exit(0))), confined ? Policy : null,
+                limits: ChildProcessLimits.Create(memoryLimitMb: null, processLimit: confined ? 2 : 1));
+
+            result.LimitExceeded.ShouldBe(ChildProcessJob.Processes, $"attempt {attempt + 1}");
+        }
     }
 
     [Fact]
@@ -247,11 +267,11 @@ public sealed class ProcessLauncherTests : IDisposable
     private async Task<Result> RunAsync(ProcessStartInfo start, SandboxPolicy? policy, int timeoutMs = 30000, ChildProcessLimits? limits = null)
     {
         using var launched = _launcher.Start(new ProcessLaunch(start, policy, limits, timeoutMs));
-        launched.Process.StandardInput.Close();
-        var stdout = launched.Process.StandardOutput.ReadToEndAsync(Token);
-        var stderr = launched.Process.StandardError.ReadToEndAsync(Token);
+        launched.StandardInput.Close();
+        var stdout = launched.StandardOutput.ReadToEndAsync(Token);
+        var stderr = launched.StandardError.ReadToEndAsync(Token);
         await launched.WaitForExitAsync(Token);
-        return new Result(launched.Process.ExitCode, await stdout, await stderr, launched.TimedOut, launched.LimitExceeded);
+        return new Result(launched.ExitCode, await stdout, await stderr, launched.TimedOut, launched.LimitExceeded);
     }
 
     private sealed record Result(int ExitCode, string Stdout, string Stderr, bool TimedOut, string? LimitExceeded);

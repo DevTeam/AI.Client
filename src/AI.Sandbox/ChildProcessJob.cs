@@ -44,6 +44,10 @@ public sealed partial class ChildProcessJob : IDisposable
     /// </summary>
     public string? LimitExceeded => OperatingSystem.IsWindows() ? _windows?.LimitExceeded : null;
 
+    /// <summary>The job itself, for a program created inside it rather than attached after it started.</summary>
+    [SupportedOSPlatform("windows")]
+    internal SafeFileHandle Handle => _windows!.Handle;
+
     /// <summary>
     /// Puts a started process into the job. Its descendants join it as they start. A process that
     /// cannot be placed is the caller's to kill: an unlimited tree is not what was asked for.
@@ -165,6 +169,8 @@ public sealed partial class ChildProcessJob : IDisposable
                 return _exceeded;
             }
         }
+
+        public SafeFileHandle Handle => _handle;
 
         public void Attach(Process process) =>
             Check(AssignProcessToJobObject(_handle, process.SafeHandle));

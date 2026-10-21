@@ -7,6 +7,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using static WindowsNative;
 
 /// <summary>
 /// Windows AppContainer: the launcher starts the program in a container, which sees only what an
@@ -27,16 +28,8 @@ internal static partial class AppContainer
     private const string ContainerName = "AI.Client.Sandbox";
     private const int AlreadyExists = unchecked((int)0x800700B7);
 
-    private const uint ExtendedStartupInfoPresent = 0x80000;
-    private const uint CreateSuspended = 0x4;
-    private const uint CreateUnicodeEnvironment = 0x400;
-    private const int UseStandardHandles = 0x100;
-    private const uint HandleFlagInherit = 0x1;
     private const uint Infinite = 0xFFFFFFFF;
     private const uint GroupEnabled = 0x4;
-
-    private static readonly nint SecurityCapabilitiesAttribute = 0x20009;
-    private static readonly nint HandleListAttribute = 0x20002;
 
     private const int ExtendedLimitInformation = 9;
     private const uint LimitKillOnJobClose = 0x2000;
@@ -203,13 +196,12 @@ internal static partial class AppContainer
     }
 
     /// <summary>
-    /// Starts the program suspended in the container with this process's standard handles, puts it
-    /// in a job that dies with this process, lets it run and waits for it.
+    /// Starts the program in the container with this process's standard handles, already inside a
+    /// job that dies with this process, and waits for it.
     /// </summary>
     private static unsafe int Launch(SecurityIdentifier container, List<SecurityIdentifier> capabilities, string executable, IReadOnlyList<string> arguments)
     {
         var allocations = new List<nint>();
-        nint attributes = 0;
         try
         {
             var containerSid = Allocate(container, allocations);
@@ -229,22 +221,21 @@ internal static partial class AppContainer
                 CapabilityCount = (uint)capabilities.Count
             };
 
-            var handles = StandardHandles();
-            var handleArray = Marshal.AllocHGlobal(Math.Max(1, handles.Length) * IntPtr.Size);
-            allocations.Add(handleArray);
-            for (var index = 0; index < handles.Length; index++)
+            // Without its own job a launcher killed on its own would leave the program running.
+            using var job = CreateJobObjectW(0, null);
+            var limits = new ExtendedLimits { Basic = new BasicLimits { Flags = LimitKillOnJobClose } };
+            if (job.IsInvalid || !SetInformationJobObject(job, ExtendedLimitInformation, in limits, (uint)sizeof(ExtendedLimits)))
             {
-                ((nint*)handleArray)[index] = handles[index];
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot create the confined program's job");
             }
 
-            nint size = 0;
-            _ = InitializeProcThreadAttributeList(0, 2, 0, ref size);
-            attributes = Marshal.AllocHGlobal(size);
-            Check(InitializeProcThreadAttributeList(attributes, 2, 0, ref size));
-            Check(UpdateProcThreadAttribute(attributes, 0, SecurityCapabilitiesAttribute, (nint)security, sizeof(SecurityCapabilities), 0, 0));
+            var handles = StandardHandles();
+            using var attributes = new AttributeList(3);
+            attributes.Add(SecurityCapabilitiesAttribute, (nint)security, sizeof(SecurityCapabilities));
+            attributes.Add(JobListAttribute, [job.DangerousGetHandle()]);
             if (handles.Length > 0)
             {
-                Check(UpdateProcThreadAttribute(attributes, 0, HandleListAttribute, handleArray, handles.Length * IntPtr.Size, 0, 0));
+                attributes.Add(HandleListAttribute, handles);
             }
 
             var startup = new StartupInfoEx
@@ -257,32 +248,20 @@ internal static partial class AppContainer
                     StandardOutput = GetStdHandle(-11),
                     StandardError = GetStdHandle(-12)
                 },
-                AttributeList = attributes
+                AttributeList = attributes.Handle
             };
 
-            var commandLine = CommandLine.Build(executable, arguments).ToCharArray();
+            var commandLine = (CommandLine.Build(executable, arguments) + '\0').ToCharArray();
             ProcessInformation information;
             fixed (char* line = commandLine)
             {
-                Check(CreateProcessW(null, line, 0, 0, handles.Length > 0, ExtendedStartupInfoPresent | CreateSuspended | CreateUnicodeEnvironment,
-                    0, null, ref startup, out information));
+                // The environment and the working directory are this launcher's, which are the program's.
+                Check(CreateProcessW(null, line, 0, 0, handles.Length > 0, ExtendedStartupInfoPresent | CreateUnicodeEnvironment,
+                    null, null, ref startup, out information));
             }
 
-            using var job = CreateJobObjectW(0, null);
             try
             {
-                var limits = new ExtendedLimits { Basic = new BasicLimits { Flags = LimitKillOnJobClose } };
-                // Without the job a launcher killed on its own would leave the program running.
-                if (job.IsInvalid
-                    || !SetInformationJobObject(job, ExtendedLimitInformation, in limits, (uint)sizeof(ExtendedLimits))
-                    || !AssignProcessToJobObject(job, information.Process))
-                {
-                    var error = Marshal.GetLastPInvokeError();
-                    _ = TerminateProcess(information.Process, 1);
-                    throw new Win32Exception(error, "Cannot place the confined program in a job");
-                }
-
-                _ = ResumeThread(information.Thread);
                 _ = WaitForSingleObject(information.Process, Infinite);
                 return GetExitCodeProcess(information.Process, out var exitCode) ? (int)exitCode : 1;
             }
@@ -294,12 +273,6 @@ internal static partial class AppContainer
         }
         finally
         {
-            if (attributes != 0)
-            {
-                DeleteProcThreadAttributeList(attributes);
-                Marshal.FreeHGlobal(attributes);
-            }
-
             foreach (var allocation in allocations)
             {
                 Marshal.FreeHGlobal(allocation);
@@ -341,14 +314,6 @@ internal static partial class AppContainer
         return memory;
     }
 
-    private static void Check(bool succeeded)
-    {
-        if (!succeeded)
-        {
-            throw new Win32Exception(Marshal.GetLastPInvokeError());
-        }
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     private struct SidAndAttributes
     {
@@ -363,45 +328,6 @@ internal static partial class AppContainer
         public nint Capabilities;
         public uint CapabilityCount;
         public uint Reserved;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct StartupInfo
-    {
-        public int Size;
-        public nint Reserved;
-        public nint Desktop;
-        public nint Title;
-        public int X;
-        public int Y;
-        public int XSize;
-        public int YSize;
-        public int XCountChars;
-        public int YCountChars;
-        public int FillAttribute;
-        public int Flags;
-        public short ShowWindow;
-        public short Reserved2Size;
-        public nint Reserved2;
-        public nint StandardInput;
-        public nint StandardOutput;
-        public nint StandardError;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct StartupInfoEx
-    {
-        public StartupInfo StartupInfo;
-        public nint AttributeList;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ProcessInformation
-    {
-        public nint Process;
-        public nint Thread;
-        public int ProcessId;
-        public int ThreadId;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -451,46 +377,11 @@ internal static partial class AppContainer
     private static partial nint LocalFree(nint memory);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool InitializeProcThreadAttributeList(nint list, int count, int flags, ref nint size);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool UpdateProcThreadAttribute(nint list, uint flags, nint attribute, nint value, nint size, nint previous, nint returnSize);
-
-    [LibraryImport("kernel32.dll")]
-    private static partial void DeleteProcThreadAttributeList(nint list);
-
-    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool CreateProcessW(string? application, char* commandLine, nint processAttributes, nint threadAttributes,
-        [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint flags, nint environment, string? currentDirectory,
-        ref StartupInfoEx startupInfo, out ProcessInformation information);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial nint GetStdHandle(int which);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetHandleInformation(nint handle, uint mask, uint flags);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial uint ResumeThread(nint thread);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint WaitForSingleObject(nint handle, uint milliseconds);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetExitCodeProcess(nint process, out uint exitCode);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool TerminateProcess(nint process, uint exitCode);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CloseHandle(nint handle);
 
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
     private static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateJobObjectW(nint attributes, string? name);
@@ -498,8 +389,4 @@ internal static partial class AppContainer
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetInformationJobObject(Microsoft.Win32.SafeHandles.SafeFileHandle job, int informationClass, in ExtendedLimits limits, uint length);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool AssignProcessToJobObject(Microsoft.Win32.SafeHandles.SafeFileHandle job, nint process);
 }

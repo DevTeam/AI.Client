@@ -36,7 +36,7 @@ public sealed class ScriptWorkers(IProcessLauncher launcher, IToolSandbox sandbo
 
         if (spare is not null)
         {
-            if (limits == ChildProcessLimits.Default && !spare.Process.HasExited)
+            if (limits == ChildProcessLimits.Default && !spare.HasExited)
             {
                 return spare;
             }

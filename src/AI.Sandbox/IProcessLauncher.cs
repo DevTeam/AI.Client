@@ -5,9 +5,8 @@ using System.Diagnostics;
 /// <summary>
 /// Starts the processes a tool call runs, with everything that bounds them: the directories a
 /// <see cref="SandboxPolicy"/> opens, the <see cref="ChildProcessLimits"/> of the whole process tree,
-/// and a deadline after which the tree is killed. The program sees ordinary redirected streams and
-/// the caller an ordinary <see cref="Process"/>, so a bounded program is handled exactly like any
-/// other.
+/// and a deadline after which the tree is killed. The program sees ordinary redirected streams, and
+/// on Windows it is inside its job before any of its code runs, so nothing it starts escapes.
 /// </summary>
 public interface IProcessLauncher
 {
@@ -38,14 +37,25 @@ public sealed record ProcessLaunch(
 /// A started program and the bounds it runs in. Disposing it kills whatever is left of the tree,
 /// so a caller that gives up on a run cannot leave it behind.
 /// </summary>
+/// <remarks>
+/// Under a sandbox on Windows the process is the launcher that holds the confined program; it
+/// forwards the streams and the exit code, so the difference does not show.
+/// </remarks>
 public interface ILaunchedProcess : IDisposable
 {
-    /// <summary>
-    /// The started process, with the streams the start info redirected. Under a sandbox on Windows
-    /// this is the launcher that holds the confined program; it forwards the streams and the exit
-    /// code, so the difference does not show.
-    /// </summary>
-    Process Process { get; }
+    /// <summary>The program's standard input; closing it is how the program learns there is no more.</summary>
+    StreamWriter StandardInput { get; }
+
+    StreamReader StandardOutput { get; }
+
+    StreamReader StandardError { get; }
+
+    int Id { get; }
+
+    bool HasExited { get; }
+
+    /// <summary>The exit code; read it after the program has exited.</summary>
+    int ExitCode { get; }
 
     /// <summary>Cancelled when the deadline passes, so reads of the streams can stop with the tree.</summary>
     CancellationToken Deadline { get; }

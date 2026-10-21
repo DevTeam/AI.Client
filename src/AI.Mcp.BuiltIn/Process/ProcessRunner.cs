@@ -138,7 +138,7 @@ public sealed class ProcessRunner : IProcessRunner
 
         using (launched)
         {
-            var process = launched.Process;
+            var process = launched;
             process.StandardInput.Close();
             var stdout = new MemoryStream();
             var stderr = new MemoryStream();

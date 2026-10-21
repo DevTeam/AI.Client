@@ -13,7 +13,7 @@ using AI.Contracts.Usage;
 /// reading years of history. Months are read once and then held in memory, since every record
 /// after that passes through here anyway.
 /// </summary>
-public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, IFileSystem files)
+public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, IFileSystem files, IPath paths)
     : ITokenUsageLedger, IDisposable
 {
     private const string MonthFormat = "yyyy-MM";
@@ -48,7 +48,7 @@ public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, 
         var result = new List<TokenUsageRecord>();
         foreach (var path in (await files.ListFilesAsync(UsageDirectory, "*.jsonl", cancellationToken)).Order(StringComparer.Ordinal))
         {
-            var month = Path.GetFileNameWithoutExtension(path);
+            var month = paths.GetFileNameWithoutExtension(path);
             if (!DateTime.TryParseExact(month, MonthFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
                 || string.CompareOrdinal(month, first) < 0 || string.CompareOrdinal(month, last) > 0)
                 continue;
@@ -87,7 +87,7 @@ public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, 
         : at == DateTimeOffset.MaxValue ? "9999-99"
         : at.UtcDateTime.ToString(MonthFormat, CultureInfo.InvariantCulture);
 
-    private string UsageDirectory => Path.Combine(location.RootDirectory, "usage");
+    private string UsageDirectory => paths.Combine(location.RootDirectory, "usage");
 
-    private string PathOf(string month) => Path.Combine(UsageDirectory, month + ".jsonl");
+    private string PathOf(string month) => paths.Combine(UsageDirectory, month + ".jsonl");
 }

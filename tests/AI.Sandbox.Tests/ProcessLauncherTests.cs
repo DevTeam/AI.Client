@@ -33,7 +33,25 @@ public sealed class ProcessLauncherTests : IDisposable
 
     private SandboxPolicy Policy => new([new SandboxPath(_readable, SandboxAccess.Read), new SandboxPath(_writable, SandboxAccess.ReadWrite)]);
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    /// <summary>
+    /// Retries for a moment: a killed process lets go of its working directory only once Windows has
+    /// finished tearing it down, which can be just after the kill returned.
+    /// </summary>
+    public void Dispose()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < 20)
+            {
+                Thread.Sleep(250);
+            }
+        }
+    }
 
     [Fact]
     public async Task RunsAnUnconfinedProgramAndReportsItsExitCode()

@@ -225,8 +225,10 @@ public sealed class AppSubtaskToolTests
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
         var reports = new List<ToolProgress>();
 
+        // Recorded synchronously: Progress<T> posts each report to the thread pool, so the last
+        // one could still be on its way when the call returns.
         await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second"),
-            new Progress<ToolProgress>(value => { lock (reports) reports.Add(value); }),
+            new SynchronousProgress(value => { lock (reports) reports.Add(value); }),
             TestContext.Current.CancellationToken);
 
         // The caller's live row is fed from these, so a subtask that reports nothing is
@@ -547,5 +549,10 @@ public sealed class AppSubtaskToolTests
             }
             yield return new ChatCompletionChunk(_answer(request.Message));
         }
+    }
+
+    private sealed class SynchronousProgress(Action<ToolProgress> report) : IProgress<ToolProgress>
+    {
+        public void Report(ToolProgress value) => report(value);
     }
 }

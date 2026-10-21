@@ -50,7 +50,9 @@ jobs:
         shell: bash
         run: |
           log=artifacts/test-results/test.log
-          failures=$(sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r$//' "$log" | awk '
+          # perl rather than sed: BSD sed on macOS does not understand \x1b.
+          plain() { perl -pe 's/\e\[[0-9;]*[A-Za-z]//g; s/\r$//' "$@"; }
+          failures=$(plain "$log" | awk '
             /^[[:space:]]*failed / { if (block != "") print block; sub(/^[[:space:]]+/, ""); block = $0; lines = 0; next }
             block != "" && lines < 14 { block = block "%0A" $0; lines++; next }
             block != "" { print block; block = "" }
@@ -58,7 +60,7 @@ jobs:
           ' | head -n 40)
           if [ -z "$failures" ]; then
             # Nothing looked like a failed test: the run broke some other way, so show how it ended.
-            echo "::error title=Test run tail::$(tail -n 40 "$log" | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')"
+            echo "::error title=Test run tail::$(tail -n 40 "$log" | plain | perl -pe 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')"
           fi
           printf '%s\n' "$failures" | while IFS= read -r failure; do
             [ -n "$failure" ] && echo "::error title=${failure%%\%0A*}::${failure}"

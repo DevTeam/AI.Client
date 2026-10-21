@@ -27,8 +27,9 @@ public sealed class BuiltInToolTests
         if (!OperatingSystem.IsWindows()) return;
         var result = await new ProcessRunner().RunAsync(new ProcessRequest("powershell.exe",
             ["-NoProfile", "-NonInteractive", "-Command", "$child = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 30'; $child.Id"],
-            AppContext.BaseDirectory, 10000), CancellationToken.None);
-        result.ExitCode.ShouldBe(0);
+            // Generous: two cold PowerShell starts on a fresh CI runner can take well over ten seconds.
+            AppContext.BaseDirectory, 120000), CancellationToken.None);
+        result.ExitCode.ShouldBe(0, result.ToString());
         var pid = int.Parse(result.Stdout.Trim(), System.Globalization.CultureInfo.InvariantCulture);
         System.Diagnostics.Process child;
         try { child = System.Diagnostics.Process.GetProcessById(pid); }

@@ -155,7 +155,7 @@ public class TokenUsageTests
         var september = _files.Files.Keys.Single(path => path.EndsWith("2026-09.jsonl", StringComparison.Ordinal));
         _files.Files[september] += "{\"id\":\"broken";
 
-        var fresh = new JsonLinesTokenUsageLedger(Location(), _files);
+        var fresh = new JsonLinesTokenUsageLedger(Location(), _files, _files.Path);
         var all = await fresh.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None);
         var august = await fresh.ReadAsync(new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), CancellationToken.None);
@@ -300,12 +300,12 @@ public class TokenUsageTests
     public async Task ShouldReadLegacyOverlapRecordsWithoutADenominatorAndKeepTheirChangeDiagnostics()
     {
         var old = Record(null, TokenUsagePurpose.Answer, 500, 10) with { Prefix = new(2_000, PromptPrefixChange.Tools) };
-        using var ledger = new JsonLinesTokenUsageLedger(Location(), _files);
+        using var ledger = new JsonLinesTokenUsageLedger(Location(), _files, _files.Path);
         await ledger.AppendAsync(old, CancellationToken.None);
         var path = _files.Files.Keys.Single();
         _files.Files[path] = _files.Files[path].Replace(",\"estimatedInputTokens\":0", "", StringComparison.Ordinal);
         _files.Files[path].ShouldNotContain("estimatedInputTokens");
-        using var reloaded = new JsonLinesTokenUsageLedger(Location(), _files);
+        using var reloaded = new JsonLinesTokenUsageLedger(Location(), _files, _files.Path);
         var loaded = (await reloaded.ReadAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, CancellationToken.None)).Single();
         loaded.Prefix.ShouldBe(old.Prefix);
         var current = old with { Prefix = new(800, null, 1_000) };
@@ -382,7 +382,7 @@ public class TokenUsageTests
 
     private (TokenUsageMeter Meter, JsonLinesTokenUsageLedger Ledger) CreateMeter(IPromptPrefixTracker? tracker = null)
     {
-        var ledger = new JsonLinesTokenUsageLedger(Location(), _files);
+        var ledger = new JsonLinesTokenUsageLedger(Location(), _files, _files.Path);
         return (new TokenUsageMeter(ledger, _settings.Object, Clock(), Ids(), NullLogger<TokenUsageMeter>.Instance,
             tracker ?? new PromptPrefixTracker(new ContextTokenEstimator()), new UsageCostEstimator()), ledger);
     }

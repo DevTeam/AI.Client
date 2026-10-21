@@ -59,7 +59,19 @@ public sealed class SandboxedToolTests : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         await _client.DisposeAsync();
-        Directory.Delete(_root, recursive: true);
+        // A worker the server just killed lets go of its directories a moment after the kill.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < 20)
+            {
+                await Task.Delay(250);
+            }
+        }
     }
 
     [Fact]

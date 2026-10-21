@@ -4,6 +4,8 @@
     </PropertyGroup>
     <ItemGroup>
         <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj"/>
+        <ProjectReference Include="..\AI.Sandbox\AI.Sandbox.csproj"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting"/>
         <PackageReference Include="ModelContextProtocol.Core"/>
         <PackageReference Include="Pure.DI" PrivateAssets="all"/>
     </ItemGroup>

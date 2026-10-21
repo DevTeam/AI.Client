@@ -7,6 +7,14 @@
   -->
   <PropertyGroup>
     <McpBuiltInProjectDirectory>$(MSBuildThisFileDirectory)..\src\AI.Mcp.BuiltIn\</McpBuiltInProjectDirectory>
+    <!--
+      A release for one runtime gets the server and the C# compiler precompiled: a cs_run worker
+      starts with the compiler already in native code instead of compiling it with the JIT, which
+      takes about 40% off a script's first run. It needs a runtime identifier, so a plain publish
+      without one stays as it is.
+    -->
+    <McpBuiltInReadyToRun>false</McpBuiltInReadyToRun>
+    <McpBuiltInReadyToRun Condition="'$(RuntimeIdentifier)' != ''">true</McpBuiltInReadyToRun>
   </PropertyGroup>
   <Target Name="CopyDefaultMcpServer" AfterTargets="Build">
     <ItemGroup><DefaultMcpFiles Include="$(McpBuiltInProjectDirectory)bin\$(Configuration)\$(TargetFramework)\*" /></ItemGroup>
@@ -14,6 +22,6 @@
   </Target>
   <Target Name="PublishDefaultMcpServer" AfterTargets="Publish">
     <MSBuild Projects="$(McpBuiltInProjectDirectory)AI.Mcp.BuiltIn.csproj" Targets="Publish"
-             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)mcp\" />
+             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)mcp\;PublishReadyToRun=$(McpBuiltInReadyToRun)" />
   </Target>
 </Project>

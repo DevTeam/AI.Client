@@ -1,6 +1,6 @@
 namespace AI.Mcp.BuiltIn.Process;
 
-using AI.Contracts.Processes;
+using AI.Sandbox;
 
 /// <param name="Limits">The resources the process tree may use; <c>null</c> means <see cref="ChildProcessLimits.Default"/>.</param>
 public sealed record ProcessRequest(
@@ -14,6 +14,7 @@ public sealed record ProcessRequest(
 /// <see cref="ChildProcessJob.Memory"/> or <see cref="ChildProcessJob.Processes"/> when the tree ran into
 /// that limit, otherwise <c>null</c>.
 /// </param>
+/// <param name="Sandbox">The OS sandbox the run was confined by, or <c>null</c> when it was not confined.</param>
 public sealed record ProcessResult(
     int? ExitCode,
     string Stdout,
@@ -22,4 +23,5 @@ public sealed record ProcessResult(
     bool TimedOut,
     bool Truncated,
     string? Error,
-    string? LimitExceeded = null);
+    string? LimitExceeded = null,
+    string? Sandbox = null);

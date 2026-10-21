@@ -2,13 +2,14 @@
 
 ## Composition
 
-The built-in server ships 22 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, and network `fetch` default to `Ask`. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
+The built-in server ships 23 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, `cs_run`, and network `fetch` default to `Ask`. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
 | Tool | Purpose | Required capability grant |
 |---|---|---|
-| `process_run` | launch a program and wait for completion | — (not restricted by grants) |
+| `process_run` | launch a program and wait for completion | — (confined to the grants only by the [sandbox](38-process-sandbox.md)) |
+| `cs_run` | compile and run a C# script in a disposable worker process | — (confined to the grants only by the [sandbox](38-process-sandbox.md)) |
 | `trigger_wait` | wait for a time, file, or process condition during the current chat run | `read` for file paths |
 | `fetch` | download an http/https URL as Markdown | — (network) |
 | `list_allowed_directories` | enumerate the current session's directory grants | — |
@@ -61,15 +62,15 @@ Input:
 
 `workingDirectory` is required and must be absolute. Arguments are passed as separate array elements; there is no implicit command shell. For a script, the shell is specified explicitly, for example `powershell.exe` with `-NoProfile`, `-NonInteractive`, `-Command`. Interactive stdin is closed.
 
-The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded`. A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block. Streams are read as bytes and decoded as UTF-8 when they are valid UTF-8, otherwise in the OEM code page of the user's locale, which is what `cmd` and Windows PowerShell write when redirected; a cut at the byte limit drops a split final character before that judgement. Decoding everything in the console code page turned the UTF-8 that most tools write into mojibake for every non-Latin character, and the model then spent steps working around its own tool output. The child environment also sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, so Python writes UTF-8 rather than the ANSI code page.
+The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded` and `sandbox` (the OS mechanism that confined the run, or `null`). A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block. Streams are read as bytes and decoded as UTF-8 when they are valid UTF-8, otherwise in the OEM code page of the user's locale, which is what `cmd` and Windows PowerShell write when redirected; a cut at the byte limit drops a split final character before that judgement. Decoding everything in the console code page turned the UTF-8 that most tools write into mojibake for every non-Latin character, and the model then spent steps working around its own tool output. The child environment also sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, so Python writes UTF-8 rather than the ANSI code page.
 
 Limits: up to 256 arguments, up to 2097152 characters of arguments JSON on the Host side (`ToolCallLimits.ArgumentCharacters`, shared with the stream parser and set above the largest content any tool accepts, so a call its schema allows is never refused after the model has spent minutes generating it), up to 56535 calls of a single tool per run by default, a default timeout of 600 seconds and a configurable maximum of 86400 seconds per process, and up to 24 hours for the agent loop, excluding time waiting for a person. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. Tool policies inherit chat -> project -> global, with an allowed timeout range of 1..86400 seconds. Saved shorter timeouts remain in effect.
 
-For `process_run` and the optional C# server's `cs_run`, `timeoutMs` accepts 1..86400000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 3600 seconds.
+For `process_run` and `cs_run`, `timeoutMs` accepts 1..86400000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 3600 seconds.
 
 ### Resource limits
 
-Every process tree started by `process_run`, and the disposable worker of `cs_run`, runs within resource limits (`ChildProcessLimits` and `ChildProcessJob` in `AI.Contracts/Processes`). Two of them are call parameters, so the model can raise them for a program that legitimately needs more:
+Every process tree started by `process_run`, and the disposable worker of `cs_run`, runs within resource limits (`ChildProcessLimits` and `ChildProcessJob` in `AI.Sandbox`, applied by its `IProcessLauncher` together with the deadline and, when switched on, the [sandbox](38-process-sandbox.md)). Two of them are call parameters, so the model can raise them for a program that legitimately needs more:
 
 | Parameter | Default | Allowed | Meaning |
 | --- | --- | --- | --- |
@@ -81,6 +82,14 @@ Memory is sized from the machine's physical memory rather than from what is free
 The rest is fixed: the tree may use at most 75% of the machine's CPU time (a hard cap), and its processes run at below-normal priority so the Host and the desktop stay responsive.
 
 On Windows the limits are enforced by a Job Object. A refused allocation or process start fails inside the program, which decides on its own whether that ends it; the job reports which limit it enforced through a completion port, and the result carries it as `limitExceeded` (`memory` or `processes`, otherwise `null`). A .NET program, the `cs_run` worker included, sizes its managed heap from the job's memory limit and usually throws `OutOfMemoryException` before the job refuses anything; `cs_run` reports such a run as `limitExceeded: memory` as well. On Linux and macOS only the priority is lowered: memory, process and CPU limits are not applied, and `limitExceeded` is always `null`.
+
+## cs_run
+
+`cs_run` compiles and runs a C# script with Roslyn scripting. The code is the body of a script: top-level statements, `using` directives and a last expression without a semicolon, whose value comes back as `returnValue`. Data goes in through `arguments` (`Args`) and `globals` (`Globals`, raw JSON elements), not into the code. The result carries `success`, `returnValue`, `returnType`, `variables`, `stdout`, `stderr`, `diagnostics`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded` and `sandbox`.
+
+Each script runs in a worker process of its own: the server executable started with `--script-worker`, which reads one request on standard input and writes one result. A blocking script cannot hold the server past its deadline, and one script leaves nothing behind for the next. The worker is bounded like a `process_run` tree: resource limits, deadline and sandbox.
+
+Starting .NET, loading Roslyn and compiling cost about 1.4 seconds per call when every call started its worker cold. `ScriptWorkers` keeps one worker started ahead of the next call: after a script finishes, the next worker starts, loads the references, compiles and runs a trivial script, and waits for its request. The next call only compiles its own script: about 0.3 seconds from call to result instead of 1.7 to 2.1 seconds for the first call of a session (measured on Windows, with and without the sandbox). The spare uses the default limits; a call that asks for other limits gets a cold worker of its own. A release built for one runtime publishes the server ReadyToRun, which takes about 40% off a cold worker.
 
 ## trigger_wait
 
@@ -175,7 +184,7 @@ Only the `http` and `https` schemes are allowed; credentials in the URL are reje
 
 ## Access and lifecycle
 
-The process runs under the Host account's permissions. Working directory and directory grants are not a sandbox for arbitrary programs. Permission to run a process can grant it access to the files and network of that account.
+The process runs under the Host account's permissions. Unless the [sandbox](38-process-sandbox.md) is switched on, working directory and directory grants are not a boundary for arbitrary programs: permission to run a process can grant it access to the files and network of that account. With the sandbox, `process_run` and `cs_run` reach only the session's grants, the chat's temporary directory and the read-only system locations.
 
 The Host and the server pass only the selected system environment variables required to launch programs. Arbitrary Host variables and saved API credentials are not passed automatically. This does not stop the program itself from reading the credential files available to it.
 

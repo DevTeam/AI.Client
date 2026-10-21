@@ -3,7 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using AI.Contracts.FileSystem;
-using AI.Contracts.Processes;
+using AI.Mcp.BuiltIn.Sandbox;
+using AI.Sandbox;
 
 namespace AI.Mcp.BuiltIn.Process;
 
@@ -11,12 +12,18 @@ public sealed class ProcessRunner : IProcessRunner
 {
     private readonly IFileSystem _files;
     private readonly IPath _paths;
+    private readonly IProcessLauncher _launcher;
+    private readonly IToolSandbox _sandbox;
 
-    public ProcessRunner(IFileSystem? files = null, IPath? paths = null)
+    public ProcessRunner(IFileSystem? files = null, IPath? paths = null, IProcessLauncher? launcher = null, IToolSandbox? sandbox = null)
     {
         _files = files ?? new SystemFileSystem();
         _paths = paths ?? new SystemPath();
+        _launcher = launcher ?? new ProcessLauncher();
+        _sandbox = sandbox ?? NoSandbox.Instance;
     }
+
+    private static readonly string[] TemporaryVariables = ["TEMP", "TMP", "TMPDIR"];
     private static readonly string[] VariablesNames =
     [
         "PATH",
@@ -108,84 +115,62 @@ public sealed class ProcessRunner : IProcessRunner
         start.Environment["PYTHONUTF8"] = "1";
         start.Environment["PYTHONIOENCODING"] = "utf-8";
 
-        using var process = new System.Diagnostics.Process();
-        process.StartInfo = start;
+        if (_sandbox.Policy is not null && _sandbox.TemporaryDirectory is { } temporary)
+        {
+            // The user's own temporary directory is outside the sandbox; one the program may write is.
+            foreach (var name in TemporaryVariables)
+            {
+                start.Environment[name] = temporary;
+            }
+        }
 
-        // Created before the process starts: a limit the OS cannot apply fails the call, not the machine.
-        using var job = new ChildProcessJob(request.Limits ?? ChildProcessLimits.Default);
         var timer = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
-
+        ILaunchedProcess launched;
         try
         {
-            process.Start();
+            launched = _launcher.Start(new ProcessLaunch(start, _sandbox.Policy, request.Limits, request.TimeoutMs));
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
-            return new ProcessResult(null, "", "", timer.ElapsedMilliseconds, false, false, error.Message);
+            return new ProcessResult(null, "", "", timer.ElapsedMilliseconds, false, false, error.Message, Sandbox: Mechanism);
         }
 
-        try
+        using (launched)
         {
-            job.Attach(process);
-        }
-        catch
-        {
+            var process = launched.Process;
+            process.StandardInput.Close();
+            var stdout = new MemoryStream();
+            var stderr = new MemoryStream();
+            var output = DrainAsync(process.StandardOutput.BaseStream, stdout, launched.Deadline);
+            var errors = DrainAsync(process.StandardError.BaseStream, stderr, launched.Deadline);
             try
             {
-                process.Kill(entireProcessTree: true);
+                await launched.WaitForExitAsync(cancellationToken);
             }
-            catch (InvalidOperationException)
+            finally
             {
-                // Ignored
+                // The streams close with the tree; a descendant that kept them open is gone with it.
+                await Task.WhenAll(output, errors);
             }
 
-            throw;
+            var (outText, outCut) = Decode(stdout, output.Result);
+            var (errorText, errorCut) = Decode(stderr, errors.Result);
+            return new ProcessResult(
+                process.ExitCode,
+                outText,
+                errorText,
+                timer.ElapsedMilliseconds,
+                launched.TimedOut,
+                outCut || errorCut,
+                null,
+                launched.LimitExceeded,
+                Mechanism);
         }
-        process.StandardInput.Close();
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(request.TimeoutMs);
-        var stdout = new MemoryStream();
-        var stderr = new MemoryStream();
-        var output = DrainAsync(process.StandardOutput.BaseStream, stdout, timeout.Token);
-        var errors = DrainAsync(process.StandardError.BaseStream, stderr, timeout.Token);
-        var timedOut = false;
-        try
-        {
-            await Task.WhenAll(process.WaitForExitAsync(timeout.Token), output, errors);
-        }
-        catch (OperationCanceledException)
-        {
-            timedOut = !cancellationToken.IsCancellationRequested;
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                 /* Already exited. */
-            }
-
-            await process.WaitForExitAsync(CancellationToken.None);
-            await Task.WhenAll(output, errors);
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var (outText, outCut) = Decode(stdout, output.Result);
-        var (errorText, errorCut) = Decode(stderr, errors.Result);
-        return new ProcessResult(
-            process.ExitCode,
-            outText,
-            errorText,
-            timer.ElapsedMilliseconds,
-            timedOut || timeout.IsCancellationRequested,
-            outCut || errorCut,
-            null,
-            job.LimitExceeded);
     }
 
+    /// <summary>The sandbox the run is confined by, reported with the result so a denied access can be told apart.</summary>
+    private string? Mechanism => _sandbox.Policy is null ? null : _launcher.Support.Mechanism;
     /// <summary>Raw bytes, enough for <see cref="OutputLimit"/> characters in any encoding.</summary>
     private const int OutputBytes = OutputLimit * 4;
 

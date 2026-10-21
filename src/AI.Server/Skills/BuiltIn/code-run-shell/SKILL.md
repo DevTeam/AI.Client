@@ -59,7 +59,11 @@ or scripts, and a dedicated tool when it better serves the task.
    check `$LASTEXITCODE` immediately after important native programs and propagate an appropriate
    `exit` code. Nonterminating PowerShell errors and native program failures need separate checks.
 5. Assess deletion, overwrite, moves, database/network changes and disk exhaustion before launch.
-   The working directory is not a sandbox. Verify full targets, empty inputs, source/destination
+   The working directory restricts nothing by itself. When the `process_run` description says it
+   is sandboxed, programs reach only the granted directories and the chat's temporary directory,
+   start only in a granted directory, and results carry `sandbox`; tools that keep caches in the
+   user profile may fail there, and an access error outside the grants is the boundary: ask for a
+   grant as the access rules say, never work around it. Verify full targets, empty inputs, source/destination
    overlap, existing outputs and symlinks/junctions. Before recursive deletion/moves confirm the
    final path is within the intended authorized area, not an accidental root, home or entire
    working tree. Preview targets or use dry-run/-WhatIf where supported; preserve important

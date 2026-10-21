@@ -800,6 +800,19 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 .Append(". Other programs may exist; do not assume one without checking.")
                 .Append(" process_run permissions can be argument-specific, so a saved command rule may allow an intended call even when the general tool state is Ask.");
         }
+        if (offered.Any(item => item.Tool.OriginalName == "cs_run" && item.Policy.Decision != "Deny"))
+        {
+            // One script in place of a chain of small calls is the cheapest step a run can take:
+            // the model writes it once, and the calls it replaces would each cost a step and their
+            // results in context.
+            text.Append("\n- Prefer one cs_run script to a chain of small tool calls when the work is computation or ")
+                .Append("bulk processing: counting, aggregating, parsing, comparing or transforming many files or records, ")
+                .Append("exact arithmetic, or checking a hypothesis. Read inputs inside the script, pass parameters through ")
+                .Append("`arguments` or `globals`, and return only the compact answer, as JSON for structured data, instead ")
+                .Append("of printing raw contents. The first script of a run takes a second or two to start, later ones a few ")
+                .Append("hundred milliseconds; each call is a fresh process, so keep a script self-contained. Use the code-run-csharp ")
+                .Append("skill for long, risky or file-changing work.");
+        }
         return text.ToString();
     }
     /// <summary>

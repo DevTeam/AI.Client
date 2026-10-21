@@ -10,13 +10,14 @@
     <Project Path="src/AI.Desktop/AI.Desktop.csproj" />
     <Project Path="src/AI.Host/AI.Host.csproj" />
     <Project Path="src/AI.Mcp.BuiltIn/AI.Mcp.BuiltIn.csproj" />
-    <Project Path="src/AI.Mcp.CSharp/AI.Mcp.CSharp.csproj" />
+    <Project Path="src/AI.Sandbox/AI.Sandbox.csproj" />
     <Project Path="src/AI.Server/AI.Server.csproj" />
     <Project Path="src/AI.Web/AI.Web.csproj" />
     <Project Path="src/AI.TextCorrection/AI.TextCorrection.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/AI.Mcp.CSharp.Tests/AI.Mcp.CSharp.Tests.csproj" />
+    <Project Path="tests/AI.Mcp.BuiltIn.Tests/AI.Mcp.BuiltIn.Tests.csproj" />
+    <Project Path="tests/AI.Sandbox.Tests/AI.Sandbox.Tests.csproj" />
     <Project Path="tests/AI.Server.Tests/AI.Server.Tests.csproj" />
     <Project Path="tests/AI.Web.Tests/AI.Web.Tests.csproj" />
     <Project Path="tests/AI.TextCorrection.Tests/AI.TextCorrection.Tests.csproj" />

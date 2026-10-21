@@ -49,7 +49,9 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
                 ("Duration", Size(structured, "durationMs") is { } ms ? $"{ms} ms" : null),
                 ("Timed out", timedOut ? "yes" : null),
                 ("Limit exceeded", limit),
-                ("Output truncated", truncated ? "yes" : null)),
+                ("Output truncated", truncated ? "yes" : null),
+                // Which OS sandbox confined the run: a denied access is then the boundary, not a fault.
+                ("Sandbox", Text(structured, "sandbox"))),
             string.IsNullOrEmpty(body) ? null : body);
     }
 

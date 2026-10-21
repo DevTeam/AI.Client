@@ -40,6 +40,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 34. [Extensible chat kinds](32-chat-kinds.md)
 35. [Scheduled chats](35-scheduled-chats.md)
 36. [Chat plans](37-chat-plans.md)
+37. [Process sandbox](38-process-sandbox.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 
@@ -71,3 +72,4 @@ All UI text, source-code comments, identifiers, technical messages, and project 
 Current decisions: [ADR-006](decisions/ADR-006-architecture-simplification.md).
 
 - [Default MCP tools](16-default-mcp-tools.md) — process execution, permissions, and CLI.
+- [Process sandbox](38-process-sandbox.md) — confining `process_run` and `cs_run` to the directory grants.

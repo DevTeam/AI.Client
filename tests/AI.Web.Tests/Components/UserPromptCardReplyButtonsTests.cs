@@ -33,6 +33,18 @@ public sealed class UserPromptCardReplyButtonsTests
     }
 
     [Fact]
+    public async Task ShouldCountDownATimedOverlayAndSayThatNothingIsChosenWhenItRunsOut()
+    {
+        var html = await RenderAsync(new UserPrompt(Guid.NewGuid(), [Question], 30, "overlay",
+            ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(20), ReplyButtons: true));
+
+        html.ShouldContain("Closes automatically in 0:2");
+        html.ShouldContain("class=\"user-prompt-progress\"");
+        html.ShouldContain("nothing is chosen and no action is taken");
+        html.ShouldNotContain("Continues with recommended answers");
+    }
+
+    [Fact]
     public async Task ShouldKeepTheFormForAnOrdinaryQuestion()
     {
         var html = await RenderAsync(new UserPrompt(Guid.NewGuid(), [Question], 300));

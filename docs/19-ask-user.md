@@ -102,7 +102,8 @@ confirmation:
 | No `Answer` | the action row keeps only `Decline` and `Decide yourself`; there is no submit button to look for |
 | Hint | the note under the question says "Click an answer to send it right away, or press 1–N" |
 | Keys | digits 1–9 send the matching option while focus is in the card; Enter on a focused button sends it |
-| Sending | the pressed button keeps its accent and turns its arrow into a spinner; the others fade and are disabled |
+| Sending | the pressed button keeps its accent and turns its arrow into a spinner; the others fade and are disabled. An accepted answer keeps the card so until the run takes the question away, so it cannot be pressed twice; a rejected one enables it again with the error |
+| Time limit | a timed overlay question shows the usual countdown line and bar, amber in the last seconds. When it runs out the outcome is `expired`: the recommended option is only marked, never sent, and the hint says that nothing is chosen. A chat question waits its 15 minutes without a countdown, like a form |
 | Own answer | with `allowOther`, a single field below the buttons, "Or type your own answer and press Enter"; the composer answers too |
 
 ### Git pickers

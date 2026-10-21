@@ -188,7 +188,8 @@
     <p class="user-prompt-note @(IsReady && !Prompt.ReplyButtons ? "ready" : null)" role="status" aria-live="polite">
         @if (Prompt.ReplyButtons)
         {
-            <span class="user-prompt-reply-hint"><AppIcon Name="zap" /><span>Click an answer to send it right away, or press <kbd>1</kbd>–<kbd>@Math.Min(9, Prompt.Questions[0].Options.Count)</kbd>.</span></span>
+            <span class="user-prompt-reply-hint"><AppIcon Name="zap" /><span>Click an answer to send it right away, or press <kbd>1</kbd>–<kbd>@Math.Min(9, Prompt.Questions[0].Options.Count)</kbd>.@(Prompt.Presentation == "overlay" && IsTimed
+                ? " If none is picked in time, nothing is chosen and no action is taken." : null)</span></span>
         }
         else if (IsReady)
         {
@@ -572,6 +573,7 @@
     {
         if (_sending) return;
         _sending = true;
+        var accepted = false;
         _error = null;
         try
         {
@@ -588,8 +590,10 @@
             // Answering nothing at all is telling the assistant to decide, which is what the other
             // button says. Sending it as an answer would have the same effect with a worse record.
             if (answers.Length == 0 && outcome == UserPromptOutcome.Answered) outcome = UserPromptOutcome.Dismissed;
-            if (!await OnAnswer(new UserPromptResponse(Prompt.Id, outcome, answers)))
-                _error = "This question is no longer available.";
+            // An accepted answer keeps the card as it was sent until the run takes the question away:
+            // the pressed choice stays marked, and nothing on the card can be pressed a second time.
+            accepted = await OnAnswer(new UserPromptResponse(Prompt.Id, outcome, answers));
+            if (!accepted) _error = "This question is no longer available.";
         }
         catch (HttpRequestException)
         {
@@ -597,7 +601,11 @@
         }
         finally
         {
-            _sending = false;
+            if (!accepted)
+            {
+                _sending = false;
+                _chosen = null;
+            }
         }
     }
 }

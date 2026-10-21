@@ -73,19 +73,9 @@
                         <div>
                             <div class="permission-item-title">
                                 <code>@rule.Pattern</code>
-                                @if (!EditsRule(rule))
-                                {
-                                    <span class="permission-decision" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it">@rule.Decision</span>
-                                }
+                                <span class="permission-decision" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it">@rule.Decision</span>
                             </div>
                             <p><span title="@($"This rule comes from {rule.Scope.ToLowerInvariant()} command rules; a Deny wins, otherwise the most specific pattern decides")">@rule.Scope</span></p>
-                            @if (EditsRule(rule))
-                            {
-                                <select aria-label="Decision for @rule.Pattern" title="Allow runs a matching command without asking; Ask requires approval; Deny refuses it"
-                                        value="@rule.Decision" disabled="@_saving" @onchange="e => ChangeRuleAsync(rule, e.Value?.ToString())">
-                                    <option value="Allow">Allow</option><option value="Ask">Ask</option><option value="Deny">Deny</option>
-                                </select>
-                            }
                         </div>
                         @if (OwnsRule(rule))
                         {
@@ -93,14 +83,6 @@
                         }
                     </div>
                 }
-            </section>
-        }
-        @* Rules are written in the global tool settings and for a project; a chat and its branches only show and reset them. *@
-        @if (!_loading && Scope == "Project")
-        {
-            <section class="permissions-group">
-                <h3 title="A rule decides calls of one tool by what they run or change, inside the tool's own permission"><AppIcon Name="plus" />Add a command rule</h3>
-                <CommandRuleForm Tools="@CommandRule.Tools" Scopes="@ProjectRuleScopes" ProjectId="@ProjectId" Saved="RuleSavedAsync" />
             </section>
         }
         @if (_error is not null) { <p class="error" role="alert">@_error</p> }
@@ -232,46 +214,16 @@
     private string RuleScope => Scope == "Branch" ? CommandRule.Chat : Scope;
     /// <summary>The tools that take command rules, and any other a saved rule names.</summary>
     private IEnumerable<string> RuleTools => CommandRule.Tools.Concat(_rules.Select(rule => rule.Tool)).Distinct(StringComparer.Ordinal);
-    private static readonly IReadOnlyList<(string Value, string Label)> ProjectRuleScopes =
-        [(CommandRule.Project, "This project"), (CommandRule.Global, "Every project")];
     private IReadOnlyList<CommandRule> VisibleRules => _rules
         .Where(rule => _showAll || rule.Scope == RuleScope)
         .OrderBy(rule => rule.Scope == CommandRule.Chat ? 0 : rule.Scope == CommandRule.Project ? 1 : 2)
         .ThenBy(rule => rule.Pattern, StringComparer.Ordinal)
         .ToArray();
-    /// <summary>The drawer resets the rules of its own scope; global ones belong to the global tool settings.</summary>
+    /// <summary>
+    /// Rules are added and changed only in the global tool settings; a project, a chat and a branch
+    /// show the rules that apply and reset their own, as they do with tool permissions.
+    /// </summary>
     private bool OwnsRule(CommandRule rule) => rule.Scope == RuleScope;
-
-    /// <summary>Only a project's rules have their decision changed here; a chat's are shown and reset.</summary>
-    private bool EditsRule(CommandRule rule) => Scope == "Project" && OwnsRule(rule);
-
-    private async Task RuleSavedAsync(CommandRule rule)
-    {
-        _rules = CommandRuleList.Replace(_rules, rule);
-        await Changed.InvokeAsync();
-    }
-
-    /// <summary>Saving the same scope and pattern again replaces the rule, which is how its decision changes.</summary>
-    private async Task ChangeRuleAsync(CommandRule rule, string? decision)
-    {
-        if (decision is not ("Allow" or "Ask" or "Deny") || decision == rule.Decision) return;
-        _saving = true;
-        _error = null;
-        try
-        {
-            var saved = await GlobalSettingsApi.AddCommandRuleAsync(new CreateCommandRuleRequest(rule.Scope, rule.ProjectId,
-                rule.ChatId, rule.Pattern, decision, rule.Tool), CancellationToken.None);
-            _rules = CommandRuleList.Replace(_rules, saved);
-            Notifications.ShowSuccess("Command rule updated.");
-            await Changed.InvokeAsync();
-        }
-        catch (Exception error) when (error is HttpRequestException or InvalidOperationException)
-        {
-            _error = "The command rule could not be saved.";
-        }
-        finally { _saving = false; }
-    }
-
 
     private async Task RemoveRuleAsync(CommandRule rule)
     {

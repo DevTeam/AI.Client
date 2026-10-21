@@ -183,10 +183,11 @@ Each rule names the tool it decides (`Tool`, `process_run` when absent); `proces
 one so far, and every place that lists or writes rules groups them by tool so that others can join.
 Global rules are written in the global tool settings: on the Tools page of the built-in server,
 expanding a tool that takes rules shows them beside its limits, where they are added with a pattern
-and a decision, changed and removed, and saved at once rather than with the settings' Save. A
-project's tool permissions do the same for the project's rules and can also add a global one. A
-chat's and a branch's tool permissions only list the rules that apply and reset the chat's own; the
-chat's rules come from its approval cards. Rules are read with
+and a decision, changed and removed, and saved at once rather than with the settings' Save. This is
+the only place rules are added or changed by hand. A project's, a chat's and a branch's tool
+permissions treat rules as they treat tool permissions: they list the rules that apply and reset
+their own (a branch resets its chat's), which leaves the global ones to decide. Project and chat
+rules come from approval cards and the `settings-rules-configure` skill. Rules are read with
 `app_read` `CommandRules`, changed with `app_security` `SetCommandRule` and `RemoveCommandRule`, and
 served at `/api/settings/command-rules`.
 

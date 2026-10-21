@@ -5,7 +5,7 @@
 <section class="command-rules-block" aria-labelledby="@_headingId">
     <span class="settings-row-text">
         <span class="settings-row-label" id="@_headingId">Command rules</span>
-        <span class="settings-row-hint">Decide calls of this tool by what they run or change, inside its default above. They apply to every project and are saved at once; a project adds its own in its tool permissions.</span>
+        <span class="settings-row-hint">Decide calls of this tool by what they run or change, inside its default above. They apply to every project and are saved at once; a project or a chat only resets its own.</span>
     </span>
     @if (ToolRules.Any())
     {
@@ -30,11 +30,10 @@
         <p class="command-rule-hint">No global command rules yet: every call follows the default above.</p>
     }
     @if (_error is not null) { <p class="error" role="alert">@_error</p> }
-    <CommandRuleForm Tool="@Tool" Scopes="@GlobalScope" Saved="SavedAsync" />
+    <CommandRuleForm Tool="@Tool" Saved="SavedAsync" />
 </section>
 
 @code {
-    private static readonly IReadOnlyList<(string Value, string Label)> GlobalScope = [(CommandRule.Global, "Every project")];
     /// <summary>The tool whose global rules this lists, one of <see cref="CommandRule.Tools"/>.</summary>
     [Parameter, EditorRequired] public string Tool { get; set; } = CommandRule.ProcessRun;
     private IEnumerable<CommandRule> ToolRules => _rules.Where(rule => rule.Tool == Tool);

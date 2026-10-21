@@ -23,40 +23,6 @@ public sealed class ToolPermissionsDrawerRenderingTests
     private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
     [Fact]
-    public async Task ProjectDrawerShouldAddAndChangeItsOwnCommandRules()
-    {
-        IReadOnlyList<CommandRule> rules =
-        [
-            new(Guid.CreateVersion7(), CommandRule.Project, ProjectId, null, "git status *", "Ask", Now),
-            new(Guid.CreateVersion7(), CommandRule.Global, null, null, "git push --force *", "Deny", Now)
-        ];
-
-        var html = await RenderDrawerAsync("Project", null, rules);
-
-        html.ShouldContain("<code>git status *</code>");
-        html.ShouldContain("aria-label=\"Decision for git status *\"");
-        html.ShouldContain("<option value=\"Ask\" selected");
-        // The Overrides tab lists the drawer's own scope only.
-        html.ShouldNotContain("git push --force *");
-        html.ShouldContain("class=\"command-rule-form\"");
-        html.ShouldContain(">This project</option>");
-        html.ShouldContain("value=\"Global\">Every project</option>");
-        html.ShouldContain("class=\"command-rule-hint\"");
-    }
-
-    [Fact]
-    public async Task ProjectDrawerShouldOfferTheFormBeforeAnyRuleExists()
-    {
-        var html = await RenderDrawerAsync("Project", null, []);
-
-        html.ShouldContain("Add a command rule");
-        html.ShouldContain("class=\"command-rule-form\"");
-        // One form for every tool rules decide, the tool chosen in it.
-        html.ShouldContain("aria-label=\"Tool the new rule decides\"");
-        html.ShouldContain("<option value=\"write_file\">write_file</option>");
-    }
-
-    [Fact]
     public async Task GlobalToolSettingsShouldTakePathsForAFileTool()
     {
         var html = await RenderAsync<GlobalCommandRules>(Services([], null, null),
@@ -69,20 +35,28 @@ public sealed class ToolPermissionsDrawerRenderingTests
     }
 
     [Theory]
-    [InlineData("Chat")]
-    [InlineData("Branch")]
-    public async Task ChatDrawerShouldOnlyShowAndResetItsCommandRules(string scope)
+    [InlineData("Project", CommandRule.Project)]
+    [InlineData("Chat", CommandRule.Chat)]
+    [InlineData("Branch", CommandRule.Chat)]
+    public async Task DrawerShouldOnlyShowAndResetItsCommandRules(string scope, string ruleScope)
     {
         IReadOnlyList<CommandRule> rules =
-            [new(Guid.CreateVersion7(), CommandRule.Chat, ProjectId, ChatId, "git log *", "Allow", Now)];
+        [
+            new(Guid.CreateVersion7(), ruleScope, ProjectId, ruleScope == CommandRule.Chat ? ChatId : null, "git log *", "Allow", Now),
+            new(Guid.CreateVersion7(), CommandRule.Global, null, null, "git push --force *", "Deny", Now)
+        ];
 
-        var html = await RenderDrawerAsync(scope, ChatId, rules);
+        var html = await RenderDrawerAsync(scope, scope == "Project" ? null : ChatId, rules);
 
         html.ShouldContain("<code>git log *</code>");
         html.ShouldContain("class=\"permission-decision\"");
         html.ShouldContain("aria-label=\"Remove command rule git log *\"");
         html.ShouldNotContain("Decision for git log *");
+        // Rules are added only in the global tool settings.
         html.ShouldNotContain("command-rule-form");
+        html.ShouldNotContain("Add a command rule");
+        // The Overrides tab lists the drawer's own scope only.
+        html.ShouldNotContain("git push --force *");
     }
 
     [Fact]

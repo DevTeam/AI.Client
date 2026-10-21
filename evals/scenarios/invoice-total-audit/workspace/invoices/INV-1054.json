@@ -1,0 +1,12 @@
+{
+  "number": "INV-1054",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Audit report", "quantity": 12, "unitPrice": 369.98, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 1, "unitPrice": 877.88, "discountPercent": 5 },
+    { "description": "Hardware token", "quantity": 4, "unitPrice": 111.50, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 2, "unitPrice": 117.47, "discountPercent": 5 }
+  ],
+  "total": 5942.94
+}

@@ -1,0 +1,13 @@
+{
+  "number": "INV-1044",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Training day", "quantity": 9, "unitPrice": 344.11, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 6, "unitPrice": 911.65, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 11, "unitPrice": 736.02, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 2, "unitPrice": 868.49, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 4, "unitPrice": 680.90, "discountPercent": 0 }
+  ],
+  "total": 21520.00
+}

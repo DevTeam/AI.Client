@@ -1,0 +1,7 @@
+INV-1033 stated 25073.37 computed 25073.38
+INV-1040 stated 9197.04 computed 9166.31
+INV-1046 stated 19574.21 computed 19594.93
+INV-1051 stated 4908.52 computed 4908.53
+INV-1069 stated 26245.97 computed 26230.95
+INV-1071 stated 1609.14 computed 1576.63
+INV-1079 stated 20174.06 computed 20174.07

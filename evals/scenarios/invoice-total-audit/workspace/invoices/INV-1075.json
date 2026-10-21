@@ -1,0 +1,16 @@
+{
+  "number": "INV-1075",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Setup fee", "quantity": 12, "unitPrice": 20.62, "discountPercent": 5 },
+    { "description": "Consulting hour", "quantity": 12, "unitPrice": 324.38, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 5, "unitPrice": 219.93, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 11, "unitPrice": 727.84, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 6, "unitPrice": 677.12, "discountPercent": 5 },
+    { "description": "Audit report", "quantity": 4, "unitPrice": 597.26, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 7, "unitPrice": 349.58, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 10, "unitPrice": 517.77, "discountPercent": 5 }
+  ],
+  "total": 31949.14
+}

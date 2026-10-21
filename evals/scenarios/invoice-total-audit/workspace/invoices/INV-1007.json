@@ -1,0 +1,14 @@
+{
+  "number": "INV-1007",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "License seat", "quantity": 1, "unitPrice": 571.57, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 7, "unitPrice": 578.59, "discountPercent": 15 },
+    { "description": "Training day", "quantity": 5, "unitPrice": 389.50, "discountPercent": 5 },
+    { "description": "Hosting month", "quantity": 5, "unitPrice": 262.18, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 5, "unitPrice": 665.39, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 4, "unitPrice": 437.13, "discountPercent": 5 }
+  ],
+  "total": 12658.69
+}

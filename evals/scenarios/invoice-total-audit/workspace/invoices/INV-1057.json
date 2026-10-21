@@ -1,0 +1,16 @@
+{
+  "number": "INV-1057",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 4, "unitPrice": 230.83, "discountPercent": 10 },
+    { "description": "License seat", "quantity": 2, "unitPrice": 676.45, "discountPercent": 10 },
+    { "description": "Training day", "quantity": 7, "unitPrice": 394.87, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 1, "unitPrice": 302.18, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 492.73, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 2, "unitPrice": 373.27, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 4, "unitPrice": 396.66, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 1, "unitPrice": 618.82, "discountPercent": 10 }
+  ],
+  "total": 13425.02
+}

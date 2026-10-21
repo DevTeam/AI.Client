@@ -1,0 +1,28 @@
+// A data task with one exact answer that reading the files cannot give: the expected output is in
+// expected.txt, generated with the fixture. Nothing requires cs_run; the run shows which tools the model picks.
+{
+    "id":  "api-latency-percentiles",
+    "description":  "Compute nearest-rank p95 latency per endpoint template over a week of access logs, 2xx responses only.",
+    "tags":  [
+                 "data",
+                 "script"
+             ],
+    "turns":  [
+                  "The access logs for the first week of October are in {workspace}/logs. For a performance review I need the 95th percentile latency of each endpoint, counting only 2xx responses. An endpoint is the method plus the path with numeric ids replaced by {id} and the query string dropped, for example GET /api/orders/{id}. Use the nearest-rank percentile. Write latency.csv in the workspace root with the header endpoint,count,p95_ms, slowest first and ties by endpoint name. Do not change the logs."
+              ],
+    "timeoutSeconds":  900,
+    "checks":  [
+                   {
+                       "type":  "fileContains",
+                       "name":  "exact result",
+                       "path":  "latency.csv",
+                       "pattern":  "\\Aendpoint,count,p95_ms\\r?\\nPOST\\ /api/payments/\\{id}/capture,1209,971\\r?\\nGET\\ /api/search,1203,412\\r?\\nPOST\\ /api/orders,1265,341\\r?\\nGET\\ /api/users/\\{id}/cart,1171,192\\r?\\nGET\\ /api/orders,1261,182\\r?\\nGET\\ /api/orders/\\{id},1206,103\\r?\\nGET\\ /api/users/\\{id},1166,70\\r?\\nGET\\ /health,1278,8(\\r?\\n)?\\s*\\z"
+                   },
+                   {
+                       "type":  "onlyChanged",
+                       "paths":  [
+                                     "latency.csv"
+                                 ]
+                   }
+               ]
+}

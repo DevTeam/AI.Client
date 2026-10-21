@@ -1,0 +1,13 @@
+{
+  "number": "INV-1011",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Support plan", "quantity": 4, "unitPrice": 126.03, "discountPercent": 5 },
+    { "description": "Consulting hour", "quantity": 4, "unitPrice": 288.80, "discountPercent": 15 },
+    { "description": "Training day", "quantity": 4, "unitPrice": 65.12, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 6, "unitPrice": 631.14, "discountPercent": 5 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 38.32, "discountPercent": 15 }
+  ],
+  "total": 6812.52
+}

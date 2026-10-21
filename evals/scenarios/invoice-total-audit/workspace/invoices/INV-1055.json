@@ -1,0 +1,15 @@
+{
+  "number": "INV-1055",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hardware token", "quantity": 8, "unitPrice": 938.75, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 8, "unitPrice": 724.78, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 11, "unitPrice": 953.29, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 6, "unitPrice": 44.67, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 271.74, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 8, "unitPrice": 102.34, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 9, "unitPrice": 539.82, "discountPercent": 15 }
+  ],
+  "total": 34989.44
+}

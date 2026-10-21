@@ -1,0 +1,11 @@
+{
+  "number": "INV-1051",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Hardware token", "quantity": 4, "unitPrice": 356.60, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 3, "unitPrice": 479.91, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 3, "unitPrice": 573.76, "discountPercent": 0 }
+  ],
+  "total": 4908.52
+}

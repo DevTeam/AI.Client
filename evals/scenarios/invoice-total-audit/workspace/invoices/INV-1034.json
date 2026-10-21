@@ -1,0 +1,11 @@
+{
+  "number": "INV-1034",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Audit report", "quantity": 8, "unitPrice": 965.17, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 706.05, "discountPercent": 15 },
+    { "description": "Consulting hour", "quantity": 12, "unitPrice": 301.45, "discountPercent": 0 }
+  ],
+  "total": 20430.15
+}

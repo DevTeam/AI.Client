@@ -1,0 +1,12 @@
+{
+  "number": "INV-1019",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Training day", "quantity": 3, "unitPrice": 820.88, "discountPercent": 15 },
+    { "description": "Setup fee", "quantity": 11, "unitPrice": 579.21, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 4, "unitPrice": 929.27, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 5, "unitPrice": 503.45, "discountPercent": 0 }
+  ],
+  "total": 16354.39
+}

@@ -1,0 +1,11 @@
+{
+  "number": "INV-1017",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 2, "unitPrice": 959.40, "discountPercent": 15 },
+    { "description": "Setup fee", "quantity": 12, "unitPrice": 539.84, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 4, "unitPrice": 766.13, "discountPercent": 0 }
+  ],
+  "total": 11173.58
+}

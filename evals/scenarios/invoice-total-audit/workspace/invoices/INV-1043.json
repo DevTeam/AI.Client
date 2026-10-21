@@ -1,0 +1,16 @@
+{
+  "number": "INV-1043",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Audit report", "quantity": 1, "unitPrice": 399.07, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 9, "unitPrice": 599.65, "discountPercent": 5 },
+    { "description": "Setup fee", "quantity": 1, "unitPrice": 456.43, "discountPercent": 15 },
+    { "description": "Consulting hour", "quantity": 3, "unitPrice": 372.03, "discountPercent": 10 },
+    { "description": "Training day", "quantity": 12, "unitPrice": 246.90, "discountPercent": 15 },
+    { "description": "Support plan", "quantity": 1, "unitPrice": 535.47, "discountPercent": 5 },
+    { "description": "Setup fee", "quantity": 3, "unitPrice": 324.35, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 7, "unitPrice": 196.82, "discountPercent": 0 }
+  ],
+  "total": 14755.67
+}

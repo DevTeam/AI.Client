@@ -1,0 +1,16 @@
+{
+  "number": "INV-1005",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 10, "unitPrice": 43.19, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 2, "unitPrice": 381.10, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 7, "unitPrice": 354.54, "discountPercent": 5 },
+    { "description": "Training day", "quantity": 5, "unitPrice": 887.60, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 7, "unitPrice": 151.64, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 12, "unitPrice": 197.78, "discountPercent": 5 },
+    { "description": "Setup fee", "quantity": 9, "unitPrice": 694.47, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 970.61, "discountPercent": 15 }
+  ],
+  "total": 23705.43
+}

@@ -1,0 +1,10 @@
+{
+  "number": "INV-1078",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Training day", "quantity": 7, "unitPrice": 48.75, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 2, "unitPrice": 543.00, "discountPercent": 0 }
+  ],
+  "total": 1657.82
+}

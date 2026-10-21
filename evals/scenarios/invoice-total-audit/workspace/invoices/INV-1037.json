@@ -1,0 +1,12 @@
+{
+  "number": "INV-1037",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Hosting month", "quantity": 2, "unitPrice": 94.73, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 11, "unitPrice": 130.69, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 10, "unitPrice": 271.33, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 4, "unitPrice": 137.11, "discountPercent": 0 }
+  ],
+  "total": 4382.88
+}

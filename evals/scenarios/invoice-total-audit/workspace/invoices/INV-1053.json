@@ -1,0 +1,16 @@
+{
+  "number": "INV-1053",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 10, "unitPrice": 291.81, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 839.87, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 1, "unitPrice": 603.78, "discountPercent": 5 },
+    { "description": "Training day", "quantity": 2, "unitPrice": 375.19, "discountPercent": 5 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 699.91, "discountPercent": 15 },
+    { "description": "Support plan", "quantity": 6, "unitPrice": 968.90, "discountPercent": 5 },
+    { "description": "License seat", "quantity": 1, "unitPrice": 955.50, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 581.62, "discountPercent": 0 }
+  ],
+  "total": 38415.93
+}

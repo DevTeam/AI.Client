@@ -1,0 +1,11 @@
+{
+  "number": "INV-1010",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hardware token", "quantity": 4, "unitPrice": 906.62, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 1, "unitPrice": 85.32, "discountPercent": 10 },
+    { "description": "Support plan", "quantity": 2, "unitPrice": 138.34, "discountPercent": 5 }
+  ],
+  "total": 4759.34
+}

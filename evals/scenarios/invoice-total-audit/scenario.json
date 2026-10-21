@@ -1,0 +1,28 @@
+// A data task with one exact answer that reading the files cannot give: the expected output is in
+// expected.txt, generated with the fixture. Nothing requires cs_run; the run shows which tools the model picks.
+{
+    "id":  "invoice-total-audit",
+    "description":  "Recompute the totals of 80 JSON invoices with discounts and tax and list the ones that are wrong, some by one cent.",
+    "tags":  [
+                 "data",
+                 "script"
+             ],
+    "turns":  [
+                  "Accounting suspects that some invoices in {workspace}/invoices have wrong totals. A line costs quantity times unit price less its discount percent; the total is the sum of the lines plus tax at taxRatePercent, rounded to cents half away from zero. Write mismatched.txt in the workspace root with one line per invoice whose stated total differs from that, sorted by invoice number, in the form \"INV-1234 stated 100.00 computed 101.50\". Leave the invoices as they are."
+              ],
+    "timeoutSeconds":  900,
+    "checks":  [
+                   {
+                       "type":  "fileContains",
+                       "name":  "exact result",
+                       "path":  "mismatched.txt",
+                       "pattern":  "\\AINV-1033\\ stated\\ 25073\\.37\\ computed\\ 25073\\.38\\r?\\nINV-1040\\ stated\\ 9197\\.04\\ computed\\ 9166\\.31\\r?\\nINV-1046\\ stated\\ 19574\\.21\\ computed\\ 19594\\.93\\r?\\nINV-1051\\ stated\\ 4908\\.52\\ computed\\ 4908\\.53\\r?\\nINV-1069\\ stated\\ 26245\\.97\\ computed\\ 26230\\.95\\r?\\nINV-1071\\ stated\\ 1609\\.14\\ computed\\ 1576\\.63\\r?\\nINV-1079\\ stated\\ 20174\\.06\\ computed\\ 20174\\.07(\\r?\\n)?\\s*\\z"
+                   },
+                   {
+                       "type":  "onlyChanged",
+                       "paths":  [
+                                     "mismatched.txt"
+                                 ]
+                   }
+               ]
+}

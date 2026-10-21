@@ -1,0 +1,16 @@
+{
+  "number": "INV-1061",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 7, "unitPrice": 80.33, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 11, "unitPrice": 51.75, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 4, "unitPrice": 111.62, "discountPercent": 15 },
+    { "description": "Setup fee", "quantity": 8, "unitPrice": 231.65, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 12, "unitPrice": 591.12, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 6, "unitPrice": 435.08, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 3, "unitPrice": 469.35, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 488.07, "discountPercent": 10 }
+  ],
+  "total": 17224.07
+}

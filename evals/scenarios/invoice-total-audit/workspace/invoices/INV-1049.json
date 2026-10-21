@@ -1,0 +1,11 @@
+{
+  "number": "INV-1049",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 8, "unitPrice": 62.00, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 169.82, "discountPercent": 5 },
+    { "description": "Setup fee", "quantity": 8, "unitPrice": 623.78, "discountPercent": 10 }
+  ],
+  "total": 6863.35
+}

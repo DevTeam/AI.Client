@@ -1,0 +1,12 @@
+{
+  "number": "INV-1045",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Training day", "quantity": 10, "unitPrice": 750.85, "discountPercent": 10 },
+    { "description": "Hardware token", "quantity": 7, "unitPrice": 900.04, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 12, "unitPrice": 50.09, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 9, "unitPrice": 458.03, "discountPercent": 0 }
+  ],
+  "total": 21337.54
+}

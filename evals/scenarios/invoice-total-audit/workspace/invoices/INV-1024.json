@@ -1,0 +1,12 @@
+{
+  "number": "INV-1024",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "License seat", "quantity": 5, "unitPrice": 425.79, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 1, "unitPrice": 728.08, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 80.18, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 174.64, "discountPercent": 15 }
+  ],
+  "total": 6157.62
+}

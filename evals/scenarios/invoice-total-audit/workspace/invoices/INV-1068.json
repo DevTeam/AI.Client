@@ -1,0 +1,15 @@
+{
+  "number": "INV-1068",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Hosting month", "quantity": 12, "unitPrice": 52.26, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 8, "unitPrice": 843.03, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 5, "unitPrice": 860.86, "discountPercent": 5 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 26.51, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 8.13, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 9, "unitPrice": 956.86, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 276.32, "discountPercent": 10 }
+  ],
+  "total": 21505.88
+}

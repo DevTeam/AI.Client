@@ -1,0 +1,9 @@
+{
+  "number": "INV-1026",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Hardware token", "quantity": 5, "unitPrice": 374.00, "discountPercent": 0 }
+  ],
+  "total": 2225.30
+}

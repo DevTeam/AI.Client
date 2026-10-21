@@ -291,13 +291,17 @@ public sealed partial class AdaptiveContextPolicy(
     /// Tools every run keeps whatever its request says. Relevance is word overlap with the English
     /// descriptions, so a request in another language ranks nothing, and the basic file and execution
     /// tools would otherwise lose their places to whichever schemas are shortest. Being core, they
-    /// also never count as pins, which narrow the rest of the selection to a handful.
+    /// also never count as pins, which narrow the rest of the selection to a handful. Finding and
+    /// running a skill is one move the standing instructions ask for before other tools, so its two
+    /// tools stay together: a run that offered skill_search but not run_skill found the playbook and
+    /// then had its call refused.
     /// </summary>
     private static bool Core(AgentTool tool)
     {
         var name = tool.ModelDefinition.Name;
         if (name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
-            return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask";
+            return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask"
+                or "skill_search" or "run_skill";
         return name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal)
             && tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
                 or "search_files" or "directory_tree" or ToolPolicyResolver.ProcessRun or "cs_run";

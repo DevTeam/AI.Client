@@ -1,0 +1,10 @@
+{
+  "number": "INV-1027",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 12, "unitPrice": 946.36, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 2, "unitPrice": 259.41, "discountPercent": 5 }
+  ],
+  "total": 14100.55
+}

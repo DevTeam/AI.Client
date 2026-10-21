@@ -1,0 +1,9 @@
+{
+  "number": "INV-1018",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 9, "unitPrice": 937.24, "discountPercent": 0 }
+  ],
+  "total": 10037.84
+}

@@ -1,0 +1,12 @@
+{
+  "number": "INV-1052",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Hardware token", "quantity": 2, "unitPrice": 908.65, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 11, "unitPrice": 356.63, "discountPercent": 10 },
+    { "description": "License seat", "quantity": 11, "unitPrice": 249.89, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 11, "unitPrice": 661.43, "discountPercent": 0 }
+  ],
+  "total": 18076.97
+}

@@ -1,0 +1,12 @@
+{
+  "number": "INV-1012",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 636.91, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 8, "unitPrice": 762.71, "discountPercent": 10 },
+    { "description": "Support plan", "quantity": 9, "unitPrice": 387.25, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 9, "unitPrice": 620.46, "discountPercent": 10 }
+  ],
+  "total": 20528.37
+}

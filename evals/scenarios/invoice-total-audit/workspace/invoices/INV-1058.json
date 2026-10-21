@@ -1,0 +1,9 @@
+{
+  "number": "INV-1058",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Hosting month", "quantity": 5, "unitPrice": 421.73, "discountPercent": 0 }
+  ],
+  "total": 2108.65
+}

@@ -1,0 +1,13 @@
+{
+  "number": "INV-1040",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Setup fee", "quantity": 1, "unitPrice": 794.38, "discountPercent": 10 },
+    { "description": "Support plan", "quantity": 3, "unitPrice": 120.49, "discountPercent": 15 },
+    { "description": "Setup fee", "quantity": 4, "unitPrice": 658.00, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 12, "unitPrice": 395.75, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 7, "unitPrice": 23.35, "discountPercent": 0 }
+  ],
+  "total": 9197.04
+}

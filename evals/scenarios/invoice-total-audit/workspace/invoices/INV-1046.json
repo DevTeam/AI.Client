@@ -1,0 +1,16 @@
+{
+  "number": "INV-1046",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hardware token", "quantity": 10, "unitPrice": 165.77, "discountPercent": 10 },
+    { "description": "License seat", "quantity": 3, "unitPrice": 206.57, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 7, "unitPrice": 137.32, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 6, "unitPrice": 959.47, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 7, "unitPrice": 230.76, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 5, "unitPrice": 787.65, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 10, "unitPrice": 57.79, "discountPercent": 5 },
+    { "description": "Hardware token", "quantity": 3, "unitPrice": 759.41, "discountPercent": 0 }
+  ],
+  "total": 19574.21
+}

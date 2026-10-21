@@ -1,0 +1,16 @@
+{
+  "number": "INV-1067",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Setup fee", "quantity": 10, "unitPrice": 711.83, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 7, "unitPrice": 635.40, "discountPercent": 5 },
+    { "description": "Training day", "quantity": 12, "unitPrice": 131.52, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 320.27, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 1, "unitPrice": 906.87, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 4, "unitPrice": 821.01, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 1, "unitPrice": 271.40, "discountPercent": 15 },
+    { "description": "Support plan", "quantity": 6, "unitPrice": 468.55, "discountPercent": 0 }
+  ],
+  "total": 25403.59
+}

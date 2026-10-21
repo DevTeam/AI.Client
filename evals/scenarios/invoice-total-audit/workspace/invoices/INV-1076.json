@@ -1,0 +1,11 @@
+{
+  "number": "INV-1076",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Training day", "quantity": 1, "unitPrice": 348.90, "discountPercent": 10 },
+    { "description": "Hardware token", "quantity": 12, "unitPrice": 138.12, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 3, "unitPrice": 702.07, "discountPercent": 0 }
+  ],
+  "total": 4694.30
+}

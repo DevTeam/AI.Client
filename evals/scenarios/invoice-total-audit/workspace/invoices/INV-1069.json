@@ -1,0 +1,13 @@
+{
+  "number": "INV-1069",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hosting month", "quantity": 10, "unitPrice": 421.14, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 5, "unitPrice": 688.33, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 3, "unitPrice": 945.37, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 442.97, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 12, "unitPrice": 832.94, "discountPercent": 10 }
+  ],
+  "total": 26245.97
+}

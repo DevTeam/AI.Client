@@ -1,0 +1,9 @@
+region,revenue_eur
+Nordic,1046254.94
+East,1002498.76
+North,996050.14
+Central,972528.06
+South,943255.23
+Iberia,916501.19
+West,910034.82
+Baltic,786762.67

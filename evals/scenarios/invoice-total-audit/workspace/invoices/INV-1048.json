@@ -1,0 +1,16 @@
+{
+  "number": "INV-1048",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Training day", "quantity": 1, "unitPrice": 458.22, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 7, "unitPrice": 675.50, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 1, "unitPrice": 401.80, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 444.71, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 9, "unitPrice": 818.74, "discountPercent": 5 },
+    { "description": "Audit report", "quantity": 3, "unitPrice": 815.36, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 2, "unitPrice": 915.88, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 367.32, "discountPercent": 5 }
+  ],
+  "total": 23147.17
+}

@@ -1,0 +1,11 @@
+{
+  "number": "INV-1066",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Support plan", "quantity": 1, "unitPrice": 340.15, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 6, "unitPrice": 694.18, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 11, "unitPrice": 529.61, "discountPercent": 15 }
+  ],
+  "total": 10064.49
+}

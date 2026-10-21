@@ -1,0 +1,14 @@
+{
+  "number": "INV-1079",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Audit report", "quantity": 4, "unitPrice": 903.48, "discountPercent": 5 },
+    { "description": "Support plan", "quantity": 8, "unitPrice": 394.03, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 8, "unitPrice": 648.13, "discountPercent": 5 },
+    { "description": "Consulting hour", "quantity": 4, "unitPrice": 336.77, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 6, "unitPrice": 370.94, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 5, "unitPrice": 415.34, "discountPercent": 10 }
+  ],
+  "total": 20174.06
+}

@@ -1,0 +1,28 @@
+// A data task with one exact answer that reading the files cannot give: the expected output is in
+// expected.txt, generated with the fixture. Nothing requires cs_run; the run shows which tools the model picks.
+{
+    "id":  "sales-revenue-by-region",
+    "description":  "Aggregate a year of monthly sales CSVs into Q3 revenue per region in EUR, with per-month exchange rates and returns.",
+    "tags":  [
+                 "data",
+                 "script"
+             ],
+    "turns":  [
+                  "The monthly sales exports for 2026 are in {workspace}/data/sales, and the exchange rates per month are in {workspace}/data/fx.json (EUR for one unit of the currency). Finance needs the Q3 (July to September) revenue in EUR per region: convert each line at the rate of its own month; negative quantities are returns and reduce revenue. Write it to q3-revenue.csv in the workspace root with the header region,revenue_eur, one row per region, highest revenue first, amounts with two decimals rounded half away from zero. Do not change the data."
+              ],
+    "timeoutSeconds":  900,
+    "checks":  [
+                   {
+                       "type":  "fileContains",
+                       "name":  "exact result",
+                       "path":  "q3-revenue.csv",
+                       "pattern":  "\\Aregion,revenue_eur\\r?\\nNordic,1046254\\.94\\r?\\nEast,1002498\\.76\\r?\\nNorth,996050\\.14\\r?\\nCentral,972528\\.06\\r?\\nSouth,943255\\.23\\r?\\nIberia,916501\\.19\\r?\\nWest,910034\\.82\\r?\\nBaltic,786762\\.67(\\r?\\n)?\\s*\\z"
+                   },
+                   {
+                       "type":  "onlyChanged",
+                       "paths":  [
+                                     "q3-revenue.csv"
+                                 ]
+                   }
+               ]
+}

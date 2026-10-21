@@ -1,0 +1,16 @@
+{
+  "number": "INV-1056",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Support plan", "quantity": 8, "unitPrice": 474.80, "discountPercent": 10 },
+    { "description": "License seat", "quantity": 11, "unitPrice": 230.25, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 9, "unitPrice": 676.80, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 1, "unitPrice": 673.41, "discountPercent": 5 },
+    { "description": "Support plan", "quantity": 8, "unitPrice": 369.82, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 9, "unitPrice": 298.85, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 2, "unitPrice": 511.30, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 2, "unitPrice": 110.67, "discountPercent": 15 }
+  ],
+  "total": 21180.52
+}

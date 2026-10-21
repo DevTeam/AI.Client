@@ -147,7 +147,7 @@ public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
         return new ScriptResult(
             success,
             Value(state?.ReturnValue),
-            state?.ReturnValue?.GetType().FullName,
+            state?.ReturnValue is { } returned ? TypeName(returned.GetType()) : null,
             Variables(state, diagnostics),
             stdout.ToString(),
             stderr.ToString(),
@@ -304,19 +304,72 @@ public sealed class ScriptRunner(IFileSystem files, IPath paths) : IScriptRunner
         }
 
         var variables = new List<ScriptVariable>();
+        var used = 0;
         foreach (var variable in state.Variables)
         {
-            if (variables.Count == ScriptLimits.Variables)
+            var type = TypeName(variable.Type);
+            var summary = Summary(variable.Value);
+            used += variable.Name.Length + type.Length + summary.Length;
+            if (variables.Count == ScriptLimits.Variables || used > ScriptLimits.VariablesCharacters)
             {
                 diagnostics.Add(new ScriptDiagnostic("Information", "CSX0004",
-                    $"Only the first {ScriptLimits.Variables} variables are reported.", 0, 0));
+                    $"Only the first {variables.Count} variables are reported; return what the answer needs instead.", 0, 0));
                 break;
             }
 
-            variables.Add(new ScriptVariable(variable.Name, variable.Type?.FullName ?? "object", Value(variable.Value) ?? "null"));
+            variables.Add(new ScriptVariable(variable.Name, type, summary));
         }
 
         return variables.ToArray();
+    }
+
+    /// <summary>
+    /// A variable as a glance at it rather than its contents: a scalar or a short string as its
+    /// value, a collection as its count, a lazy sequence as just that, and a small object as clipped
+    /// JSON. Rendering every variable in full, the log lines a script read and the dictionaries it
+    /// built, made a result run to tens of thousands of characters, which filled a small context
+    /// window within a few calls; and enumerating a lazy query to show it ran it a second time.
+    /// </summary>
+    private static string Summary(object? value)
+    {
+        var text = value switch
+        {
+            null => "null",
+            string line => line,
+            IConvertible or IFormattable => Value(value) ?? "",
+            System.Collections.ICollection collection => $"{collection.Count} items",
+            System.Collections.IEnumerable => "a sequence, not enumerated",
+            _ => Value(value) ?? ""
+        };
+
+        return text.Length > ScriptLimits.VariableCharacters ? text[..ScriptLimits.VariableCharacters] + "…" : text;
+    }
+
+    /// <summary>A type as C# spells it, <c>List&lt;string&gt;</c> rather than its assembly-qualified full name.</summary>
+    private static string TypeName(Type? type)
+    {
+        if (type is null)
+        {
+            return "object";
+        }
+
+        if (type.IsArray)
+        {
+            return TypeName(type.GetElementType()) + "[]";
+        }
+
+        if (!type.IsGenericType)
+        {
+            return type.Name switch
+            {
+                "String" => "string", "Int32" => "int", "Int64" => "long", "Double" => "double", "Decimal" => "decimal",
+                "Boolean" => "bool", "Object" => "object", "Char" => "char", "Byte" => "byte", _ => type.Name
+            };
+        }
+
+        var name = type.Name;
+        var tick = name.IndexOf('`', StringComparison.Ordinal);
+        return (tick < 0 ? name : name[..tick]) + "<" + string.Join(", ", type.GetGenericArguments().Select(TypeName)) + ">";
     }
 
     /// <summary>

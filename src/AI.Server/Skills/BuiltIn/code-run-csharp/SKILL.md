@@ -4,97 +4,37 @@ name: Code run C#
 aliases: ["c#","cs","csharp","cs-run"]
 icon: code-run-csharp
 kind: playbook
-description: Solve algorithmic, computational, bulk data and complex automation tasks with C# scripts through the built-in cs_run tool; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
+description: Compute exact answers over many files or records with one C# script through cs_run - aggregate, reconcile or audit totals, parse CSV, JSON or logs, statistics and percentiles, find duplicates or differences, convert data, algorithms and exact arithmetic; changes files only within the user's authorized scope.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The calculation or automation goal"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Input or output paths provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","cs_run","list_allowed_directories","process_run","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["cs_run","list_allowed_directories","read_text_file","list_directory","write_file","process_run","ask_user"]
 ---
 
-For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
-`list_allowed_directories` when available and verify the executor can access it. Keep final
-deliverables at the requested path; inspect only relevant excerpts of verbose output while
-preserving the exit code. Remove task-created scratch files when done.
+The user's instructions take precedence; this playbook grants no access. Report in the user's
+language. A normal C# development request does not need a script; a single simple read or edit
+belongs to the file tools.
 
-The user's instructions take precedence. Follow repository instructions and use ordinary
-permission-checked tools; this playbook grants no access. Report in the user's language.
-Use C# for algorithms, graph search, optimization, exact arithmetic, simulations, hypothesis
-checks and complex data transformations when a script improves reliability, and for bulk work
-over many files or records that would otherwise take a long chain of small tool calls. Prefer a
-dedicated tool for a single simple operation. A normal C# development request does not require
-executing a script.
-
-1. Establish the goal, input, output and authorized changes from the message and parameters.
-   `cs_run` is one of the built-in tools; discover it through `tool_search` when it is not in the
-   tool list. Read its description and schema: it states the host OS, the .NET version, the limits
-   and whether runs are sandboxed. If the tool is denied or missing in this run, explain briefly
-   and continue with a suitable available tool or runtime through `process_run`; report a concrete
-   blocker if no available mechanism can complete the task.
-2. Design one script for the whole job rather than a series of calls. Read the inputs inside the
-   script, compute, verify, and return only the compact answer as the final expression instead of
-   printing raw contents, which costs context: an object, anonymous object, tuple or collection
-   comes back as compact JSON by itself. Select an algorithm and estimate time, memory and output size. Pass data through
-   `arguments` (`Args`) or `globals` (`Globals`, a read-only dictionary of `JsonElement`), rather
-   than injecting user text into source code. Use top-level C# statements and optional `using`
-   directives; no `Program` or `Main` is needed. A final expression without a semicolon is the
-   return value. Each call is a fresh process and shares nothing with the previous one. The first
-   script of a run starts in a second or two, later ones in a few hundred milliseconds, so a quick
-   follow-up script to check a result is cheap. Use `BigInteger` for exact large integers, `decimal`
-   when exact decimal arithmetic is needed, explicit tolerances for numerical methods and a seed for
-   reproducible simulations. Additional `imports` are namespaces; `references` are resolvable
-   assembly names or DLL paths, not NuGet package names. Never assume automatic package installation.
-3. Assess real risks before execution: deletion, overwrite, moves, database/network mutations,
-   resource exhaustion and side effects of invoked programs. A script runs in a disposable child
-   process. When the tool description says it is sandboxed (the default), the script reaches only
-   the granted directories (read-only grants only for reading) and the chat's temporary directory,
-   usually without the network, and every result carries `sandbox`; it then runs without asking,
-   in subtasks too. An access error outside the grants is the boundary, not a bug: ask for a grant
-   as the access rules say, never work around it; use `fetch` or `process_run` for anything online.
-   Without a sandbox the script reaches
-   whatever the host user can, and its working directory restricts nothing. Client files may not
-   exist on the server. Resolve and verify full source/destination paths, empty inputs, existing
-   outputs, symlinks/junctions and source/destination overlap. Before recursive deletion or moves
-   verify the final target is inside the intended authorized area, not an accidental root, home or
-   whole working tree. Preview targets or use a dry run where supported. Preserve important
-   originals or write and verify a separate output before replacement. For read-only calculations,
-   check resource bounds without introducing a blanket approval step. Existing authorization
-   stands; prepare concrete targets and ask only for missing authorization for irreversible actions
-   outside the request. Declined stops that action; unresolved approval never authorizes it.
-4. Plan duration before starting. Work can take hours and exceed both tool and client timeouts.
-   The known cs_run contract accepts `timeoutMs` from 1 to 86400000, default 600000; the current
-   schema wins. Omit it to use the effective tool policy; set a smaller value only for an
-   intentionally shorter deadline. Never pass a value above its maximum. For long work, use bounded batches with
-   persisted checkpoints and resumable progress, or a genuinely available managed long-running
-   job/session with status, logs, cancellation and a final result. Moving to `process_run` alone
-   does not remove its timeout. If no suitable mechanism exists, explain the limit and prepare a
-   reproducible script without claiming it ran. Do not leave background Tasks in the server or
-   bypass timeouts. Bound loops with a local deadline (for example `Stopwatch`) and pass local
-   cancellation tokens to cooperative I/O. The server terminates the disposable worker and its
-   child processes at the deadline; partial side effects may remain. This automatic cleanup needs
-   no separate approval. Never stop, kill or restart a process this run did not start — another
-   chat's tests or build, an IDE, a server; when such a process blocks a file or a build, report
-   it and name the holder, because freeing it is the user's decision. For a process this run
-   started, call `ask_user` naming it or its PID and act only on an explicit affirmative answer;
-   a declined, dismissed, expired or interrupted answer leaves it running. Check actual
-   state before retrying timed-out work, especially mutations.
-5. Preserve encoding. JSON code, Args and Globals are Unicode strings; ordinary Console output
-   is captured as text. Changing the server's global Console encoding is unnecessary and does not
-   repair incorrectly decoded input. For byte streams and files choose an explicit encoding;
-   default new text artifacts to UTF-8 without BOM unless the consumer requires another format.
-   Respect existing BOM, encoding and line endings; missing BOM does not establish UTF-8. Use
-   strict decoding when corruption matters rather than silently persisting replacement characters.
-   For child programs separately agree stdin/stdout/stderr encodings before launch. Distinguish
-   encoding from culture; use explicit numeric/date formats or InvariantCulture for machine data.
-   Check a short non-ASCII round trip when its preservation is important. Avoid logging secrets.
-6. Run the self-contained script with a verified server-side absolute `workingDirectory` when
-   needed; under a sandbox it must be inside a grant. A missing directory can leave the previous
-   directory unchanged, so verify existence. `returnValue` and `variables` are strings: scalars as
-   text, everything else as JSON cut at 4096 characters. Known limits are 262144 code characters, 32768 characters per
-   output stream, 4096 per value and 64 returned variables. Save large authorized results to a
-   file, verify it and ensure the user can access it if the server is remote. Avoid
-   Environment.Exit and unjoined background work.
-7. Inspect `success`, `diagnostics`, `error`, `timedOut`, `truncated`, `limitExceeded`, `sandbox`,
-   stdout and stderr. Fix compilation problems from diagnostics. Before retrying runtime failures
-   inspect partial side effects: a failed run does not roll back files or remote data. Validate a
-   known small case, invariant, independent calculation or error bound; for batches verify the
-   full expected range was completed. Do not accept a truncated answer as complete. The final
-   answer contains the computed result, verification and material accuracy or completion limits;
-   for large artifacts include their accessible location and a useful summary.
+1. Look at the input only as far as the script needs: a directory listing and the first lines of one
+   file, or nothing when the task states the format. Do not read the data itself into the
+   conversation.
+2. Write one script that does the whole job: read every input, compute with `decimal` for money and
+   exact rounding (`MidpointRounding.AwayFromZero` when asked for half away from zero), write the
+   requested output, check it against its own invariants (counts, sums, ordering, the format asked
+   for) and return a small object with the result and those checks as the last expression. An object
+   or collection comes back as JSON; variables come back only as summaries, so return what you need.
+   Use `CultureInfo.InvariantCulture` for numbers and dates in machine data and UTF-8 without BOM
+   for new files. Pass user text through `arguments` or `globals`, not into the code.
+3. When the result and its checks are right, answer. Do not run a second script that recomputes the
+   same thing another way, or one that confirms the inputs did not change: the first script's own
+   checks are the verification. Run another script only to fix what a check or a compiler message
+   showed was wrong, and change only that.
+4. Risks: a script that deletes, moves or overwrites must resolve and verify its targets inside the
+   intended area first and keep important originals; ask only for authorization the request does
+   not already give. When the tool description says the script is sandboxed (the default), it
+   reaches only the granted directories and the chat's temporary directory, usually without the
+   network, and runs without asking; an access error outside them is the boundary: ask for a grant,
+   never work around it, and use `fetch` or `process_run` for anything online.
+5. Long work: keep `timeoutMs` at its default unless a shorter deadline is intended; split work
+   that can outlast it into batches with checkpoints in the chat's temporary directory. Never stop
+   a process this run did not start.
+6. Answer with the result, where it was written and what the script checked. Do not accept a
+   truncated or timed-out result as complete.

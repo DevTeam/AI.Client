@@ -1,0 +1,9 @@
+endpoint,count,p95_ms
+POST /api/payments/{id}/capture,1209,971
+GET /api/search,1203,412
+POST /api/orders,1265,341
+GET /api/users/{id}/cart,1171,192
+GET /api/orders,1261,182
+GET /api/orders/{id},1206,103
+GET /api/users/{id},1166,70
+GET /health,1278,8

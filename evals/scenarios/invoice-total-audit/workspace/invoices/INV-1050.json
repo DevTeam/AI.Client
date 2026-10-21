@@ -1,0 +1,14 @@
+{
+  "number": "INV-1050",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Audit report", "quantity": 8, "unitPrice": 64.91, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 3, "unitPrice": 112.18, "discountPercent": 5 },
+    { "description": "Hosting month", "quantity": 12, "unitPrice": 61.45, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 4, "unitPrice": 301.86, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 10, "unitPrice": 484.62, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 11, "unitPrice": 971.97, "discountPercent": 5 }
+  ],
+  "total": 19032.22
+}

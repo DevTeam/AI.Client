@@ -1,0 +1,10 @@
+{
+  "number": "INV-1035",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Audit report", "quantity": 9, "unitPrice": 151.94, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 4, "unitPrice": 65.71, "discountPercent": 0 }
+  ],
+  "total": 1710.22
+}

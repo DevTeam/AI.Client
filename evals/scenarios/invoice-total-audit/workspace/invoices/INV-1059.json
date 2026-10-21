@@ -1,0 +1,10 @@
+{
+  "number": "INV-1059",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Audit report", "quantity": 8, "unitPrice": 535.42, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 10, "unitPrice": 618.82, "discountPercent": 0 }
+  ],
+  "total": 10043.22
+}

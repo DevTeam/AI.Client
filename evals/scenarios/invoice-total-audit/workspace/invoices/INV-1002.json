@@ -1,0 +1,15 @@
+{
+  "number": "INV-1002",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "License seat", "quantity": 7, "unitPrice": 75.97, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 4, "unitPrice": 444.90, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 11, "unitPrice": 565.72, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 527.64, "discountPercent": 10 },
+    { "description": "Hosting month", "quantity": 4, "unitPrice": 590.01, "discountPercent": 15 },
+    { "description": "Support plan", "quantity": 6, "unitPrice": 578.50, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 5, "unitPrice": 280.37, "discountPercent": 10 }
+  ],
+  "total": 19408.28
+}

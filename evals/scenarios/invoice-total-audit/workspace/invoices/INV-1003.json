@@ -1,0 +1,13 @@
+{
+  "number": "INV-1003",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "License seat", "quantity": 8, "unitPrice": 363.06, "discountPercent": 10 },
+    { "description": "Training day", "quantity": 12, "unitPrice": 767.54, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 8, "unitPrice": 518.15, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 2, "unitPrice": 503.54, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 8, "unitPrice": 303.30, "discountPercent": 0 }
+  ],
+  "total": 20096.11
+}

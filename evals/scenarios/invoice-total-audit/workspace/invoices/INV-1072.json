@@ -1,0 +1,10 @@
+{
+  "number": "INV-1072",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Audit report", "quantity": 3, "unitPrice": 127.83, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 4, "unitPrice": 644.06, "discountPercent": 0 }
+  ],
+  "total": 3551.68
+}

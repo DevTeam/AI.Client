@@ -1,0 +1,15 @@
+{
+  "number": "INV-1047",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 12, "unitPrice": 555.27, "discountPercent": 5 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 390.85, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 3, "unitPrice": 613.08, "discountPercent": 5 },
+    { "description": "Hardware token", "quantity": 6, "unitPrice": 940.67, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 9, "unitPrice": 601.63, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 9, "unitPrice": 79.56, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 8, "unitPrice": 997.34, "discountPercent": 10 }
+  ],
+  "total": 33487.29
+}

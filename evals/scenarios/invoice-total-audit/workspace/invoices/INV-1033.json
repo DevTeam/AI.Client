@@ -1,0 +1,12 @@
+{
+  "number": "INV-1033",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "License seat", "quantity": 11, "unitPrice": 362.68, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 5, "unitPrice": 925.67, "discountPercent": 10 },
+    { "description": "Hardware token", "quantity": 12, "unitPrice": 903.71, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 3, "unitPrice": 726.51, "discountPercent": 5 }
+  ],
+  "total": 25073.37
+}

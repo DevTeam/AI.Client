@@ -1,0 +1,15 @@
+{
+  "number": "INV-1038",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Setup fee", "quantity": 6, "unitPrice": 791.94, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 8, "unitPrice": 608.07, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 6, "unitPrice": 347.52, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 10, "unitPrice": 871.14, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 10, "unitPrice": 779.78, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 4, "unitPrice": 592.32, "discountPercent": 15 },
+    { "description": "Training day", "quantity": 7, "unitPrice": 78.64, "discountPercent": 15 }
+  ],
+  "total": 35595.92
+}

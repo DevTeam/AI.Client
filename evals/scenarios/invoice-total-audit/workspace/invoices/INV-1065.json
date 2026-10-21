@@ -1,0 +1,10 @@
+{
+  "number": "INV-1065",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Setup fee", "quantity": 3, "unitPrice": 858.82, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 10, "unitPrice": 738.41, "discountPercent": 0 }
+  ],
+  "total": 11488.91
+}

@@ -1,0 +1,13 @@
+{
+  "number": "INV-1021",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Consulting hour", "quantity": 5, "unitPrice": 860.86, "discountPercent": 10 },
+    { "description": "Support plan", "quantity": 2, "unitPrice": 649.65, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 12, "unitPrice": 475.85, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 7, "unitPrice": 313.38, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 7, "unitPrice": 194.10, "discountPercent": 15 }
+  ],
+  "total": 17078.31
+}

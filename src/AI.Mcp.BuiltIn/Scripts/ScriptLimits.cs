@@ -12,6 +12,12 @@ internal static class ScriptLimits
     public const int Variables = 64;
     public const int Diagnostics = 64;
     public const int ValueCharacters = 4096;
+
+    /// <summary>One variable's summary; the return value is the answer, a variable only a glance.</summary>
+    public const int VariableCharacters = 120;
+
+    /// <summary>All variables together, so a script with many locals still returns a small result.</summary>
+    public const int VariablesCharacters = 1500;
     public const int DefaultTimeoutMs = 600000;
     public const int MaxTimeoutMs = 86400000;
 

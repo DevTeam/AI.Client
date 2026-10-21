@@ -1,0 +1,9 @@
+{
+  "number": "INV-1071",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Setup fee", "quantity": 2, "unitPrice": 772.86, "discountPercent": 15 }
+  ],
+  "total": 1609.14
+}

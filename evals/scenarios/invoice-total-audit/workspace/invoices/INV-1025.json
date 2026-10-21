@@ -1,0 +1,10 @@
+{
+  "number": "INV-1025",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "License seat", "quantity": 8, "unitPrice": 733.65, "discountPercent": 5 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 522.44, "discountPercent": 15 }
+  ],
+  "total": 9888.22
+}

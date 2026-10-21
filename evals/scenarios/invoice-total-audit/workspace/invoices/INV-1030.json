@@ -1,0 +1,16 @@
+{
+  "number": "INV-1030",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hosting month", "quantity": 8, "unitPrice": 466.62, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 6, "unitPrice": 840.09, "discountPercent": 15 },
+    { "description": "License seat", "quantity": 1, "unitPrice": 154.10, "discountPercent": 0 },
+    { "description": "Hardware token", "quantity": 7, "unitPrice": 226.82, "discountPercent": 5 },
+    { "description": "Support plan", "quantity": 9, "unitPrice": 542.01, "discountPercent": 5 },
+    { "description": "License seat", "quantity": 12, "unitPrice": 295.57, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 11, "unitPrice": 139.07, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 4, "unitPrice": 112.18, "discountPercent": 0 }
+  ],
+  "total": 23168.83
+}

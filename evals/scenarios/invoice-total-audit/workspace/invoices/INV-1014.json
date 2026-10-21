@@ -1,0 +1,9 @@
+{
+  "number": "INV-1014",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Audit report", "quantity": 1, "unitPrice": 159.26, "discountPercent": 15 }
+  ],
+  "total": 144.85
+}

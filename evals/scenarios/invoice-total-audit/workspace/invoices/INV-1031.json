@@ -1,0 +1,13 @@
+{
+  "number": "INV-1031",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 8, "unitPrice": 237.03, "discountPercent": 15 },
+    { "description": "Consulting hour", "quantity": 4, "unitPrice": 376.28, "discountPercent": 15 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 868.90, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 1, "unitPrice": 530.95, "discountPercent": 5 },
+    { "description": "Hosting month", "quantity": 7, "unitPrice": 217.37, "discountPercent": 0 }
+  ],
+  "total": 12055.35
+}

@@ -1,0 +1,9 @@
+{
+  "number": "INV-1023",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Support plan", "quantity": 12, "unitPrice": 611.03, "discountPercent": 0 }
+  ],
+  "total": 8798.83
+}

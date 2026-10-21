@@ -1,0 +1,9 @@
+{
+  "number": "INV-1022",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "License seat", "quantity": 5, "unitPrice": 183.73, "discountPercent": 0 }
+  ],
+  "total": 1102.38
+}

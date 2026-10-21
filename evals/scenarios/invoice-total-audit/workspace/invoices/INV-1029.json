@@ -1,0 +1,14 @@
+{
+  "number": "INV-1029",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Training day", "quantity": 5, "unitPrice": 17.30, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 7, "unitPrice": 262.34, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 12, "unitPrice": 724.02, "discountPercent": 0 },
+    { "description": "Training day", "quantity": 6, "unitPrice": 489.40, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 2, "unitPrice": 586.03, "discountPercent": 10 },
+    { "description": "Hardware token", "quantity": 6, "unitPrice": 229.64, "discountPercent": 10 }
+  ],
+  "total": 18790.55
+}

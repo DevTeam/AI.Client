@@ -1,0 +1,11 @@
+{
+  "number": "INV-1060",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Hosting month", "quantity": 3, "unitPrice": 379.49, "discountPercent": 5 },
+    { "description": "Setup fee", "quantity": 10, "unitPrice": 917.90, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 11, "unitPrice": 745.05, "discountPercent": 0 }
+  ],
+  "total": 22147.32
+}

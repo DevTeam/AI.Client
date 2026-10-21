@@ -1,0 +1,16 @@
+{
+  "number": "INV-1042",
+  "currency": "EUR",
+  "taxRatePercent": 20,
+  "lines": [
+    { "description": "Audit report", "quantity": 6, "unitPrice": 759.77, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 9, "unitPrice": 292.27, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 404.95, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 692.19, "discountPercent": 10 },
+    { "description": "Support plan", "quantity": 5, "unitPrice": 229.74, "discountPercent": 5 },
+    { "description": "Audit report", "quantity": 11, "unitPrice": 890.09, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 10, "unitPrice": 373.60, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 6, "unitPrice": 276.26, "discountPercent": 15 }
+  ],
+  "total": 34944.86
+}

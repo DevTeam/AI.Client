@@ -76,7 +76,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
 
         result.GetProperty("success").GetBoolean().ShouldBeTrue();
         result.GetProperty("returnValue").GetString().ShouldBe("52");
-        result.GetProperty("returnType").GetString().ShouldBe("System.Int32");
+        result.GetProperty("returnType").GetString().ShouldBe("int");
         // Console.WriteLine appends the platform newline, which the captured stream keeps as is.
         result.GetProperty("stdout").GetString().ShouldBe($"hello world n=41{Environment.NewLine}");
         result.GetProperty("stderr").GetString().ShouldBeEmpty();
@@ -87,7 +87,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         var variables = result.GetProperty("variables").EnumerateArray()
             .ToDictionary(item => item.GetProperty("name").GetString()!, item => item);
         variables["greeting"].GetProperty("value").GetString().ShouldBe("hello world");
-        variables["greeting"].GetProperty("type").GetString().ShouldBe("System.String");
+        variables["greeting"].GetProperty("type").GetString().ShouldBe("string");
     }
 
     [Fact]
@@ -103,15 +103,40 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CutsAHugeCollectionWhileSerializingIt()
+    public async Task CutsAHugeReturnedCollectionWhileSerializingIt()
     {
-        var result = await CallAsync(new { code = "var all = Enumerable.Range(0, 2_000_000).ToList(); all.Count" });
+        var result = await CallAsync(new { code = "Enumerable.Range(0, 2_000_000).ToList()" });
 
         result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
-        var all = result.GetProperty("variables").EnumerateArray().Single(item => item.GetProperty("name").GetString() == "all");
-        var text = all.GetProperty("value").GetString()!;
+        var text = result.GetProperty("returnValue").GetString()!;
         text.ShouldStartWith("[0,1,2,");
         text.ShouldEndWith("…");
+        result.GetProperty("returnType").GetString().ShouldBe("List<int>");
+    }
+
+    [Fact]
+    public async Task SummarizesVariablesInsteadOfDumpingThem()
+    {
+        var result = await CallAsync(new
+        {
+            code = """
+                var all = Enumerable.Range(0, 2_000_000).ToList();
+                var lazy = Enumerable.Range(0, 3).Select(x => { Console.Write(x); return x; });
+                var text = new string('x', 5000);
+                all.Count
+                """
+        });
+
+        result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
+        var variables = result.GetProperty("variables").EnumerateArray()
+            .ToDictionary(item => item.GetProperty("name").GetString()!, item => item);
+        variables["all"].GetProperty("value").GetString().ShouldBe("2000000 items");
+        variables["all"].GetProperty("type").GetString().ShouldBe("List<int>");
+        // Showing a lazy query must not run it again.
+        variables["lazy"].GetProperty("value").GetString().ShouldBe("a sequence, not enumerated");
+        result.GetProperty("stdout").GetString().ShouldBeEmpty();
+        variables["text"].GetProperty("value").GetString()!.Length.ShouldBeLessThan(200);
+        result.ToString().Length.ShouldBeLessThan(3000);
     }
 
     [Fact]

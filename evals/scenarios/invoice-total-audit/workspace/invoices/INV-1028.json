@@ -1,0 +1,11 @@
+{
+  "number": "INV-1028",
+  "currency": "EUR",
+  "taxRatePercent": 7,
+  "lines": [
+    { "description": "Hardware token", "quantity": 2, "unitPrice": 639.18, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 2, "unitPrice": 397.62, "discountPercent": 10 },
+    { "description": "Consulting hour", "quantity": 8, "unitPrice": 54.21, "discountPercent": 10 }
+  ],
+  "total": 2551.30
+}

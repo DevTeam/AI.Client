@@ -1,0 +1,15 @@
+{
+  "number": "INV-1080",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 7, "unitPrice": 131.02, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 1, "unitPrice": 430.26, "discountPercent": 0 },
+    { "description": "License seat", "quantity": 3, "unitPrice": 375.39, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 3, "unitPrice": 201.89, "discountPercent": 0 },
+    { "description": "Support plan", "quantity": 8, "unitPrice": 315.91, "discountPercent": 10 },
+    { "description": "Audit report", "quantity": 4, "unitPrice": 84.22, "discountPercent": 0 },
+    { "description": "Audit report", "quantity": 6, "unitPrice": 889.88, "discountPercent": 0 }
+  ],
+  "total": 13125.64
+}

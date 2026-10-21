@@ -1,0 +1,11 @@
+{
+  "number": "INV-1064",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Support plan", "quantity": 2, "unitPrice": 266.83, "discountPercent": 0 },
+    { "description": "Hosting month", "quantity": 2, "unitPrice": 291.22, "discountPercent": 15 },
+    { "description": "Support plan", "quantity": 12, "unitPrice": 196.23, "discountPercent": 15 }
+  ],
+  "total": 3606.03
+}

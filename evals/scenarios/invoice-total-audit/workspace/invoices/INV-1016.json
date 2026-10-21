@@ -1,0 +1,12 @@
+{
+  "number": "INV-1016",
+  "currency": "EUR",
+  "taxRatePercent": 19,
+  "lines": [
+    { "description": "Training day", "quantity": 3, "unitPrice": 887.20, "discountPercent": 15 },
+    { "description": "Hardware token", "quantity": 11, "unitPrice": 153.24, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 12, "unitPrice": 362.51, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 10, "unitPrice": 74.79, "discountPercent": 0 }
+  ],
+  "total": 10247.10
+}

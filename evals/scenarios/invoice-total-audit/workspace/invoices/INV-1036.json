@@ -1,0 +1,14 @@
+{
+  "number": "INV-1036",
+  "currency": "EUR",
+  "taxRatePercent": 0,
+  "lines": [
+    { "description": "Training day", "quantity": 3, "unitPrice": 635.26, "discountPercent": 15 },
+    { "description": "Hosting month", "quantity": 4, "unitPrice": 845.62, "discountPercent": 15 },
+    { "description": "Audit report", "quantity": 5, "unitPrice": 193.66, "discountPercent": 10 },
+    { "description": "Setup fee", "quantity": 8, "unitPrice": 295.76, "discountPercent": 0 },
+    { "description": "Setup fee", "quantity": 1, "unitPrice": 244.08, "discountPercent": 0 },
+    { "description": "Consulting hour", "quantity": 6, "unitPrice": 72.95, "discountPercent": 15 }
+  ],
+  "total": 8348.70
+}

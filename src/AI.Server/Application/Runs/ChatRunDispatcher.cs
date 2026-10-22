@@ -53,7 +53,7 @@ public sealed class ChatRunDispatcher(
     private readonly ConcurrentDictionary<RunKey, Runtime> _runtimes = new();
     private readonly Dictionary<Guid, Task> _titleTasks = [];
     private readonly Lock _titleTasksGate = new();
-    private readonly ConcurrentDictionary<Guid, Channel<IReadOnlyList<ChatRunSnapshot>>> _subscribers = new();
+    private readonly ConcurrentDictionary<Guid, Subscriber> _subscribers = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Lock _publicationLock = new();
     private readonly ConcurrentDictionary<Guid, byte> _maintenance = new();
@@ -127,13 +127,13 @@ public sealed class ChatRunDispatcher(
         lock (_titleTasksGate) titleTasks = _titleTasks.Values.ToArray();
         await Task.WhenAll(_runtimes.Values.Select(runtime => runtime.Worker ?? Task.CompletedTask).Concat(titleTasks))
             .WaitAsync(cancellationToken);
-        foreach (var subscriber in _subscribers.Values) subscriber.Writer.TryComplete();
+        foreach (var subscriber in _subscribers.Values) subscriber.Channel.Writer.TryComplete();
     }
 
     public Task<IReadOnlyList<ChatRunSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<IReadOnlyList<ChatRunSnapshot>>(_runtimes.Values.Select(runtime => runtime.Snapshot).ToArray());
+        return Task.FromResult<IReadOnlyList<ChatRunSnapshot>>(Snapshots(users.Current));
     }
 
     public async IAsyncEnumerable<IReadOnlyList<ChatRunSnapshot>> SubscribeAsync(
@@ -142,10 +142,11 @@ public sealed class ChatRunDispatcher(
         var id = ids.Create();
         var channel = Channel.CreateBounded<IReadOnlyList<ChatRunSnapshot>>(new BoundedChannelOptions(1)
         { FullMode = BoundedChannelFullMode.DropOldest });
-        _subscribers[id] = channel;
+        var user = users.Current;
+        _subscribers[id] = new Subscriber(user, channel);
         try
         {
-            lock (_publicationLock) channel.Writer.TryWrite(_runtimes.Values.Select(runtime => runtime.Snapshot).ToArray());
+            lock (_publicationLock) channel.Writer.TryWrite(Snapshots(user));
             await foreach (var snapshot in channel.Reader.ReadAllAsync(cancellationToken)) yield return snapshot;
         }
         finally { _subscribers.TryRemove(id, out _); }
@@ -605,7 +606,8 @@ public sealed class ChatRunDispatcher(
     private async Task<Runtime> GetRuntimeAsync(Guid projectId, Guid chatId, Guid branchId, ChatDetails chat, CancellationToken token)
     {
         var key = new RunKey(projectId, chatId, branchId);
-        if (_runtimes.TryGetValue(key, out var runtime)) return runtime;
+        if (_runtimes.TryGetValue(key, out var runtime))
+            return runtime.User == users.Current ? runtime : throw new InvalidOperationException("The run belongs to another user.");
         var state = await repository.GetAsync(projectId, chatId, branchId, token) ?? new ChatRunState(projectId, chatId, branchId);
         runtime = new Runtime(state, users.Current) { Snapshot = Snapshot(state, chat) };
         return _runtimes.GetOrAdd(key, runtime);
@@ -954,7 +956,7 @@ public sealed class ChatRunDispatcher(
         ToolApproval approval;
         using (await synchronization.EnterAsync(chatId, token))
         {
-            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out runtime!)
+            if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out runtime!)
                 || runtime.PendingApproval?.Id != decision.ApprovalId
                 || runtime.Cancellation?.IsCancellationRequested != false)
                 return false;
@@ -1152,7 +1154,7 @@ public sealed class ChatRunDispatcher(
         Runtime runtime;
         using (await synchronization.EnterAsync(run.ChatId, cancellationToken))
         {
-            if (!_runtimes.TryGetValue(new RunKey(run.ProjectId, run.ChatId, run.BranchId), out runtime!)
+            if (!TryGetOwnRuntime(new RunKey(run.ProjectId, run.ChatId, run.BranchId), out runtime!)
                 || runtime.Cancellation?.IsCancellationRequested != false)
                 return unanswerable;
             runtime.PendingPrompt = prompt;
@@ -1195,7 +1197,7 @@ public sealed class ChatRunDispatcher(
     {
         ArgumentNullException.ThrowIfNull(response);
         using var lease = await synchronization.EnterAsync(chatId, token);
-        if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+        if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out var runtime)
             || runtime.PendingPrompt?.Id != response.PromptId)
             return false;
         return runtime.Prompt?.TrySetResult(response) == true;
@@ -1652,7 +1654,7 @@ public sealed class ChatRunDispatcher(
         Task worker;
         using (await synchronization.EnterAsync(chatId, token))
         {
-            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)) return;
+            if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out var runtime)) return;
             if (operationId != Guid.Empty && runtime.State.Operations.Contains(operationId)) return;
             runtime.ResumeRequested = false;
             if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
@@ -1671,7 +1673,7 @@ public sealed class ChatRunDispatcher(
         Task worker;
         using (await synchronization.EnterAsync(chatId, token))
         {
-            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+            if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out var runtime)
                 || runtime.Cancellation is not { IsCancellationRequested: true }
                 || runtime.Worker is not { } running) return;
             worker = running;
@@ -1684,7 +1686,7 @@ public sealed class ChatRunDispatcher(
         Task worker;
         using (await synchronization.EnterAsync(chatId, token))
         {
-            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)
+            if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out var runtime)
                 || runtime.ActiveMessageId != messageId
                 || operationId != Guid.Empty && runtime.State.Operations.Contains(operationId)) return;
             runtime.ResumeRequested = false;
@@ -1700,7 +1702,7 @@ public sealed class ChatRunDispatcher(
         Task worker;
         using (await synchronization.EnterAsync(chatId, token))
         {
-            if (!_runtimes.TryGetValue(new RunKey(projectId, chatId, branchId), out var runtime)) return;
+            if (!TryGetOwnRuntime(new RunKey(projectId, chatId, branchId), out var runtime)) return;
             runtime.ResumeRequested = false;
             if (runtime.Cancellation is { } cancellation) await cancellation.CancelAsync();
             if (runtime.Worker is not null) runtime.State.Pause();
@@ -1739,12 +1741,30 @@ public sealed class ChatRunDispatcher(
         }
     }
 
+    private sealed record Subscriber(UserId User, Channel<IReadOnlyList<ChatRunSnapshot>> Channel);
+
+    private ChatRunSnapshot[] Snapshots(UserId user) =>
+        _runtimes.Values.Where(runtime => runtime.User == user).Select(runtime => runtime.Snapshot).ToArray();
+
+    /// <summary>
+    /// The run with <paramref name="key"/> when it belongs to the current user. Run ids are unique, so
+    /// another user's run is only ever reached by naming its ids; it answers as absent.
+    /// </summary>
+    private bool TryGetOwnRuntime(RunKey key, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out Runtime runtime) =>
+        _runtimes.TryGetValue(key, out runtime) && runtime.User == users.Current;
+
     private void Publish()
     {
         lock (_publicationLock)
         {
-            var snapshot = _runtimes.Values.Select(runtime => runtime.Snapshot).ToArray();
-            foreach (var subscriber in _subscribers.Values) subscriber.Writer.TryWrite(snapshot);
+            // Each subscriber sees only its own user's runs; the list is built once per user.
+            var snapshots = new Dictionary<UserId, ChatRunSnapshot[]>();
+            foreach (var subscriber in _subscribers.Values)
+            {
+                if (!snapshots.TryGetValue(subscriber.User, out var snapshot))
+                    snapshots[subscriber.User] = snapshot = Snapshots(subscriber.User);
+                subscriber.Channel.Writer.TryWrite(snapshot);
+            }
         }
     }
 

@@ -2,22 +2,27 @@ namespace AI.Application.Notifications;
 
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using AI.Application.Users;
+using AI.Domain.Users;
 
 /// <inheritdoc />
-public sealed class AppDataChangeSignal : IAppDataChangeSignal
+/// <remarks>A change reaches only the subscribers of the user it was made for.</remarks>
+public sealed class AppDataChangeSignal(IUserContext users) : IAppDataChangeSignal
 {
     private readonly Lock _gate = new();
-    private readonly List<Channel<long>> _subscribers = [];
+    private readonly List<(UserId User, Channel<long> Channel)> _subscribers = [];
     private long _version;
 
     public void Notify()
     {
+        var user = users.Current;
         lock (_gate)
         {
             _version++;
             // Each subscriber holds a one-slot channel that drops the older value, so a burst of
             // mutations collapses into a single wake-up instead of a queue of identical ones.
-            foreach (var subscriber in _subscribers) subscriber.Writer.TryWrite(_version);
+            foreach (var subscriber in _subscribers.Where(item => item.User == user))
+                subscriber.Channel.Writer.TryWrite(_version);
         }
     }
 
@@ -33,20 +38,21 @@ public sealed class AppDataChangeSignal : IAppDataChangeSignal
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true
         });
-        lock (_gate) _subscribers.Add(channel);
-        return ReadAsync(channel, cancellationToken);
+        var subscriber = (User: users.Current, Channel: channel);
+        lock (_gate) _subscribers.Add(subscriber);
+        return ReadAsync(subscriber, cancellationToken);
     }
 
     private async IAsyncEnumerable<long> ReadAsync(
-        Channel<long> channel, [EnumeratorCancellation] CancellationToken cancellationToken)
+        (UserId User, Channel<long> Channel) subscriber, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var version in channel.Reader.ReadAllAsync(cancellationToken)) yield return version;
+            await foreach (var version in subscriber.Channel.Reader.ReadAllAsync(cancellationToken)) yield return version;
         }
         finally
         {
-            lock (_gate) _subscribers.Remove(channel);
+            lock (_gate) _subscribers.Remove(subscriber);
         }
     }
 }

@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Logging;
 
+using AI.Application.Users;
 using AI.Contracts.FileSystem;
 using Microsoft.Extensions.Logging;
 using Storage;
@@ -11,15 +12,15 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
     private readonly IFileSystem _files;
     private readonly string _logsDirectory;
     private readonly int _retentionDays;
+    private readonly IUserContext? _users;
 
     /// <summary>
     /// Production constructor. The container resolves <see cref="IInstanceStorageLocation"/> so the
     /// logger and the data repositories agree on the root by construction rather than by accident.
     /// </summary>
-    public JsonLineFileLoggerProvider(IInstanceStorageLocation location, IFileSystem files, int retentionDays = 14)
-        : this(location.RootDirectory, files, retentionDays)
-    {
-    }
+    public JsonLineFileLoggerProvider(IInstanceStorageLocation location, IFileSystem files, IUserContext users,
+        int retentionDays = 14)
+        : this(location.RootDirectory, files, retentionDays) => _users = users;
 
     /// <summary>String-rooted constructor retained for one-off bootstrap and tests.</summary>
     public JsonLineFileLoggerProvider(string rootDirectory, IFileSystem files, int retentionDays = 14)
@@ -51,6 +52,8 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
                 Category = category,
                 EventId = eventId.Id,
                 EventName = eventId.Name,
+                // The user the entry was written for; absent outside every user scope, at start-up say.
+                UserId = _users?.Find()?.ToString(),
                 Message = message,
                 Properties = properties.ToDictionary(item => item.Key, item => Normalize(item.Value)),
                 Exception = exception?.GetType().FullName,

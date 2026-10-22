@@ -1,7 +1,12 @@
 namespace AI.Infrastructure.Tests.Logging;
 
+using AI.Application.Users;
 using AI.Contracts.FileSystem;
+using AI.Domain.Users;
 using AI.Infrastructure.Logging;
+using AI.Infrastructure.Storage;
+using AI.Infrastructure.Tests.Storage;
+using AI.Server.Hosting;
 using Microsoft.Extensions.Logging;
 using Shouldly;
 using System.Text.Json;
@@ -36,5 +41,24 @@ public sealed class JsonLineFileLoggerProviderTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void ShouldLabelEachEntryWithTheUserItWasWrittenFor()
+    {
+        var files = new MemoryFileSystem();
+        var users = new AmbientUserContext();
+        using var provider = new JsonLineFileLoggerProvider(
+            new InstanceStorageLocation(new ServerOptions("data", null, true)), files, users);
+        var logger = provider.CreateLogger("Runs");
+
+        LogChunk(logger, Guid.Empty, 1, null);
+        using (users.Enter(UserId.Local)) LogChunk(logger, Guid.Empty, 2, null);
+
+        var entries = files.Files.Single(item => item.Key.EndsWith(".jsonl", StringComparison.Ordinal)).Value
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => JsonDocument.Parse(line).RootElement).ToArray();
+        entries[0].GetProperty("UserId").ValueKind.ShouldBe(JsonValueKind.Null);
+        entries[1].GetProperty("UserId").GetString().ShouldBe(UserId.Local.ToString());
     }
 }

@@ -9,7 +9,7 @@ public sealed class AppDataChangeSignalTests
     [Fact]
     public async Task ShouldReachEverySubscriber()
     {
-        var signal = new AppDataChangeSignal();
+        var signal = new AppDataChangeSignal(new AI.Server.Tests.LocalUserContext());
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var first = signal.SubscribeAsync(stop.Token).GetAsyncEnumerator(stop.Token);
         var second = signal.SubscribeAsync(stop.Token).GetAsyncEnumerator(stop.Token);
@@ -30,7 +30,7 @@ public sealed class AppDataChangeSignalTests
     [Fact]
     public async Task ShouldNotLoseAChangeThatLandsBeforeEnumerationStarts()
     {
-        var signal = new AppDataChangeSignal();
+        var signal = new AppDataChangeSignal(new AI.Server.Tests.LocalUserContext());
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         // Subscribing is the moment a listener starts counting, not the moment it gets around to
@@ -46,7 +46,7 @@ public sealed class AppDataChangeSignalTests
     [Fact]
     public async Task ShouldCollapseABurstIntoOneWakeUp()
     {
-        var signal = new AppDataChangeSignal();
+        var signal = new AppDataChangeSignal(new AI.Server.Tests.LocalUserContext());
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var changes = signal.SubscribeAsync(stop.Token);
         for (var index = 0; index < 10; index++) signal.Notify();
@@ -69,7 +69,7 @@ public sealed class AppDataChangeSignalTests
     [Fact]
     public void ShouldIgnoreAChangeNobodyIsListeningFor()
     {
-        var signal = new AppDataChangeSignal();
+        var signal = new AppDataChangeSignal(new AI.Server.Tests.LocalUserContext());
 
         Should.NotThrow(signal.Notify);
     }

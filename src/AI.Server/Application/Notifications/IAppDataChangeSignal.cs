@@ -7,12 +7,15 @@ namespace AI.Application.Notifications;
 /// <remarks>
 /// The signal deliberately carries no payload. A client cannot tell which project, chat or setting
 /// moved, so it re-reads whatever it is currently showing. That costs a few extra requests and
-/// saves having to keep an event schema in step with every resource's revisions — a trade the
-/// local, single-user Host can afford.
+/// saves having to keep an event schema in step with every resource's revisions — a trade a
+/// Host serving a handful of users can afford. A change reaches only its own user's subscribers.
 /// </remarks>
 public interface IAppDataChangeSignal
 {
-    /// <summary>Records a change. Never blocks and never throws; a signal nobody listens to is lost on purpose.</summary>
+    /// <summary>
+    /// Records a change for the current user. Never blocks; a signal nobody listens to is lost on
+    /// purpose. Throws only when no user scope is active, which is a defect of the caller.
+    /// </summary>
     void Notify();
 
     /// <summary>

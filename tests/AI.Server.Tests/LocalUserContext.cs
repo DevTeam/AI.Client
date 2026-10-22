@@ -10,4 +10,6 @@ using AI.Domain.Users;
 internal sealed class LocalUserContext : IUserContext
 {
     public UserId Current => UserId.Local;
+
+    public UserId? Find() => UserId.Local;
 }

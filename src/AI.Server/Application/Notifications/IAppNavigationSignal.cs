@@ -9,7 +9,10 @@ using AI.Contracts.Navigation;
 /// </summary>
 public interface IAppNavigationSignal
 {
-    /// <summary>Records the request. Never blocks and never throws; with nobody listening it is lost.</summary>
+    /// <summary>
+    /// Records the request for the current user's windows. Never blocks; with nobody listening it is
+    /// lost. Throws only when no user scope is active, which is a defect of the caller.
+    /// </summary>
     void Navigate(AppNavigation target);
 
     Task<AppNavigationResponse> RequestAsync(AppNavigation target, CancellationToken cancellationToken);

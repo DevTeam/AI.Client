@@ -209,10 +209,15 @@ served only to it.
 - **Run registry.** The dispatcher's runtimes are keyed by project, chat and branch ids, which are
   globally unique, so no two users collide — but an endpoint or tool that reads run state straight from
   the registry by id, or lists every run (`AppRunsTool`), must check ownership through the user's
-  repository first or filter by the runtime's user. Each such site is listed and covered by a test.
+  repository first or filter by the runtime's user. In the dispatcher every lookup by id goes through one
+  ownership check, so a tool decision or a prompt answer for another user's run answers as absent; the
+  snapshot list and the subscription carry only the caller's runs, and `AppRunsTool` reaches runs only
+  through those. `RunOwnershipTests` covers the registry as a whole.
 - **Change and navigation signals.** `IAppDataChangeSignal.Notify()` and `IAppNavigationSignal` record the
   current user with each signal, and a subscription yields only its own user's signals.
-- **Logs.** Every log scope carries `UserId`.
+- **Logs.** Every log entry carries the `UserId` it was written for, or null outside every scope. The file
+  logger has no scopes of its own, so it reads the user through `IUserContext.Find()`, which exists for
+  diagnostics only and never stands in for `Current` when data is reached.
 
 ### Increments
 
@@ -228,7 +233,7 @@ Each increment is a commit that builds and passes `dotnet run --project build --
    answer another's read.
 3. Explicit scope at the background entry points; the runtime records its user; tool sessions capture the
    user; the scheduler passes over every user.
-4. User-aware signals, the run-registry ownership checks, and `UserId` in log scopes.
+4. User-aware signals, the run-registry ownership checks, and `UserId` in log entries.
 5. Documentation: [Storage](../04-storage.md) layout, [Architecture](../02-architecture.md),
    [Concurrent chat runs](../14-concurrent-chat-runs.md), and
    [Implementation progress](../11-implementation-progress.md).

@@ -2,17 +2,24 @@ namespace AI.Application.Notifications;
 
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using AI.Application.Users;
 using AI.Contracts.Navigation;
+using AI.Domain.Users;
 
 /// <inheritdoc />
-public sealed class AppNavigationSignal : IAppNavigationSignal
+/// <remarks>
+/// A request reaches only the windows of the user it was made for, and only those windows can claim
+/// and answer it.
+/// </remarks>
+public sealed class AppNavigationSignal(IUserContext users) : IAppNavigationSignal
 {
     private readonly Lock _gate = new();
-    private readonly List<Channel<AppNavigation>> _subscribers = [];
+    private readonly List<(UserId User, Channel<AppNavigation> Channel)> _subscribers = [];
     private readonly Dictionary<Guid, Pending> _pending = [];
 
-    private sealed class Pending(DateTimeOffset expiresAt)
+    private sealed class Pending(UserId user, DateTimeOffset expiresAt)
     {
+        public UserId User { get; } = user;
         public DateTimeOffset ExpiresAt { get; } = expiresAt;
         public Guid? ClientId { get; set; }
         public TaskCompletionSource<AppNavigationResponse> Completion { get; } =
@@ -23,13 +30,15 @@ public sealed class AppNavigationSignal : IAppNavigationSignal
     {
         var expiresAt = target.ExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(AppNavigation.DefaultTimeoutSeconds);
         if (expiresAt <= DateTimeOffset.UtcNow) return new("expired", "This action has expired.");
-        var pending = new Pending(expiresAt);
+        var user = users.Current;
+        var pending = new Pending(user, expiresAt);
         target = target with { RequestId = Guid.CreateVersion7(), ExpiresAt = expiresAt };
         lock (_gate)
         {
-            if (_subscribers.Count == 0) return new("unavailable", "No application window is connected.");
+            var windows = _subscribers.Where(item => item.User == user).ToArray();
+            if (windows.Length == 0) return new("unavailable", "No application window is connected.");
             _pending.Add(target.RequestId, pending);
-            foreach (var subscriber in _subscribers) subscriber.Writer.TryWrite(target);
+            foreach (var window in windows) window.Channel.Writer.TryWrite(target);
         }
         try
         {
@@ -42,9 +51,11 @@ public sealed class AppNavigationSignal : IAppNavigationSignal
 
     public bool Claim(Guid requestId, Guid clientId)
     {
+        var user = users.Current;
         lock (_gate)
         {
-            if (!_pending.TryGetValue(requestId, out var pending) || pending.ExpiresAt <= DateTimeOffset.UtcNow || clientId == Guid.Empty) return false;
+            if (!_pending.TryGetValue(requestId, out var pending) || pending.User != user
+                || pending.ExpiresAt <= DateTimeOffset.UtcNow || clientId == Guid.Empty) return false;
             if (pending.ClientId is { } owner && owner != clientId) return false;
             pending.ClientId = clientId;
             return true;
@@ -53,8 +64,10 @@ public sealed class AppNavigationSignal : IAppNavigationSignal
 
     public bool Complete(Guid requestId, AppNavigationDecision decision)
     {
+        var user = users.Current;
         lock (_gate)
-            return _pending.TryGetValue(requestId, out var pending) && pending.ClientId == decision.ClientId
+            return _pending.TryGetValue(requestId, out var pending) && pending.User == user
+                && pending.ClientId == decision.ClientId
                 && pending.ExpiresAt > DateTimeOffset.UtcNow
                 && decision.Outcome is "applied" or "stopped" or "unavailable" or "expired"
                 && pending.Completion.TrySetResult(new(decision.Outcome, decision.Error, decision.Targets));
@@ -62,28 +75,30 @@ public sealed class AppNavigationSignal : IAppNavigationSignal
 
     public void Navigate(AppNavigation target)
     {
+        var user = users.Current;
         lock (_gate)
-            foreach (var subscriber in _subscribers) subscriber.Writer.TryWrite(target);
+            foreach (var window in _subscribers.Where(item => item.User == user)) window.Channel.Writer.TryWrite(target);
     }
 
     /// <remarks>Registers at the call, not at the first enumeration, as <see cref="AppDataChangeSignal"/> does.</remarks>
     public IAsyncEnumerable<AppNavigation> SubscribeAsync(CancellationToken cancellationToken)
     {
         var channel = Channel.CreateUnbounded<AppNavigation>(new UnboundedChannelOptions { SingleReader = true });
-        lock (_gate) _subscribers.Add(channel);
-        return ReadAsync(channel, cancellationToken);
+        var subscriber = (User: users.Current, Channel: channel);
+        lock (_gate) _subscribers.Add(subscriber);
+        return ReadAsync(subscriber, cancellationToken);
     }
 
     private async IAsyncEnumerable<AppNavigation> ReadAsync(
-        Channel<AppNavigation> channel, [EnumeratorCancellation] CancellationToken cancellationToken)
+        (UserId User, Channel<AppNavigation> Channel) subscriber, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var target in channel.Reader.ReadAllAsync(cancellationToken)) yield return target;
+            await foreach (var target in subscriber.Channel.Reader.ReadAllAsync(cancellationToken)) yield return target;
         }
         finally
         {
-            lock (_gate) _subscribers.Remove(channel);
+            lock (_gate) _subscribers.Remove(subscriber);
         }
     }
 }

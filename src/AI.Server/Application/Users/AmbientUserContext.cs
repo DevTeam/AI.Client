@@ -12,6 +12,8 @@ public sealed class AmbientUserContext : IUserContext, IUserScope
 
     public UserId Current => _current.Value ?? throw new InvalidOperationException("No user scope is active.");
 
+    public UserId? Find() => _current.Value;
+
     public IDisposable Enter(UserId user)
     {
         var scope = new Scope(this, _current.Value);

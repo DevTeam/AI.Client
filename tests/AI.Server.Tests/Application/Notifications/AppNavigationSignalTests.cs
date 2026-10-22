@@ -10,7 +10,7 @@ public sealed class AppNavigationSignalTests
     [Fact]
     public async Task ShouldReportNoConnectedWindowWithoutWaiting()
     {
-        var signal = new AppNavigationSignal();
+        var signal = new AppNavigationSignal(new AI.Server.Tests.LocalUserContext());
         var response = await signal.RequestAsync(new AppNavigation(Guid.NewGuid()), CancellationToken.None);
         response.Outcome.ShouldBe("unavailable");
     }
@@ -18,7 +18,7 @@ public sealed class AppNavigationSignalTests
     [Fact]
     public async Task ShouldWaitForTheClaimingWindowAndRejectStaleDecisions()
     {
-        var signal = new AppNavigationSignal();
+        var signal = new AppNavigationSignal(new AI.Server.Tests.LocalUserContext());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await using var requests = signal.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
         var pending = signal.RequestAsync(new AppNavigation(Guid.NewGuid(), Target: "settings", Action: "show"), timeout.Token);
@@ -40,7 +40,7 @@ public sealed class AppNavigationSignalTests
     [Fact]
     public async Task ShouldRespectTheRequestedDeadlineAndExpireWithoutAResponse()
     {
-        var signal = new AppNavigationSignal();
+        var signal = new AppNavigationSignal(new AI.Server.Tests.LocalUserContext());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await using var requests = signal.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
         var expiresAt = DateTimeOffset.UtcNow.AddMilliseconds(200);
@@ -54,7 +54,7 @@ public sealed class AppNavigationSignalTests
     [Fact]
     public async Task ShouldRemoveCancelledRequestsAndKeepEveryConcurrentRequest()
     {
-        var signal = new AppNavigationSignal();
+        var signal = new AppNavigationSignal(new AI.Server.Tests.LocalUserContext());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         using var cancel = new CancellationTokenSource();
         await using var requests = signal.SubscribeAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);

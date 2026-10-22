@@ -12,7 +12,7 @@ using AI.Contracts.Workspace;
 using AI.Infrastructure.Storage;
 
 /// <summary>Stores private Undo manifests beside the project's resource assets.</summary>
-public sealed class WorkspaceUndoService(IProjectStorageLocation location, IFileSystem files,
+public sealed class WorkspaceUndoService(IUserStorageLocation location, IFileSystem files,
     IResourceAssetService assets, IProjectService projects, IProjectPathAccess paths)
     : IWorkspaceUndoService, IDisposable
 {

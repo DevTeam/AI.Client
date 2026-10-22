@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.StaticFiles;
 
 /// <summary>Stores uploaded file bytes outside chat JSON and retains their source on the resource.</summary>
 public sealed class ResourceAssetService(
-    IProjectStorageLocation location,
+    IUserStorageLocation location,
     IProjectService projects,
     IFileSystem files,
     IPath path,

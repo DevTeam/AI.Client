@@ -58,7 +58,7 @@ public sealed class ChatKindExtensionTests
     [Fact]
     public async Task UnattendedQueueRemainsUnattendedAfterRunReload()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         using var repository = new JsonChatRunRepository(new MemoryFileSystem(),
             new ChatRunStoragePaths(location.Object));

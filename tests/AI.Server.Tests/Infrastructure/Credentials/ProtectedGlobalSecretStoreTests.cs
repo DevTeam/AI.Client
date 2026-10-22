@@ -18,7 +18,7 @@ public class ProtectedGlobalSecretStoreTests
     public async Task ShouldClearAbsentSecretInAFreshDataDirectory()
     {
         var directory = Path.Combine("data", "absent");
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns(directory);
         var files = new MemoryFileSystem();
         var store = new ProtectedGlobalSecretStore(files, new GlobalSettingsPaths(location.Object), new PrefixDataProtector());
@@ -60,7 +60,7 @@ public class ProtectedGlobalSecretStoreTests
 
     private ProtectedGlobalSecretStore CreateInstance()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new ProtectedGlobalSecretStore(
             _fileSystem,
@@ -70,7 +70,7 @@ public class ProtectedGlobalSecretStoreTests
 
     private string GetPath()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new GlobalSettingsPaths(location.Object).GetSecretPath("connection", _profileId.Value);
     }

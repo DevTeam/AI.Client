@@ -12,7 +12,7 @@ public sealed class DataDirectoryLockTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ai-client-lock-" + Guid.NewGuid().ToString("N"));
 
     private DataDirectoryLock NewLock() =>
-        new(new ProjectStorageLocation(new ServerOptions(_root, null, true)), new SystemFileSystem());
+        new(new InstanceStorageLocation(new ServerOptions(_root, null, true)), new SystemFileSystem());
 
     [Fact]
     public void ShouldRefuseASecondHolderOfTheSameDirectory()

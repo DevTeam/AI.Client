@@ -28,7 +28,7 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
 
     private (WorkspaceUndoService Undo, WorkspaceChangeTracker Tracker) Create()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(Path.Combine(_root, "data"));
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>()))

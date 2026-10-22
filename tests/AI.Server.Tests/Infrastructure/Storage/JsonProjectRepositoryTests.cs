@@ -158,7 +158,7 @@ public class JsonProjectRepositoryTests
 
     private JsonProjectRepository CreateInstance()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new JsonProjectRepository(_fileSystem, new ProjectStoragePaths(location.Object), _serializer);
     }
@@ -187,14 +187,14 @@ public class JsonProjectRepositoryTests
 
     private string GetProjectPath()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new ProjectStoragePaths(location.Object).GetProjectPath(_projectId);
     }
 
     private string GetTemporaryPath()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("storage");
         return new ProjectStoragePaths(location.Object).GetTemporaryProjectPath(_projectId);
     }

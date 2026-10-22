@@ -45,7 +45,7 @@ public sealed class ReviewServiceTests
         chats.Setup(item => item.GetReviewSourceAsync(projectId, chatId, sourceId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(chat.Messages[0]);
         chats.Setup(item => item.ExistsAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
         using var repository = new JsonReviewRepository(location.Object, files);
         var service = new ReviewService(chats.Object, repository, new UnifiedDiff());
@@ -90,7 +90,7 @@ public sealed class ReviewServiceTests
         chats.Setup(item => item.GetReviewSourceAsync(projectId, otherChatId, sourceId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(chat.Messages[0]);
         chats.Setup(item => item.ExistsAsync(projectId, otherChatId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
         using var repository = new JsonReviewRepository(location.Object, files);
         var service = new ReviewService(chats.Object, repository, new UnifiedDiff());

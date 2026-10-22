@@ -36,7 +36,7 @@ public sealed class StandingInstructionsTests : IDisposable
             [], []);
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(_projectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(Path.Combine("data", "shop"));
         var files = new MemoryFileSystem();
         _memoryRepository = new JsonMemoryRepository(location.Object, files);

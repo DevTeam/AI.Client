@@ -6,7 +6,7 @@ using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 
 /// <summary>Small per-project resource catalog. Immutable chat turns keep their own reference snapshots.</summary>
-public sealed class JsonResourceRepository(IProjectStorageLocation location, IFileSystem files) : IResourceRepository, IDisposable
+public sealed class JsonResourceRepository(IUserStorageLocation location, IFileSystem files) : IResourceRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };

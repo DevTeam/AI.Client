@@ -140,7 +140,7 @@ public sealed class LegacyCSharpMigrationTests
     private static async Task<GlobalSettings> LoadGlobalAsync(GlobalSettings stored)
     {
         var fileSystem = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new GlobalSettingsPaths(location.Object);
         fileSystem.Files[paths.SettingsPath] = System.Text.Json.JsonSerializer.Serialize(stored);

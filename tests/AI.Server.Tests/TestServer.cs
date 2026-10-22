@@ -5,6 +5,7 @@ namespace AI.Server.Tests;
 using System.Diagnostics;
 using AI.Application.Chat;
 using AI.Application.Settings;
+using AI.Application.Users;
 using AI.Contracts.FileSystem;
 using AI.Infrastructure.Tests.Storage;
 using Microsoft.Extensions.Logging;
@@ -37,6 +38,8 @@ internal sealed class TestServer
             // The whole server performs its IO through the one file-system contract, so this single
             // binding puts every repository, the logger and the secret store onto the shared fake.
             .Bind<IFileSystem>().To((MemoryFileSystem fileSystem) => fileSystem)
+            // No request enters a user scope here; every call runs for the local user.
+            .Bind<IUserContext>().As(Lifetime.Singleton).To<LocalUserContext>()
 #pragma warning restore DIW000
             // Outside ASP.NET nothing supplies Microsoft's loggers.
             .Bind<ILogger<TT>>().To(_ => NullLogger<TT>.Instance);

@@ -13,7 +13,7 @@ using AI.Contracts.Usage;
 /// reading years of history. Months are read once and then held in memory, since every record
 /// after that passes through here anyway.
 /// </summary>
-public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, IFileSystem files, IPath paths)
+public sealed class JsonLinesTokenUsageLedger(IUserStorageLocation location, IFileSystem files, IPath paths)
     : ITokenUsageLedger, IDisposable
 {
     private const string MonthFormat = "yyyy-MM";
@@ -36,7 +36,7 @@ public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, 
         var month = Month(record.At);
         using var lease = await _gate.EnterAsync(cancellationToken);
         await files.AppendTextAsync(PathOf(month), JsonSerializer.Serialize(record, Json) + "\n", cancellationToken);
-        if (_months.TryGetValue(month, out var loaded)) loaded.Add(record);
+        if (_months.TryGetValue(PathOf(month), out var loaded)) loaded.Add(record);
     }
 
     public async Task<IReadOnlyList<TokenUsageRecord>> ReadAsync(DateTimeOffset from, DateTimeOffset until,
@@ -52,8 +52,9 @@ public sealed class JsonLinesTokenUsageLedger(IProjectStorageLocation location, 
             if (!DateTime.TryParseExact(month, MonthFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
                 || string.CompareOrdinal(month, first) < 0 || string.CompareOrdinal(month, last) > 0)
                 continue;
-            if (!_months.TryGetValue(month, out var records))
-                _months[month] = records = Parse(await files.ReadTextAsync(path, cancellationToken));
+            // Keyed by the month's path, so the months of different users never share an entry.
+            if (!_months.TryGetValue(PathOf(month), out var records))
+                _months[PathOf(month)] = records = Parse(await files.ReadTextAsync(path, cancellationToken));
             result.AddRange(records.Where(record => record.At >= from && record.At < until));
         }
 

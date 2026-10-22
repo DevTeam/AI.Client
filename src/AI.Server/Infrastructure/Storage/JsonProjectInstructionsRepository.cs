@@ -9,7 +9,7 @@ using AI.Contracts.Instructions;
 /// One document per project in <c>instructions/projects/{projectId}.json</c>, kept apart from the
 /// project document so editing instructions never races a security or connection change.
 /// </summary>
-public sealed class JsonProjectInstructionsRepository(IProjectStorageLocation location, IFileSystem files)
+public sealed class JsonProjectInstructionsRepository(IUserStorageLocation location, IFileSystem files)
     : IProjectInstructionsRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();

@@ -2,9 +2,11 @@ namespace AI.Server.Hosting;
 
 using Application.Chats;
 using Application.Runs;
+using Application.Users;
 using Microsoft.Extensions.Hosting;
 
-internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatKindPolicyRegistry kinds) : IHostedService, IDisposable
+internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatKindPolicyRegistry kinds,
+    IUserDirectory users, IUserScope userScope) : IHostedService, IDisposable
 {
     private readonly CancellationTokenSource _startupCancellation = new();
     private Task _startupTask = Task.CompletedTask;
@@ -26,8 +28,14 @@ internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatK
         _startupTask = Task.Run(
             async () =>
             {
-                await dispatcher.WarmUpAsync(_startupCancellation.Token);
-                await StartChatKindsAsync(_startupCancellation.Token);
+                // Recovery reads each user's own runs, and whatever a chat kind starts here keeps
+                // the scope it was started in.
+                foreach (var user in await users.ListAsync(_startupCancellation.Token))
+                {
+                    using var scope = userScope.Enter(user);
+                    await dispatcher.WarmUpAsync(_startupCancellation.Token);
+                    await StartChatKindsAsync(_startupCancellation.Token);
+                }
             },
             CancellationToken.None);
         return Task.CompletedTask;

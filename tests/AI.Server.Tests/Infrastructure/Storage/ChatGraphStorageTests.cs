@@ -14,7 +14,7 @@ public sealed class ChatGraphStorageTests
     public async Task ShouldCommitChatDocumentAtomically()
     {
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
@@ -37,7 +37,7 @@ public sealed class ChatGraphStorageTests
     public async Task ShouldRejectOneOfTwoConcurrentWritesWithTheSameRevision()
     {
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         using var repository = new JsonChatRepository(fs, new ChatStoragePaths(location.Object), new ChatDocumentSerializer());
         var chat = new ChatThread(new ChatId(Guid.NewGuid()), new ProjectId(Guid.NewGuid()), "Chat", DateTimeOffset.UtcNow);
@@ -51,7 +51,7 @@ public sealed class ChatGraphStorageTests
     public async Task ShouldPreserveBranchHeadsAndNamesAcrossRoundTrip()
     {
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         using var repository = new JsonChatRepository(fs, new ChatStoragePaths(location.Object), new ChatDocumentSerializer());
         var now = DateTimeOffset.UtcNow;

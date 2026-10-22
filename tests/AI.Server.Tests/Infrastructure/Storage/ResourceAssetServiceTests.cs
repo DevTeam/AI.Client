@@ -18,7 +18,7 @@ public sealed class ResourceAssetServiceTests
             var root = Path.Combine(Path.GetTempPath(), "ai-client-image-test-" + Guid.NewGuid().ToString("N"));
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns(root);
         var projects = new Mock<IProjectService>();
         projects.Setup(item => item.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -65,7 +65,7 @@ public sealed class ResourceAssetServiceTests
     }
 
     /// <summary>Supplies the file-system contract the service gained; this test runs on the real disk.</summary>
-    private static ResourceAssetService NewAssets(IProjectStorageLocation location, IProjectService projects)
+    private static ResourceAssetService NewAssets(IUserStorageLocation location, IProjectService projects)
     {
         var files = new SystemFileSystem();
         return new ResourceAssetService(location, projects, files, new SystemPath(),

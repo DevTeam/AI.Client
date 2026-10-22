@@ -19,7 +19,7 @@ public sealed class MasterKeyTests : IDisposable
     private readonly MasterKeyFormat _format = new();
 
     private FileMasterKeyStore NewFileStore() =>
-        new(new ProjectStorageLocation(new ServerOptions(_root, null, true)), _format, new SystemFileSystem());
+        new(new InstanceStorageLocation(new ServerOptions(_root, null, true)), _format, new SystemFileSystem());
 
     private static ILoggerProvider Logs()
     {

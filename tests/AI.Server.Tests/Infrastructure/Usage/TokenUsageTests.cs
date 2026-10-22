@@ -401,9 +401,9 @@ public class TokenUsageTests
         return ids.Object;
     }
 
-    private static IProjectStorageLocation Location()
+    private static IUserStorageLocation Location()
     {
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("root");
         return location.Object;
     }

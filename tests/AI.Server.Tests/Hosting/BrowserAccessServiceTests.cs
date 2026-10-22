@@ -64,7 +64,7 @@ public sealed class BrowserAccessServiceTests : IDisposable
     private BrowserAccessService NewService()
     {
         var files = new SystemFileSystem();
-        return new(new ProjectStorageLocation(new ServerOptions(_directory, null, true)), _clock, files,
+        return new(new InstanceStorageLocation(new ServerOptions(_directory, null, true)), _clock, files,
             new AtomicFileWriter(files));
     }
 

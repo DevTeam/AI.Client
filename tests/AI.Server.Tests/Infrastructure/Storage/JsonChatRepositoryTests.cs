@@ -16,7 +16,7 @@ public sealed class JsonChatRepositoryTests
     {
         var projectId = new ProjectId(Guid.NewGuid());
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         fs.Files[Path.Combine(paths.GetChatsDirectory(projectId), "chat.run.json")] = "{}";
@@ -31,7 +31,7 @@ public sealed class JsonChatRepositoryTests
         var chatId = new ChatId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Large chat", now);
@@ -57,7 +57,7 @@ public sealed class JsonChatRepositoryTests
         var reviewId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         var files = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Chat", now);
@@ -88,7 +88,7 @@ public sealed class JsonChatRepositoryTests
         var reviewId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         var files = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Chat", now);
@@ -142,7 +142,7 @@ public sealed class JsonChatRepositoryTests
         var chatId = new ChatId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Branched chat", now);
@@ -176,7 +176,7 @@ public sealed class JsonChatRepositoryTests
         var projectId = new ProjectId(Guid.NewGuid());
         var chatId = new ChatId(Guid.NewGuid());
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         using var repository = new JsonChatRepository(fs, paths, new ChatDocumentSerializer());
@@ -213,7 +213,7 @@ public sealed class JsonChatRepositoryTests
         var firstId = new ChatMessageId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var files = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chatPath = paths.GetChatPath(chatId, projectId);
@@ -253,7 +253,7 @@ public sealed class JsonChatRepositoryTests
         var firstId = new ChatMessageId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var files = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Chat", now);
@@ -282,7 +282,7 @@ public sealed class JsonChatRepositoryTests
         var chatId = new ChatId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var files = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chatPath = paths.GetChatPath(chatId, projectId);
@@ -337,7 +337,7 @@ public sealed class JsonChatRepositoryTests
         var firstId = new ChatMessageId(Guid.NewGuid());
         var now = DateTimeOffset.UtcNow;
         var fs = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new ChatStoragePaths(location.Object);
         var chat = new ChatThread(chatId, projectId, "Chat", now);

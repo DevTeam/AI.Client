@@ -35,7 +35,7 @@ public sealed class SkillCatalogTests
         projects.Setup(service => service.GetAsync(projectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Project(projectId));
         using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),
-            new ProjectStorageLocation(new ServerOptions("skills-test", null, true)),
+            Mock.Of<IUserStorageLocation>(location => location.RootDirectory == "skills-test"),
             new MemoryFileSystem(), projects.Object);
 
         var user = await catalog.SaveAsync(new SkillWriteRequest("User", null, Document), CancellationToken.None);
@@ -66,7 +66,7 @@ public sealed class SkillCatalogTests
     public async Task ShouldRejectUnsafeOrBundledIds(string id)
     {
         using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),
-            new ProjectStorageLocation(new ServerOptions("skills-test", null, true)),
+            Mock.Of<IUserStorageLocation>(location => location.RootDirectory == "skills-test"),
             new MemoryFileSystem(), Mock.Of<IProjectService>());
         var content = Document.Replace("explain-project", id, StringComparison.Ordinal);
 

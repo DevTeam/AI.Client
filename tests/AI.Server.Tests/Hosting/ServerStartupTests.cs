@@ -77,8 +77,8 @@ public sealed class ServerStartupTests
         {
             var projectId = Guid.NewGuid();
             var chatId = Guid.NewGuid();
-            var location = new Mock<IProjectStorageLocation>();
-            location.SetupGet(item => item.RootDirectory).Returns(directory);
+            var location = new Mock<IUserStorageLocation>();
+            location.SetupGet(item => item.RootDirectory).Returns(Path.Combine(directory, "users", AI.Domain.Users.UserId.Local.Value.ToString("N")));
             var files = new SystemFileSystem();
             using (var chats = new JsonChatRepository(files, new ChatStoragePaths(location.Object), new ChatDocumentSerializer()))
             {

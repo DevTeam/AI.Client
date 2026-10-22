@@ -8,7 +8,7 @@ using AI.Contracts.FileSystem;
 /// crash never leaves the directory locked. The file itself stays: deleting it on close would let
 /// a second process lock a fresh file while a third still holds the unlinked one.
 /// </summary>
-public sealed class DataDirectoryLock(IProjectStorageLocation location, IFileSystem files) : IDataDirectoryLock
+public sealed class DataDirectoryLock(IInstanceStorageLocation location, IFileSystem files) : IDataDirectoryLock
 {
     public IDisposable Acquire()
     {

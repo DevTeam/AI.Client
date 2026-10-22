@@ -10,7 +10,7 @@ using AI.Contracts.Memory;
 /// <c>memory/projects/{projectId}.json</c>. One gate covers all catalogs: they are small and
 /// written rarely, so a single boundary is simpler than one lock per file.
 /// </summary>
-public sealed class JsonMemoryRepository(IProjectStorageLocation location, IFileSystem files) : IMemoryRepository, IDisposable
+public sealed class JsonMemoryRepository(IUserStorageLocation location, IFileSystem files) : IMemoryRepository, IDisposable
 {
     private readonly AsyncGate _gate = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };

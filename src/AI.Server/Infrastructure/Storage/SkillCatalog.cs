@@ -7,7 +7,7 @@ using AI.Contracts.Skills;
 using Pure.DI;
 
 /// <summary>Built-in, user and project SKILL.md files. Writes replace one file atomically.</summary>
-public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IProjectStorageLocation location,
+public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IUserStorageLocation location,
     IFileSystem files, IProjectService projects) : ISkillCatalog, IDisposable
 {
     private readonly AsyncGate _gate = new();

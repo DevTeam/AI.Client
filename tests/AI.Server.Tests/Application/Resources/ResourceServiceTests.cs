@@ -60,7 +60,7 @@ public sealed class ResourceServiceTests
             var projects = new Mock<IProjectService>();
             projects.Setup(item => item.GetAsync(projectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(project);
-            var location = new Mock<IProjectStorageLocation>();
+            var location = new Mock<IUserStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
             var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), repository,
@@ -190,7 +190,7 @@ public sealed class ResourceServiceTests
             await File.WriteAllTextAsync(source, "one\ntwo\nthree\nfour\n", token);
             var projectId = Guid.CreateVersion7();
             var projects = ProjectsWith(projectId, root);
-            var location = new Mock<IProjectStorageLocation>();
+            var location = new Mock<IUserStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
             var service = NewService(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), repository,
@@ -231,7 +231,7 @@ public sealed class ResourceServiceTests
             await File.WriteAllTextAsync(empty, string.Empty, token);
             var projectId = Guid.CreateVersion7();
             var projects = ProjectsWith(projectId, root);
-            var location = new Mock<IProjectStorageLocation>();
+            var location = new Mock<IUserStorageLocation>();
             location.SetupGet(item => item.RootDirectory).Returns(root);
             using var repository = new JsonResourceRepository(location.Object, new SystemFileSystem());
             var assets = NewAssets(location.Object, projects.Object);
@@ -415,7 +415,7 @@ public sealed class ResourceServiceTests
         new(projects, browser, repository, reviews, access, skills, chats, diffs, excerpts, assets,
             new SystemFileSystem());
 
-    private static ResourceAssetService NewAssets(IProjectStorageLocation location, IProjectService projects) =>
+    private static ResourceAssetService NewAssets(IUserStorageLocation location, IProjectService projects) =>
         new(location, projects, new SystemFileSystem(), new SystemPath(),
             new AtomicFileWriter(new SystemFileSystem()));
 }

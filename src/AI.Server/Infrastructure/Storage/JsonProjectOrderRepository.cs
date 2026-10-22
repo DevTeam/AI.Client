@@ -8,7 +8,7 @@ using AI.Contracts.FileSystem;
 /// Keeps the project order in <c>project-order.json</c> beside the <c>projects</c> directory, whose
 /// every <c>*.json</c> is read as a project. A missing or damaged file reads as no order.
 /// </summary>
-public sealed class JsonProjectOrderRepository(IFileSystem fileSystem, IProjectStorageLocation location)
+public sealed class JsonProjectOrderRepository(IFileSystem fileSystem, IUserStorageLocation location)
     : IProjectOrderRepository, IDisposable
 {
     private readonly AsyncGate _writes = new();

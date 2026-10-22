@@ -13,10 +13,10 @@ public sealed class JsonLineFileLoggerProvider : ILoggerProvider
     private readonly int _retentionDays;
 
     /// <summary>
-    /// Production constructor. The container resolves <see cref="IProjectStorageLocation"/> so the
+    /// Production constructor. The container resolves <see cref="IInstanceStorageLocation"/> so the
     /// logger and the data repositories agree on the root by construction rather than by accident.
     /// </summary>
-    public JsonLineFileLoggerProvider(IProjectStorageLocation location, IFileSystem files, int retentionDays = 14)
+    public JsonLineFileLoggerProvider(IInstanceStorageLocation location, IFileSystem files, int retentionDays = 14)
         : this(location.RootDirectory, files, retentionDays)
     {
     }

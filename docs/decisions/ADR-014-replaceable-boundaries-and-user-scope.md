@@ -160,9 +160,13 @@ The data root keeps what belongs to the installation; everything else moves unde
   browser-access.txt       instance: BrowserAccessService (tokens map to UserId.Local in step 1)
   <lock and update files>  instance: DataDirectoryLock, HostUpdateService
   users/<userId:N>/
-    settings.json  project-order.json  projects/  memory/  instructions/
-    resources/  assets/  usage/  skills/
+    settings.json  command-rules.json  credentials/  project-order.json  projects/
+    memory/  instructions/  resources/  assets/  usage/  skills/
 ```
+
+The desktop app's own files at the data root (`client-settings.json`, `theme.json`, `ui-state.json`,
+`window.json`, `workspace-location.json`, `webview/`) belong to the desktop client, not to the Host, and
+stay where they are.
 
 The 17 consumers of `IProjectStorageLocation` split accordingly: `FileMasterKeyStore`,
 `JsonLineFileLoggerProvider`, `DataDirectoryLock` and `BrowserAccessService` take
@@ -216,7 +220,10 @@ Each increment is a commit that builds and passes `dotnet run --project build --
    `LocalUserResolver`, `IUserDirectory`, and the HTTP middleware. Storage still reads the data root;
    nothing observable changes.
 2. `IInstanceStorageLocation` and `IUserStorageLocation` replace `IProjectStorageLocation`; computed
-   paths instead of cached ones; the relocation scripts.
+   paths instead of cached ones; the relocation scripts. Start-up recovery and chat-kind start-up enter
+   each user's scope here already, because without it the Host could not recover its runs once storage
+   depends on the user. In-memory caches of user data are keyed by path, so one user's entry cannot
+   answer another's read.
 3. Explicit scope at the background entry points; `ChatRunState.UserId`; tool sessions capture the user.
 4. User-aware signals, the run-registry ownership checks, and `UserId` in log scopes.
 5. Documentation: [Storage](../04-storage.md) layout, [Architecture](../02-architecture.md),

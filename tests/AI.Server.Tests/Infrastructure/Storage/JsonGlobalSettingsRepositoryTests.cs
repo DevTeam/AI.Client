@@ -14,7 +14,7 @@ public sealed class JsonGlobalSettingsRepositoryTests
     public async Task ShouldKeepBothConcurrentItemUpdates()
     {
         var fileSystem = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(item => item.RootDirectory).Returns("data");
         using var repository = new JsonGlobalSettingsRepository(fileSystem, new GlobalSettingsPaths(location.Object));
         var connection = new ConnectionSettings(Guid.NewGuid(), "Model", "https://example.test/v1", "model", true, true, false);
@@ -46,7 +46,7 @@ public sealed class JsonGlobalSettingsRepositoryTests
     public async Task ShouldDropLegacyCostRatingWhenSavingWithoutLosingPrices()
     {
         var fileSystem = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new GlobalSettingsPaths(location.Object);
         fileSystem.Files[paths.SettingsPath] = """
@@ -85,7 +85,7 @@ public sealed class JsonGlobalSettingsRepositoryTests
     public async Task ShouldLoadConnectionWrittenBeforeContextLimitOverridesExisted()
     {
         var fileSystem = new MemoryFileSystem();
-        var location = new Mock<IProjectStorageLocation>();
+        var location = new Mock<IUserStorageLocation>();
         location.SetupGet(i => i.RootDirectory).Returns("data");
         var paths = new GlobalSettingsPaths(location.Object);
         fileSystem.Files[paths.SettingsPath] = """

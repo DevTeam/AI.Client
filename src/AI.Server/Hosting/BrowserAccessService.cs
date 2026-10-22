@@ -20,7 +20,7 @@ public sealed class BrowserAccessService : IBrowserAccessService
     private readonly HashSet<string> _hashes;
     private readonly Dictionary<string, DateTimeOffset> _pairingCodes = new(StringComparer.Ordinal);
 
-    public BrowserAccessService(IProjectStorageLocation location, IClock clock, IFileSystem files,
+    public BrowserAccessService(IInstanceStorageLocation location, IClock clock, IFileSystem files,
         IAtomicFileWriter atomic)
     {
         _clock = clock;

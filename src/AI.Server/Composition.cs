@@ -98,7 +98,7 @@ internal sealed class Composition
             // Server hosting, storage and the chat services built on them.
             .Transient<CompositeToolSessionFactory, ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
-                ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, ProjectStorageLocation,
+                ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, InstanceStorageLocation, UserStorageLocation,
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
                 PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
@@ -214,5 +214,7 @@ internal sealed class AspNetComposition
             .Root<IRunEventsPublisher>()
             .Root<IBrowserAccessService>()
             .Root<IInstalledDesktop>()
+            .Root<IUserDirectory>()
+            .Root<IUserScope>()
             .Root<IHostUpdateService>();
 }

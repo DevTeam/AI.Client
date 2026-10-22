@@ -1,6 +1,7 @@
 # ADR-014: Replaceable boundaries and the user scope
 
-Status: Proposed
+Status: Accepted. Step 1 is implemented (2026-10-22); steps 2–6 are the agreed direction and get their
+own plans when they start.
 
 Date: 2026-10-22
 

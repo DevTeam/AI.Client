@@ -13,3 +13,14 @@ An interruption preserves what the model managed to write: the partial answer is
 SendNow first stops the branch and waits for the worker, then takes the interrupted command off the queue and puts the new message first. Clear removes only unsent commands, ClearAll stops the run and clears everything, Discard takes one sent command off and unblocks the queue.
 
 Stop cancels generation. Resume resumes the queue, including immediate resumption after Stop. When the Host stops, workers are cancelled and awaited. After a restart, unfinished work gets Interrupted. The run records why in `ChatRunState.Interruption`: `Shutdown` with the time the Host was closed and the tool call it cut off, or `Crash` when it was still `Generating` at the next start, with the tool call the transcript left without a result. The next start stamps `RecoveredAt` on every run it takes back with one moment, which is how the client groups the work of one restart; the snapshot carries the record (`ChatRunSnapshot.Interruption`) only while the run is `Interrupted`, and Start, Resume, Clear, Rebase and dropping the command forget it. Deletion first finishes the workers.
+
+## Runs and users
+
+Runs are kept per user. A run file lives in its user's directory, and the dispatcher's runtime records the
+user it was created for: its worker, its reports to a lead branch and its title skill run in that user's
+scope, whichever flow starts them, so a worker resumed after update maintenance by one person's request
+still works for the run's owner. Start-up recovery takes back each user's runs in that user's scope.
+
+The registry is shared, keyed by project, chat and branch ids. Every lookup by id checks the owner, so a
+tool decision, a prompt answer or a stop for another user's run answers as if the run did not exist;
+`GET /api/runs` and the run subscription carry only the caller's runs.

@@ -869,3 +869,36 @@ Real-repository scenarios now use the small Pure.DI.Solution sample (`solution-*
 tests in seconds. Runs comparing the harness changes of this day (tool selection, refusal messages
 naming the allowed roots, compaction before failing on empty responses) passed as often or more
 often on DeepSeek-V4.1-Flash and Qwen3.6-35B-A3B-FP8, with 12–44% fewer input tokens on DeepSeek.
+
+## 2026-10-22 — User scope (ADR-014, step 1)
+
+[ADR-014](decisions/ADR-014-replaceable-boundaries-and-user-scope.md) names the boundaries that get
+replaceable adapters and plans the way to several users on one Host; its first step is done. Every
+stored item and every running operation now belongs to a `UserId`, with one local user while there is
+no sign-in, and nothing changes for the person using the product.
+
+- `IUserContext`/`IUserScope` over an `AsyncLocal` (`AmbientUserContext`); `Current` throws outside a
+  scope. `UserScopeMiddleware` enters the request's user after the origin and bridge checks;
+  `LocalUserResolver` and `LocalUserDirectory` stand for the single user.
+- `IInstanceStorageLocation` (keys, logs, browser grants, lock) and `IUserStorageLocation`
+  (`users/<user id>/`) replace `IProjectStorageLocation`. The usage and project caches are keyed by
+  path. `scripts/move-data-to-user.cmd` and `.sh` move an existing data directory's user entries once;
+  the product has no relocation logic.
+- Background work enters its user explicitly through `IUserScope.Run`: run workers, lead reports, title
+  and reply-draft skills, the scheduler (one pass over every user), start-up recovery and chat kinds
+  (once per user), and the in-process app tool server (the user who opened the session).
+- Change and navigation signals, the run registry, reply drafts and log entries are per user: another
+  user's subscribers receive nothing, another user's run answers as absent.
+
+Commits: `0eaf5909`, `0fc0c9b3`, `0badb122`, `cb47be1c`. Files: `src/AI.Server/Application/Users/*`,
+`Domain/Users/UserId.cs`, `Hosting/UserScopeMiddleware.cs`, the storage locations and their consumers,
+`ChatRunDispatcher`, `ChatReplySuggestions`, `ChatScheduler`, `AppToolSessionFactory`, the two signals,
+the file logger, `scripts/*`, docs 02, 04, 14 and ADR-014.
+
+Checks: `dotnet run --project build -- test-all` passes after each increment (2341 passed, 1 skipped,
+before `RunOwnershipTests` was added; `AI.Server.Tests` 1410 passed with it). New tests cover the user
+context and middleware, isolation of projects, settings and usage between two users, reply drafts, app
+tool sessions called from another user's flow, signals, the run registry on the shipped server graph
+with two users, and the user in log entries. The run-registry test was checked to fail without the
+ownership filter. The relocation scripts were run on a sample data directory (first run, repeat,
+conflict); they have not been run on a real installation.

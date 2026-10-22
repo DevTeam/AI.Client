@@ -309,6 +309,26 @@ Not moved, deliberately:
   message no longer references then needs collecting. That is a change of its own, best made together
   with the chat port of step 4 or after it.
 
+## Step 4: metadata ports ready for a database
+
+Implemented on 2026-10-22, without a database provider: SQLite is left for later by decision of
+2026-10-22.
+
+**The chat port keeps `SaveAsync(ChatThread, expectedRevision)`.** The direction above proposed append and
+move-head operations so that a database would not rewrite a chat on every agent step. Looking at the
+model, it does not have to: messages are immutable and carry their ids, so a database store saves a chat
+by inserting the messages it does not have yet, updating the chat row and its branches, and checking the
+revision in the same transaction — what the JSON store already does with its node files and manifest.
+Changing the port would rewrite every chat mutation for no gain in either store, so it stays as it is.
+`MayContainReviewReferenceAsync` is a hint whose `false` must be certain; a database answers it exactly.
+The persistent and Host-lifetime routers are not a file concern: service chats live in memory by design.
+
+**Contract tests are the guard.** `ChatRepositoryContractTests` (absence, save and revision, stale saves
+refused, earlier messages kept and each readable alone, deletes needing the current revision, listing
+per project) runs against both stores the port already has, the JSON documents and the Host-lifetime
+store. `ProjectRepositoryContractTests` covers the project port the same way. A database store is done
+when it passes these suites, plus the blob store's for any bytes it keeps.
+
 ## Consequences
 
 Positive:

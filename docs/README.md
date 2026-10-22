@@ -60,6 +60,7 @@ Generator diagnostics and complaints are tracked separately in [Pure.DI observat
 - [ADR-012: Comparable prefix overlap and adaptive tool headroom](decisions/ADR-012-prefix-overlap-and-tool-headroom.md)
 - [ADR-013: One file-system contract for the product](decisions/ADR-013-file-system-contract.md)
 - [ADR-014: Replaceable boundaries and the user scope](decisions/ADR-014-replaceable-boundaries-and-user-scope.md)
+- [ADR-015: Server projects by layer](decisions/ADR-015-server-projects-by-layer.md)
 
 ## Document status
 

@@ -58,6 +58,11 @@ Generator diagnostics and complaints are tracked separately in [Pure.DI observat
 - [ADR-010: Adaptive compaction decisions and measured savings](decisions/ADR-010-adaptive-compaction-and-estimation.md)
 - [ADR-011: Budgeted summary requests and separate quality evaluations](decisions/ADR-011-budgeted-summary-requests.md)
 - [ADR-012: Comparable prefix overlap and adaptive tool headroom](decisions/ADR-012-prefix-overlap-and-tool-headroom.md)
+- [ADR-013: One file-system contract for the product](decisions/ADR-013-file-system-contract.md)
+
+## Proposed decisions
+
+- [ADR-014: Replaceable boundaries and the user scope](decisions/ADR-014-replaceable-boundaries-and-user-scope.md)
 
 ## Document status
 

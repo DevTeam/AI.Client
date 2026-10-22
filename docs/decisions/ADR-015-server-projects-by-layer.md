@@ -1,6 +1,6 @@
 # ADR-015: Server projects by layer
 
-Status: Accepted
+Status: Accepted. Implemented on 2026-10-22.
 
 Date: 2026-10-22
 
@@ -61,6 +61,19 @@ Each step builds, passes `dotnet run --project build -- test-all` and is one com
 2. `AI.Domain`.
 3. `AI.Application`, with the built-in skill documents it embeds.
 4. `AI.Infrastructure` and `AI.Tools`; what remains is `AI.Server`.
+
+## Outcome
+
+All four steps are done, each its own commit with the full test run passing (2371 passed, 1 skipped):
+
+- the crossings became ports: `IScheduleDocumentRepository` with `JsonScheduleDocumentRepository`, and
+  `IMediaTypes` with `FileExtensionMediaTypes`; `InstanceStorageLocation` moved to Hosting;
+- `AI.Domain` references nothing; `AI.Application` references `AI.Domain`, `AI.Contracts`,
+  `JsonSchema.Net` and `Microsoft.Extensions.Logging.Abstractions`; `AI.Infrastructure` adds ASP.NET
+  (for media types), the tokenizers and the credential protection; `AI.Tools` adds only the MCP SDK;
+  `AI.Server` keeps ASP.NET hosting, `System.CommandLine` and Pure.DI;
+- no file was renamed and no namespace changed. The tool files keep `AI.Infrastructure.Tools` and
+  `AI.Mcp.App` inside `AI.Tools`; renaming them would only churn every consumer.
 
 ## Consequences
 

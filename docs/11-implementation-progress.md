@@ -928,3 +928,14 @@ Checks: `dotnet run --project build -- test-all` passed after each step (2371 pa
 step 6). New tests: blob store contract, chat and project repository contracts, tool
 environment launches. The memory file-system fake now lists files written as bytes, which the atomic
 writer needs.
+
+## 2026-10-22 — Server projects by layer (ADR-015)
+
+`AI.Server` is split into `AI.Domain`, `AI.Application`, `AI.Infrastructure`, `AI.Tools` and `AI.Server`,
+each referencing only the layers below it, so the compiler keeps the layer rule. Three crossings were
+removed first: the schedule store's own file access (now `IScheduleDocumentRepository`), ASP.NET media
+types in file previews (now `IMediaTypes`), and Infrastructure reading `ServerOptions`. Files moved with
+`git mv`, unchanged; the built-in skills moved into `AI.Application`, which embeds them.
+
+Commits: `b5fe8f5f`, `a81bd1c9`, `5da971a6`, `81ea6185`. Checks: `dotnet run --project build -- test-all`
+after each step (2371 passed, 1 skipped); the three eval projects outside the solution build.

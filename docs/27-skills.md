@@ -1,6 +1,6 @@
 # Skills
 
-The Host embeds read-only built-in skills at `Skills/BuiltIn/<id>/SKILL.md`. Editable files live
+The Host embeds read-only built-in skills at `src/AI.Application/Skills/BuiltIn/<id>/SKILL.md`. Editable files live
 under the Host data directory:
 
 - `skills/user/<id>/SKILL.md` is available in every project.

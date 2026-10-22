@@ -6,24 +6,22 @@ using AI.Contracts.Projects;
 
 /// <summary>
 /// The sidebar's project tree. Any number of projects can be unfolded at once, and opening one
-/// project leaves the others as they were. The open project lists its chats from <c>_chats</c>, with
-/// the open chat's branches, its archive and its directories; another unfolded project lists its
-/// latest chats as last read from the Host, a click away without switching to it first. Which
-/// projects are unfolded is remembered with the Recents state.
+/// project leaves the others as they were. Every unfolded project lists the same rows: its chats a
+/// page at a time and its archive. The open project reads them from <c>_chats</c> and adds the open
+/// chat's branches; another lists its chats as last read from the Host, a click away without
+/// switching to it first. Which projects are unfolded is remembered with the Recents state.
 /// </summary>
 public partial class Home
 {
-    // A few chats of a project that is not open; the rest a click away, and all of them once open.
-    private const int OtherProjectChatsShown = 5;
-
     private readonly HashSet<Guid> _expandedProjectIds = [];
 
     // The chat lists of the unfolded projects other than the open one. The open project's list is
     // _chats; the project just left keeps its last list here until the next read replaces it.
     private readonly Dictionary<Guid, IReadOnlyList<ChatSummary>> _projectChatLists = [];
 
-    // The unfolded projects whose whole chat list is shown rather than the first few.
-    private readonly HashSet<Guid> _projectChatsShowAll = [];
+    // How many chats each unfolded project shows when "Show more" has been pressed in it; one page
+    // otherwise. Kept per project, so opening a project or leaving it keeps the pages it had.
+    private readonly Dictionary<Guid, int> _projectChatPages = [];
 
     private bool IsProjectExpanded(Guid projectId) => _expandedProjectIds.Contains(projectId);
 
@@ -47,7 +45,7 @@ public partial class Home
     {
         if (_expandedProjectIds.Remove(project.Id))
         {
-            _projectChatsShowAll.Remove(project.Id);
+            _projectChatPages.Remove(project.Id);
         }
         else
         {
@@ -64,9 +62,27 @@ public partial class Home
             ? chats.Where(chat => chat.ArchivedAt is null && !chat.IsEmpty).ToList()
             : null;
 
-    private void ToggleProjectChatsShowAll(Guid projectId)
+    private int GetOtherProjectArchivedCount(Guid projectId) =>
+        _projectChatLists.TryGetValue(projectId, out var chats) ? chats.Count(chat => chat.ArchivedAt is not null) : 0;
+
+    private int GetChatPageCount(Guid projectId) => _projectChatPages.GetValueOrDefault(projectId, ChatPageSize);
+
+    private void ShowMoreChats(Guid projectId, int visibleCount) => _projectChatPages[projectId] = visibleCount + ChatPageSize;
+
+    private void ShowFewerChats(Guid projectId) => _projectChatPages.Remove(projectId);
+
+    /// <summary>
+    /// The open chat when it lies under its project's "Show more": it stays listed, below the pager,
+    /// rather than pulling the page open, since a page that grows on every pick changes the counts.
+    /// </summary>
+    private ChatSummary? GetPagedAwayActiveChat(IReadOnlyList<ChatSummary> chats, int visibleCount) =>
+        GetActiveChatId() is { } activeChatId ? chats.Skip(visibleCount).FirstOrDefault(chat => chat.Id == activeChatId) : null;
+
+    /// <summary>The Archive row of any unfolded project: another project is opened first, since the archive works on the open one.</summary>
+    private async Task OpenProjectArchiveAsync(ProjectSummary project)
     {
-        if (!_projectChatsShowAll.Remove(projectId)) _projectChatsShowAll.Add(projectId);
+        if (_selectedProject?.Id != project.Id) await SelectProjectAsync(project);
+        if (_selectedProject?.Id == project.Id) OpenArchive(false);
     }
 
     /// <summary>Re-reads the chat lists of the unfolded projects other than the open one.</summary>

@@ -128,6 +128,17 @@ public partial class Home
         return runTitle is null ? projectName : $"{projectName} · {runTitle}";
     }
 
+    /// <summary>
+    /// Hands the live list of the project being left over to Recents. Until the next read from the
+    /// Host, Recents would otherwise fall back to what the Host said about that project before it was
+    /// opened, and its rows would jump or drop out at the moment another chat is picked.
+    /// </summary>
+    private void KeepRecentChatsOf(Guid projectId, IEnumerable<ChatSummary> chats)
+    {
+        _recentChats.RemoveAll(chat => chat.ProjectId == projectId);
+        _recentChats.AddRange(chats.Where(chat => chat.ProjectId == projectId && chat.ArchivedAt is null && !chat.IsEmpty));
+    }
+
     private async Task RefreshRecentChatsAsync()
     {
         await LoadRecentsStateAsync();

@@ -120,156 +120,9 @@
                         data-hotkey="@(isOpenProject ? "Alt+KeyN" : null)" aria-keyshortcuts="@(isOpenProject ? "Alt+N" : null)" @onclick="() => CreateChatForProjectAsync(project)"><AppIcon Name="plus" /></button>
                 <button @attributes="@(ControlHints.Attributes((isOpenProject ? "project.menu" : null), "Project menu"))" class="icon-action project-action-button project-menu-button @(_isProjectMenuOpen && isOpenProject ? "menu-open" : string.Empty)" type="button" aria-label="Project menu" @onclick="() => ToggleProjectMenuAsync(project)"><AppIcon Name="more" /></button>
             </div>
-            @if (!isOpenProject && isExpanded)
+            @if (isExpanded)
             {
-                RenderOtherProjectTree(__builder, project);
-            }
-            @if (isOpenProject && isExpanded)
-            {
-                @* One block under the open project, so its chats, archive and directories hang off a
-                   single guide line and the next project starts clearly after them. *@
-                <div class="project-tree">
-                @* Chat and branch rows carry the shared help as data attributes for the guide but no
-                   tooltip: explaining what a chat is would cover the list on every hover, while the
-                   row's own title already says something about this chat rather than the control. *@
-                <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown" @onpointerenter="OnChatListPointerEnter" @onpointerleave="OnChatListPointerLeave">
-                    @{
-                        var orderedChats = GetOrderedChats();
-                        var visibleChatCount = GetVisibleChatCount(orderedChats);
-                        var hiddenChatCount = orderedChats.Count - visibleChatCount;
-                        var hiddenChatAttention = hiddenChatCount > 0 ? CountHiddenChatsNeedingAttention(orderedChats, visibleChatCount) : 0;
-                        var pinnedChatCount = orderedChats.Count(item => item.IsPinned);
-                    }
-                    @if (pinnedChatCount == 0 && _isChatDragActive)
-                    {
-                        <div @key="PinDividerKey" class="chat-pin-divider empty" aria-hidden="true"><span>Drop here to pin</span></div>
-                    }
-                    @for (var chatIndex = 0; chatIndex < visibleChatCount; chatIndex++)
-                    {
-                        var chat = orderedChats[chatIndex];
-                        RenderChatNavRow(__builder, chat, ChatListSurface.Project);
-                        @if (_selectedChat?.Id == chat.Id && GetBranchHostSurface() == ChatListSurface.Project)
-                        {
-                            RenderChatBranchRows(__builder, chat);
-                        }
-                        @if (chatIndex == pinnedChatCount - 1)
-                        {
-                            <div @key="PinDividerKey" class="chat-pin-divider" aria-hidden="true"></div>
-                        }
-                    }
-                    @if (hiddenChatCount > 0 || _visibleChatCount > ChatPageSize)
-                    {
-                        <div class="chat-list-pager">
-                            @if (hiddenChatCount > 0)
-                            {
-                                <button class="workspace-nav-item chat-list-more" type="button" @onclick="ShowMoreChats" aria-label="@GetShowMoreChatsLabel(hiddenChatCount, hiddenChatAttention)"><span class="nav-item-label">Show @hiddenChatCount more</span>@if (hiddenChatAttention > 0) { <span class="chat-list-more-attention" title="@GetHiddenAttentionTitle(hiddenChatAttention)" aria-hidden="true">@FormatBranchCount(hiddenChatAttention)</span> }</button>
-                            }
-                            @if (_visibleChatCount > ChatPageSize)
-                            {
-                                <button class="workspace-nav-item chat-list-less" type="button" @onclick="ShowFewerChats" aria-label="Show fewer chats"><span class="nav-item-label">Less</span></button>
-                            }
-                        </div>
-                    }
-                    @if (ChatsBusy.IsVisible)
-                    {
-                        <div class="sidebar-skeleton" role="status" aria-label="Loading chats">
-                            @for (var row = 0; row < SkeletonChatRows; row++)
-                            {
-                                <div class="sidebar-skeleton-row" aria-hidden="true"><span class="sidebar-skeleton-mark"></span><span class="sidebar-skeleton-label"></span></div>
-                            }
-                        </div>
-                    }
-                    else if (orderedChats.Count == 0) { <span class="empty-hint">No active chats</span> }
-                    @if (_archiveSuggestionProject == project.Id && _archiveSuggestionCount >= 10)
-                    {
-                        <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
-                    }
-                    @* An empty archive is not worth a row; the project menu still opens it. *@
-                    @if (_chats.Count(chat => chat.ArchivedAt is not null) is > 0 and var archivedCount)
-                    {
-                        <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenArchive(false)"><AppIcon Name="archive" /><span class="nav-item-label">Archive</span><span class="directory-count" title="Archived chats">@archivedCount</span></button>
-                    }
-                </nav>
-                <div class="directory-nav-group">
-                    @if (_security.DirectoryGrants.Count == 0)
-                    {
-                        <button class="workspace-nav-item directory-empty-action" type="button" @onclick="OpenDirectoryPickerForNewGrant">
-                            <AppIcon Name="folder-plus" />
-                            <span class="nav-item-label">Add directory</span>
-                        </button>
-                    }
-                    else
-                    {
-                        <div class="directory-nav-row directory-nav-row-header">
-                            <span class="directory-row-main">
-                                <button class="icon-action directory-toggle" type="button" aria-expanded="@_directoriesExpanded" title="@(_directoriesExpanded ? "Collapse project directory grants" : "Show project directory grants")" aria-label="Toggle directories" @onclick="ToggleDirectoriesExpanded"><AppIcon Name="@(_directoriesExpanded ? "chevron-down" : "chevron-right")" /></button>
-                                <AppIcon Name="folder" />
-                                <span class="nav-item-label directory-label">Directories</span>
-                                @if (!_directoriesExpanded)
-                                {
-                                    <span class="directory-count" title="@($"{_security.DirectoryGrants.Count} project {(_security.DirectoryGrants.Count == 1 ? "directory" : "directories")} the assistant's file tools may access")">@_security.DirectoryGrants.Count</span>
-                                }
-                            </span>
-                            <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
-                        </div>
-                        @if (_directoriesExpanded)
-                        {
-                            @foreach (var directory in _security.DirectoryGrants)
-                            {
-                                <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
-                                    <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
-                                        <AppIcon Name="folder" />
-                                        <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
-                                    </button>
-                                    @* The lock always shows the access mode: open for read and write, closed for read only. *@
-                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
-                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
-                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
-                                    @if (_directoryMenuId == directory.Id)
-                                    {
-                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            @if (_isConfirmingDirectoryDelete)
-                                            {
-                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" title="Cancel removing directory access" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)"><AppIcon Name="eye" />Show in preview</button>
-                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
-                                                <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
-                                                <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
-                                                <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        }
-                    }
-                    @if (_security.DirectoryGrants.Count == 0 || _directoriesExpanded)
-                    {
-                        @* The chat's scratch space: always readable and writable, never stored as a
-                           grant, deleted with the chat. A clock in place of the folder says it is
-                           temporary; the tooltip and the menu say the rest. *@
-                        <div class="directory-nav-row directory-chat-files-row @(_security.DirectoryGrants.Count > 0 ? "directory-nav-row-child" : string.Empty)">
-                            <button class="directory-row-main directory-row-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
-                                <AppIcon Name="clock" />
-                                <span class="nav-item-label directory-name">Chat files</span>
-                            </button>
-                            <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == ChatFilesMenuId ? "menu-open" : string.Empty)" type="button" title="Chat files menu" aria-label="Chat files menu" @onclick="() => ToggleDirectoryMenu(ChatFilesMenuId)"><AppIcon Name="more" /></button>
-                            @if (_directoryMenuId == ChatFilesMenuId)
-                            {
-                                <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                    <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="eye" />Show in preview</button>
-                                    <button type="button" role="menuitem" @onclick="OpenChatFilesInFileManagerAsync"><AppIcon Name="folder" />Open in file manager</button>
-                                    <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
-                                    <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-                </div>
+                RenderProjectTree(__builder, project, isOpenProject);
             }
         }
         </div>
@@ -439,6 +292,86 @@
                 <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!_canNavigateForward)" @onclick="GoForwardAsync"><AppIcon Name="chevron-right" /></button>
             </div>
             <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
+            @if (_selectedProject is not null)
+            {
+                @* What the assistant's file tools may reach: the project's directories and the open
+                   chat's own files. They are the chat's context, not places to navigate to, so they sit
+                   beside the chat's location rather than in the sidebar's tree of chats. *@
+                var directoryCount = _security.DirectoryGrants.Count;
+                <div class="workspace-files-access">
+                    <button class="workspace-files-button @(_isFilesPopoverOpen ? "menu-open" : null)" type="button" aria-haspopup="dialog" aria-expanded="@(_isFilesPopoverOpen ? "true" : "false")"
+                            aria-controls="workspace-files-popover" title="@GetFilesButtonTitle(directoryCount)" @onclick="ToggleFilesPopover">
+                        <AppIcon Name="folder" />@if (directoryCount > 0) { <span class="workspace-files-count">@directoryCount</span> }
+                    </button>
+                    @if (_isFilesPopoverOpen)
+                    {
+                        <div class="context-menu-backdrop" @onclick="DismissFilesPopover"></div>
+                        <div id="workspace-files-popover" class="workspace-files-popover" role="dialog" aria-label="Directories and chat files">
+                            <div class="directory-nav-row directory-nav-row-header">
+                                <span class="directory-row-main"><span class="nav-item-label directory-label">Directories</span></span>
+                                <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
+                            </div>
+                            @if (directoryCount == 0)
+                            {
+                                <button class="workspace-nav-item directory-empty-action" type="button" @onclick="OpenDirectoryPickerForNewGrant">
+                                    <AppIcon Name="folder-plus" />
+                                    <span class="nav-item-label">Add a directory the assistant may use</span>
+                                </button>
+                            }
+                            @foreach (var directory in _security.DirectoryGrants)
+                            {
+                                <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
+                                    <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
+                                        <AppIcon Name="folder" />
+                                        <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                    </button>
+                                    @* The lock always shows the access mode: open for read and write, closed for read only. *@
+                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
+                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
+                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
+                                    @if (_directoryMenuId == directory.Id)
+                                    {
+                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                            @if (_isConfirmingDirectoryDelete)
+                                            {
+                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" title="Cancel removing directory access" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)"><AppIcon Name="eye" />Show in preview</button>
+                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
+                                                <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
+                                                <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
+                                                <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (_selectedChat is not null)
+                            {
+                                <span class="menu-separator" role="separator"></span>
+                                <div class="directory-nav-row directory-chat-files-row directory-nav-row-child">
+                                    <button class="directory-row-main directory-row-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
+                                        <AppIcon Name="clock" />
+                                        <span class="nav-item-label directory-name">Chat files</span>
+                                    </button>
+                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == ChatFilesMenuId ? "menu-open" : string.Empty)" type="button" title="Chat files menu" aria-label="Chat files menu" @onclick="() => ToggleDirectoryMenu(ChatFilesMenuId)"><AppIcon Name="more" /></button>
+                                    @if (_directoryMenuId == ChatFilesMenuId)
+                                    {
+                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                            <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="eye" />Show in preview</button>
+                                            <button type="button" role="menuitem" @onclick="OpenChatFilesInFileManagerAsync"><AppIcon Name="folder" />Open in file manager</button>
+                                            <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
+                                            <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
             @if (_selectedProject is not null)
             {
                 <button @attributes="@(ControlHints.Attributes("chat.widgets", (_chatWidgetsOpen ? "Hide chat widgets" : "Show chat widgets")))" class="icon-action workspace-widgets-toggle" type="button"
@@ -1155,11 +1088,6 @@
         <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
     }
 
-    @if (_directoryMenuId is not null)
-    {
-        <div class="context-menu-backdrop" @onclick="CloseContextMenus" @oncontextmenu="OnBackdropContextMenu" @oncontextmenu:preventDefault="true"></div>
-    }
-
     @* A branch row's menu sits in the same scrolling list as a chat's, so it needs the same
        full-screen backdrop: without it, a press anywhere outside the menu left it open. *@
     @if (_branchMenuId is not null)
@@ -1563,42 +1491,91 @@ else if (_guideInvitation is { } guideInvitation)
     }
 
     /// <summary>
-    /// The list under an unfolded project that is not the open one: its latest chats, the first few
-    /// and the rest on request, hanging off the same guide line as the open project's tree.
+    /// The list under an unfolded project, drawn the same for the open project and any other: its
+    /// chats a page at a time, then its archive. Opening a project or a chat changes nothing here but
+    /// the highlight and the open chat's branches. The open project's list is live in <c>_chats</c>
+    /// and takes drags; another project lists its chats as last read from the Host.
     /// </summary>
-    private void RenderOtherProjectTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ProjectSummary project)
+    private void RenderProjectTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ProjectSummary project, bool isOpen)
     {
-        var chats = GetOtherProjectChats(project.Id);
-        var showAll = _projectChatsShowAll.Contains(project.Id);
+        var surface = isOpen ? ChatListSurface.Project : ChatListSurface.OtherProject;
+        var loadedChats = isOpen ? GetOrderedChats() : GetOtherProjectChats(project.Id);
+        var isLoading = isOpen ? ChatsBusy.IsVisible : loadedChats is null;
+        var chats = loadedChats ?? [];
+        var pageCount = GetChatPageCount(project.Id);
+        var visibleChatCount = Math.Min(pageCount, chats.Count);
+        var hiddenChatCount = chats.Count - visibleChatCount;
+        var hiddenChatAttention = hiddenChatCount > 0 ? CountHiddenChatsNeedingAttention(chats, visibleChatCount) : 0;
+        var pinnedChatCount = chats.Count(item => item.IsPinned);
+        var pagedAwayChat = isOpen ? GetPagedAwayActiveChat(chats, visibleChatCount) : null;
+        var archivedCount = isOpen ? _chats.Count(chat => chat.ArchivedAt is not null) : GetOtherProjectArchivedCount(project.Id);
+        @* One block under the project, so its chats and archive hang off a single guide line and the
+           next project starts clearly after them. Chat and branch rows carry the shared help as data
+           attributes for the guide but no tooltip: explaining what a chat is would cover the list on
+           every hover, while the row's own title already says something about this chat. *@
         <div class="project-tree">
-            <nav class="workspace-chat-list" aria-label="Chats in @project.Name">
-                @if (chats is null)
+            <nav class="workspace-chat-list" aria-label="Chats in @project.Name" @onkeydown="OnChatListKeyDown"
+                 @onpointerenter="args => { if (isOpen) OnChatListPointerEnter(args); }"
+                 @onpointerleave="args => isOpen ? OnChatListPointerLeave(args) : Task.CompletedTask">
+                @if (isOpen && pinnedChatCount == 0 && _isChatDragActive)
+                {
+                    <div @key="PinDividerKey" class="chat-pin-divider empty" aria-hidden="true"><span>Drop here to pin</span></div>
+                }
+                @for (var chatIndex = 0; chatIndex < visibleChatCount; chatIndex++)
+                {
+                    var chat = chats[chatIndex];
+                    RenderChatNavRow(__builder, chat, surface);
+                    @if (isOpen && _selectedChat?.Id == chat.Id && GetBranchHostSurface() == ChatListSurface.Project)
+                    {
+                        RenderChatBranchRows(__builder, chat);
+                    }
+                    @if (chatIndex == pinnedChatCount - 1)
+                    {
+                        <div @key="PinDividerKey" class="chat-pin-divider" aria-hidden="true"></div>
+                    }
+                }
+                @if (hiddenChatCount > 0 || pageCount > ChatPageSize)
+                {
+                    <div class="chat-list-pager">
+                        @if (hiddenChatCount > 0)
+                        {
+                            <button class="workspace-nav-item chat-list-more" type="button" @onclick="() => ShowMoreChats(project.Id, visibleChatCount)" aria-label="@GetShowMoreChatsLabel(hiddenChatCount, hiddenChatAttention)"><span class="nav-item-label">Show @hiddenChatCount more</span>@if (hiddenChatAttention > 0) { <span class="chat-list-more-attention" title="@GetHiddenAttentionTitle(hiddenChatAttention)" aria-hidden="true">@FormatBranchCount(hiddenChatAttention)</span> }</button>
+                        }
+                        @if (pageCount > ChatPageSize)
+                        {
+                            <button class="workspace-nav-item chat-list-less" type="button" @onclick="() => ShowFewerChats(project.Id)" aria-label="Show fewer chats"><span class="nav-item-label">Less</span></button>
+                        }
+                    </div>
+                }
+                @if (pagedAwayChat is not null)
+                {
+                    @* The open chat under "Show more" is listed once more below the pager instead of
+                       pulling the page open, so picking a chat never changes the counts above. *@
+                    <div @key="PagedAwayDividerKey" class="chat-list-current-divider" aria-hidden="true"></div>
+                    RenderChatNavRow(__builder, pagedAwayChat, surface);
+                    @if (_selectedChat?.Id == pagedAwayChat.Id && GetBranchHostSurface() == ChatListSurface.Project)
+                    {
+                        RenderChatBranchRows(__builder, pagedAwayChat);
+                    }
+                }
+                @if (isLoading)
                 {
                     <div class="sidebar-skeleton" role="status" aria-label="Loading chats">
-                        @for (var row = 0; row < 2; row++)
+                        @for (var row = 0; row < (isOpen ? SkeletonChatRows : 2); row++)
                         {
                             <div class="sidebar-skeleton-row" aria-hidden="true"><span class="sidebar-skeleton-mark"></span><span class="sidebar-skeleton-label"></span></div>
                         }
                     </div>
                 }
-                else if (chats.Count == 0)
+                else if (chats.Count == 0) { <span class="empty-hint">No active chats</span> }
+                @if (isOpen && _archiveSuggestionProject == project.Id && _archiveSuggestionCount >= 10)
                 {
-                    <span class="empty-hint">No active chats</span>
+                    <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
                 }
-                else
+                @* An empty archive is not worth a row; the project menu still opens it. *@
+                @if (archivedCount > 0)
                 {
-                    @foreach (var chat in showAll ? chats : chats.Take(OtherProjectChatsShown))
-                    {
-                        RenderChatNavRow(__builder, chat, ChatListSurface.OtherProject);
-                    }
-                    @if (chats.Count > OtherProjectChatsShown)
-                    {
-                        <div class="chat-list-pager">
-                            <button class="workspace-nav-item chat-list-more" type="button" aria-expanded="@(showAll ? "true" : "false")" @onclick="() => ToggleProjectChatsShowAll(project.Id)">
-                                <span class="nav-item-label">@(showAll ? "Show less" : $"Show {chats.Count - OtherProjectChatsShown} more")</span>
-                            </button>
-                        </div>
-                    }
+                    <button class="workspace-nav-item archive-nav-item" type="button" @onclick="() => OpenProjectArchiveAsync(project)"><AppIcon Name="archive" /><span class="nav-item-label">Archive</span><span class="directory-count" title="Archived chats">@archivedCount</span></button>
                 }
             </nav>
         </div>
@@ -1799,6 +1776,7 @@ else if (_guideInvitation is { } guideInvitation)
     private bool _playChatListMove;
     private Guid? _focusChatAfterRender;
     private static readonly object PinDividerKey = new();
+    private static readonly object PagedAwayDividerKey = new();
     private string _sidebarAnnouncement = string.Empty;
     private string? _globalSection;
     private Guid? _connectionToEdit;
@@ -1834,7 +1812,7 @@ else if (_guideInvitation is { } guideInvitation)
     private int _projectSkillCount;
     private ProjectEditor _editor = new();
     private ProjectSecurityEditor _security = new();
-    private bool _directoriesExpanded;
+    private bool _isFilesPopoverOpen;
     // The picker owns directory paths now, both for a new grant (null) and for changing an existing
     // one (its id). A grant is only added once a directory comes back, so cancelling leaves nothing
     // half-made in the sidebar.
@@ -3276,6 +3254,7 @@ else if (_guideInvitation is { } guideInvitation)
         _isConfirmingChatDelete = false;
         _directoryMenuId = null;
         _isConfirmingDirectoryDelete = false;
+        _isFilesPopoverOpen = false;
         SetJustArrivedLeaf(null);
         _wasGeneratingByBranch.Clear();
         _error = null;
@@ -3291,11 +3270,12 @@ else if (_guideInvitation is { } guideInvitation)
         if (_defaultConnectionId is { } defaultId) SelectGlobalConnection(defaultId);
         else if (GetDefaultConnection() is { } defaultConnection) SelectGlobalConnection(defaultConnection.Id);
 
-        _chatPagingProjectId = project.Id;
-        _visibleChatCount = ChatPageSize;
         // The project left behind may stay unfolded: it lists the chats it had until the next read.
         if (_chats.FirstOrDefault()?.ProjectId is { } previousProjectId && previousProjectId != project.Id)
+        {
             _projectChatLists[previousProjectId] = [.. _chats];
+            KeepRecentChatsOf(previousProjectId, _chats);
+        }
         // A chat picked from Recents or Upcoming opens its project without unfolding it.
         if (unfold) ExpandProject(project.Id);
         _chats.Clear();
@@ -4151,7 +4131,26 @@ else if (_guideInvitation is { } guideInvitation)
         return "";
     }
 
-    private void ToggleDirectoriesExpanded() => _directoriesExpanded = !_directoriesExpanded;
+    private void ToggleFilesPopover()
+    {
+        var open = !_isFilesPopoverOpen;
+        CloseContextMenus();
+        _isFilesPopoverOpen = open;
+    }
+
+    // A press outside the popover closes an open directory menu first, then the popover itself.
+    private void DismissFilesPopover()
+    {
+        if (_directoryMenuId is not null) CloseDirectoryMenu();
+        else _isFilesPopoverOpen = false;
+    }
+
+    private static string GetFilesButtonTitle(int directoryCount) => directoryCount switch
+    {
+        0 => "Directories and chat files",
+        1 => "1 project directory and the chat's files",
+        _ => $"{directoryCount} project directories and the chat's files"
+    };
 
     private void OpenDirectoryPickerForNewGrant() => OpenDirectoryPicker(null, WorkspaceStateService.LastBrowsedDirectory);
 
@@ -4217,7 +4216,6 @@ else if (_guideInvitation is { } guideInvitation)
             DisplayName = GetDirectoryDisplayNameSuggestion(path)
         };
         _security.DirectoryGrants.Add(grant);
-        _directoriesExpanded = true;
         return await PersistDirectoryGrantsAsync(successMessage);
     }
 
@@ -4242,7 +4240,13 @@ else if (_guideInvitation is { } guideInvitation)
 
     private void ConfirmDirectoryDelete() => _isConfirmingDirectoryDelete = true;
 
-    private void CancelDirectoryDelete() => CloseContextMenus();
+    private void CancelDirectoryDelete() => CloseDirectoryMenu();
+
+    private void CloseDirectoryMenu()
+    {
+        _directoryMenuId = null;
+        _isConfirmingDirectoryDelete = false;
+    }
 
     private async Task ToggleDirectoryModeAsync(DirectoryGrantEditor directory)
     {
@@ -4253,7 +4257,7 @@ else if (_guideInvitation is { } guideInvitation)
     private async Task RemoveDirectoryGrantAsync(Guid id)
     {
         _security.DirectoryGrants.RemoveAll(item => item.Id == id);
-        CloseContextMenus();
+        CloseDirectoryMenu();
         await PersistDirectoryGrantsAsync();
     }
 
@@ -5195,12 +5199,6 @@ else if (_guideInvitation is { } guideInvitation)
         var chats = await ChatHistoryApi.ListAsync(projectId, CancellationToken.None);
         ChatsBusy.End();
         if (_selectedProject?.Id != projectId) return;
-        if (_chatPagingProjectId != projectId)
-        {
-            _chatPagingProjectId = projectId;
-            _visibleChatCount = ChatPageSize;
-        }
-
         _deferredChats = null;
         _chats.Clear();
         _chats.AddRange(chats);
@@ -6002,38 +6000,14 @@ else if (_guideInvitation is { } guideInvitation)
     private List<ChatSummary> GetOrderedChats() =>
         _chats.Where(chat => chat.ArchivedAt is null && (!chat.IsEmpty || chat.Id == GetActiveChatId())).OrderByDescending(chat => chat.IsPinned).ToList();
 
-    // The sidebar shows one page of chats at a time: a long-lived project accumulates dozens of
-    // them and the directory/settings groups below the list get pushed off-screen otherwise.
+    // The sidebar shows one page of a project's chats at a time, the same for the open project and
+    // any other unfolded one, so a long-lived project does not push everything under it off-screen.
     private const int ChatPageSize = 10;
-    private int _visibleChatCount = ChatPageSize;
-    // The project whose chats _visibleChatCount belongs to, so a background refresh of the same
-    // project keeps the pages the user opened while switching projects starts over at one page.
-    private Guid? _chatPagingProjectId;
-
-    // The open chat is never paged away: it carries the branch tree and the selection highlight,
-    // and losing it from the list would make the sidebar disagree with the transcript on screen.
-    private int GetVisibleChatCount(IReadOnlyList<ChatSummary> orderedChats)
-    {
-        var count = Math.Min(_visibleChatCount, orderedChats.Count);
-        if (GetActiveChatId() is { } activeChatId)
-        {
-            for (var index = count; index < orderedChats.Count; index++)
-            {
-                if (orderedChats[index].Id == activeChatId) return index + 1;
-            }
-        }
-
-        return count;
-    }
 
     // A run that finished (or wants approval) below the fold would otherwise be invisible, so the
     // count rides on the "Show more" button the same way the branch count rides on a chat row.
     private int CountHiddenChatsNeedingAttention(IReadOnlyList<ChatSummary> orderedChats, int visibleChatCount) =>
         orderedChats.Skip(visibleChatCount).Count(chat => RunState.Runs.Values.Any(run => run.ChatId == chat.Id && IsVisibleRun(run)));
-
-    private void ShowMoreChats() => _visibleChatCount = GetVisibleChatCount(GetOrderedChats()) + ChatPageSize;
-
-    private void ShowFewerChats() => _visibleChatCount = ChatPageSize;
 
     private static string GetShowMoreChatsLabel(int hiddenChatCount, int hiddenChatAttention) =>
         hiddenChatAttention > 0
@@ -6225,6 +6199,7 @@ else if (_guideInvitation is { } guideInvitation)
     private void CloseContextMenus()
     {
         CloseReviewSubmenu();
+        _isFilesPopoverOpen = false;
         _fileLinkMenu = null;
         _isProjectMenuOpen = false;
         _isConfirmingProjectDelete = false;
@@ -6308,7 +6283,11 @@ else if (_guideInvitation is { } guideInvitation)
         {
             _messageBranchMenuId = null;
         }
-        else if (_isProjectMenuOpen || _chatMenuId is not null || _branchMenuId is not null || _directoryMenuId is not null || _fileLinkMenu is not null)
+        else if (_directoryMenuId is not null && _isFilesPopoverOpen)
+        {
+            CloseDirectoryMenu();
+        }
+        else if (_isProjectMenuOpen || _chatMenuId is not null || _branchMenuId is not null || _directoryMenuId is not null || _fileLinkMenu is not null || _isFilesPopoverOpen)
         {
             CloseContextMenus();
         }
@@ -8132,7 +8111,6 @@ else if (_guideInvitation is { } guideInvitation)
                 Recursive = true
             });
         }
-        _directoriesExpanded = true;
         return await PersistDirectoryGrantsAsync(announce: false);
     }
 

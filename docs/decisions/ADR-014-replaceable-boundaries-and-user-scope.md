@@ -196,18 +196,20 @@ data root that was not moved shows an empty installation and leaves the old entr
 | A run worker (`ChatRunDispatcher` `Task.Run(ProcessAsync)`) | the `UserId` the runtime captured when it was created; the worker enters it explicitly instead of relying on execution-context flow |
 | Subtask reports, skill runs, reply suggestions | the owning runtime's `UserId`, entered explicitly |
 | `ChatScheduler` loop | each user from `IUserDirectory`, one scope per pass |
-| In-process app tools (ADR-007) | the `UserId` captured when the tool session is created, entered for each call; the MCP transport loop does not carry the run's execution context |
+| In-process app tools (ADR-007) | the `UserId` captured when the tool session is opened; the server's message loop is started in that scope, so every call it serves acts for that user whichever flow sends it |
 
-`ChatRunState` gains `UserId`. The run file already lives under the user's directory, so recovery knows
-the user from where it read the file; the property exists so that a runtime never has to ask the
-ambient context again once it has started.
+The dispatcher's runtime records the `UserId` it was created for. `ChatRunState` itself does not carry
+it: the run file already lives under the user's directory, so recovery knows the user from where it
+read the file, and keeping the user next to the worker that needs it leaves the domain object and its
+serialization unchanged. Reply drafts, kept in memory by chat and branch, record their user too and are
+served only to it.
 
 ### Things that are global today and must be filtered
 
 - **Run registry.** The dispatcher's runtimes are keyed by project, chat and branch ids, which are
   globally unique, so no two users collide — but an endpoint or tool that reads run state straight from
   the registry by id, or lists every run (`AppRunsTool`), must check ownership through the user's
-  repository first or filter by `ChatRunState.UserId`. Each such site is listed and covered by a test.
+  repository first or filter by the runtime's user. Each such site is listed and covered by a test.
 - **Change and navigation signals.** `IAppDataChangeSignal.Notify()` and `IAppNavigationSignal` record the
   current user with each signal, and a subscription yields only its own user's signals.
 - **Logs.** Every log scope carries `UserId`.
@@ -224,7 +226,8 @@ Each increment is a commit that builds and passes `dotnet run --project build --
    each user's scope here already, because without it the Host could not recover its runs once storage
    depends on the user. In-memory caches of user data are keyed by path, so one user's entry cannot
    answer another's read.
-3. Explicit scope at the background entry points; `ChatRunState.UserId`; tool sessions capture the user.
+3. Explicit scope at the background entry points; the runtime records its user; tool sessions capture the
+   user; the scheduler passes over every user.
 4. User-aware signals, the run-registry ownership checks, and `UserId` in log scopes.
 5. Documentation: [Storage](../04-storage.md) layout, [Architecture](../02-architecture.md),
    [Concurrent chat runs](../14-concurrent-chat-runs.md), and

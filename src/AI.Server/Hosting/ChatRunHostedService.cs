@@ -28,8 +28,8 @@ internal sealed class ChatRunHostedService(IChatRunDispatcher dispatcher, IChatK
         _startupTask = Task.Run(
             async () =>
             {
-                // Recovery reads each user's own runs, and whatever a chat kind starts here keeps
-                // the scope it was started in.
+                // Recovery and a chat kind's start-up work read one user's data at a time, so both
+                // run once per user, in that user's scope.
                 foreach (var user in await users.ListAsync(_startupCancellation.Token))
                 {
                     using var scope = userScope.Enter(user);

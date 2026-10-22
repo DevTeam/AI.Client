@@ -8,9 +8,11 @@ using AI.Application.Projects;
 using AI.Application.Runs;
 using AI.Application.Settings;
 using AI.Application.Skills;
+using AI.Application.Users;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
+using AI.Domain.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
@@ -24,6 +26,7 @@ public class ChatReplySuggestSkillTests
     private readonly Guid _questionId = Guid.CreateVersion7();
     private readonly Guid _answerId = Guid.CreateVersion7();
     private readonly List<ChatCompletionRequest> _requests = [];
+    private readonly AmbientUserContext _users = new();
 
     [Fact]
     public async Task ShouldDraftReplyToTheLastAnswerOfTheBranch()
@@ -69,7 +72,8 @@ public class ChatReplySuggestSkillTests
     [Fact]
     public async Task ShouldServeTheDraftOnlyForTheAnswerItWasWrittenFor()
     {
-        await using var suggestions = new ChatReplySuggestions(CreateRunner("Run them."));
+        using var scope = _users.Enter(UserId.Local);
+        await using var suggestions = new ChatReplySuggestions(CreateRunner("Run them."), _users, _users);
 
         suggestions.Start(_projectId, _chatId, _chatId, _answerId);
         var draft = await suggestions.GetAsync(_projectId, _chatId, _chatId, _answerId, false, CancellationToken.None);
@@ -88,7 +92,8 @@ public class ChatReplySuggestSkillTests
     [Fact]
     public async Task ShouldWriteNothingUntilAskedWhenNoDraftWasStarted()
     {
-        await using var suggestions = new ChatReplySuggestions(CreateRunner("Run them."));
+        using var scope = _users.Enter(UserId.Local);
+        await using var suggestions = new ChatReplySuggestions(CreateRunner("Run them."), _users, _users);
 
         var waited = await suggestions.GetAsync(_projectId, _chatId, _chatId, _answerId, false, CancellationToken.None);
         _requests.ShouldBeEmpty();
@@ -96,6 +101,24 @@ public class ChatReplySuggestSkillTests
 
         waited.ShouldBeNull();
         asked!.Text.ShouldBe("Run them.");
+    }
+
+    [Fact]
+    public async Task ShouldServeTheDraftOnlyToTheUserItWasWrittenFor()
+    {
+        await using var suggestions = new ChatReplySuggestions(CreateRunner("Run them."), _users, _users);
+        using (_users.Enter(UserId.Local))
+        {
+            suggestions.Start(_projectId, _chatId, _chatId, _answerId);
+            (await suggestions.GetAsync(_projectId, _chatId, _chatId, _answerId, false, CancellationToken.None))!
+                .Text.ShouldBe("Run them.");
+        }
+
+        using (_users.Enter(new UserId(Guid.Parse("019f0000-0000-7000-8000-000000000001"))))
+        {
+            (await suggestions.GetAsync(_projectId, _chatId, _chatId, _answerId, false, CancellationToken.None))
+                .ShouldBeNull();
+        }
     }
 
     private SkillRunner CreateRunner(string answer)

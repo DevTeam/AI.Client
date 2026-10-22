@@ -104,6 +104,27 @@ public sealed class AmbientUserContextTests
     }
 
     [Fact]
+    public async Task RunWorksForTheGivenUserWhicheverFlowStartsIt()
+    {
+        var context = new AmbientUserContext();
+        using var scope = context.Enter(UserId.Local);
+
+        var seen = await context.Run(Other, async () =>
+        {
+            await Task.Yield();
+            return context.Current;
+        });
+        await context.Run(Other, () =>
+        {
+            context.Current.ShouldBe(Other);
+            return Task.CompletedTask;
+        });
+
+        seen.ShouldBe(Other);
+        context.Current.ShouldBe(UserId.Local);
+    }
+
+    [Fact]
     public async Task LocalUserDirectoryListsOnlyTheLocalUser()
     {
         var users = await new LocalUserDirectory().ListAsync(TestContext.Current.CancellationToken);

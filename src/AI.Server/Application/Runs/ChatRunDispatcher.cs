@@ -22,6 +22,8 @@ using Contracts.Usage;
 using Domain.Runs;
 using Domain.Chats;
 using AI.Application.Schedules;
+using AI.Application.Users;
+using Domain.Users;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
@@ -37,7 +39,7 @@ public sealed class ChatRunDispatcher(
     IHistoryCheckpointService historyCheckpoints, IConnectionChoice connectionChoice,
     Func<IChatKindPolicyRegistry> kindPolicies, IModelMessageHeader headers, ITeamStatusBrief teamStatus,
     IChatTemporaryDirectory temporaryDirectory, IChatBranchSettingsResolver branchSettings,
-    IChatScheduleStore scheduleStore, ICommandRuleService commandRules)
+    IChatScheduleStore scheduleStore, ICommandRuleService commandRules, IUserContext users, IUserScope userScope)
     : IChatRunDispatcher, IUserPromptBroker, IAsyncDisposable
 {
     private const int RecentMessageCapacity = 8;
@@ -98,7 +100,7 @@ public sealed class ChatRunDispatcher(
                 var revision = state.Revision;
                 state.RecoverAfterRestart(recoveredAt, UnansweredToolName(chat, state.BranchId));
                 if (state.Revision != revision) await repository.SaveAsync(state, cancellationToken);
-                var runtime = new Runtime(state) { Snapshot = Snapshot(state, chat) };
+                var runtime = new Runtime(state, users.Current) { Snapshot = Snapshot(state, chat) };
                 _runtimes.TryAdd(new RunKey(projectId, chatId, state.BranchId), runtime);
             }
         }
@@ -605,7 +607,7 @@ public sealed class ChatRunDispatcher(
         var key = new RunKey(projectId, chatId, branchId);
         if (_runtimes.TryGetValue(key, out var runtime)) return runtime;
         var state = await repository.GetAsync(projectId, chatId, branchId, token) ?? new ChatRunState(projectId, chatId, branchId);
-        runtime = new Runtime(state) { Snapshot = Snapshot(state, chat) };
+        runtime = new Runtime(state, users.Current) { Snapshot = Snapshot(state, chat) };
         return _runtimes.GetOrAdd(key, runtime);
     }
 
@@ -616,7 +618,7 @@ public sealed class ChatRunDispatcher(
             if (_updating) return;
             if (_shutdown.IsCancellationRequested || runtime.Worker is { IsCompleted: false }
                 || runtime.State.Queue.Count == 0 || runtime.State.Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed) return;
-            runtime.Worker = Task.Run(() => ProcessAsync(runtime));
+            runtime.Worker = userScope.Run(runtime.User, () => ProcessAsync(runtime));
         }
     }
 
@@ -828,7 +830,7 @@ public sealed class ChatRunDispatcher(
                 if (suggestTitle || answeredHead is not null)
                 {
                     var automation = (await settings.LoadAsync(token)).ChatAutomation ?? new ChatAutomationSettings();
-                    if (suggestTitle && automation.AutoTitle) StartTitleSkill(runtime.State.ProjectId, runtime.State.ChatId);
+                    if (suggestTitle && automation.AutoTitle) StartTitleSkill(runtime.User, runtime.State.ProjectId, runtime.State.ChatId);
                     if (answeredHead is { } head && automation.SuggestReplies)
                         replySuggestions.Start(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, head);
                 }
@@ -868,7 +870,7 @@ public sealed class ChatRunDispatcher(
                 if (!_shutdown.IsCancellationRequested)
                 {
                     var failure = Describe(error);
-                    _ = Task.Run(() => ReportToLeadAsync(runtime,
+                    _ = userScope.Run(runtime.User, () => ReportToLeadAsync(runtime,
                         $"Failed: {failure}\nThe branch is stopped until someone retries or discards its turn.",
                         _shutdown.Token));
                 }
@@ -930,14 +932,14 @@ public sealed class ChatRunDispatcher(
         }
     }
 
-    private void StartTitleSkill(Guid projectId, Guid chatId)
+    private void StartTitleSkill(UserId user, Guid projectId, Guid chatId)
     {
         lock (_titleTasksGate)
         {
             if (_updating || _shutdown.IsCancellationRequested || _titleTasks.ContainsKey(chatId)) return;
             var invocation = new SkillInvocation("chat-rename", projectId,
                 System.Text.Json.JsonSerializer.SerializeToElement(new { chat_id = chatId, mode = "automatic" }), chatId);
-            var task = Task.Run(() => skillRunner.RunAsync(invocation, _shutdown.Token));
+            var task = userScope.Run(user, () => skillRunner.RunAsync(invocation, _shutdown.Token));
             _titleTasks[chatId] = task;
             _ = task.ContinueWith(_ =>
             {
@@ -1855,10 +1857,15 @@ public sealed class ChatRunDispatcher(
         state.Status, state.StreamingContent, state.Error, state.FailureKind, state.HasUnreadResponse, state.Revision,
         state.Queue.ToArray(), state.Operations.ToArray(), state.Interruption);
 
-    private sealed class Runtime(ChatRunState state)
+    private sealed class Runtime(ChatRunState state, UserId user)
     {
         private readonly Queue<ChatMessageAppend> _recentMessages = new();
         public ChatRunState State { get; set; } = state;
+        /// <summary>
+        /// Whose run this is, fixed when the runtime is created: its worker and reports run for this
+        /// user whichever flow happens to start them.
+        /// </summary>
+        public UserId User { get; } = user;
         // ReSharper disable once MemberHidesStaticFromOuterClass
         public ChatRunSnapshot Snapshot { get; set; } = ChatRunDispatcher.Snapshot(state, null);
         public Guid? ToolHead { get; set; }

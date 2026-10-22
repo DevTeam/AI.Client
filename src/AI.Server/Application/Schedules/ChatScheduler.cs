@@ -2,6 +2,7 @@ namespace AI.Application.Schedules;
 
 using AI.Application.Chats;
 using AI.Application.Projects;
+using AI.Application.Users;
 using AI.Contracts.Chats;
 using AI.Contracts.Schedules;
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,8 @@ public sealed class ChatScheduler(
     IChatScheduleStore store,
     IScheduledChatPass pass,
     IClock clock,
+    IUserDirectory users,
+    IUserScope userScope,
     ILogger<ChatScheduler> logger) : IChatScheduler, IDisposable
 {
     internal static readonly TimeSpan Heartbeat = TimeSpan.FromSeconds(30);
@@ -102,6 +105,10 @@ public sealed class ChatScheduler(
         var now = clock.UtcNow;
         var wake = now + Heartbeat;
         var seen = new HashSet<(Guid ChatId, Guid BranchId)>();
+        // Every user's schedules, each read and run in its owner's scope.
+        foreach (var user in await users.ListAsync(token))
+        {
+        using var scope = userScope.Enter(user);
         foreach (var project in await projects.ListAsync(token))
         {
         var summaries = (await chats.ListAsync(project.Id, token)).ToDictionary(chat => chat.Id);
@@ -136,6 +143,7 @@ public sealed class ChatScheduler(
                 // One broken chat must not keep the others from running.
                 PassFailed(logger, owner.ChatId, error);
             }
+        }
         }
         }
         foreach (var gone in _watched.Keys.Where(id => !seen.Contains(id)).ToArray()) _watched.Remove(gone);

@@ -2,6 +2,7 @@ namespace AI.Infrastructure.Tools;
 
 using AI.Mcp.App;
 using Application.Tools;
+using Application.Users;
 using Contracts.Settings;
 using Contracts.Tools;
 using ModelContextProtocol.Client;
@@ -16,7 +17,9 @@ using System.IO.Pipelines;
 /// </summary>
 public sealed class AppToolSessionFactory(
     IAppMcpServerHost host,
-    IToolResultModelProjector modelProjector) : IMcpServerConnection
+    IToolResultModelProjector modelProjector,
+    IUserContext users,
+    IUserScope userScope) : IMcpServerConnection
 {
     public Guid ServerId => AppMcpServer.Id;
 
@@ -35,8 +38,10 @@ public sealed class AppToolSessionFactory(
         var server = host.Create(new StreamServerTransport(
             toServer.Reader.AsStream(), toClient.Writer.AsStream(), AppMcpServerHost.Name), run);
         // The server's message loop lives as long as the session; it ends when the transport is
-        // closed by disposing the server, which the session does on its way out.
-        var serving = server.RunAsync(CancellationToken.None);
+        // closed by disposing the server, which the session does on its way out. It is started in
+        // the scope of the user who opened the session, so every tool call it serves acts for that
+        // user and no one else.
+        var serving = userScope.Run(users.Current, () => server.RunAsync(CancellationToken.None));
         var client = await McpClient.CreateAsync(
             new StreamClientTransport(toServer.Writer.AsStream(), toClient.Reader.AsStream()),
             cancellationToken: cancellationToken);

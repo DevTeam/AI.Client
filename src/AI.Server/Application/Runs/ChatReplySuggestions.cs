@@ -3,6 +3,8 @@ namespace AI.Application.Runs;
 using System.Text.Json;
 using AI.Application.Skills;
 using AI.Contracts.Runs;
+using AI.Application.Users;
+using AI.Domain.Users;
 
 /// <summary>
 /// Drafts of the user's next message, one per branch, kept in memory for the answer they were
@@ -22,7 +24,8 @@ public interface IChatReplySuggestions
         CancellationToken cancellationToken);
 }
 
-public sealed class ChatReplySuggestions(ISkillRunner skills) : IChatReplySuggestions, IAsyncDisposable
+public sealed class ChatReplySuggestions(ISkillRunner skills, IUserContext users, IUserScope userScope)
+    : IChatReplySuggestions, IAsyncDisposable
 {
     // Only the branches someone recently got an answer in matter; older drafts are dropped first.
     private const int Capacity = 64;
@@ -31,7 +34,8 @@ public sealed class ChatReplySuggestions(ISkillRunner skills) : IChatReplySugges
     private readonly CancellationTokenSource _shutdown = new();
     private long _sequence;
 
-    private sealed record Entry(Guid ProjectId, Guid LeafMessageId, Task<string?> Text, long Sequence);
+    // The user is part of what a draft is for: another user naming the same ids gets none of it.
+    private sealed record Entry(UserId User, Guid ProjectId, Guid LeafMessageId, Task<string?> Text, long Sequence);
 
     public void Start(Guid projectId, Guid chatId, Guid branchId, Guid leafMessageId) =>
         Ensure(projectId, chatId, branchId, leafMessageId, retry: false);
@@ -42,7 +46,8 @@ public sealed class ChatReplySuggestions(ISkillRunner skills) : IChatReplySugges
         Task<string?>? task;
         lock (_gate)
             task = _entries.TryGetValue((chatId, branchId), out var entry)
-                && entry.ProjectId == projectId && entry.LeafMessageId == leafMessageId ? entry.Text : null;
+                && entry.User == users.Current && entry.ProjectId == projectId && entry.LeafMessageId == leafMessageId
+                ? entry.Text : null;
         if (generate) task = Ensure(projectId, chatId, branchId, leafMessageId, retry: true);
         if (task is null) return null;
         var text = await task.WaitAsync(cancellationToken);
@@ -55,13 +60,14 @@ public sealed class ChatReplySuggestions(ISkillRunner skills) : IChatReplySugges
         {
             if (_shutdown.IsCancellationRequested) return null;
             var key = (chatId, branchId);
+            var user = users.Current;
             // A draft that came back empty or failed is written again only when someone asks for it.
-            if (_entries.TryGetValue(key, out var existing) && existing.ProjectId == projectId
+            if (_entries.TryGetValue(key, out var existing) && existing.User == user && existing.ProjectId == projectId
                 && existing.LeafMessageId == leafMessageId
                 && !(retry && existing.Text is { IsCompleted: true, Result: null }))
                 return existing.Text;
-            var task = Task.Run(() => DraftAsync(projectId, chatId, branchId, leafMessageId, _shutdown.Token));
-            _entries[key] = new Entry(projectId, leafMessageId, task, ++_sequence);
+            var task = userScope.Run(user, () => DraftAsync(projectId, chatId, branchId, leafMessageId, _shutdown.Token));
+            _entries[key] = new Entry(user, projectId, leafMessageId, task, ++_sequence);
             if (_entries.Count > Capacity) _entries.Remove(_entries.MinBy(item => item.Value.Sequence).Key);
             return task;
         }

@@ -44,6 +44,6 @@ public sealed class DefaultToolSessionFactoryTests
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([], [], [], null, sandbox));
         return new DefaultToolSessionFactory(Mock.Of<IToolResultModelProjector>(),
-            Mock.Of<IChatTemporaryDirectory>(), settings.Object);
+            Mock.Of<IChatTemporaryDirectory>(), settings.Object, new LocalToolEnvironment());
     }
 }

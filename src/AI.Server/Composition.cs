@@ -117,7 +117,7 @@ internal sealed class Composition
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
                 AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
-                ExternalToolSessionFactory, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
+                ExternalToolSessionFactory, LocalToolEnvironment, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,

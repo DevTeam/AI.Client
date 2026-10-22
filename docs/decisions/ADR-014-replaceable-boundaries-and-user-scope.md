@@ -1,7 +1,7 @@
 # ADR-014: Replaceable boundaries and the user scope
 
-Status: Accepted. Step 1 is implemented (2026-10-22); steps 2–6 are the agreed direction and get their
-own plans when they start.
+Status: Accepted. Steps 1–6 are implemented or settled (2026-10-22); each step's section says what was
+done and what was left for later, the database provider among it.
 
 Date: 2026-10-22
 
@@ -328,6 +328,47 @@ refused, earlier messages kept and each readable alone, deletes needing the curr
 per project) runs against both stores the port already has, the JSON documents and the Host-lifetime
 store. `ProjectRepositoryContractTests` covers the project port the same way. A database store is done
 when it passes these suites, plus the blob store's for any bytes it keeps.
+
+## Step 5: settings levels
+
+Settled on 2026-10-22, without new code. The levels the direction above names already exist, each
+resolved in one place:
+
+| Level | Holds | Resolved by |
+| --- | --- | --- |
+| Instance | nothing yet | — |
+| User | connections, MCP servers, tool policies, sandbox, chat automation, command rules (`settings.json`, `command-rules.json` under the user's directory since step 1) | `IGlobalSettingsRepository` |
+| Project | connection, directory grants, MCP bindings and tool policies, instructions | `IProjectService` |
+| Chat | connection, reasoning effort, approval mode, tool policies | `IChatBranchSettingsResolver`, falling back from the branch |
+| Branch | the same, inherited along the branch's ancestry | `IChatBranchSettingsResolver` (`Effective` also names the level each value came from) |
+
+The connection a run uses is the first enabled one of branch → chat → project → the user's default
+(`IConnectionChoice`); the reasoning effort is branch → chat → the connection's own.
+
+Rules for a new setting: it is stored by the level that owns it; a value a branch may override goes
+through `IChatBranchSettingsResolver`, so `Effective` can say where it came from; nothing reads a lower
+level and then quietly looks further up on its own.
+
+An instance level is added when the server profile needs something an administrator sets for every
+user — allowed connections, say. It would be read-only to users, come from the Host's own configuration
+(`ServerOptions` or `appsettings.json`), and be consulted after the user's level. Creating it now would
+be a store with nothing in it.
+
+## Step 6: the tool environment
+
+Implemented on 2026-10-22.
+
+- `IToolEnvironment.Launch(ToolProcessLaunch)` returns the MCP transport of a tool server process; the
+  launch names the command, arguments, working directory, environment and whether the Host's
+  environment is inherited. `LocalToolEnvironment` starts it as a child process over stdio, as before.
+- `DefaultToolSessionFactory` (the built-in server, with its directory grants and sandbox switches in its
+  environment) and `ExternalToolSessionFactory` (user-configured stdio servers) start processes only
+  through it. HTTP servers and the in-process app server start no process and are unaffected.
+- `ToolEnvironmentTests` checks that both launches go through the environment with what they need.
+
+Left for the first environment that is not this computer: mapping the workspace and the directory
+grants to paths inside it. A container or remote environment implements `Launch` and translates the
+grants it is handed; the grants themselves stay the project's.
 
 ## Consequences
 

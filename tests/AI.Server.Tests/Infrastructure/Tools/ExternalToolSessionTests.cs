@@ -188,5 +188,5 @@ public sealed class ExternalToolSessionTests
     /// <summary>Supplies the path algebra and file-system contract the factory gained.</summary>
     private static ExternalToolSessionFactory NewFactory(IGlobalSecretStore secrets,
         IToolResultModelProjector projector) =>
-        new(secrets, new SystemFileSystem(), new SystemPath(), projector);
+        new(secrets, new SystemFileSystem(), new SystemPath(), projector, new LocalToolEnvironment());
 }

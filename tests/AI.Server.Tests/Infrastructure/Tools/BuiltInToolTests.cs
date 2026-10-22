@@ -139,7 +139,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary, SandboxOff())
+            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary, SandboxOff(), new LocalToolEnvironment())
                              .OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true), timeout.Token))
             {
                 var description = session.Tools.Single(item => item.OriginalName == "list_allowed_directories")
@@ -1013,7 +1013,7 @@ public sealed class BuiltInToolTests
     }
 
     private static DefaultToolSessionFactory CreateFactory() =>
-        new(new ToolResultModelProjector(), NewTemporaryDirectory(), SandboxOff());
+        new(new ToolResultModelProjector(), NewTemporaryDirectory(), SandboxOff(), new LocalToolEnvironment());
 
     /// <summary>Global settings with the sandbox off, as a fresh installation has them.</summary>
     private static IGlobalSettingsRepository SandboxOff()

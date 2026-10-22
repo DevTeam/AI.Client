@@ -63,5 +63,5 @@ public sealed class McpHostCompositionTests
 
     private static ExternalToolSessionFactory Factory() =>
         new(Mock.Of<IGlobalSecretStore>(), new SystemFileSystem(), new SystemPath(),
-            new ToolResultModelProjector());
+            new ToolResultModelProjector(), new LocalToolEnvironment());
 }

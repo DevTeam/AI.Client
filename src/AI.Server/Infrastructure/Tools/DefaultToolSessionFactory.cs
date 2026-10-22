@@ -14,7 +14,8 @@ using System.Text.Json;
 public sealed class DefaultToolSessionFactory(
     IToolResultModelProjector modelProjector,
     IChatTemporaryDirectory temporaryDirectory,
-    IGlobalSettingsRepository settings) : IMcpServerConnection
+    IGlobalSettingsRepository settings,
+    IToolEnvironment toolEnvironment) : IMcpServerConnection
 {
     public Guid ServerId => DefaultMcpServer.Id;
 
@@ -37,17 +38,12 @@ public sealed class DefaultToolSessionFactory(
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "mcp", "AI.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : ""));
         var environment = await CreateEnvironmentAsync(directoryGrants, run, cancellationToken);
-        var transport = new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Name = "Default tools", Command = executable,
-            InheritEnvironmentVariables = false,
-            EnvironmentVariables = environment,
-            // Closing the session waits this long for the process to exit, and the run's answer is
-            // not saved until it is closed. At the SDK's 5 s default every turn that used a tool sat
-            // finished but unsaved for five seconds, its answer shown as a live copy that was then
-            // replaced. Every call has returned by then, so there is nothing left to wait for.
-            ShutdownTimeout = TimeSpan.FromMilliseconds(500)
-        });
+        // Closing the session waits ShutdownTimeout for the process to exit, and the run's answer is
+        // not saved until it is closed. At the SDK's 5 s default every turn that used a tool sat
+        // finished but unsaved for five seconds, its answer shown as a live copy that was then
+        // replaced. Every call has returned by then, so there is nothing left to wait for.
+        var transport = toolEnvironment.Launch(new ToolProcessLaunch("Default tools", executable, [], null, environment,
+            InheritEnvironment: false, ShutdownTimeout: TimeSpan.FromMilliseconds(500)));
         var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
         try
         {

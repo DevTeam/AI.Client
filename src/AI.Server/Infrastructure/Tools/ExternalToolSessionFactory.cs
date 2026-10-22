@@ -13,7 +13,8 @@ public sealed class ExternalToolSessionFactory(
     IGlobalSecretStore secrets,
     IFileSystem files,
     IPath paths,
-    IToolResultModelProjector modelProjector) : IExternalToolSessionFactory
+    IToolResultModelProjector modelProjector,
+    IToolEnvironment toolEnvironment) : IExternalToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         McpServerSettings server, CancellationToken cancellationToken, string? credential = null)
@@ -52,12 +53,8 @@ public sealed class ExternalToolSessionFactory(
                     }
                     environment[variable.Name] = value ?? string.Empty;
                 }
-                transport = new StdioClientTransport(new StdioClientTransportOptions
-                {
-                    Name = server.Name, Command = command, Arguments = server.Arguments.ToArray(),
-                    WorkingDirectory = directory, EnvironmentVariables = environment,
-                    ShutdownTimeout = TimeSpan.FromMilliseconds(500)
-                });
+                transport = toolEnvironment.Launch(new ToolProcessLaunch(server.Name, command, server.Arguments.ToArray(),
+                    directory, environment, InheritEnvironment: null, ShutdownTimeout: TimeSpan.FromMilliseconds(500)));
                 break;
             }
             case "StreamableHttp":

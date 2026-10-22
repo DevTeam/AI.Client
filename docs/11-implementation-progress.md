@@ -902,3 +902,29 @@ tool sessions called from another user's flow, signals, the run registry on the 
 with two users, and the user in log entries. The run-registry test was checked to fail without the
 ownership filter. The relocation scripts were run on a sample data directory (first run, repeat,
 conflict); they have not been run on a real installation.
+
+## 2026-10-22 — Replaceable boundaries (ADR-014, steps 2–6)
+
+The rest of ADR-014, each step in its own commit with its section in the ADR saying what was done and
+what was left on purpose.
+
+- **Step 2, harness.** `IAgentHarness.RunAsync(AgentRunRequest, IAgentRunSink, …)` replaces the agent's
+  fifteen callbacks; optional sink members have default bodies. `ChatAgent` implements it unchanged
+  inside; `ChatRunDispatcher.RunSink` and `AppSubtaskTool.SubtaskSink` are the two sinks. The model
+  protocol keeps its single adapter: the request and message types are already provider-neutral, and the
+  protocol switch is written with the second adapter.
+- **Step 3, blob store.** `IBlobStore` with `DirectoryBlobStore` under the user's `assets/`, same layout
+  as before, so no data moves; `ResourceAssetService` goes through it; `BlobStoreContractTests`. Undo
+  manifests and large tool results stay where they were, for the reasons in the ADR.
+- **Step 4, metadata ports.** Contract suites for the chat port (run against the JSON and the
+  Host-lifetime stores) and the project port. The chat port keeps whole-chat saves, which a database can
+  implement by inserting missing immutable messages. No database provider: SQLite is left for later.
+- **Step 5, settings levels.** Recorded, no code: the user, project, chat and branch levels each resolve
+  in one place; an instance level waits for the server profile.
+- **Step 6, tool environment.** `IToolEnvironment` with `LocalToolEnvironment`; the built-in and
+  user-configured stdio servers are launched only through it.
+
+Checks: `dotnet run --project build -- test-all` passed after each step (2371 passed, 1 skipped, after
+step 6). New tests: blob store contract, chat and project repository contracts, tool
+environment launches. The memory file-system fake now lists files written as bytes, which the atomic
+writer needs.

@@ -2,6 +2,7 @@ namespace AI.Mcp.App;
 
 using AI.Application.Usage;
 using AI.Contracts.Usage;
+using AI.Application.Agents;
 using AI.Application.Chat;
 using AI.Application.Chats;
 using AI.Application.Projects;
@@ -85,7 +86,7 @@ public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Tra
 /// </remarks>
 [McpServerToolType]
 public sealed class AppSubtaskTool(
-    Func<IChatAgent> agent,
+    Func<IAgentHarness> agent,
     IProjectService projects,
     IChatService chats,
     IGlobalSettingsRepository settings,
@@ -235,84 +236,97 @@ public sealed class AppSubtaskTool(
         int index, Board board, CancellationToken cancellationToken)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        var transcript = new List<SubtaskTranscriptEntry>();
-        var answer = new System.Text.StringBuilder();
-        // A tool message names only the call it answers, so what that call was has to be remembered
-        // from the message before it — without it a result cannot be described, only dumped.
-        var made = new Dictionary<string, (string Name, string Arguments)>(StringComparer.Ordinal);
-        var toolCalls = 0;
+        var sink = new SubtaskSink(this, task, index, board, presentations,
+            (tool, arguments, ct) => autoApprover().DecideAsync(projectId, chatId, run.BranchId, tool, arguments, ct));
         board.Set(index, "starting");
         // Counted in the turn that delegated the work, which the scope inherits, but apart from
         // its own answer: a fan-out is where a turn's cost usually hides.
         using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Subtask));
         try
         {
-            var changes = await agent().RunAsync(projectId, chatId,
-                // A branch of its own keeps the subtask's workspace baseline apart from the parent's,
-                // so repeated edits here collapse against what this subtask found rather than against
-                // what the caller found. The caller is still told the total: the run is registered as
-                // its child below, and a parent's snapshot covers its children.
-                Guid.CreateVersion7(),
-                template with { Message = prompt, ContextMessages = [new ChatCompletionMessage("user", prompt)] },
-                (message, _) =>
-                {
-                    if (message.ToolCalls is { Count: > 0 } calls)
-                    {
-                        toolCalls += calls.Count;
-                        foreach (var call in calls) made[call.Id] = (call.Name, call.Arguments);
-                        // This turn ended in tool calls, so whatever it streamed was thinking aloud
-                        // on the way to the answer, not the answer. Only the last turn's text is.
-                        answer.Clear();
-                    }
-
-                    transcript.Add(Entry(task, message, made, presentations));
-                    return Task.CompletedTask;
-                },
-                (content, _) =>
-                {
-                    if (answer.Length == 0 && content.Length > 0) board.Set(index, "writing");
-                    answer.Append(content);
-                    return Task.CompletedTask;
-                },
-                // A subtask that reports nothing looks identical to one that has hung, so what it is
-                // doing right now is forwarded to the caller's own progress channel and lands in the
-                // live row of the tool card that started it.
-                (activity, _) =>
-                {
-                    board.Set(index, activity is { } running ? ToolRef.Parse(running.Name).Name : "thinking");
-                    return Task.CompletedTask;
-                },
-                (_, _) => Task.CompletedTask,
-                // Nobody is watching a background run, so anything that would stop to ask is refused —
-                // unless the chat's own mode would have answered it without asking anyway. The
-                // subtask is told when it is refused and can report what it could not do.
-                async (tool, arguments, _, _, ct) =>
-                    (await autoApprover().DecideAsync(projectId, chatId, run.BranchId, tool, arguments, ct)).Allowed
-                        ? ToolApprovalAction.Allow
-                        : ToolApprovalAction.Deny,
-                cancellationToken,
-                // Same reason, said once for every tool rather than per callback: this run has no
-                // person behind it, so ask_user answers itself instead of waiting for one.
-                interactive: false,
-                parentBranchId: run.BranchId,
-                maxModelSteps: 40);
-            var rawText = answer.ToString();
+            var changes = await agent().RunAsync(new AgentRunRequest(projectId, chatId,
+                    // A branch of its own keeps the subtask's workspace baseline apart from the parent's,
+                    // so repeated edits here collapse against what this subtask found rather than against
+                    // what the caller found. The caller is still told the total: the run is registered as
+                    // its child below, and a parent's snapshot covers its children.
+                    Guid.CreateVersion7(),
+                    template with { Message = prompt, ContextMessages = [new ChatCompletionMessage("user", prompt)] },
+                    // Nobody is behind this run, so ask_user answers itself instead of waiting for one;
+                    // said once for every tool rather than per call.
+                    Interactive: false,
+                    ParentBranchId: run.BranchId,
+                    MaxModelSteps: 40),
+                sink, cancellationToken);
+            var rawText = sink.Answer.ToString();
             var (text, evidence) = ExtractEvidence(rawText);
-            transcript.Add(new SubtaskTranscriptEntry(task, "assistant", rawText, null));
+            sink.Transcript.Add(new SubtaskTranscriptEntry(task, "assistant", rawText, null));
             board.Finish(index);
             var artifacts = changes.Files.Select(file => new SubtaskArtifact(file.Path, file.Kind.ToString(),
                 file.Additions, file.Deletions, file.PreviousPath)).ToArray();
-            return (new SubtaskOutcome(task, text, connection, transcript.Count, toolCalls, changes.Files.Count, true, null,
-                artifacts, evidence.Checks, evidence.Unresolved, elapsed.ElapsedMilliseconds), transcript);
+            return (new SubtaskOutcome(task, text, connection, sink.Transcript.Count, sink.ToolCalls, changes.Files.Count, true, null,
+                artifacts, evidence.Checks, evidence.Unresolved, elapsed.ElapsedMilliseconds), sink.Transcript);
         }
         catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // One failed subtask does not fail its siblings: the caller is told which one broke and
             // keeps whatever the others produced.
             board.Finish(index);
-            return (new SubtaskOutcome(task, answer.ToString(), connection, transcript.Count, toolCalls, 0, false, error.Message,
-                [], [], [error.Message], elapsed.ElapsedMilliseconds), transcript);
+            return (new SubtaskOutcome(task, sink.Answer.ToString(), connection, sink.Transcript.Count, sink.ToolCalls, 0, false,
+                error.Message, [], [], [error.Message], elapsed.ElapsedMilliseconds), sink.Transcript);
         }
+    }
+
+    /// <summary>What a subtask's turn reports, kept in memory for the outcome and its transcript.</summary>
+    private sealed class SubtaskSink(AppSubtaskTool owner, string task, int index, Board board, IToolPresentations presentations,
+        Func<AgentTool, string, CancellationToken, Task<ToolAutoApproval>> decide) : IAgentRunSink
+    {
+        // A tool message names only the call it answers, so what that call was has to be remembered
+        // from the message before it — without it a result cannot be described, only dumped.
+        private readonly Dictionary<string, (string Name, string Arguments)> _made = new(StringComparer.Ordinal);
+
+        public List<SubtaskTranscriptEntry> Transcript { get; } = [];
+        public System.Text.StringBuilder Answer { get; } = new();
+        public int ToolCalls { get; private set; }
+
+        public Task PersistAsync(ChatCompletionMessage message, CancellationToken cancellationToken)
+        {
+            if (message.ToolCalls is { Count: > 0 } calls)
+            {
+                ToolCalls += calls.Count;
+                foreach (var call in calls) _made[call.Id] = (call.Name, call.Arguments);
+                // This turn ended in tool calls, so whatever it streamed was thinking aloud on the way
+                // to the answer, not the answer. Only the last turn's text is.
+                Answer.Clear();
+            }
+
+            Transcript.Add(owner.Entry(task, message, _made, presentations));
+            return Task.CompletedTask;
+        }
+
+        public Task TextAsync(string text, CancellationToken cancellationToken)
+        {
+            if (Answer.Length == 0 && text.Length > 0) board.Set(index, "writing");
+            Answer.Append(text);
+            return Task.CompletedTask;
+        }
+
+        // A subtask that reports nothing looks identical to one that has hung, so what it is doing
+        // right now is forwarded to the caller's own progress channel and lands in the live row of the
+        // tool card that started it.
+        public Task ActivityAsync(ToolActivity? activity, CancellationToken cancellationToken)
+        {
+            board.Set(index, activity is { } running ? ToolRef.Parse(running.Name).Name : "thinking");
+            return Task.CompletedTask;
+        }
+
+        public Task TransportAsync(ChatTransportWait? wait, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        // Nobody is watching a background run, so anything that would stop to ask is refused — unless
+        // the chat's own mode would have answered it without asking anyway. The subtask is told when it
+        // is refused and can report what it could not do.
+        public async Task<ToolApprovalAction> ApproveAsync(AgentTool tool, string arguments, long timeoutMilliseconds,
+            ToolCallPosition position, CancellationToken cancellationToken) =>
+            (await decide(tool, arguments, cancellationToken)).Allowed ? ToolApprovalAction.Allow : ToolApprovalAction.Deny;
     }
 
     /// <summary>

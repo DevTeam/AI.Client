@@ -23,13 +23,14 @@ using Domain.Runs;
 using Domain.Chats;
 using AI.Application.Schedules;
 using AI.Application.Users;
+using AI.Application.Agents;
 using Domain.Users;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 public sealed class ChatRunDispatcher(
     IChatRunRepository repository, IChatService chats, IChatMutations chatMutations, IProjectService projects,
-    IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IChatAgent agent,
+    IGlobalSettingsRepository settings, IGlobalSettingsService globalSettings, IAgentHarness agent,
     IGlobalSecretStore secretStore, IClock clock, IIdGenerator ids, IChatSynchronization synchronization,
     IWorkspaceChangeTracker workspace, IToolPolicyResolver policies,
     IChatContextBuilder contextBuilder, IChatBranchIds branchIds, IResourceService resources, IReviewService reviews,
@@ -758,33 +759,10 @@ public sealed class ChatRunDispatcher(
                 using (usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Answer, runtime.State.ProjectId,
                            runtime.State.ChatId, runtime.State.BranchId, queued.Id,
                            (record, ct) => ReportTokenUsageAsync(runtime, record, ct))))
-                workspaceChanges = await agent.RunAsync(runtime.State.ProjectId, runtime.State.ChatId, runtime.State.BranchId, request,
-                    (message, ct) => PersistToolMessageAsync(runtime, message, ct),
-                    async (content, ct) =>
-                    {
-                        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, ct);
-                        runtime.State.Append(content);
-                        if (clock.UtcNow - runtime.LastPublished >= TimeSpan.FromMilliseconds(150))
-                        {
-                            runtime.LastPublished = clock.UtcNow;
-                            // Streaming changes only the run state. Re-reading every immutable
-                            // message node merely to preserve chat metadata made large chats hit
-                            // storage several times per second.
-                            await SaveAsync(runtime, null, ct);
-                        }
-                    },
-                    (activity, ct) => ReportToolActivityAsync(runtime, activity, ct),
-                    (wait, ct) => ReportTransportActivityAsync(runtime, wait, ct),
-                    (tool, arguments, timeout, position, ct) => ApproveAsync(runtime, tool, arguments, timeout, position, ct), token,
-                    interactive: queued.Interactive,
-                    draft: (chunk, ct) => ReportDraftAsync(runtime, chunk, ct),
-                    contextUsage: (usage, ct) => ReportContextAsync(runtime, usage, ct),
-                    draftToolCall: (name, ct) => ReportDraftToolCallAsync(runtime, name, ct),
-                    overlayPromptsAllowed: queued.Interactive,
-                    asides: ct => TakeAsidesIntoTurnAsync(runtime, ct),
-                    joinSignal: () => runtime.JoinSignal.Token,
-                    stalledReport: (report, ct) => ReportToLeadAsync(runtime,
-                        "Stopped: several steps in a row produced nothing new.\n\n" + report, ct));
+                workspaceChanges = await agent.RunAsync(new AgentRunRequest(runtime.State.ProjectId, runtime.State.ChatId,
+                        runtime.State.BranchId, request, Interactive: queued.Interactive,
+                        OverlayPromptsAllowed: queued.Interactive),
+                    new RunSink(this, runtime), token);
                 var suggestTitle = false;
                 Guid? answeredHead = null;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, token))
@@ -1739,6 +1717,57 @@ public sealed class ChatRunDispatcher(
                 _runtimes.Keys.Where(key => key.ProjectId == projectId && key.ChatId == chatId).Select(key => key.BranchId).ToHashSet(), token);
             Publish();
         }
+    }
+
+    private async Task AppendAnswerAsync(Runtime runtime, string content, CancellationToken token)
+    {
+        using var lease = await synchronization.EnterAsync(runtime.State.ChatId, token);
+        runtime.State.Append(content);
+        if (clock.UtcNow - runtime.LastPublished >= TimeSpan.FromMilliseconds(150))
+        {
+            runtime.LastPublished = clock.UtcNow;
+            // Streaming changes only the run state. Re-reading every immutable message node merely
+            // to preserve chat metadata made large chats hit storage several times per second.
+            await SaveAsync(runtime, null, token);
+        }
+    }
+
+    /// <summary>What a turn of a queued run reports, applied to that run's state and published.</summary>
+    private sealed class RunSink(ChatRunDispatcher owner, Runtime runtime) : IAgentRunSink
+    {
+        public Task PersistAsync(ChatCompletionMessage message, CancellationToken cancellationToken) =>
+            owner.PersistToolMessageAsync(runtime, message, cancellationToken);
+
+        public Task TextAsync(string text, CancellationToken cancellationToken) =>
+            owner.AppendAnswerAsync(runtime, text, cancellationToken);
+
+        public Task ActivityAsync(ToolActivity? activity, CancellationToken cancellationToken) =>
+            owner.ReportToolActivityAsync(runtime, activity, cancellationToken);
+
+        public Task TransportAsync(ChatTransportWait? wait, CancellationToken cancellationToken) =>
+            owner.ReportTransportActivityAsync(runtime, wait, cancellationToken);
+
+        public Task<ToolApprovalAction> ApproveAsync(AgentTool tool, string arguments, long timeoutMilliseconds,
+            ToolCallPosition position, CancellationToken cancellationToken) =>
+            owner.ApproveAsync(runtime, tool, arguments, timeoutMilliseconds, position, cancellationToken);
+
+        public Task DraftAsync(string? content, CancellationToken cancellationToken) =>
+            owner.ReportDraftAsync(runtime, content, cancellationToken);
+
+        public Task ContextUsageAsync(ContextUsage usage, CancellationToken cancellationToken) =>
+            owner.ReportContextAsync(runtime, usage, cancellationToken);
+
+        public Task DraftToolCallAsync(string name, CancellationToken cancellationToken) =>
+            owner.ReportDraftToolCallAsync(runtime, name, cancellationToken);
+
+        public Task<IReadOnlyList<ChatCompletionMessage>> TakeAsidesAsync(CancellationToken cancellationToken) =>
+            owner.TakeAsidesIntoTurnAsync(runtime, cancellationToken);
+
+        public Task StalledAsync(string report, CancellationToken cancellationToken) =>
+            owner.ReportToLeadAsync(runtime, "Stopped: several steps in a row produced nothing new.\n\n" + report,
+                cancellationToken);
+
+        public CancellationToken JoinSignal => runtime.JoinSignal.Token;
     }
 
     private sealed record Subscriber(UserId User, Channel<IReadOnlyList<ChatRunSnapshot>> Channel);

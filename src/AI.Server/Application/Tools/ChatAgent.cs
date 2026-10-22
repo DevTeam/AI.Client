@@ -1,5 +1,6 @@
 namespace AI.Application.Tools;
 
+using Agents;
 using Chat;
 using Chats;
 using Projects;
@@ -43,9 +44,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
     IConnectionContextWindowDetector contextWindows, IExecutableLocator executables,
-    Func<IToolAutoApprover> autoApprover) : IChatAgent
+    Func<IToolAutoApprover> autoApprover) : IAgentHarness
 {
-    public async Task<WorkspaceChangeSet> RunAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
+    public Task<WorkspaceChangeSet> RunAsync(AgentRunRequest request, IAgentRunSink sink, CancellationToken cancellationToken) =>
+        RunCoreAsync(request.ProjectId, request.ChatId, request.BranchId, request.Completion, sink.PersistAsync, sink.TextAsync,
+            sink.ActivityAsync, sink.TransportAsync, sink.ApproveAsync, cancellationToken, request.Interactive,
+            request.ParentBranchId, sink.DraftAsync, sink.ContextUsageAsync, sink.DraftToolCallAsync,
+            request.OverlayPromptsAllowed, sink.TakeAsidesAsync, sink.StalledAsync, () => sink.JoinSignal,
+            request.MaxModelSteps);
+
+    private async Task<WorkspaceChangeSet> RunCoreAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
         Func<string, CancellationToken, Task> text,
         Func<ToolActivity?, CancellationToken, Task> activity,

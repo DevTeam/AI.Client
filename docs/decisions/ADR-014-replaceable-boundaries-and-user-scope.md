@@ -95,11 +95,11 @@ Rules that keep the cost down:
   cache marks), one adapter per protocol, and an explicit capability description per connection (tools,
   images, reasoning, prompt caching, context window). Retrying and metering stay protocol-neutral
   decorators.
-- **Harness.** The callbacks of `ChatAgent.RunAsync` become one stream of `AgentEvent` records written to
-  an `IAgentRunSink`; `IAgentHarness.RunAsync(AgentRunRequest, IAgentRunSink, CancellationToken)` is the
-  port. UI, history recording and run state consume the events and do not change when the harness does.
-  Context planning, tool execution and result recording separate out of `ChatAgent` and
-  `ChatRunDispatcher` along the way.
+- **Harness.** The callbacks of `ChatAgent.RunAsync` become one `IAgentRunSink` the harness reports to;
+  `IAgentHarness.RunAsync(AgentRunRequest, IAgentRunSink, CancellationToken)` is the port. Most sink
+  members are notifications; two are questions the harness has to ask (approve a tool call, take the
+  messages that joined the turn), which is why the sink is an interface rather than a stream of event
+  records. UI, history recording and run state consume the sink and do not change when the harness does.
 - **Tool execution.** `IToolEnvironment` says where the workspace is, how a process is started and which
   paths are granted. Tools reach the workspace only through it, never through Host paths, so runs of
   different users get different environments.
@@ -258,6 +258,33 @@ Each increment is a commit that builds and passes `dotnet run --project build --
 - an existing data directory moved by the script opens with all its projects and chats, checked by
   hand with the `.cmd` script on Windows and the `.sh` script on Unix;
 - the two-user isolation tests pass.
+
+## Step 2: the harness port and the model protocol
+
+Implemented on 2026-10-22.
+
+- `AI.Application.Agents` holds the port: `IAgentHarness`, `AgentRunRequest` (ids, completion request,
+  interactive, parent branch, overlay prompts, step limit) and `IAgentRunSink`. Members a caller may not
+  care about — drafts, context usage, the tool being named, asides, the stall report, the join signal —
+  have default bodies, so a caller implements only what it shows.
+- `ChatAgent` implements `IAgentHarness`; its body is unchanged and reads the sink through the same
+  delegates it used before. `IChatAgent` is gone.
+- The two callers implement the sink: `ChatRunDispatcher.RunSink` applies a turn to its run's state, and
+  `AppSubtaskTool.SubtaskSink` keeps a subtask's transcript and answer in memory.
+
+**The model protocol keeps its single adapter, and no routing is added for it.**
+`ChatCompletionRequest`, `ChatCompletionMessage` and `ChatCompletionChunk` are already provider-neutral
+in shape: role, text, tool calls and their results, image asset ids, a finish reason and usage. What is
+OpenAI-specific — the wire format, SSE parsing, `reasoning_effort` — lives in
+`OpenAiCompatibleChatCompletionClient` and its helpers. A second protocol therefore lands as: an
+adapter implementing `IChatCompletionClient`, a `Protocol` value on `ConnectionSettings` (absent meaning
+the OpenAI-compatible one), and a client bound as `"base"` that picks the adapter by the connection's
+protocol, with retrying and metering still wrapped around it. Building that router for one protocol
+would be code with nothing to route; it is written together with the second adapter.
+
+Not done, deliberately: splitting context planning, tool execution and result recording out of
+`ChatAgent`. The port makes it possible one piece at a time; doing it now would be a large change with no
+behaviour or flexibility gained.
 
 ## Consequences
 

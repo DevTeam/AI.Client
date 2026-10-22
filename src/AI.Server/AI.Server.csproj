@@ -13,10 +13,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Application\AI.Application.csproj" />
     <ProjectReference Include="..\AI.Domain\AI.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Skills\BuiltIn\**\SKILL.md" />
     <EmbeddedResource Include="Updates\install.ps1" LogicalName="AI.Updates.install.ps1" />
     <EmbeddedResource Include="Updates\install.sh" LogicalName="AI.Updates.install.sh" />
   </ItemGroup>

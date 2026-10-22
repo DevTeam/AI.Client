@@ -6,6 +6,7 @@
     <Project Path="build/build.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/AI.Application/AI.Application.csproj" />
     <Project Path="src/AI.Contracts/AI.Contracts.csproj" />
     <Project Path="src/AI.Desktop/AI.Desktop.csproj" />
     <Project Path="src/AI.Domain/AI.Domain.csproj" />

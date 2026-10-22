@@ -37,8 +37,8 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
                 [new DirectoryGrantSettings(Guid.NewGuid(), "Workspace", _root, true, ["read", "write"])], [], []));
         var files = new SystemFileSystem();
         var paths = new SystemPath();
-        var assets = new ResourceAssetService(location.Object, projects.Object, files, paths,
-            new AtomicFileWriter(files));
+        var assets = new ResourceAssetService(new DirectoryBlobStore(location.Object, files, paths, new AtomicFileWriter(files)),
+            projects.Object, paths);
         var undo = new WorkspaceUndoService(location.Object, files, assets, projects.Object,
             new ProjectPathAccess(files, paths, new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, files, paths)));
         return (undo, new WorkspaceChangeTracker(new LineDiff(), undo, files, paths));

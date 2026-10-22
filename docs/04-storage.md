@@ -34,6 +34,15 @@ The chat manifest contains `MessageIds` and branches. Messages are written separ
 
 Repositories serialize revision checking and writing within a single Host. Multiple processes must not write to the same directory. Unused nodes are currently retained; a garbage collector is not implemented.
 
+## Binary content
+
+Uploaded files, images and workspace Undo snapshots are bytes, not documents, and go through
+`IBlobStore`: immutable, content-addressed keys such as `<project>/<sha256>.bin`, where a key that is
+already taken keeps its first content. `DirectoryBlobStore` keeps them under the user's `assets/`, one
+file per key; an object store such as S3 can stand in for it behind the same port
+([ADR-014](decisions/ADR-014-replaceable-boundaries-and-user-scope.md)). Undo manifests, which change when
+a file is undone, stay plain files beside them.
+
 ## Read caches
 
 A chat document holds whole tool results, and the agent loop reads it several times around every tool

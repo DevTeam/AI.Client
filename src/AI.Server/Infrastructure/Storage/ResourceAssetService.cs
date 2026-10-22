@@ -10,13 +10,15 @@ using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
 using Microsoft.AspNetCore.StaticFiles;
 
-/// <summary>Stores uploaded file bytes outside chat JSON and retains their source on the resource.</summary>
+/// <summary>
+/// Stores uploaded file bytes outside chat JSON, in the blob store, and retains their source on the
+/// resource. Keys are <c>&lt;project&gt;/&lt;asset&gt;.bin</c> with its media type beside it in
+/// <c>.json</c>, and <c>&lt;project&gt;/undo/blobs/&lt;sha256&gt;.bin</c> for workspace Undo.
+/// </summary>
 public sealed class ResourceAssetService(
-    IUserStorageLocation location,
+    IBlobStore blobs,
     IProjectService projects,
-    IFileSystem files,
-    IPath path,
-    IAtomicFileWriter atomicWriter)
+    IPath path)
     : IResourceAssetService
 {
     private const int MaximumBytes = 15 * 1024 * 1024;
@@ -24,17 +26,12 @@ public sealed class ResourceAssetService(
     private readonly ConcurrentDictionary<string, (Guid ProjectId, string AssetId, DateTimeOffset Expires)> _tickets = new();
     private readonly FileExtensionContentTypeProvider _contentTypes = new();
 
-    /// <summary>
-    /// The asset directory of one project. The contract's combining member takes two paths, so a
-    /// deeper path is composed by nesting, which also keeps the containment checks that read these
-    /// paths judged on the same canonical form they were built from.
-    /// </summary>
-    private string AssetDirectory(Guid projectId) =>
-        path.Combine(path.Combine(location.RootDirectory, "assets"), projectId.ToString("N"));
+    private static string ProjectKey(Guid projectId) => projectId.ToString("N");
 
-    /// <summary>The undo blobs directory of one project, composed the same way.</summary>
-    private string UndoBlobsDirectory(Guid projectId) =>
-        path.Combine(path.Combine(AssetDirectory(projectId), "undo"), "blobs");
+    private static string AssetKey(Guid projectId, string assetId, string extension) =>
+        $"{ProjectKey(projectId)}/{assetId}{extension}";
+
+    private static string UndoKey(Guid projectId, string assetId) => $"{ProjectKey(projectId)}/undo/blobs/{assetId}.bin";
 
     public async Task<ChatResource> StoreAsync(Guid projectId, byte[] data, string name,
         ChatResourceSource source, string sourceLocation, CancellationToken cancellationToken)
@@ -52,16 +49,11 @@ public sealed class ResourceAssetService(
         data.CopyTo(fingerprint, 0);
         Encoding.UTF8.GetBytes(mediaType, fingerprint.AsSpan(data.Length));
         var assetId = Convert.ToHexString(SHA256.HashData(fingerprint)).ToLowerInvariant();
-        var directory = AssetDirectory(projectId);
-        // Content addressed: an identical upload lands on the same name with the same bytes, so an
-        // existing blob already holds what would be written and is left alone. The atomic writer
-        // keeps a first save whole: a crash leaves the previous blob or the new one, never half.
-        var destination = path.Combine(directory, assetId + ".bin");
-        if (!await files.FileExistsAsync(destination, cancellationToken))
-            await atomicWriter.WriteBytesAsync(destination, data, cancellationToken);
-        var metadata = path.Combine(directory, assetId + ".json");
-        if (!await files.FileExistsAsync(metadata, cancellationToken))
-            await atomicWriter.WriteTextAsync(metadata, JsonSerializer.Serialize(mediaType), cancellationToken);
+        // Content addressed: an identical upload lands on the same key with the same bytes, which
+        // the store then leaves alone.
+        await blobs.PutAsync(AssetKey(projectId, assetId, ".bin"), data, cancellationToken);
+        await blobs.PutAsync(AssetKey(projectId, assetId, ".json"),
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(mediaType)), cancellationToken);
         return new ChatResource(Guid.CreateVersion7(), imageFormat is null ? ChatResourceKind.File : ChatResourceKind.Image,
             sourceLocation, safeName,
             Source: source, AssetId: assetId, MediaType: mediaType, Size: data.Length);
@@ -71,14 +63,11 @@ public sealed class ResourceAssetService(
     {
         if (assetId.Length != 64 || assetId.Any(character => !Uri.IsHexDigit(character))) return null;
         if (await projects.GetAsync(projectId, cancellationToken) is null) return null;
-        var directory = AssetDirectory(projectId);
         var normalized = assetId.ToLowerInvariant();
-        var blob = path.Combine(directory, normalized + ".bin");
-        var metadata = path.Combine(directory, normalized + ".json");
-        if (!await files.FileExistsAsync(blob, cancellationToken)
-            || !await files.FileExistsAsync(metadata, cancellationToken)) return null;
-        var mediaType = JsonSerializer.Deserialize<string>(await files.ReadTextAsync(metadata, cancellationToken) ?? "null");
-        var bytes = await files.ReadBytesAsync(blob, cancellationToken);
+        if (await blobs.ReadAsync(AssetKey(projectId, normalized, ".json"), cancellationToken) is not { } metadata)
+            return null;
+        var mediaType = JsonSerializer.Deserialize<string>(metadata);
+        var bytes = await blobs.ReadAsync(AssetKey(projectId, normalized, ".bin"), cancellationToken);
         return mediaType is null || bytes is null ? null : new ResourceAsset(bytes, mediaType);
     }
 
@@ -86,8 +75,8 @@ public sealed class ResourceAssetService(
     {
         if (assetId.Length != 64 || assetId.Any(character => !Uri.IsHexDigit(character))
             || await projects.GetAsync(projectId, cancellationToken) is null) return null;
-        var blob = path.Combine(AssetDirectory(projectId), assetId.ToLowerInvariant() + ".bin");
-        await using var stream = await files.OpenReadAsync(blob, cancellationToken);
+        await using var stream = await blobs.OpenReadAsync(AssetKey(projectId, assetId.ToLowerInvariant(), ".bin"),
+            cancellationToken);
         if (stream is null) return null;
         var truncated = stream.Length > MaximumTextBytes;
         var data = new byte[Math.Min(stream.Length, MaximumTextBytes)];
@@ -131,9 +120,7 @@ public sealed class ResourceAssetService(
             throw new FileNotFoundException("Project not found.");
         if (data.Length > MaximumBytes) throw new InvalidDataException("Undo snapshot is too large.");
         var assetId = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
-        var destination = path.Combine(UndoBlobsDirectory(projectId), assetId + ".bin");
-        if (await files.FileExistsAsync(destination, cancellationToken)) return assetId;
-        await atomicWriter.WriteBytesAsync(destination, data, cancellationToken);
+        await blobs.PutAsync(UndoKey(projectId, assetId), data, cancellationToken);
         return assetId;
     }
 
@@ -141,8 +128,7 @@ public sealed class ResourceAssetService(
     {
         if (assetId.Length != 64 || assetId.Any(character => !Uri.IsHexDigit(character))
             || await projects.GetAsync(projectId, cancellationToken) is null) return null;
-        var blob = path.Combine(UndoBlobsDirectory(projectId), assetId.ToLowerInvariant() + ".bin");
-        var bytes = await files.ReadBytesAsync(blob, cancellationToken);
+        var bytes = await blobs.ReadAsync(UndoKey(projectId, assetId.ToLowerInvariant()), cancellationToken);
         return bytes is not null
             && Convert.ToHexString(SHA256.HashData(bytes)).Equals(assetId, StringComparison.OrdinalIgnoreCase)
             ? bytes : null;
@@ -150,12 +136,7 @@ public sealed class ResourceAssetService(
 
     public async Task DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
-        var root = path.GetFullPath(path.Combine(location.RootDirectory, "assets"));
-        var target = path.GetFullPath(path.Combine(root, projectId.ToString("N")));
-        if (!path.IsInside(target, root, recursive: true) || string.Equals(target, root, path.Comparison))
-            throw new InvalidOperationException("Invalid resource asset directory.");
-        if (await files.DirectoryExistsAsync(target, cancellationToken))
-            await files.DeleteDirectoryAsync(target, recursive: true, cancellationToken);
+        await blobs.DeletePrefixAsync(ProjectKey(projectId), cancellationToken);
         foreach (var ticket in _tickets.Where(item => item.Value.ProjectId == projectId))
             _tickets.TryRemove(ticket.Key, out _);
     }

@@ -416,6 +416,6 @@ public sealed class ResourceServiceTests
             new SystemFileSystem());
 
     private static ResourceAssetService NewAssets(IUserStorageLocation location, IProjectService projects) =>
-        new(location, projects, new SystemFileSystem(), new SystemPath(),
-            new AtomicFileWriter(new SystemFileSystem()));
+        new(new DirectoryBlobStore(location, new SystemFileSystem(), new SystemPath(), new AtomicFileWriter(new SystemFileSystem())),
+            projects, new SystemPath());
 }

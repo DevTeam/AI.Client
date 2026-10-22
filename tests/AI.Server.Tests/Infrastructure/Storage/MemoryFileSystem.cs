@@ -154,6 +154,8 @@ internal sealed class MemoryFileSystem : IFileSystem
             throw new IOException("Simulated storage failure.");
         Adopt(path);
         _blobs[path] = content.ToArray();
+        // Listed as a file like any other, as OpenWriteAsync does: exists, moves and deletes see it.
+        Files[path] = Encoding.UTF8.GetString(content);
     }
 
     public Task AppendTextAsync(string path, string content, CancellationToken cancellationToken)

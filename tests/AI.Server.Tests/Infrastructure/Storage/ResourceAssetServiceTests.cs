@@ -68,7 +68,7 @@ public sealed class ResourceAssetServiceTests
     private static ResourceAssetService NewAssets(IUserStorageLocation location, IProjectService projects)
     {
         var files = new SystemFileSystem();
-        return new ResourceAssetService(location, projects, files, new SystemPath(),
-            new AtomicFileWriter(files));
+        return new ResourceAssetService(new DirectoryBlobStore(location, files, new SystemPath(), new AtomicFileWriter(files)),
+            projects, new SystemPath());
     }
 }

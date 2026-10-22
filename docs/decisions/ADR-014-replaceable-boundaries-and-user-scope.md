@@ -286,6 +286,29 @@ Not done, deliberately: splitting context planning, tool execution and result re
 `ChatAgent`. The port makes it possible one piece at a time; doing it now would be a large change with no
 behaviour or flexibility gained.
 
+## Step 3: the blob store
+
+Implemented on 2026-10-22.
+
+- `IBlobStore` (`AI.Application.Resources`) stores the current user's bytes under immutable keys made of
+  plain segments: exists, put (a taken key keeps its first content), read, open for reading, and delete
+  a prefix. `DirectoryBlobStore` maps a key to a file under the user's `assets/` and refuses any key
+  that is not plain segments, so no key reaches outside it.
+- `ResourceAssetService` keeps its contract and now reads and writes through the store. Its keys —
+  `<project>/<asset>.bin`, the media type beside it as `.json`, `<project>/undo/blobs/<sha256>.bin` —
+  are the paths it always used under `assets/`, so existing data needs no move.
+- `BlobStoreContractTests` is the suite a store has to pass; `DirectoryBlobStoreTests` runs it. An S3
+  store is a second subclass of it plus a Pure.DI setup that binds it.
+
+Not moved, deliberately:
+
+- **Undo manifests** stay files beside the blobs (`WorkspaceUndoService`). A manifest is changed in place
+  when a file is undone, which is metadata, not immutable content; it belongs to the metadata store.
+- **Large tool results** stay inside chat documents. Moving them out changes the chat document, the
+  context projection that reads them at every step and the history the UI shows, and a blob that a
+  message no longer references then needs collecting. That is a change of its own, best made together
+  with the chat port of step 4 or after it.
+
 ## Consequences
 
 Positive:

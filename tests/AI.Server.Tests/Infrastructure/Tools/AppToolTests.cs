@@ -1748,9 +1748,12 @@ public sealed partial class AppToolTests
 
         public ChangeWatch(IAppDataChangeSignal signal)
         {
+            // Subscribed here, before the test acts: the signal registers a subscriber when it is
+            // asked, and a subscription made later on the thread pool could miss the change.
+            var changes = signal.SubscribeAsync(_stop.Token);
             _signalled = Task.Run(async () =>
             {
-                await foreach (var _ in signal.SubscribeAsync(_stop.Token)) return true;
+                await foreach (var _ in changes) return true;
                 return false;
             });
         }

@@ -15,6 +15,7 @@ public sealed class AiClientServer(
     IDataDirectoryLock dataDirectoryLock,
     ILoggerProvider fileLogger,
     IApiExceptionHandler exceptionHandler,
+    IUserScopeMiddleware userScope,
     IWebClientHost webClient,
     IEnumerable<IEndpointModule> endpoints) : IAiClientServer
 {
@@ -177,6 +178,9 @@ public sealed class AiClientServer(
                 await next(context);
             });
         }
+
+        // After the origin and bridge checks: only an accepted request is given a user.
+        app.Use(userScope.InvokeAsync);
 
         foreach (var module in endpoints)
         {

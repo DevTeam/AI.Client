@@ -19,6 +19,7 @@ using Application.Tools;
 using Application.Tools.Commands;
 using Application.Workspace;
 using Application.Usage;
+using Application.Users;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Workspace;
 using AI.Contracts.Navigation;
@@ -58,6 +59,9 @@ internal sealed class Composition
             // Shared state that must keep its identity across requests: storage repositories with their
             // write gates, chat synchronization, change and navigation signals, the run dispatcher,
             // usage accounting, preview tickets, parsed caches and the running update service.
+            // The ambient user context is one instance so that a scope entered by a request is the
+            // one every service of that request reads.
+            .Singleton<AmbientUserContext>()
             .Singleton<FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
                 JsonProjectRepository, JsonProjectOrderRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
@@ -105,7 +109,8 @@ internal sealed class Composition
                 MemoryService, ProjectInstructionsService, FilePreviewFormats, FilePreviewTextReader,
                 TextFilePreviewFormat, WorkspaceUndoGuard, ExecutableLocator, CommandParser, CommandRuleService, ToolRuleProfiles,
                 WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
-                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief>()
+                OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief,
+                LocalUserDirectory, LocalUserResolver, UserScopeMiddleware>()
             // Tools, their policies and the skills and schedules that drive them. Kept as a second
             // call because the generator declares a limited number of type parameters per overload.
             .Transient<ChatAgent, ContextTokenEstimator,

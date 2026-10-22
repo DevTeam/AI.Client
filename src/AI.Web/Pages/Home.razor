@@ -294,86 +294,6 @@
             <span class="workspace-location" title="@GetWorkspaceLocation()">@GetWorkspaceLocation()</span>
             @if (_selectedProject is not null)
             {
-                @* What the assistant's file tools may reach: the project's directories and the open
-                   chat's own files. They are the chat's context, not places to navigate to, so they sit
-                   beside the chat's location rather than in the sidebar's tree of chats. *@
-                var directoryCount = _security.DirectoryGrants.Count;
-                <div class="workspace-files-access">
-                    <button class="workspace-files-button @(_isFilesPopoverOpen ? "menu-open" : null)" type="button" aria-haspopup="dialog" aria-expanded="@(_isFilesPopoverOpen ? "true" : "false")"
-                            aria-controls="workspace-files-popover" title="@GetFilesButtonTitle(directoryCount)" @onclick="ToggleFilesPopover">
-                        <AppIcon Name="folder" />@if (directoryCount > 0) { <span class="workspace-files-count">@directoryCount</span> }
-                    </button>
-                    @if (_isFilesPopoverOpen)
-                    {
-                        <div class="context-menu-backdrop" @onclick="DismissFilesPopover"></div>
-                        <div id="workspace-files-popover" class="workspace-files-popover" role="dialog" aria-label="Directories and chat files">
-                            <div class="directory-nav-row directory-nav-row-header">
-                                <span class="directory-row-main"><span class="nav-item-label directory-label">Directories</span></span>
-                                <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
-                            </div>
-                            @if (directoryCount == 0)
-                            {
-                                <button class="workspace-nav-item directory-empty-action" type="button" @onclick="OpenDirectoryPickerForNewGrant">
-                                    <AppIcon Name="folder-plus" />
-                                    <span class="nav-item-label">Add a directory the assistant may use</span>
-                                </button>
-                            }
-                            @foreach (var directory in _security.DirectoryGrants)
-                            {
-                                <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
-                                    <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
-                                        <AppIcon Name="folder" />
-                                        <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
-                                    </button>
-                                    @* The lock always shows the access mode: open for read and write, closed for read only. *@
-                                    <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
-                                    <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
-                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
-                                    @if (_directoryMenuId == directory.Id)
-                                    {
-                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            @if (_isConfirmingDirectoryDelete)
-                                            {
-                                                <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" title="Cancel removing directory access" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)"><AppIcon Name="eye" />Show in preview</button>
-                                                <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
-                                                <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
-                                                <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
-                                                <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                            }
-                            @if (_selectedChat is not null)
-                            {
-                                <span class="menu-separator" role="separator"></span>
-                                <div class="directory-nav-row directory-chat-files-row directory-nav-row-child">
-                                    <button class="directory-row-main directory-row-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
-                                        <AppIcon Name="clock" />
-                                        <span class="nav-item-label directory-name">Chat files</span>
-                                    </button>
-                                    <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == ChatFilesMenuId ? "menu-open" : string.Empty)" type="button" title="Chat files menu" aria-label="Chat files menu" @onclick="() => ToggleDirectoryMenu(ChatFilesMenuId)"><AppIcon Name="more" /></button>
-                                    @if (_directoryMenuId == ChatFilesMenuId)
-                                    {
-                                        <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
-                                            <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="eye" />Show in preview</button>
-                                            <button type="button" role="menuitem" @onclick="OpenChatFilesInFileManagerAsync"><AppIcon Name="folder" />Open in file manager</button>
-                                            <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
-                                            <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-            @if (_selectedProject is not null)
-            {
                 <button @attributes="@(ControlHints.Attributes("chat.widgets", (_chatWidgetsOpen ? "Hide chat widgets" : "Show chat widgets")))" class="icon-action workspace-widgets-toggle" type="button"
                         aria-label="Chat widgets" aria-pressed="@(_chatWidgetsOpen ? "true" : "false")"
                         @onclick="ToggleChatWidgetsAsync">
@@ -778,6 +698,86 @@
                     }
                 </div>
                 <TextCorrectionToggle State="@_textCorrection" OnToggle="ToggleTextCorrectionAsync" />
+                @if (_selectedProject is not null)
+                {
+                    @* What the assistant's file tools may reach: the project's directories and the open
+                       chat's own files. They are what the next message can work on, so they sit with the
+                       composer's other settings rather than in the sidebar's tree of chats. *@
+                    var directoryCount = _security.DirectoryGrants.Count;
+                    <div class="composer-files-access">
+                        <button class="composer-files-button @(_isFilesPopoverOpen ? "menu-open" : null) @(directoryCount == 0 ? "is-empty" : null)" type="button" aria-haspopup="dialog" aria-expanded="@(_isFilesPopoverOpen ? "true" : "false")"
+                                aria-controls="composer-files-popover" title="@GetFilesButtonTitle(directoryCount)" @onclick="ToggleFilesPopover">
+                            <AppIcon Name="folder" /><span class="composer-files-label">@GetFilesButtonLabel(directoryCount)</span>
+                        </button>
+                        @if (_isFilesPopoverOpen)
+                        {
+                            <div class="context-menu-backdrop" @onclick="DismissFilesPopover"></div>
+                            <div id="composer-files-popover" class="composer-files-popover" role="dialog" aria-label="Directories and chat files">
+                                <div class="directory-nav-row directory-nav-row-header">
+                                    <span class="directory-row-main"><span class="nav-item-label directory-label">Directories</span></span>
+                                    <button class="icon-action directory-row-action directory-add-button" type="button" title="Add directory" aria-label="Add directory" @onclick="OpenDirectoryPickerForNewGrant"><AppIcon Name="plus" /></button>
+                                </div>
+                                @if (directoryCount == 0)
+                                {
+                                    <button class="workspace-nav-item directory-empty-action" type="button" @onclick="OpenDirectoryPickerForNewGrant">
+                                        <AppIcon Name="folder-plus" />
+                                        <span class="nav-item-label">Add a directory the assistant may use</span>
+                                    </button>
+                                }
+                                @foreach (var directory in _security.DirectoryGrants)
+                                {
+                                    <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
+                                        <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
+                                            <AppIcon Name="folder" />
+                                            <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
+                                        </button>
+                                        @* The lock always shows the access mode: open for read and write, closed for read only. *@
+                                        <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
+                                        <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
+                                        <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
+                                        @if (_directoryMenuId == directory.Id)
+                                        {
+                                            <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                                @if (_isConfirmingDirectoryDelete)
+                                                {
+                                                    <div class="review-menu-row"><span class="review-menu-confirm-label">Remove access?</span><button type="button" class="review-menu-confirm-action" title="Files stay on disk" @onclick="() => RemoveDirectoryGrantAsync(directory.Id)">Remove</button><button type="button" class="review-menu-cancel" title="Cancel removing directory access" aria-label="Cancel" @onclick="CancelDirectoryDelete"><AppIcon Name="x" /></button></div>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" role="menuitem" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)"><AppIcon Name="eye" />Show in preview</button>
+                                                    <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
+                                                    <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
+                                                    <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
+                                                    <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (_selectedChat is not null)
+                                {
+                                    <span class="menu-separator" role="separator"></span>
+                                    <div class="directory-nav-row directory-chat-files-row directory-nav-row-child">
+                                        <button class="directory-row-main directory-row-open" type="button" title="Temporary files the assistant keeps for this chat. Read and write; deleted with the chat." @onclick="OpenChatFilesAsync">
+                                            <AppIcon Name="clock" />
+                                            <span class="nav-item-label directory-name">Chat files</span>
+                                        </button>
+                                        <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == ChatFilesMenuId ? "menu-open" : string.Empty)" type="button" title="Chat files menu" aria-label="Chat files menu" @onclick="() => ToggleDirectoryMenu(ChatFilesMenuId)"><AppIcon Name="more" /></button>
+                                        @if (_directoryMenuId == ChatFilesMenuId)
+                                        {
+                                            <div class="chat-menu" role="menu" @onclick:stopPropagation="true">
+                                                <button type="button" role="menuitem" @onclick="OpenChatFilesAsync"><AppIcon Name="eye" />Show in preview</button>
+                                                <button type="button" role="menuitem" @onclick="OpenChatFilesInFileManagerAsync"><AppIcon Name="folder" />Open in file manager</button>
+                                                <button type="button" role="menuitem" @onclick="CopyChatFilesPathAsync"><AppIcon Name="copy" />Copy path</button>
+                                                <p class="directory-menu-note">Read and write for the assistant. Deleted with the chat.</p>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
                 <ApprovalModePicker Mode="@GetApprovalMode()" ModeChanged="SetApprovalModeAsync" Disabled="@(_selectedProject is null)"
                                     Inheritance="@GetBranchInheritance(GetSelectedRunBranchId(), branch => branch.Settings?.ApprovalMode is not null)"
                                     InheritedMode="@InheritedApprovalMode(GetSelectedRunBranchId())"
@@ -4144,6 +4144,13 @@ else if (_guideInvitation is { } guideInvitation)
         if (_directoryMenuId is not null) CloseDirectoryMenu();
         else _isFilesPopoverOpen = false;
     }
+
+    private static string GetFilesButtonLabel(int directoryCount) => directoryCount switch
+    {
+        0 => "No folders",
+        1 => "1 folder",
+        _ => $"{directoryCount} folders"
+    };
 
     private static string GetFilesButtonTitle(int directoryCount) => directoryCount switch
     {

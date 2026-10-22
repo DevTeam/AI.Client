@@ -935,7 +935,7 @@ body {
 .branch-picker-menu,
 .composer-endpoint-menu,
 .composer-approval-menu,
-.workspace-files-popover {
+.composer-files-popover {
     padding: 0.3rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -1944,21 +1944,20 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     opacity: 1;
 }
 
-/* The project's directories and the chat's files, opened from the chat header. Its rows are the
-   directory rows the sidebar used to list, so they keep the sidebar's row spacing. It hangs from the
-   header's start rather than from its button: the button follows a title of any length, and a
-   popover anchored to it ran off the edge of a narrow window. */
-.workspace-files-popover {
+/* The project's directories and the chat's files, opened from the composer's folder chip and
+   rising above it like the approval menu beside it. Its rows are the directory rows the sidebar
+   used to list, so they keep the sidebar's row spacing. */
+.composer-files-popover {
     --sidebar-row-indent: 0;
     --sidebar-row-gap: 0.05rem;
     --row-bg: var(--color-fill-hover);
     position: absolute;
-    z-index: var(--z-menu);
-    top: calc(100% - 0.2rem);
-    left: 0.225rem;
+    z-index: var(--z-menu-raised);
+    bottom: calc(100% + .4rem);
+    left: 0;
     display: grid;
     gap: var(--sidebar-row-gap);
-    width: min(19rem, calc(100% - 0.45rem));
+    width: min(20rem, calc(100vw - 2rem));
     box-sizing: border-box;
 }
 
@@ -2193,9 +2192,9 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
    it stay the list. The popover's Directories heading and empty action read the same way. */
 .archive-nav-item { color: var(--color-text-faint); font-size: var(--font-size-md); }
 .archive-nav-item > .directory-count { margin-left: auto; }
-.workspace-files-popover .directory-nav-row-header,
-.workspace-files-popover .directory-empty-action { color: var(--color-text-faint); font-size: var(--font-size-md); }
-.workspace-files-popover .directory-empty-action .app-icon,
+.composer-files-popover .directory-nav-row-header,
+.composer-files-popover .directory-empty-action { color: var(--color-text-faint); font-size: var(--font-size-md); }
+.composer-files-popover .directory-empty-action .app-icon,
 .archive-nav-item > .app-icon { width: 0.9rem; height: 0.9rem; }
 
 .archive-nav-item > .app-icon,
@@ -4726,6 +4725,31 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 /* The chat's tool approval mode, next to "+" on the composer's left; the rest of the footer sits right.
    Full access is the one mode that is never quiet about itself, so it keeps the warning colour. */
 .composer-approval { position: relative; display: inline-flex; align-items: center; margin-right: auto; }
+/* The folder chip: the same quiet pill as the approval trigger, naming how many folders the project
+   grants. With none it reads fainter, an offer rather than a state. */
+.composer-files-access { position: relative; display: inline-flex; align-items: center; }
+.composer-files-button { display: inline-flex; max-width: 10rem; align-items: center; gap: .35rem; padding: .3rem .55rem; border-color: transparent; border-radius: var(--radius-2xl); background: transparent; color: var(--color-text-secondary); font-size: var(--font-size-md); white-space: nowrap; transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease; }
+.composer-files-button .app-icon { flex: none; width: .95rem; height: .95rem; color: var(--color-text-subtle); }
+.composer-files-button:hover,
+.composer-files-button.menu-open { background: var(--color-fill-hover); }
+.composer-files-button.menu-open .app-icon { color: var(--color-accent); }
+.composer-files-button.is-empty { color: var(--color-text-subtle); }
+.composer-files-label { overflow: hidden; text-overflow: ellipsis; }
+/* The popover sits on the composer at the bottom of the window, so its row menus rise too. */
+.composer-files-popover .chat-menu { top: auto; bottom: calc(100% + 0.25rem); }
+/* A phone's composer row cannot hold every label: the folder chip keeps only its icon, and the
+   model name gives way next, cut with an ellipsis, so the row never spills past the composer. */
+@media (max-width: 640px) {
+    .composer-footer { gap: .35rem; }
+    .composer-files-label { display: none; }
+    .composer-endpoint,
+    .composer-endpoint-trigger { min-width: 0; }
+    .composer-endpoint-trigger { max-width: 100%; }
+    /* The chip sits mid-row, so its popover spans the composer row instead of starting at it. */
+    .composer-footer { position: relative; }
+    .composer-files-access { position: static; }
+    .composer-files-popover { width: 100%; }
+}
 .composer-approval-trigger { display: inline-flex; max-width: 12rem; align-items: center; gap: .35rem; padding: .3rem .55rem; border-color: transparent; border-radius: var(--radius-2xl); background: transparent; color: var(--color-text-secondary); font-size: var(--font-size-md); }
 .workspace-composer .composer-approval-trigger span { overflow: hidden; color: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .composer-approval-trigger .app-icon { flex: none; width: .95rem; height: .95rem; color: var(--color-text-subtle); }
@@ -5325,14 +5349,6 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .workspace-header .icon-action { width: 1.65rem; height: 1.65rem; }
 .workspace-header .icon-action:disabled { opacity: .35; cursor: default; }
 .workspace-location { min-width: 0; margin-left: .2rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text-muted); font-size: var(--font-size-sm); }
-/* The chat's directories beside its location: a folder and how many directories the project grants. */
-.workspace-files-access { flex: none; pointer-events: auto; }
-.workspace-files-button { display: inline-flex; align-items: center; gap: .25rem; height: 1.65rem; box-sizing: border-box; padding: 0 .4rem; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-text-muted); font-size: var(--font-size-sm); cursor: pointer; transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease; }
-.workspace-files-button:hover,
-.workspace-files-button.menu-open { background: var(--color-fill-hover); color: var(--color-text); }
-.workspace-files-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.workspace-files-button .app-icon { width: .95rem; height: .95rem; }
-.workspace-files-count { color: var(--color-text-faint); }
 .notification-quick-access { position: relative; flex: none; margin-right: .25rem; pointer-events: auto; }
 .history-notifications-button { position: relative; flex: none; display: flex; align-items: center; justify-content: center; width: 1.65rem; height: 1.65rem; box-sizing: border-box; padding: 0; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-text-muted); cursor: pointer; pointer-events: auto; }
 .history-notifications-button:hover, .history-notifications-button[aria-expanded="true"] { background: linear-gradient(to right, transparent, var(--color-fill-hover) 2.5rem); color: var(--color-text); }

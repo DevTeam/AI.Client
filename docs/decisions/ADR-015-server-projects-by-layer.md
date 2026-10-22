@@ -20,8 +20,7 @@ found only a few places that cross the rule:
 - `Application/Schedules/ChatScheduleStore` reads and writes schedule documents itself through
   `IFileSystem` and `IChatStoragePaths` — a JSON adapter living in Application;
 - two Application types use `Microsoft.AspNetCore.StaticFiles` to name a file's media type;
-- Infrastructure reads `ServerOptions` from Hosting (`InstanceStorageLocation`), and the in-process app
-  tool server reaches into Hosting (`AppMcpServerHost`).
+- Infrastructure reads `ServerOptions` from Hosting (`InstanceStorageLocation`).
 
 ## Decision
 
@@ -56,8 +55,8 @@ Each step builds, passes `dotnet run --project build -- test-all` and is one com
 `git mv`, so their history follows them.
 
 1. Remove the crossings: a schedule-document port in Application with its JSON adapter in
-   Infrastructure; media-type naming moved out of Application; storage options passed to Infrastructure
-   without `ServerOptions`; the app tool server free of Hosting.
+   Infrastructure; media-type naming moved out of Application; the instance storage location moved to
+   Hosting, beside the `ServerOptions` it reads.
 2. `AI.Domain`.
 3. `AI.Application`, with the built-in skill documents it embeds.
 4. `AI.Infrastructure` and `AI.Tools`; what remains is `AI.Server`.

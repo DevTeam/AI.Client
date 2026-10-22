@@ -8,6 +8,7 @@
   <Folder Name="/src/">
     <Project Path="src/AI.Contracts/AI.Contracts.csproj" />
     <Project Path="src/AI.Desktop/AI.Desktop.csproj" />
+    <Project Path="src/AI.Domain/AI.Domain.csproj" />
     <Project Path="src/AI.Host/AI.Host.csproj" />
     <Project Path="src/AI.Mcp.BuiltIn/AI.Mcp.BuiltIn.csproj" />
     <Project Path="src/AI.Sandbox/AI.Sandbox.csproj" />

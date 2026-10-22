@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The domain model: rules and invariants. It depends on nothing else in the solution (ADR-015). -->
+</Project>

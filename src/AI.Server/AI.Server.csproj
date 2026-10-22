@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+    <ProjectReference Include="..\AI.Domain\AI.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Skills\BuiltIn\**\SKILL.md" />

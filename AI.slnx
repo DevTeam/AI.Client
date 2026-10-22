@@ -11,11 +11,13 @@
     <Project Path="src/AI.Desktop/AI.Desktop.csproj" />
     <Project Path="src/AI.Domain/AI.Domain.csproj" />
     <Project Path="src/AI.Host/AI.Host.csproj" />
+    <Project Path="src/AI.Infrastructure/AI.Infrastructure.csproj" />
     <Project Path="src/AI.Mcp.BuiltIn/AI.Mcp.BuiltIn.csproj" />
     <Project Path="src/AI.Sandbox/AI.Sandbox.csproj" />
     <Project Path="src/AI.Server/AI.Server.csproj" />
     <Project Path="src/AI.Web/AI.Web.csproj" />
     <Project Path="src/AI.TextCorrection/AI.TextCorrection.csproj" />
+    <Project Path="src/AI.Tools/AI.Tools.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AI.Mcp.BuiltIn.Tests/AI.Mcp.BuiltIn.Tests.csproj" />

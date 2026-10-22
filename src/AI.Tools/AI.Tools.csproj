@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- MCP tool sessions, the tool environment and the in-process application tools (ADR-015). -->
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Application\AI.Application.csproj" />
+  </ItemGroup>
+</Project>

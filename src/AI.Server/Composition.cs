@@ -98,7 +98,7 @@ internal sealed class Composition
             // Server hosting, storage and the chat services built on them.
             .Transient<CompositeToolSessionFactory, ChatArchiveService, UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller,
                 UpdateInstallationProvider, AiClientServer, ApiExceptionHandler, WebClientHost, HostDescriptor,
-                ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, InstanceStorageLocation, UserStorageLocation, DirectoryBlobStore,
+                ChatEndpoint, RunEventsPublisher, RunSnapshotComparer, InstalledDesktop, InstanceStorageLocation, UserStorageLocation,
                 DataDirectoryLock, ProjectStoragePaths, ChatStoragePaths, ChatRunStoragePaths, GlobalSettingsPaths,
                 PhysicalDirectoryBrowser, ProjectDocumentSerializer, Uuid7IdGenerator,
                 SystemClock, ProjectService, ChatDocumentSerializer, ChatService, ChatSearchService, PinOrderKeys,
@@ -111,6 +111,8 @@ internal sealed class Composition
                 WorkspaceInstructionFileReader, StandingInstructions, GlobalSettingsService,
                 OpenAiCompatibleConnectionModelsResolver, ConnectionImageProbe, ChatContext, ModelMessageHeader, TeamStatusBrief,
                 LocalUserDirectory, LocalUserResolver, UserScopeMiddleware>()
+            // The adapters behind ADR-014's ports, in a call of their own for the same reason.
+            .Transient<DirectoryBlobStore, JsonScheduleDocumentRepository, FileExtensionMediaTypes>()
             // Tools, their policies and the skills and schedules that drive them. Kept as a second
             // call because the generator declares a limited number of type parameters per overload.
             .Transient<ChatAgent, ContextTokenEstimator,

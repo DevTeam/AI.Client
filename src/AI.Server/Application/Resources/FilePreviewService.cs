@@ -5,21 +5,20 @@ using System.Security.Cryptography;
 using AI.Application.Projects;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
-using Microsoft.AspNetCore.StaticFiles;
 
 public sealed class FilePreviewService(IProjectService projects, IWorkspacePathResolver resolver,
-    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text, IFileSystem files, ISystemShell shell)
+    IProjectPathAccess access, IFilePreviewFormats formats, IFilePreviewTextReader text, IFileSystem files, ISystemShell shell,
+    IMediaTypes mediaTypes)
     : IFilePreviewService
 {
     private readonly ConcurrentDictionary<string, (Guid Project, string Path, DateTimeOffset Expires)> _tickets = new();
-    private readonly FileExtensionContentTypeProvider _types = new();
 
     public async Task<FilePreview> DescribeAsync(Guid projectId, string path, CancellationToken cancellationToken)
     {
         var canonical = await ReadablePathAsync(projectId, path, cancellationToken);
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new FileNotFoundException("Project not found.");
-        _types.TryGetContentType(canonical, out var contentType);
+        mediaTypes.TryGetContentType(canonical, out var contentType);
         // One lookup each, so a format never has to ask the file system whether the path is a
         // directory or how large it is.
         var isDirectory = await files.DirectoryExistsAsync(canonical, cancellationToken);

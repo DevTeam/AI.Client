@@ -3,12 +3,9 @@ namespace AI.Application.Resources;
 using System.Text;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Resources;
-using Microsoft.AspNetCore.StaticFiles;
 
-public sealed class FilePreviewTextReader(IFileSystem files) : IFilePreviewTextReader
+public sealed class FilePreviewTextReader(IFileSystem files, IMediaTypes mediaTypes) : IFilePreviewTextReader
 {
-    private readonly FileExtensionContentTypeProvider _types = new();
-
     public async Task<FilePreviewText> ReadAsync(string path, int offset, CancellationToken cancellationToken)
     {
         if (offset is < 0 or > 20_000_000) throw new ArgumentException("Text preview offset is out of range.");
@@ -38,7 +35,7 @@ public sealed class FilePreviewTextReader(IFileSystem files) : IFilePreviewTextR
 
     public async Task<bool> IsTextAsync(string path, CancellationToken cancellationToken)
     {
-        if (_types.TryGetContentType(path, out var type) && (type.StartsWith("image/", StringComparison.Ordinal)
+        if (mediaTypes.TryGetContentType(path, out var type) && (type.StartsWith("image/", StringComparison.Ordinal)
             || type.StartsWith("video/", StringComparison.Ordinal) || type.StartsWith("audio/", StringComparison.Ordinal)
             || type == "application/pdf")) return false;
         await using var stream = await files.OpenReadAsync(path, cancellationToken)

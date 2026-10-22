@@ -7,6 +7,7 @@ using AI.Contracts.Projects;
 using AI.Infrastructure.Storage;
 using System.IO.Compression;
 using AI.Infrastructure.Tools;
+using AI.Infrastructure.Workspace;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
@@ -146,7 +147,7 @@ public sealed class FilePreviewServiceTests
             var projects = new Mock<IProjectService>();
             projects.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => Project);
             var access = new ProjectPathAccess(new SystemFileSystem(), new SystemPath(), new ChatTemporaryDirectory(NullLogger<ChatTemporaryDirectory>.Instance, new SystemFileSystem(), new SystemPath()));
-            var text = new FilePreviewTextReader(new SystemFileSystem());
+            var text = new FilePreviewTextReader(new SystemFileSystem(), new FileExtensionMediaTypes());
             var formats = new FilePreviewFormats([new DirectoryFilePreviewFormat(access, new SystemFileSystem()), new ArchiveFilePreviewFormat(),
                 new MediaFilePreviewFormat(), new MarkupFilePreviewFormat(text)], new TextFilePreviewFormat(text));
             Service = NewPreviewService(projects.Object, new WorkspacePathResolver(projects.Object, new PhysicalDirectoryBrowser(new SystemFileSystem(), new SystemPath()), access),
@@ -158,6 +159,6 @@ public sealed class FilePreviewServiceTests
         private static FilePreviewService NewPreviewService(IProjectService projects,
             IWorkspacePathResolver resolver, IProjectPathAccess access, IFilePreviewFormats formats,
             IFilePreviewTextReader text) => new(projects, resolver, access, formats, text, new SystemFileSystem(),
-                Mock.Of<ISystemShell>());
+                Mock.Of<ISystemShell>(), new FileExtensionMediaTypes());
     }
 }

@@ -1,6 +1,6 @@
-namespace AI.Infrastructure.Storage;
+namespace AI.Server.Hosting;
 
-using AI.Server.Hosting;
+using AI.Infrastructure.Storage;
 
 /// <summary>
 /// The storage root the entry point chose (see <see cref="ServerOptions.DataDirectory"/>). The

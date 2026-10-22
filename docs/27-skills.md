@@ -385,7 +385,15 @@ and skips an automatic request while Settings → Chat switches automatic commen
 ## Tools
 
 `mcp_app__skill_search` exposes matching enabled effective skill metadata to the main model. An
-omitted query browses enabled skills up to the requested limit. If a query has no matches, the result
+omitted query browses enabled skills up to the requested limit. A query is 1–5 English words; one
+with letters outside the Latin script is refused with guidance to search in English, because the
+metadata is English and such a query could only come back empty. Matches are ranked by
+`SkillCandidateSelector` with the word matching `tool_search` shares (`SearchText`): an exact id
+or alias first, then a whole word of the id, name or an alias, then a word the id begins with,
+then a word of the description. Words are compared by their plain forms (`tests` finds `test`),
+never inside another word, and common words such as `the` or `tool` are ignored. Every entry a
+word reaches is a match, best first; `remaining` counts those beyond the limit. A family name
+such as `mermaid` therefore lists the family. If a query has no matches, the result
 has `matchedQuery=false`, no arbitrary fallback entries, and guidance to broaden the query or browse.
 An exact-id query returns just that skill with its parameter and result schemas. An empty result
 does not by itself mean the catalog is empty. `mcp_app__run_skill` validates arguments and runs a skill in
@@ -403,13 +411,35 @@ in the project, and the model's copy of the message starts with an instruction t
 
 ## How the model picks skills
 
-When the App tools are available, the standing `skills.catalog` layer contains a bounded discovery
-rule rather than the full catalog. The application selects at most 12 metadata candidates for the
-turn's router, including the active playbook. The selector ranks exact ids and aliases before
-matching names and descriptions; a few common Russian task words are normalized for routing.
-The full schemas are retrieved only by exact-id search. If selection finds no candidates, the
-main chat can search with broader or alternate terms. The standing rule tells the model to
-check before acting and when the user changes task, and to run a fitting skill before other tools.
+A model picks a skill best from the whole list in front of it, in whatever language the user
+writes; a word search over English metadata finds nothing for a request in another language. So
+the catalog is shown whole, in the most detailed form the budget allows, and search is the way
+to look closer, not the way to find out what exists.
+
+When the App tools are available and a skill can start, the standing `skills.catalog` layer
+holds the rules (check before acting and when the user changes task, run a fitting skill before
+other tools, never guess an id) and every enabled skill except the executors, which run on their
+own. `SkillCatalogText` writes it in one of four forms, and `AdaptiveContextPolicy` keeps the most
+detailed that fits the layer's share of the usable context: 10%, or 5% in a compact context,
+where every token the catalog takes is one a tool schema loses.
+
+| Form | Each skill as | Built-in catalog, estimated |
+|---|---|---|
+| `Full` | `id: description` | about 12,500 tokens |
+| `Brief` | `id:` and the first 60 characters of the description | about 6,100 |
+| `Ids` | its id | about 1,700 |
+| `Families` | its family (the id up to its first hyphen) with a count; `skill_search` with the family name lists it | about 450 |
+
+A form is never cut part way, because a model that sees some skills takes the rest for absent.
+When not even the families fit, only a two-sentence rule pointing to `skill_search` remains. The
+estimates are the conservative estimator's; with the default 32,768-token window the catalog is
+shown by family, with 65,536 in brief and from about 128,000 in full. Full schemas are retrieved
+only by exact-id search.
+
+The layer is left out when no skill could start: `ChatAgent` resolves the policy of `run_skill`
+once the run's tools are known, and omits the catalog when it is denied, or when it asks first in
+a run nobody can answer, where the approval would be refused at once. A skill that asks first is
+still offered in an interactive run; the person approves the call when it is made.
 `skill_search` and `run_skill` compete for the schema budget like other task
 capabilities; omitted ones can be discovered through `tool_search`.
 
@@ -434,12 +464,16 @@ tools, 12 seconds at most. The person waits on it before every turn, so it runs 
 enabled connection marked for subtasks — usually a cheaper, faster model — and on the chat's own
 connection when none is marked. It gets the message, the end of the
 previous answer, the active playbook, the directories the project can already reach (root, tools and
-recursion of each grant), the selected skill metadata and the permitted tools by their first
+recursion of each grant), the skill catalog and the permitted tools by their first
 sentence, and returns up to two skill ids and eight tool names; unknown ones are dropped. The
 tools, and those the chosen skills declare, receive pending discovery priority before the tool
 selector cuts the list. Their admission still depends on the schema budget. The optional routing
-request is checked by `IChatContextPlanner`; a catalogue too large for the connection is skipped,
-leaving discovery to the main chat instead of sending an oversized model request.
+request is checked by `IChatContextPlanner`. The router gets every skill the chat could be offered,
+in the most detailed of the `Full`, `Brief` and `Ids` forms that fits its connection; it reads the
+message in any language, which a word match before it could not. Only when not even the ids fit
+does `SkillCandidateSelector` pick up to 12 candidates, the active playbook first, and when those
+do not fit either, routing is skipped and discovery is left to the main chat instead of sending
+an oversized model request. The form used is logged at debug level.
 
 The directories are there because a message that only names a path ("study D:\repo and ...")
 reads like a request for access: without them the router loaded `project-directory-add` for a

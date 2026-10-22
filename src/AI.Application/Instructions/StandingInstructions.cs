@@ -29,16 +29,6 @@ public sealed class StandingInstructions(
     public const long MemoryBudgetTokens = 2_048;
     public const long SkillsBudgetTokens = 512;
 
-    /// <summary>
-    /// The router supplies task-specific candidates; this standing layer only explains discovery.
-    /// </summary>
-    private const string SkillsIntro =
-        "Skills are tested procedures. Before acting, and when the user changes task, use task-specific routing "
-        + "or mcp_app__skill_search to find a fitting skill. Run it with mcp_app__run_skill before other tools and "
-        + "follow its instructions. Search again with broader terms if the first query misses; never guess an id. "
-        + "Continue an active playbook while the user stays on its task. A user-selected skill takes priority. "
-        + "Search by exact skill id for its argument schema.";
-
     /// <summary>A profile or pinned entry is shown in full up to this length; longer ones are cut.</summary>
     private const int InlineBodyLimit = 600;
 
@@ -175,7 +165,7 @@ public sealed class StandingInstructions(
         + "with a short summary that only you see. The transcript is not changed.";
 
     public async Task<ModelContextPreview> BuildAsync(Guid projectId, bool appToolsAvailable, CancellationToken cancellationToken,
-        ConnectionSettings? connection = null)
+        ConnectionSettings? connection = null, bool skillsRunnable = true)
     {
         var project = await projects.GetAsync(projectId, cancellationToken)
             ?? throw new InvalidOperationException("Project not found.");
@@ -186,7 +176,7 @@ public sealed class StandingInstructions(
             layers.Add(projectLayer);
         if (await MemoryLayerAsync(projectId, appToolsAvailable, cancellationToken) is { } memoryLayer)
             layers.Add(memoryLayer);
-        if (appToolsAvailable && await SkillsLayerAsync(projectId, cancellationToken) is { } skillsLayer)
+        if (appToolsAvailable && skillsRunnable && await SkillsLayerAsync(projectId, cancellationToken) is { } skillsLayer)
             layers.Add(skillsLayer);
         connection ??= connectionChoice.Choose((await settings.LoadAsync(cancellationToken)).Connections, project.ConnectionId);
         return policy.PrepareStanding(new ModelContextPreview(layers, layers.Sum(layer => layer.Tokens)), connection, appToolsAvailable);
@@ -275,7 +265,8 @@ public sealed class StandingInstructions(
     }
 
     /// <summary>
-    /// Keep only discovery guidance in the standing prefix. The router sees relevant metadata.
+    /// The catalog of skills the run can start, in full. The adaptive policy shortens it to the form
+    /// the connection's budget allows when the run starts.
     /// </summary>
     private async Task<ModelContextLayer?> SkillsLayerAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -285,9 +276,10 @@ public sealed class StandingInstructions(
         if (listed.Length == 0) return null;
 
         var sources = listed.GroupBy(skill => skill.Source)
-            .Select(group => new ModelContextSource($"{group.Key} skills ({group.Count()})", 0, false))
+            .Select(group => new ModelContextSource($"{group.Key} skills ({group.Count()})", 0, true))
             .ToArray();
-        return Layer(SkillsKey, "Skills", SkillsIntro, SkillsBudgetTokens, sources, false);
+        return Layer(SkillsKey, "Skills", SkillCatalogText.Layer(listed.Select(SkillCatalogEntry.Of).ToArray(), SkillCatalogForm.Full),
+            SkillsBudgetTokens, sources, false);
     }
 
     private static string MoreNote(int count) =>

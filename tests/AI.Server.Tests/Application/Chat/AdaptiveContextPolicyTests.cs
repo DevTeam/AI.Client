@@ -3,11 +3,13 @@ namespace AI.Application.Tests.Chat;
 using System.Text.Json;
 using AI.Application.Chat;
 using AI.Application.Instructions;
+using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Application.Usage;
 using AI.Contracts.Chat;
 using AI.Contracts.Instructions;
 using AI.Contracts.Settings;
+using AI.Contracts.Skills;
 using AI.Contracts.Tools;
 using AI.Contracts.Usage;
 using Shouldly;
@@ -84,6 +86,36 @@ public sealed class AdaptiveContextPolicyTests
         var largeTools = policy.Choose(Connection(131_072), "request", [], tools);
         smallTools.Tools.Count.ShouldBeLessThan(largeTools.Tools.Count);
         source.Layers[0].Content.ShouldStartWith("Full guide");
+    }
+
+    [Theory]
+    [InlineData(262_144, SkillCatalogForm.Full)]
+    [InlineData(131_072, SkillCatalogForm.Full)]
+    [InlineData(65_536, SkillCatalogForm.Brief)]
+    [InlineData(49_152, SkillCatalogForm.Ids)]
+    [InlineData(32_768, SkillCatalogForm.Families)]
+    [InlineData(16_384, SkillCatalogForm.Families)]
+    public void ShouldShowTheWholeSkillCatalogInTheMostDetailedFormTheWindowAllows(long window, SkillCatalogForm expected)
+    {
+        var skills = new BuiltInSkillCatalog().List().Where(skill => skill.Enabled && skill.Kind != SkillKinds.Executor)
+            .Select(SkillCatalogEntry.Of).ToArray();
+
+        var prepared = Policy().PrepareStanding(Preview(skills: skills), Connection(window), true)
+            .Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey);
+
+        // A form is all or nothing: no skill is cut from the list to make it fit.
+        prepared.Content.ShouldBe(SkillCatalogText.Layer(skills, expected));
+        prepared.Tokens.ShouldBeLessThanOrEqualTo(prepared.BudgetTokens);
+    }
+
+    [Fact]
+    public void ShouldKeepOnlyTheSkillRulesWhenNoCatalogFormFits()
+    {
+        var prepared = Policy().PrepareStanding(Preview(), Connection(4_096, 100), true)
+            .Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey);
+
+        prepared.Content.ShouldBeOneOf(SkillCatalogText.RulesOnly, string.Empty);
+        prepared.Truncated.ShouldBeTrue();
     }
 
     [Fact]
@@ -338,13 +370,15 @@ public sealed class AdaptiveContextPolicyTests
         catalog.ConsumePinned(run).ShouldBe(new HashSet<string>([beta.ModelDefinition.Name]));
     }
 
-    private ModelContextPreview Preview(string project = "Keep project rules.")
+    private ModelContextPreview Preview(string project = "Keep project rules.", IReadOnlyList<SkillCatalogEntry>? skills = null)
     {
         ModelContextLayer Layer(string key, string text) => new(key, key, [], text,
             _estimator.EstimateMessages([new ChatCompletionMessage("system", text)]), 24_576, false);
         var layers = new[] { Layer(StandingInstructions.BaseKey, "Full guide " + new string('b', 4_000)),
             Layer(StandingInstructions.ProjectKey, project), Layer(StandingInstructions.MemoryKey, "Memory\n- [one] A fact"),
-            Layer(StandingInstructions.SkillsKey, "Skill catalog\n" + string.Join('\n', Enumerable.Range(0, 100).Select(index => $"- skill-{index}: A useful procedure " + new string('d', 120)))) };
+            Layer(StandingInstructions.SkillsKey, SkillCatalogText.Layer(skills ?? Enumerable.Range(0, 100)
+                .Select(index => new SkillCatalogEntry($"skill-{index}", "A useful procedure " + new string('d', 120))).ToArray(),
+                SkillCatalogForm.Full)) };
         return new(layers, layers.Sum(layer => layer.Tokens));
     }
 

@@ -142,23 +142,28 @@ public sealed class StandingInstructionsTests : IDisposable
     }
 
     [Fact]
-    public async Task ShouldKeepSkillDiscoveryGuidanceBoundedAsTheCatalogGrows()
+    public async Task ShouldOfferTheWholeSkillCatalogInAFormThatFitsItsBudget()
     {
         var preview = await _standing.BuildAsync(_projectId, true, TestContext.Current.CancellationToken);
 
         var skills = preview.Layers.Single(layer => layer.Key == "skills.catalog");
-        skills.Truncated.ShouldBeFalse();
         skills.Tokens.ShouldBeLessThanOrEqualTo(skills.BudgetTokens);
-        // The standing prefix must not grow with the number of installed skills.
-        skills.Tokens.ShouldBeLessThan(300);
         skills.Content.ShouldContain("before other tools");
         skills.Content.ShouldContain("mcp_app__skill_search");
         skills.Content.ShouldContain("mcp_app__run_skill");
         skills.Content.ShouldNotContain("app_skill_search");
         skills.Content.ShouldNotContain("app_run_skill");
         skills.Content.ShouldContain("changes task");
-        skills.Content.ShouldNotContain("\n- code-feature-implement:");
+        // Executors run on their own; the model is never offered them.
         skills.Content.ShouldNotContain("chat-reply-suggest");
+    }
+
+    [Fact]
+    public async Task ShouldLeaveTheSkillCatalogOutWhenNoSkillCanStart()
+    {
+        var preview = await _standing.BuildAsync(_projectId, true, TestContext.Current.CancellationToken, skillsRunnable: false);
+
+        preview.Layers.ShouldNotContain(layer => layer.Key == "skills.catalog");
     }
 
     [Fact]

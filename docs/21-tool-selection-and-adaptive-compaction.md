@@ -64,9 +64,10 @@ turns do not permanently pin every tool they once called.
 
 Standing instructions use authored compact application text below 16,384 usable tokens,
 or when the full source layers exceed their share. Project rules are retained in full. Memory
-and skill indexes use whole entries and discovery pointers; compact skill entries omit parameter
-lists and shorten descriptions. Required run instructions have explicit compact variants and
-are retained even when the recommendation cannot accommodate them. Optional instructions are
+indexes use whole entries and discovery pointers. The skill catalog is shown whole in the most
+detailed form its share allows (see [Skills](27-skills.md#how-the-model-picks-skills)).
+Required run instructions have explicit compact variants and are retained even when the
+recommendation cannot accommodate them. Optional instructions are
 admitted by priority, independently of where they will be serialized.
 
 The selected standing content is fixed for the run. A carried tool set retains its exact order
@@ -97,8 +98,18 @@ alone used it up and a routed turn got no ordinary tool at all.
 ## Progressive tool discovery
 
 `mcp_app__tool_search` receives a capability query and searches only tools that already passed the run's
-permission policy. It returns bounded names and descriptions, never full schemas. Matches are
-pinned in the run-local registry and their definitions become available on the next model step.
+permission policy, so a tool that asks first is found and approved when called. The query is 1–5
+English words; one with letters outside the Latin script is refused with guidance to search in
+English. Ranking uses the word matching skill search shares (`SearchText`): per query word, a whole
+word of the tool name counts most, a word the name begins with less (`git` finds `github_issue_get`),
+then the description, then parameter names and descriptions. Words are compared by their plain
+forms (`files` finds `file`) and never inside another word (`read` does not find `thread`); common
+words such as `the` or `tool` are ignored. A query naming a tool exactly, with or without its
+server prefix, returns that tool alone, and `server` limits the search to one MCP server. It
+returns bounded names and descriptions, never full schemas, best first, with `remaining` counting
+further matches. The best three (`ToolCatalogRegistry.MaxPinned`) are marked `prioritized` and
+pinned in the run-local registry, and their definitions become available on the next model step;
+pinning every match narrowed the rest of the selection, and an exact search pins any other one.
 All searches in a batch contribute to pending priorities, consumed by the next tool selection;
 they do not accumulate permanent pins. A fitting carried tool set still retains the tools already offered.
 Its reply explicitly says that admission depends on the schema budget. The registry is keyed by
@@ -109,7 +120,7 @@ changing index of omitted names; search results carry those names without changi
 
 `IToolDiscoveryGuidance` formats request and error guidance in one transient service. It uses the
 actual provider-facing discovery name from the selected definitions (`mcp_app__tool_search` for
-App), with `query` and a narrow `limit=1`. It never advertises discovery when that definition is
+App), with a `query` of a few English words, a verb and an object. It never advertises discovery when that definition is
 absent, even if the tool exists in the larger permitted catalogue. The agent refreshes guidance
 after final selection and any automatic checkpoint, before planning the transport request.
 

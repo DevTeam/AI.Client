@@ -36,7 +36,7 @@ public class SkillRouteSkillTests
 
         route.ShouldNotBeNull();
         // An id the catalog does not have is dropped, and at most two skills survive.
-        route.Skills.Select(skill => skill.Id).ShouldBe(["project-create"]);
+        route.Skills.Select(skill => skill.Id).ShouldBe(["project-create", "code-feature-implement"]);
         route.Tools.ShouldBe(["mcp_built_in__process_run"]);
         route.ContinuesActive.ShouldBeFalse();
         var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
@@ -44,7 +44,9 @@ public class SkillRouteSkillTests
         input.GetProperty("tools")[0].GetString().ShouldBe("mcp_built_in__process_run: Run a program and wait for completion.");
         input.GetProperty("skills").EnumerateArray().Select(item => item.GetString()!)
             .ShouldContain(line => line.StartsWith("project-create: ", StringComparison.Ordinal));
-        input.GetProperty("skills").GetArrayLength().ShouldBeLessThanOrEqualTo(SkillRouteSkill.MaxCandidates);
+        // A message in another language still reaches every skill: the router reads it, no word match picks for it.
+        input.GetProperty("skills").GetArrayLength().ShouldBe(new BuiltInSkillCatalog().List()
+            .Count(skill => skill.Enabled && (skill.Kind != AI.Contracts.Skills.SkillKinds.Executor || skill.Id == "chat-rename")));
         _requests.Single().Tools.ShouldBeNull();
     }
 

@@ -110,7 +110,7 @@ public sealed class AppSkillsToolTests
             new ToolRunContext(projectId, chatId, chatId, true), TestContext.Current.CancellationToken);
         var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
 
-        var result = await session.CallAsync(search, """{"query":"zzxqv unrelated nonsense"}""", null,
+        var result = await session.CallAsync(search, """{"query":"zzxqv qqwrt"}""", null,
             TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBeFalse();
@@ -119,6 +119,12 @@ public sealed class AppSkillsToolTests
         content.GetProperty("guidance").GetString()!.ShouldContain("No skill matched");
         content.GetProperty("skills").GetArrayLength().ShouldBe(0);
         content.GetProperty("guidance").GetString()!.ShouldContain("broader");
+
+        // A query the English metadata cannot match is refused with how to ask instead.
+        var russian = await session.CallAsync(search, """{"query":"нарисуй схему"}""", null,
+            TestContext.Current.CancellationToken);
+        russian.IsError.ShouldBeTrue();
+        russian.StructuredContent!.Value.GetProperty("guidance").GetString()!.ShouldContain("English words");
     }
 
     [Fact]

@@ -1,14 +1,17 @@
 namespace AI.Mcp.App;
 
+using AI.Application.Search;
 using AI.Application.Skills;
 using AI.Application.Tools;
+using AI.Contracts.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
 public sealed record SkillSearchItem(string Id, string Name, string Description, string Source, string Kind,
     JsonElement? ParametersSchema, JsonElement? ResultSchema);
-public sealed record SkillSearchResult(IReadOnlyList<SkillSearchItem> Skills, bool MatchedQuery, string Guidance);
+public sealed record SkillSearchResult(IReadOnlyList<SkillSearchItem> Skills, bool MatchedQuery, string Guidance,
+    int Remaining = 0, string? Error = null);
 
 [McpServerToolType]
 public sealed class AppSkillSearchTool(ISkillGuide skills, ISkillCandidateSelector selector) : IAppTool
@@ -22,8 +25,9 @@ public sealed class AppSkillSearchTool(ISkillGuide skills, ISkillCandidateSelect
             new McpServerToolCreateOptions
             {
                 SerializerOptions = reply.Json,
-                Description = "Find available skills by task or name. Omit query to browse enabled skills. "
-                              + "If a query has no matches, retry with broader or alternate terms; "
+                Description = "Find available skills by task, family or name with 1-5 English words, such as "
+                              + "'create sequence diagram' or the family 'mermaid'. Omit query to browse enabled skills. "
+                              + "If a query has no matches, retry with other terms; "
                               + "MatchedQuery=false does not mean the catalog is empty. Broad results contain metadata only; "
                               + "search by exact skill ID to get its parameter and result schemas. A generic skill needs "
                               + "its data read with app_read and passed as parameters; a playbook returns instructions "
@@ -35,27 +39,32 @@ public sealed class AppSkillSearchTool(ISkillGuide skills, ISkillCandidateSelect
         private async Task<CallToolResult> Search(string? query = null, int limit = 30,
             CancellationToken cancellationToken = default)
         {
+            if (query is not null && !SearchText.IsEnglish(query))
+                return reply.Reply(new SkillSearchResult([], false, SearchText.EnglishOnly, Error: "The query is not in English."), true);
             var available = (await skills.EffectiveAsync(run.ProjectId, cancellationToken))
                 .ToArray();
+            var shown = Math.Clamp(limit, 1, 50);
             var term = query?.Trim().TrimStart('/');
             var exact = available.FirstOrDefault(skill => skill.Id.Equals(term, StringComparison.OrdinalIgnoreCase));
-            var selected = string.IsNullOrWhiteSpace(query)
-                ? available.Take(Math.Clamp(limit, 1, 50)).ToArray()
-                : exact is not null ? [exact] : selector.FindCandidates(query, available, Math.Clamp(limit, 1, 50));
-            var matchedQuery = available.Length > 0 && (string.IsNullOrWhiteSpace(query) || selected.Count > 0);
-            var matches = selected
+            IReadOnlyList<SkillDefinition> found = string.IsNullOrWhiteSpace(query)
+                ? available
+                : exact is not null ? [exact] : selector.FindCandidates(query, available, available.Length);
+            var matchedQuery = available.Length > 0 && (string.IsNullOrWhiteSpace(query) || found.Count > 0);
+            var matches = found.Take(shown)
                 .Select(item => new SkillSearchItem(item.Id, item.Name, exact is null ? Brief(item.Description) : item.Description,
                     item.Source, item.Kind, exact is not null ? item.ParametersSchema : null,
                     exact is not null ? item.ResultSchema : null))
                 .ToArray();
+            var remaining = found.Count - matches.Length;
             var guidance = available.Length == 0
                 ? "No enabled skills are available in this project."
                 : string.IsNullOrWhiteSpace(query)
                     ? $"Showing {matches.Length} of {available.Length} enabled skills. Search by task or exact ID for others."
                 : matchedQuery
-                    ? "These enabled skills match the query. Search by exact ID for full schemas."
+                    ? "These enabled skills match the query, best first. Search by exact ID for full schemas."
+                      + (remaining > 0 ? $" {remaining} more match; search more narrowly or raise limit." : string.Empty)
                     : "No skill matched the query. Retry with broader or alternate terms, or omit the query to browse enabled skills.";
-            return reply.Reply(new SkillSearchResult(matches, matchedQuery, guidance));
+            return reply.Reply(new SkillSearchResult(matches, matchedQuery, guidance, remaining));
         }
 
         private static string Brief(string description)

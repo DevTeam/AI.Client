@@ -134,8 +134,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         if (request.TeamStatus is { Length: > 0 } teamStatus)
             instructions.Upsert(run, new ModelInstruction("run.team-status", teamStatus, 880,
                 ModelInstructionLifetime.Run, Required: true));
-        if (behavior.IncludeStandingInstructions)
-            await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id) && !subtask, configuredConnection, token);
         if (subtask)
             instructions.Upsert(run, new ModelInstruction("run.subtask",
                 "You are a focused background worker. Execute the assigned task directly with the tools already offered. "
@@ -165,6 +163,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         await using var session = initialSession is not null
             ? new RefreshableToolSession(sessionFactory!, initialSession, grants, servers, run)
             : null;
+        if (behavior.IncludeStandingInstructions)
+            await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id) && !subtask,
+                await SkillsRunnableAsync(run, session?.Tools ?? [], kindPolicy, token), configuredConnection, token);
         var executionTools = session?.Tools.Where(IsExecutionTool).ToArray() ?? [];
         var approvalMode = executionTools.Length > 0
             ? await autoApprover().ModeAsync(projectId, chatId, branchId, token)
@@ -898,13 +899,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// the preview is their order in the prompt, so the priority is taken from it. A catalog that
     /// cannot be read leaves the run without its standing layers rather than failing every chat.
     /// </summary>
-    private async Task UpsertStandingAsync(ToolRunContext run, bool appToolsAvailable,
+    private async Task UpsertStandingAsync(ToolRunContext run, bool appToolsAvailable, bool skillsRunnable,
         ConnectionSettings? connection, CancellationToken token)
     {
         ModelContextPreview preview;
         try
         {
-            preview = await standingInstructions.BuildAsync(run.ProjectId, appToolsAvailable, token, connection);
+            preview = await standingInstructions.BuildAsync(run.ProjectId, appToolsAvailable, token, connection, skillsRunnable);
         }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -916,6 +917,21 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Upsert(run, new ModelInstruction(preview.Layers[index].Key, preview.Layers[index].Content,
                 preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing));
         }
+    }
+
+    /// <summary>
+    /// Whether a skill from the catalog could start in this run. A denied <c>run_skill</c> never
+    /// runs, and one that asks is refused at once where nobody can answer, so a catalog offered then
+    /// would only send the model to a call that fails.
+    /// </summary>
+    private async Task<bool> SkillsRunnableAsync(ToolRunContext run, IReadOnlyList<AgentTool> tools, IChatKindPolicy kindPolicy,
+        CancellationToken token)
+    {
+        if (tools.FirstOrDefault(tool => tool.ServerId == AppMcpServer.Id && tool.OriginalName == RunSkillTool) is not { } tool
+            || !kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName)) return false;
+        var policy = await policies.ResolveAsync(run.ProjectId, run.ChatId, run.BranchId, tool.ServerId, tool.OriginalName,
+            tool.SchemaHash, token);
+        return policy.Decision == "Allow" || policy.Decision == "Ask" && run.Interactive;
     }
 
     /// <summary>

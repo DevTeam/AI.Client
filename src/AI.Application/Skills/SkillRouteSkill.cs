@@ -34,7 +34,9 @@ public sealed class SkillRouteSkill(
     public const int MaxSkills = 2;
     public const int MaxTools = 8;
     public const int MaxCandidates = 12;
-    private const int MaxPurposeChars = 160;
+
+    /// <summary>The catalog forms the router can choose from; a family alone names no id it could return.</summary>
+    private static readonly SkillCatalogForm[] RoutedForms = [SkillCatalogForm.Full, SkillCatalogForm.Brief, SkillCatalogForm.Ids];
 
     /// <summary>The user is waiting on this before the first step of every turn; past it the turn goes on without a route.</summary>
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(12);
@@ -42,6 +44,10 @@ public sealed class SkillRouteSkill(
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1603, "SkillRouteSkillFailed"),
             "Skill routing failed for project {ProjectId}");
+
+    private static readonly Action<ILogger, string, int, Exception?> CatalogForm =
+        LoggerMessage.Define<string, int>(LogLevel.Debug, new EventId(1604, "SkillRouteCatalogForm"),
+            "Skill routing offers the {Form} catalogue of {Count} skills");
 
     public async Task<SkillExecutionResult> RunAsync(SkillInvocation invocation, CancellationToken cancellationToken)
     {
@@ -77,38 +83,52 @@ public sealed class SkillRouteSkill(
         var available = (await guide.EffectiveAsync(invocation.ProjectId, token))
             .Where(item => item.Kind != SkillKinds.Executor || item.Id == "chat-rename")
             .ToArray();
-        var candidates = selector.FindCandidates(Text(parameters, "message") ?? string.Empty, available, MaxCandidates,
-            Text(parameters, "active_skill"));
         if (available.Length == 0 && tools.Length == 0)
             return new("Skipped", "There is nothing to route to.", invocation.CurrentChatId);
 
         var project = await projects.GetAsync(invocation.ProjectId, token);
         var connection = await ConnectionAsync(invocation, project, token);
         if (connection is null) return new("Failed", "No enabled model connection is available.", invocation.CurrentChatId);
-        var conversation = new List<ChatCompletionMessage>
+        var message = Text(parameters, "message");
+        // The whole catalog goes to the router in the most detailed form that fits: the router reads
+        // the user's message in any language, which a word match over English metadata cannot.
+        // Only when not even the ids fit does a word match pick the few candidates it sees.
+        var entries = available.Select(SkillCatalogEntry.Of).ToArray();
+        var offers = RoutedForms.Select(form => (Form: form.ToString(), Skills: (IReadOnlyList<SkillDefinition>)available,
+                Lines: SkillCatalogText.Lines(entries, form)))
+            .Append(Fallback(selector.FindCandidates(message ?? string.Empty, available, MaxCandidates, Text(parameters, "active_skill"))));
+        ChatCompletionRequest? request = null;
+        IReadOnlyList<SkillDefinition> offered = [];
+        foreach (var offer in offers)
         {
-            new("system", SkillMarkdown.Body(skill.Content)),
-            new("user", JsonSerializer.Serialize(new
+            var conversation = new List<ChatCompletionMessage>
             {
-                message = Text(parameters, "message"),
-                previous = Text(parameters, "previous"),
-                active_skill = Text(parameters, "active_skill"),
-                directories = project?.DirectoryGrants.Select(GrantText) ?? [],
-                skills = candidates.Select(item => $"{item.Id}: {Purpose(item.Description)}"),
-                tools
-            }))
-        };
-        var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
-            await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation,
-            ReasoningEffort: connection.ReasoningEffort);
-        var plan = contextPlanner.Plan(connection, connection.Model, conversation, []);
-        if (!plan.Fits)
+                new("system", SkillMarkdown.Body(skill.Content)),
+                new("user", JsonSerializer.Serialize(new
+                {
+                    message,
+                    previous = Text(parameters, "previous"),
+                    active_skill = Text(parameters, "active_skill"),
+                    directories = project?.DirectoryGrants.Select(GrantText) ?? [],
+                    skills = offer.Lines,
+                    tools
+                }))
+            };
+            var plan = contextPlanner.Plan(connection, connection.Model, conversation, []);
+            if (!plan.Fits) continue;
+            CatalogForm(logger, offer.Form, offer.Skills.Count, null);
+            request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
+                await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation,
+                ReasoningEffort: connection.ReasoningEffort) { ContextMessages = plan.Messages };
+            offered = offer.Skills;
+            break;
+        }
+        if (request is null)
             return new("Skipped", "The routing catalogue exceeds this connection's context budget; use progressive discovery in the chat.", invocation.CurrentChatId);
-        request = request with { ContextMessages = plan.Messages };
         var content = new StringBuilder();
         await foreach (var chunk in completion.StreamAsync(request, token)) content.Append(chunk.Content);
         var (skills, chosenTools) = Parse(content.ToString(),
-            candidates.Select(item => item.Id).ToHashSet(StringComparer.Ordinal),
+            offered.Select(item => item.Id).ToHashSet(StringComparer.Ordinal),
             tools.Select(ToolName).ToHashSet(StringComparer.Ordinal));
         return new("Completed", skills.Count == 0 ? "No skill fits the message." : "Routed to " + string.Join(", ", skills) + ".",
             invocation.CurrentChatId, Output: JsonSerializer.SerializeToElement(new { skills, tools = chosenTools }));
@@ -146,11 +166,10 @@ public sealed class SkillRouteSkill(
     /// <summary>A tool is offered as "name: description"; the name is the part the answer repeats.</summary>
     private static string ToolName(string tool) => tool.Split(':', 2)[0].Trim();
 
-    private static string Purpose(string description)
-    {
-        var flat = description.ReplaceLineEndings(" ").Trim();
-        return flat.Length <= MaxPurposeChars ? flat : flat[..MaxPurposeChars] + "...";
-    }
+    /// <summary>The last resort for a catalog too large for the connection even as ids: the candidates a word match finds.</summary>
+    private static (string Form, IReadOnlyList<SkillDefinition> Skills, IReadOnlyList<string> Lines) Fallback(
+        IReadOnlyList<SkillDefinition> candidates) =>
+        ("Candidates", candidates, SkillCatalogText.Lines(candidates.Select(SkillCatalogEntry.Of).ToArray(), SkillCatalogForm.Brief));
 
     /// <summary>
     /// A directory the project can already reach, as "root: tools[, recursive]". Without it a message

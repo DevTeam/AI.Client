@@ -14,6 +14,10 @@ public interface IStandingInstructions
     /// Whether the run can reach the App tools. Without them the memory layer does not tell the
     /// model about tools it cannot call.
     /// </param>
+    /// <param name="skillsRunnable">
+    /// Whether the run can start a skill: <c>run_skill</c> is not denied, and a person can approve it
+    /// when it asks. Otherwise the skill catalog is left out rather than offering what cannot run.
+    /// </param>
     Task<ModelContextPreview> BuildAsync(Guid projectId, bool appToolsAvailable, CancellationToken cancellationToken,
-        ConnectionSettings? connection = null);
+        ConnectionSettings? connection = null, bool skillsRunnable = true);
 }

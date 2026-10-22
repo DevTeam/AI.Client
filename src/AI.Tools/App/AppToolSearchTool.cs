@@ -5,7 +5,7 @@ using AI.Contracts.Tools;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-public sealed record ToolSearchResult(IReadOnlyList<ToolCatalogMatch> Tools, string Guidance, string? Error = null);
+public sealed record ToolSearchResult(IReadOnlyList<ToolCatalogMatch> Tools, string Guidance, int Remaining = 0, string? Error = null);
 
 [McpServerToolType]
 public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
@@ -19,28 +19,32 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
             {
                 SerializerOptions = reply.Json,
                 Description = $"Call {ToolRef.ToolSearchName} when the capability needed for the user's task is absent from the visible tool list. "
-                              + "Search with a short English capability description. Tools may have been omitted from this turn's schema "
-                              + "budget; matching permitted tools are prioritized for the next model step when their schemas fit. "
-                              + "Search narrowly if not all matches fit. Do not guess an omitted tool name."
+                              + "Search with 1-5 English words, a verb and an object such as 'read text file'; server limits "
+                              + "it to one MCP server. The best matches are prioritized for the next model step when their "
+                              + "schemas fit. Do not guess an omitted tool name."
             });
 
         [McpServerTool(Name = "tool_search", ReadOnly = true, Destructive = false, Idempotent = true,
             OpenWorld = false, UseStructuredContent = true, OutputSchemaType = typeof(ToolSearchResult))]
-        private CallToolResult Search(string query, int limit = 5)
+        private CallToolResult Search(string query, int limit = 5, string? server = null)
         {
             try
             {
-                var matches = catalog.SearchAndPin(run, query, limit);
-                return reply.Reply(new ToolSearchResult(matches,
-                    matches.Count > 0
-                        ? "The listed tools are prioritized for the next model step within its schema budget. Search narrowly if not all matches fit."
+                var found = catalog.SearchAndPin(run, query, limit, server);
+                return reply.Reply(new ToolSearchResult(found.Tools,
+                    found.Tools.Count > 0
+                        ? "Matches are listed best first. Those with prioritized=true are prioritized for the next model step within "
+                          + "its schema budget; search another listed name exactly to prioritize it."
+                          + (found.Remaining > 0 ? $" {found.Remaining} more match; search more narrowly." : string.Empty)
                         : AsksForDrawing(query)
                             ? "Diagrams need no tool: write a ```mermaid or ```svg block in your answer and the chat draws it."
-                            : "No matching permitted tools were found. Continue with the tools already available."));
+                            : "No matching permitted tools were found. Retry with other English words, or continue with the tools already available.",
+                    found.Remaining));
             }
             catch (ArgumentException error)
             {
-                return reply.Reply(new ToolSearchResult([], "Use a short capability description and search again.", error.Message), true);
+                return reply.Reply(new ToolSearchResult([], "Use a short English capability description and search again.",
+                    Error: error.Message), true);
             }
         }
     }

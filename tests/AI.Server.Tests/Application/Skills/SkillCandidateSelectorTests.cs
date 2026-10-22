@@ -13,18 +13,49 @@ public sealed class SkillCandidateSelectorTests
         .ToArray();
 
     [Theory]
-    [InlineData("Создай проект с .NET приложением", "project-create")]
+    [InlineData("Create a project with a .NET app", "project-create")]
     [InlineData("Run the tests", "code-tests-run")]
     [InlineData("Import an MCP server", "mcp-import")]
     [InlineData("Create a gitgraph diagram", "mermaid-create-gitgraph")]
     [InlineData("Rename this chat", "chat-rename")]
-    [InlineData("What did we decide?", "chat-summary")]
+    [InlineData("summary", "chat-summary")]
+    [InlineData("diagrams", "mermaid-create")]
+    [InlineData("bug report.", "qa-bug-report")]
     public void ShouldRetrieveRelevantSkillsWithinTheRoutingLimit(string request, string expectedId)
     {
         var candidates = _selector.FindCandidates(request, _skills, SkillRouteSkill.MaxCandidates);
 
         candidates.Select(skill => skill.Id).ShouldContain(expectedId);
         candidates.Count.ShouldBeLessThanOrEqualTo(SkillRouteSkill.MaxCandidates);
+    }
+
+    [Theory]
+    [InlineData("run tests", "code-tests-run")]
+    [InlineData("sequence diagram", "mermaid-create-sequence")]
+    [InlineData("gantt", "mermaid-create-gantt")]
+    public void ShouldRankTheSkillNamedByAShortQueryFirst(string query, string expectedId)
+    {
+        _selector.FindCandidates(query, _skills, 5)[0].Id.ShouldBe(expectedId);
+    }
+
+    [Fact]
+    public void ShouldListAFamilyByItsName()
+    {
+        var family = _skills.Where(skill => skill.Id.StartsWith("mermaid-", StringComparison.Ordinal)).Select(skill => skill.Id);
+
+        var found = _selector.FindCandidates("mermaid", _skills, 50).Select(skill => skill.Id).ToArray();
+
+        // The alias names one skill exactly, and the family follows it.
+        found[0].ShouldBe("mermaid-create");
+        family.ShouldBeSubsetOf(found);
+    }
+
+    [Fact]
+    public void ShouldNotMatchAWordInsideAnotherWord()
+    {
+        var skills = new[] { Skill("thread-dump", "Inspect a thread dump"), Skill("file-read", "Read a file") };
+
+        _selector.FindCandidates("read", skills, 5).Select(skill => skill.Id).ShouldBe(["file-read"]);
     }
 
     [Fact]
@@ -37,7 +68,7 @@ public sealed class SkillCandidateSelectorTests
     [Fact]
     public void ShouldNotSubstituteUnrelatedSkillsForAnUnknownQuery()
     {
-        _selector.FindCandidates("zzxqv unrelated nonsense", _skills, SkillRouteSkill.MaxCandidates).ShouldBeEmpty();
+        _selector.FindCandidates("zzxqv qqwrt", _skills, SkillRouteSkill.MaxCandidates).ShouldBeEmpty();
     }
 
     [Fact]
@@ -46,4 +77,9 @@ public sealed class SkillCandidateSelectorTests
         foreach (var skill in _skills)
             _selector.FindCandidates(skill.Id, _skills, 1).Single().Id.ShouldBe(skill.Id);
     }
+
+    private static SkillDefinition Skill(string id, string description) => new BuiltInSkillCatalog().List()[0] with
+    {
+        Id = id, Name = id, Description = description, Aliases = null
+    };
 }

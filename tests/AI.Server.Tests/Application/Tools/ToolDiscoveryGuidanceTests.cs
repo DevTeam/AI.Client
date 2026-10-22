@@ -18,7 +18,7 @@ public sealed class ToolDiscoveryGuidanceTests
         var text = _guidance.ForSelection(new([search], 10, 500, 50, 100)).ShouldNotBeNull();
         text.ShouldContain("call " + search.ModelDefinition.Name);
         text.ShouldContain("query");
-        text.ShouldContain("limit=1");
+        text.ShouldContain("English words");
         text.ShouldContain("earlier messages and summaries may be stale");
         text.ShouldNotContain("call app_tool_search");
     }

@@ -6,6 +6,7 @@ using Contracts.Instructions;
 using Contracts.Settings;
 using Contracts.Tools;
 using Instructions;
+using Skills;
 using Tools;
 
 /// <summary>
@@ -19,6 +20,14 @@ public sealed partial class AdaptiveContextPolicy(
 {
     private const long ProtocolOverhead = 256;
     private const long SafetyMargin = 1_024;
+
+    /// <summary>
+    /// The share of the usable context the standing skill catalog may take, in percent. A compact
+    /// context keeps less, because there every token the catalog takes is one a tool schema loses.
+    /// </summary>
+    private const long SkillsSharePercent = 10;
+
+    private const long CompactSkillsSharePercent = 5;
 
     public AdaptiveSummaryBudget ResolveSummary(ConnectionSettings? connection, int requestedTargetTokens)
     {
@@ -104,8 +113,10 @@ public sealed partial class AdaptiveContextPolicy(
         foreach (var layer in preview.Layers.Where(layer => layer.Key is StandingInstructions.MemoryKey or StandingInstructions.SkillsKey))
         {
             var allowance = layer.Key == StandingInstructions.MemoryKey ? Math.Min(2_048, remaining / 4)
-                : compact ? Math.Min(4_096, remaining) : remaining;
-            var optional = FitIndex(layer, allowance, compact, connection?.Model);
+                : Math.Min(remaining, budget.UsableTokens * (compact ? CompactSkillsSharePercent : SkillsSharePercent) / 100);
+            var optional = layer.Key == StandingInstructions.SkillsKey
+                ? FitSkills(layer, allowance, connection?.Model)
+                : FitIndex(layer, allowance, compact, connection?.Model);
             layers.Add(optional);
             remaining = Math.Max(0, remaining - optional.Tokens);
         }
@@ -255,29 +266,39 @@ public sealed partial class AdaptiveContextPolicy(
         return Selection(selected, tokens, selectionReason);
     }
 
+    /// <summary>
+    /// The most detailed catalog form that fits: every skill with its description, then with the
+    /// start of it, then by id, then by family. A catalog is never cut part way, because a model
+    /// that sees some skills takes the rest for absent.
+    /// </summary>
+    private ModelContextLayer FitSkills(ModelContextLayer layer, long allowance, string? model)
+    {
+        var entries = SkillCatalogText.Parse(layer.Content);
+        foreach (var form in SkillCatalogText.Forms)
+        {
+            var content = SkillCatalogText.Layer(entries, form);
+            var tokens = Tokens(content, model);
+            if (tokens <= allowance)
+                return layer with { Content = content, Tokens = tokens, BudgetTokens = allowance, Truncated = form != SkillCatalogForm.Full };
+        }
+        var rules = SkillCatalogText.RulesOnly;
+        var sources = layer.Sources.Select(source => source with { Included = false }).ToArray();
+        return Tokens(rules, model) <= allowance
+            ? layer with { Content = rules, Tokens = Tokens(rules, model), BudgetTokens = allowance, Truncated = true, Sources = sources }
+            : layer with { Content = string.Empty, Tokens = 0, BudgetTokens = allowance, Truncated = true, Sources = sources };
+    }
+
     private ModelContextLayer FitIndex(ModelContextLayer layer, long allowance, bool compact, string? model)
     {
         if (!compact && layer.Tokens <= allowance) return layer with { BudgetTokens = allowance };
-        var skills = layer.Key == StandingInstructions.SkillsKey;
-        var intro = skills
-            ? "Skills: use a matching skill before other tools. Continue its playbook on follow-ups; choose again for a different task. Discover full descriptions and arguments with mcp_app__skill_search, then execute with mcp_app__run_skill."
-            : "Memory is background, subordinate to project instructions. Read relevant entries with app_read resource=Memory; save lasting facts only when the user confirms them. Never store secrets.";
-        var suffix = skills ? "\nMore skills and full argument schemas are available through mcp_app__skill_search."
-            : "\nMore memory entries are available through app_read resource=Memory.";
+        const string intro = "Memory is background, subordinate to project instructions. Read relevant entries with app_read resource=Memory; save lasting facts only when the user confirms them. Never store secrets.";
+        const string suffix = "\nMore memory entries are available through app_read resource=Memory.";
         if (Tokens(intro + suffix, model) > allowance)
             return layer with { Content = string.Empty, Tokens = 0, BudgetTokens = allowance, Truncated = true,
                 Sources = layer.Sources.Select(source => source with { Included = false }).ToArray() };
         var text = new StringBuilder(intro);
-        foreach (var line in layer.Content.Split('\n').Where(line => line.StartsWith("- ", StringComparison.Ordinal)))
+        foreach (var entry in layer.Content.Split('\n').Where(line => line.StartsWith("- ", StringComparison.Ordinal)))
         {
-            // Compact catalogs carry ids and a short purpose, never parameter lists or partial ids.
-            var entry = line;
-            if (skills && compact) entry = ParameterSuffix().Replace(entry, string.Empty);
-            if (skills && compact && entry.Length > 160)
-            {
-                var separator = entry.IndexOf(": ", StringComparison.Ordinal);
-                if (separator >= 0) entry = entry[..Math.Min(entry.Length, Math.Max(separator + 2, 160))] + "...";
-            }
             if (Tokens(text + "\n" + entry + suffix, model) > allowance) break;
             text.Append('\n').Append(entry);
         }
@@ -312,8 +333,6 @@ public sealed partial class AdaptiveContextPolicy(
         : WordPattern().Matches(text).Select(match => match.Value).Where(word => word.Length >= 3);
     [GeneratedRegex("[\\p{L}\\p{N}_-]+", RegexOptions.CultureInvariant)]
     private static partial Regex WordPattern();
-    [GeneratedRegex(" \\([^()]*\\)$", RegexOptions.CultureInvariant)]
-    private static partial Regex ParameterSuffix();
     private sealed record Candidate(AgentTool Tool, long Tokens, bool Required, bool Core, bool Discovered, int Relevance);
 
     private const string CompactBase =

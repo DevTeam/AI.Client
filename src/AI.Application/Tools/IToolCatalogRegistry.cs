@@ -7,7 +7,11 @@ public interface IToolCatalogRegistry
     IReadOnlySet<string> GetPinned(ToolRunContext run);
     /// <summary>Consumes pending discovery priorities for one selection step, including all searches in a batch.</summary>
     IReadOnlySet<string> ConsumePinned(ToolRunContext run);
-    IReadOnlyList<ToolCatalogMatch> SearchAndPin(ToolRunContext run, string query, int limit);
+    /// <summary>
+    /// Ranks the run's tools for an English query, optionally on one server, and pins the best
+    /// matches. A query exactly naming a tool returns that tool alone.
+    /// </summary>
+    ToolCatalogSearch SearchAndPin(ToolRunContext run, string query, int limit, string? server = null);
 
     /// <summary>
     /// Pins the run's tools with these names, given with or without their server prefix, so they
@@ -22,4 +26,8 @@ public interface IToolCatalogRegistry
     bool TryRecordPlaybook(ToolRunContext run, string skillId, string arguments);
 }
 
-public sealed record ToolCatalogMatch(string Name, string Description, string ServerId);
+/// <param name="Prioritized">Whether the match is pinned for the next model step; others can be pinned by searching their exact name.</param>
+public sealed record ToolCatalogMatch(string Name, string Description, string ServerId, bool Prioritized);
+
+/// <param name="Remaining">How many further tools match beyond the ones returned.</param>
+public sealed record ToolCatalogSearch(IReadOnlyList<ToolCatalogMatch> Tools, int Remaining);

@@ -32,9 +32,9 @@ public sealed class ToolDiscoveryGuidance : IToolDiscoveryGuidance
         var search = tools.FirstOrDefault(tool => tool.OriginalName == "tool_search"
             && tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal));
         return search is not null
-            ? $"For a missing capability, call {search.ModelDefinition.Name} with a short English capability description "
-              + "in query (for example: 'read text file', 'list directory', 'grep in files') and limit=1. "
-              + "Matching permitted schemas are prioritized for the next model step when they fit; "
+            ? $"For a missing capability, call {search.ModelDefinition.Name} with 1-5 English words in query, "
+              + "a verb and an object (for example: 'read text file', 'list directory', 'grep files'). "
+              + "The best matching permitted schemas are prioritized for the next model step when they fit; "
               + "use a returned name only after its definition is offered."
             : "No tool-discovery tool is offered in this request. Use the tools that are shown, or explain the missing capability.";
     }

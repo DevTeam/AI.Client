@@ -14,7 +14,8 @@ code. The input is JSON:
 - `active_skill`: the id of the skill the conversation is following, when there is one;
 - `directories`: the directories the current project can already reach, as "root: tools", where
   "recursive" covers everything below the root;
-- `skills`: each available skill as "id: what it is for";
+- `skills`: the available skills, usually all of them, as "id: what it is for", "id: the start of
+  what it is for" or the id alone when the catalogue is long;
 - `tools`: each available tool as "name: what it does".
 
 Choose:

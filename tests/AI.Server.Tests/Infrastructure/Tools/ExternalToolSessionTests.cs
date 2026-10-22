@@ -96,7 +96,7 @@ public sealed class ExternalToolSessionTests
         var catalog = new ToolCatalogRegistry();
         using var scope = catalog.Begin(ToolRunContext.None);
         catalog.Update(ToolRunContext.None, session.Tools);
-        var matches = catalog.SearchAndPin(ToolRunContext.None, "C# script", 10).Select(match => match.Name).ToArray();
+        var matches = catalog.SearchAndPin(ToolRunContext.None, "C# script", 10).Tools.Select(match => match.Name).ToArray();
         foreach (var script in scripts) matches.ShouldContain(script.ModelDefinition.Name);
     }
 

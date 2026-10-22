@@ -26,6 +26,24 @@ public sealed class WebClientHost : IWebClientHost
         app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value;
+            // Some published SDK bundles contain a dotnet.js.br whose size differs from the
+            // static asset endpoint manifest. The endpoint sends only the recorded length,
+            // truncating the bootstrap script and leaving Blazor on its loading screen.
+            // Serve the complete uncompressed bootstrap file when it is present.
+            if (HttpMethods.IsGet(context.Request.Method)
+                && string.Equals(path, "/_framework/dotnet.js", StringComparison.OrdinalIgnoreCase)
+                && app.Environment.WebRootPath is { } webRoot)
+            {
+                var bootstrap = Path.Combine(webRoot, "_framework", "dotnet.js");
+                if (File.Exists(bootstrap))
+                {
+                    context.Response.ContentType = "text/javascript";
+                    context.Response.Headers.CacheControl = "no-cache";
+                    await context.Response.SendFileAsync(bootstrap, context.RequestAborted);
+                    return;
+                }
+            }
+
             if (HttpMethods.IsGet(context.Request.Method)
                 && path is not null
                 && path.StartsWith("/appsettings", StringComparison.OrdinalIgnoreCase)

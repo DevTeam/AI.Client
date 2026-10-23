@@ -62,8 +62,17 @@ public sealed class ToolSandbox : IToolSandbox
                + "and read the OS and the .NET runtime. Anything else is denied, the user profile with its package caches and SDKs included, "
                + "and so is starting in a directory outside the grants. "
                + network
+               + (support.OpensNullDevice ? "" : NullDeviceClosed(tool))
                + AccessDenied(tool);
     }
+
+    /// <summary>What a run on a machine whose sandbox cannot open the null device should expect.</summary>
+    public static string NullDeviceClosed(SandboxedTool tool) =>
+        "On this machine Windows does not let sandboxed programs open the null device (NUL), and no directory grant changes "
+        + "that: a program that opens it fails here, Git for Windows at every start (\"could not open '/dev/null'\"). "
+        + (tool == SandboxedTool.Commands
+            ? "Run such a program with process_run_unrestricted rather than asking for a grant. "
+            : "Run such a program with process_run_unrestricted. ");
 
     /// <summary>What to do when the sandbox, rather than the program, is why a run failed.</summary>
     private static string AccessDenied(SandboxedTool tool) =>

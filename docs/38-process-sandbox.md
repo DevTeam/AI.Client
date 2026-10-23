@@ -124,6 +124,18 @@ listed, their descriptions say so and every run fails with the reason; `process_
 still works. A launcher failure before the program
 runs exits with 125 and a message starting with `ai-sandbox:`.
 
+Windows resets the security of the null device (`\Device\Null`, `NUL`) at every boot. On Windows 11
+the reset opens it to AppContainers; on Windows 10 it does not, so a confined program cannot open
+`NUL`, and no path in the policy changes that. Git for Windows opens `/dev/null` for reading and
+writing at every start and fails with `could not open '/dev/null' for reading and writing:
+Permission denied`. `ProcessLauncher` probes this once per process with `cmd /c echo.>nul` in a
+container with nothing granted (`SandboxSupport.OpensNullDevice`). When the device is closed, the
+descriptions of `process_run` and `cs_run` say so, and a failed `process_run` whose error output names
+the device carries an `error` saying that a grant will not help and that
+`process_run_unrestricted` will, so the model does not ask the user for a directory that cannot fix it.
+Opening the device to containers would mean changing its security descriptor as an administrator
+after every boot, which the application does not do.
+
 ## cs_run inside the sandbox
 
 The worker is the server executable started with `--script-worker`. Its policy is the session's

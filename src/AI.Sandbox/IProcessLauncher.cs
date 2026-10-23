@@ -86,7 +86,13 @@ public interface ILaunchedProcess : IDisposable
 /// Whether a policy with <see cref="SandboxPolicy.AllowNetwork"/> off is enforced here; Landlock
 /// needs ABI 4 for that, and a launch that asks for it on an older kernel fails.
 /// </param>
-public sealed record SandboxSupport(bool Available, string Mechanism, string? Reason = null, bool ClosesNetwork = false);
+/// <param name="OpensNullDevice">
+/// Whether a confined program may open the null device. Windows resets the device's security at
+/// every boot, and on some versions (Windows 10) the reset leaves AppContainers out; programs that
+/// open the device at start, Git for Windows among them, then fail in the sandbox, and no policy
+/// path changes that.
+/// </param>
+public sealed record SandboxSupport(bool Available, string Mechanism, string? Reason = null, bool ClosesNetwork = false, bool OpensNullDevice = true);
 
 public sealed class SandboxUnavailableException : InvalidOperationException
 {

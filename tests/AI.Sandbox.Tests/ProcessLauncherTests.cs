@@ -262,6 +262,38 @@ public sealed class ProcessLauncherTests : IDisposable
     /// A shell command that runs in the writable directory: a confined program cannot even start in
     /// a directory the policy does not open, which is not what these tests are about.
     /// </summary>
+    /// <summary>
+    /// What the support reports about the null device is what a confined program meets: Windows 10
+    /// resets the device's security at boot without the AppContainers, Windows 11 opens it to them.
+    /// </summary>
+    [Fact]
+    public async Task TheSupportSaysWhetherAConfinedProgramMayOpenTheNullDevice()
+    {
+        Shell.RequireSandbox(_launcher);
+        if (!OperatingSystem.IsWindows())
+        {
+            _launcher.Support.OpensNullDevice.ShouldBeTrue();
+            return;
+        }
+
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
+        {
+            WorkingDirectory = _writable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add("/d");
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("echo.>nul");
+
+        var result = await RunAsync(start, Policy);
+
+        (result.ExitCode == 0).ShouldBe(_launcher.Support.OpensNullDevice, result.Stderr);
+    }
+
     private ProcessStartInfo Command(string command) => Shell.Command(command, _writable);
 
     private async Task<Result> RunAsync(ProcessStartInfo start, SandboxPolicy? policy, int timeoutMs = 30000, ChildProcessLimits? limits = null)

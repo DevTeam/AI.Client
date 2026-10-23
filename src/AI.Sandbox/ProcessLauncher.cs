@@ -183,7 +183,7 @@ public sealed class ProcessLauncher : IProcessLauncher
         {
             // AppContainer capabilities derived from names arrived with Windows 10.
             return OperatingSystem.IsWindowsVersionAtLeast(10)
-                ? new SandboxSupport(true, "AppContainer", ClosesNetwork: true)
+                ? new SandboxSupport(true, "AppContainer", ClosesNetwork: true, OpensNullDevice: ContainerOpensNullDevice())
                 : new SandboxSupport(false, "AppContainer", "Windows 10 or later is required.");
         }
 
@@ -203,5 +203,56 @@ public sealed class ProcessLauncher : IProcessLauncher
         }
 
         return new SandboxSupport(false, RuntimeInformation.OSDescription, "This operating system has no supported sandbox.");
+    }
+
+    /// <summary>
+    /// Whether a program in the container can open the null device for writing, as Git for Windows
+    /// does at every start: <c>cmd /c echo.&gt;nul</c> in a container with nothing granted. The launcher
+    /// is started directly, because <see cref="Start"/> needs the support this is part of. A probe
+    /// that cannot run at all proves nothing, so it does not report the device as closed.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static bool ContainerOpensNullDevice()
+    {
+        var system = Environment.SystemDirectory;
+        var start = new ProcessStartInfo(LauncherPath(out var prefix))
+        {
+            WorkingDirectory = system,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        foreach (var argument in (string[])[.. prefix, PolicyArgument, new SandboxPolicy([], AllowNetwork: false).ToJson(), ProgramSeparator,
+                     Path.Combine(system, "cmd.exe"), "/d", "/c", "echo.>nul"])
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            using var process = Process.Start(start);
+            if (process is null)
+            {
+                return true;
+            }
+
+            process.StandardInput.Close();
+            _ = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
+            {
+                process.Kill(entireProcessTree: true);
+                return true;
+            }
+
+            return process.ExitCode is 0 or SandboxLauncher.LaunchFailed;
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return true;
+        }
     }
 }

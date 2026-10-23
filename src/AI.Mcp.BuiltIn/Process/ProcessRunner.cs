@@ -2,13 +2,14 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using AI.Contracts.FileSystem;
 using AI.Mcp.BuiltIn.Sandbox;
 using AI.Sandbox;
 
 namespace AI.Mcp.BuiltIn.Process;
 
-public sealed class ProcessRunner : IProcessRunner
+public sealed partial class ProcessRunner : IProcessRunner
 {
     private readonly IFileSystem _files;
     private readonly IPath _paths;
@@ -158,6 +159,11 @@ public sealed class ProcessRunner : IProcessRunner
 
             var (outText, outCut) = Decode(stdout, output.Result);
             var (errorText, errorCut) = Decode(stderr, errors.Result);
+            // The failure reads like a missing grant, and asking for one would not help.
+            var nullDevice = policy is not null && !_launcher.Support.OpensNullDevice && process.ExitCode != 0
+                             && NullDeviceMention().IsMatch(errorText)
+                ? ToolSandbox.NullDeviceClosed(SandboxedTool.Commands).TrimEnd()
+                : null;
             return new ProcessResult(
                 process.ExitCode,
                 outText,
@@ -165,11 +171,15 @@ public sealed class ProcessRunner : IProcessRunner
                 timer.ElapsedMilliseconds,
                 launched.TimedOut,
                 outCut || errorCut,
-                null,
+                nullDevice,
                 launched.LimitExceeded,
                 mechanism);
         }
     }
+    /// <summary>How programs name the null device when they cannot open it: Git's <c>/dev/null</c>, cmd's <c>nul</c>.</summary>
+    [GeneratedRegex(@"/dev/null|\bnul\b", RegexOptions.IgnoreCase)]
+    private static partial Regex NullDeviceMention();
+
     /// <summary>Raw bytes, enough for <see cref="OutputLimit"/> characters in any encoding.</summary>
     private const int OutputBytes = OutputLimit * 4;
 

@@ -14,4 +14,7 @@ public sealed record ChatCompletionRequest(
     int KindStateVersion = 1, Guid? ProjectId = null,
     // The team's state as the turn starts, for a team lead's run; see docs/34-asides-and-team-messages.md.
     string? TeamStatus = null,
-    string? ReasoningEffort = null);
+    string? ReasoningEffort = null,
+    // Groups requests whose prefixes overlap, so a provider routes them to the same prompt cache;
+    // see docs/39-subtask-context-inheritance.md.
+    string? PromptCacheKey = null);

@@ -51,7 +51,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             sink.ActivityAsync, sink.TransportAsync, sink.ApproveAsync, cancellationToken, request.Interactive,
             request.ParentBranchId, sink.DraftAsync, sink.ContextUsageAsync, sink.DraftToolCallAsync,
             request.OverlayPromptsAllowed, sink.TakeAsidesAsync, sink.StalledAsync, () => sink.JoinSignal,
-            request.MaxModelSteps);
+            request.MaxModelSteps, request.SubtaskDepth);
 
     private async Task<WorkspaceChangeSet> RunCoreAsync(Guid projectId, Guid chatId, Guid branchId, ChatCompletionRequest request,
         Func<ChatCompletionMessage, CancellationToken, Task> persist,
@@ -69,8 +69,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         Func<CancellationToken, Task<IReadOnlyList<ChatCompletionMessage>>>? asides = null,
         Func<string, CancellationToken, Task>? stalledReport = null,
         Func<CancellationToken>? joinSignal = null,
-        int? maxModelSteps = null)
+        int? maxModelSteps = null,
+        int subtaskDepth = 0)
     {
+        // One key per chat, not per branch: a turn, its checkpoints and the subtasks it starts share a
+        // prefix only as far as the provider's cache is routed to one place for all of them.
+        request = request with { PromptCacheKey = request.PromptCacheKey ?? PromptCacheKey(chatId) };
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
@@ -113,7 +117,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
         var subtask = parentBranchId is not null;
         var run = new ToolRunContext(projectId, chatId, branchId, interactive, kindPolicy.Kind, request.KindState,
-            request.KindStateVersion, overlayPromptsAllowed, subtask);
+            request.KindStateVersion, overlayPromptsAllowed, subtask, subtaskDepth);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
         var plansAllowed = !subtask && servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
@@ -138,7 +142,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             instructions.Upsert(run, new ModelInstruction("run.subtask",
                 "You are a focused background worker. Execute the assigned task directly with the tools already offered. "
                 + "Do not plan, search for additional tools, inspect unrelated application state, or repeat successful reads and checks. "
-                + "Keep spawn_subtask available, but delegate again only when the assigned work is itself independently divisible. "
+                + (SubtaskNesting.CanDelegate(subtaskDepth, global)
+                    ? "Keep spawn_subtask available, but delegate again only when the assigned work is itself independently divisible. "
+                    : "Do not delegate: spawn_subtask refuses work from a subtask at this depth, so do the work yourself or report what is left as unresolved. ")
                 + "Keep necessary verification proportional and return a short factual result to the parent.",
                 995, ModelInstructionLifetime.Run, Required: true));
         // Set while the application compacts the history itself, so its summary is accounted as a
@@ -1128,6 +1134,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private const string RouteKey = "run.skill-route";
 
     private const string RunSkillTool = "run_skill";
+
+    internal static string PromptCacheKey(Guid chatId) => $"chat-{chatId:N}";
 
     /// <summary>
     /// The run-wide rule for ending a turn. A response without tool calls is the final answer, so a

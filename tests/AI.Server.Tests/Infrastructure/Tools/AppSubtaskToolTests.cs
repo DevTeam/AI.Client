@@ -85,6 +85,59 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldShareTheChatsPromptCacheKeyAndForbidFurtherDelegation()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync();
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        await session.CallAsync(tool, SubtaskFixture.Arguments("do the focused work"), null,
+            TestContext.Current.CancellationToken);
+
+        var request = fixture.Completion.Requests.ShouldHaveSingleItem();
+        // The parent's turn runs under the same key, so the provider can route both to one cache.
+        request.PromptCacheKey.ShouldBe($"chat-{fixture.ChatId:N}");
+        string.Join("\n", request.ContextMessages!.Select(message => message.Content)).ShouldContain("Do not delegate");
+    }
+
+    [Fact]
+    public async Task ShouldRefuseDelegationFromASubtaskAtTheDepthLimit()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync(interactive: false, subtaskDepth: 1);
+        // Still offered, so a subtask's tool list stays the parent's; the call is what refuses.
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("nested work"), null,
+            TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeTrue();
+        result.StructuredContent!.Value.GetProperty("error").GetString().ShouldNotBeNull()
+            .ShouldContain("not available from a subtask");
+        fixture.Completion.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ShouldAllowNestedDelegationWithinARaisedDepthLimit()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        await fixture.SetMaxSubtaskDepthAsync(2);
+        fixture.Completion.Answer("done");
+        await using var session = await fixture.OpenAsync(interactive: false, subtaskDepth: 1);
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("nested work"), null,
+            TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        // The nested run is at depth 2, the limit, so it is told not to go further.
+        string.Join("\n", fixture.Completion.Requests.ShouldHaveSingleItem().ContextMessages!
+            .Select(message => message.Content)).ShouldContain("Do not delegate");
+    }
+
+    [Fact]
     public async Task ShouldForceAResultAfterTheSubtaskModelStepBudget()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -492,8 +545,16 @@ public sealed class AppSubtaskToolTests
                 CancellationToken.None);
         }
 
-        public Task<IToolSession> OpenAsync(bool interactive = true) => Sessions.OpenAsync([],
-            new ToolRunContext(ProjectId, ChatId, ChatId, interactive), TestContext.Current.CancellationToken);
+        public Task<IToolSession> OpenAsync(bool interactive = true, int subtaskDepth = 0) => Sessions.OpenAsync([],
+            new ToolRunContext(ProjectId, ChatId, ChatId, interactive, IsSubtask: subtaskDepth > 0, SubtaskDepth: subtaskDepth),
+            TestContext.Current.CancellationToken);
+
+        public async Task SetMaxSubtaskDepthAsync(int depth)
+        {
+            var stored = await Settings.LoadAsync(CancellationToken.None);
+            await Settings.SaveAsync(stored with { ChatAutomation = new ChatAutomationSettings(MaxSubtaskDepth: depth) },
+                CancellationToken.None);
+        }
 
         /// <summary>Without ids, which the tool reads as the calling run's own project and chat.</summary>
         public static string Arguments(params string[] tasks) =>

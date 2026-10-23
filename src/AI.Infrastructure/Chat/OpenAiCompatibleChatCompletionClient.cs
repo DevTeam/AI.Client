@@ -25,6 +25,10 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     // remembered for the life of the process and streamed without it.
     private readonly ConcurrentDictionary<string, bool> _withoutStreamUsage = new(StringComparer.OrdinalIgnoreCase);
 
+    // Endpoints that refused prompt_cache_key, remembered the same way. The key only steers cache
+    // routing, so a request without it is the same request, just less likely to hit the cache.
+    private readonly ConcurrentDictionary<string, bool> _withoutCacheKey = new(StringComparer.OrdinalIgnoreCase);
+
     // Providers routinely put the actual reason (e.g. "context length exceeded", a validation
     // complaint about a malformed tool_calls entry) in the response body, not the status line —
     // a bare "400 (Bad Request)" is not enough to diagnose or even reproduce the failure after
@@ -53,19 +57,18 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             throw new ArgumentException("Message cannot be empty.", nameof(request));
         }
 
-        var endpoint = new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions");
-        using var message = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        message.Content = JsonContent.Create(await CreateBodyAsync(request, false, false, cancellationToken));
-        if (!string.IsNullOrWhiteSpace(request.ApiKey))
+        var endpointKey = EndpointKey(request);
+        var cacheKey = CacheKey(request, endpointKey);
+        string body;
+        while (true)
         {
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());
-        }
-
-        using var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
-        var body = await ReadBodyAsync(response, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw Failure(response, body);
+            using var message = await CreateRequestAsync(request, false, false, cacheKey, cancellationToken);
+            using var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
+            body = await ReadBodyAsync(response, cancellationToken);
+            if (response.IsSuccessStatusCode) break;
+            if (cacheKey is null || !Refuses(response, body, "prompt_cache_key")) throw Failure(response, body);
+            _withoutCacheKey[endpointKey] = true;
+            cacheKey = null;
         }
 
         using var document = JsonDocument.Parse(body);
@@ -86,27 +89,34 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         ChatCompletionRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var endpointKey = request.BaseUrl.Trim().TrimEnd('/');
+        var endpointKey = EndpointKey(request);
         var askUsage = !_withoutStreamUsage.ContainsKey(endpointKey);
-        using var message = await CreateRequestAsync(request, true, askUsage, cancellationToken);
-        var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var cacheKey = CacheKey(request, endpointKey);
+        HttpResponseMessage response;
+        // Each refused optional field is dropped once and the request sent again, so the loop ends
+        // after at most one retry per field; a refusal about anything else fails at once.
+        while (true)
         {
+            using var message = await CreateRequestAsync(request, true, askUsage, cacheKey, cancellationToken);
+            response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
+            if (response.IsSuccessStatusCode) break;
             var errorBody = await ReadBodyAsync(response, cancellationToken);
-            if (!askUsage || !RejectsStreamOptions(response, errorBody))
+            if (askUsage && Refuses(response, errorBody, "stream_options", "include_usage"))
+            {
+                _withoutStreamUsage[endpointKey] = true;
+                askUsage = false;
+            }
+            else if (cacheKey is not null && Refuses(response, errorBody, "prompt_cache_key"))
+            {
+                _withoutCacheKey[endpointKey] = true;
+                cacheKey = null;
+            }
+            else
             {
                 using (response) throw Failure(response, errorBody);
             }
 
             response.Dispose();
-            _withoutStreamUsage[endpointKey] = true;
-            using var retry = await CreateRequestAsync(request, true, false, cancellationToken);
-            response = await SendAsync(retry, request.CredentialProfileId, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var retryBody = await ReadBodyAsync(response, cancellationToken);
-                using (response) throw Failure(response, retryBody);
-            }
         }
 
         using var _ = response;
@@ -198,16 +208,20 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     }
 
     /// <summary>
-    /// Whether a refusal is about <c>stream_options</c> rather than anything else in the request:
-    /// only then is sending it again without the field worth one more request.
+    /// Whether a refusal is about one of the named optional fields rather than anything else in the
+    /// request: only then is sending it again without the field worth one more request.
     /// </summary>
-    private static bool RejectsStreamOptions(HttpResponseMessage response, string body) =>
+    private static bool Refuses(HttpResponseMessage response, string body, params string[] fields) =>
         response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity
-        && (body.Contains("stream_options", StringComparison.OrdinalIgnoreCase)
-            || body.Contains("include_usage", StringComparison.OrdinalIgnoreCase));
+        && fields.Any(field => body.Contains(field, StringComparison.OrdinalIgnoreCase));
+
+    private static string EndpointKey(ChatCompletionRequest request) => request.BaseUrl.Trim().TrimEnd('/');
+
+    private string? CacheKey(ChatCompletionRequest request, string endpointKey) =>
+        request.PromptCacheKey is { Length: > 0 } key && !_withoutCacheKey.ContainsKey(endpointKey) ? key : null;
 
     private async Task<HttpRequestMessage> CreateRequestAsync(ChatCompletionRequest request, bool stream, bool askUsage,
-        CancellationToken cancellationToken)
+        string? cacheKey, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!Uri.TryCreate(request.BaseUrl, UriKind.Absolute, out var baseUri)
@@ -226,7 +240,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
             HttpMethod.Post,
             new Uri(baseUri.ToString().TrimEnd('/') + "/chat/completions"))
         {
-            Content = JsonContent.Create(await CreateBodyAsync(request, stream, askUsage, cancellationToken))
+            Content = JsonContent.Create(await CreateBodyAsync(request, stream, askUsage, cacheKey, cancellationToken))
         };
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
@@ -266,7 +280,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     }
 
     private async Task<Dictionary<string, object?>> CreateBodyAsync(ChatCompletionRequest request, bool stream, bool askUsage,
-        CancellationToken cancellationToken)
+        string? cacheKey, CancellationToken cancellationToken)
     {
         var messages = new List<Dictionary<string, object?>>();
         foreach (var item in request.ContextMessages is { Count: > 0 } ? request.ContextMessages
@@ -297,6 +311,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
         var body = new Dictionary<string, object?> { ["model"] = request.Model.Trim(), ["messages"] = messages, ["stream"] = stream };
         if (request.ReasoningEffort is { Length: > 0 } effort) body["reasoning_effort"] = effort;
+        if (cacheKey is not null) body["prompt_cache_key"] = cacheKey;
         // Without it a stream says nothing about what it used: the report is an extra final chunk
         // that endpoints send only when asked.
         if (stream && askUsage) body["stream_options"] = new { include_usage = true };

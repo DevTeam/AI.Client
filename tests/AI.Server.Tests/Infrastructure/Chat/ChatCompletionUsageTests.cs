@@ -164,9 +164,84 @@ public class ChatCompletionUsageTests
         return chunks;
     }
 
-    private static async Task DrainAsync(OpenAiCompatibleChatCompletionClient client, string baseUrl)
+    private static async Task DrainAsync(OpenAiCompatibleChatCompletionClient client, string baseUrl, string? cacheKey = null)
     {
-        await foreach (var _ in client.StreamAsync(new ChatCompletionRequest(baseUrl, "m", null, "Hi"), CancellationToken.None)) { }
+        await foreach (var _ in client.StreamAsync(new ChatCompletionRequest(baseUrl, "m", null, "Hi", PromptCacheKey: cacheKey),
+                           CancellationToken.None)) { }
+    }
+
+    private List<string> CaptureBodies(Func<int, HttpResponseMessage> respond)
+    {
+        var bodies = new List<string>();
+        _handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((request, _) =>
+                bodies.Add(request.Content!.ReadAsStringAsync(CancellationToken.None).GetAwaiter().GetResult()))
+            .ReturnsAsync(() => respond(bodies.Count));
+        return bodies;
+    }
+
+    [Fact]
+    public async Task ShouldSendThePromptCacheKey()
+    {
+        var bodies = CaptureBodies(_ => Response(HttpStatusCode.OK, "data: [DONE]\n\n"));
+
+        await DrainAsync(CreateInstance(), "https://llm.example/v1", "chat-1");
+        await DrainAsync(CreateInstance(), "https://llm.example/v1");
+
+        bodies[0].ShouldContain("\"prompt_cache_key\":\"chat-1\"");
+        bodies[1].ShouldNotContain("prompt_cache_key");
+    }
+
+    [Fact]
+    public async Task ShouldDropACacheKeyTheEndpointRefusesAndRememberIt()
+    {
+        var bodies = CaptureBodies(count => count == 1
+            ? Response(HttpStatusCode.BadRequest, """{"error":"Unrecognized request argument supplied: prompt_cache_key"}""")
+            : Response(HttpStatusCode.OK, "data: [DONE]\n\n"));
+        var client = CreateInstance();
+
+        await DrainAsync(client, "https://strict.example/v1", "chat-1");
+        await DrainAsync(client, "https://strict.example/v1/", "chat-1");
+
+        bodies.Count.ShouldBe(3);
+        bodies[0].ShouldContain("prompt_cache_key");
+        bodies[1].ShouldNotContain("prompt_cache_key");
+        // Usage is still asked for: only the refused field is dropped.
+        bodies[1].ShouldContain("stream_options");
+        bodies[2].ShouldNotContain("prompt_cache_key");
+    }
+
+    [Fact]
+    public async Task ShouldDropEachRefusedFieldInTurn()
+    {
+        var bodies = CaptureBodies(count => count switch
+        {
+            1 => Response(HttpStatusCode.BadRequest, """{"error":"Extra inputs are not permitted: stream_options"}"""),
+            2 => Response(HttpStatusCode.BadRequest, """{"error":"Extra inputs are not permitted: prompt_cache_key"}"""),
+            _ => Response(HttpStatusCode.OK, "data: [DONE]\n\n")
+        });
+
+        await DrainAsync(CreateInstance(), "https://strict.example/v1", "chat-1");
+
+        bodies.Count.ShouldBe(3);
+        bodies[2].ShouldNotContain("stream_options");
+        bodies[2].ShouldNotContain("prompt_cache_key");
+    }
+
+    [Fact]
+    public async Task ShouldDropARefusedCacheKeyFromANonStreamedCompletion()
+    {
+        var bodies = CaptureBodies(count => count == 1
+            ? Response(HttpStatusCode.UnprocessableEntity, """{"detail":"prompt_cache_key: extra fields not permitted"}""")
+            : Response(HttpStatusCode.OK, """{"model":"m","choices":[{"message":{"content":"Hello"}}]}"""));
+
+        var response = await CreateInstance().CompleteAsync(
+            new ChatCompletionRequest("https://llm.example/v1", "m", null, "Hi", PromptCacheKey: "chat-1"), CancellationToken.None);
+
+        response.Content.ShouldBe("Hello");
+        bodies.Count.ShouldBe(2);
+        bodies[1].ShouldNotContain("prompt_cache_key");
     }
 
     private OpenAiCompatibleChatCompletionClient CreateInstance() =>

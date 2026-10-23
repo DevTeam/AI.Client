@@ -130,7 +130,7 @@ A task with its own connection exists for parallelism. Tools in a single model r
 
 **Live progress.** The subtask reports what it is doing via MCP `notifications/progress`: "thinking", "writing", or the name of the tool it is currently calling. The message reaches the active call row in the parent card through the same path as progress for any other server. With multiple tasks, the row numbers them and shows how many have already finished. Otherwise a subtask that goes silent is indistinguishable from a stuck one.
 
-**Limits.** Up to 256 tasks may be queued in one call and no more than 32 subtask runs execute simultaneously across the entire Host. Excess root tasks wait in the same call for a slot. A nested subtask keeps its parent open and therefore never waits behind all occupied parents: when no slot is immediately available, it fails with a bounded error instead of deadlocking. Each subtask has a 40-model-step budget. One task failing does not cancel its neighbors.
+**Limits.** Up to 256 tasks may be queued in one call and no more than 32 subtask runs execute simultaneously across the entire Host. Excess root tasks wait in the same call for a slot. A nested subtask, allowed only when `MaxSubtaskDepth` is raised (see [Recursion](#recursion)), keeps its parent open and therefore never waits behind all occupied parents: when no slot is immediately available, it fails with a bounded error instead of deadlocking. Each subtask has a 40-model-step budget. One task failing does not cancel its neighbors.
 
 The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of 24 hours per call, so a looping tool that faithfully reports on itself does not run forever.
 
@@ -155,6 +155,8 @@ There are **no special restrictions**: the agent can do everything the user can 
 ### Recursion
 
 There are **no restrictions** on chat spawning depth, child run budget, or writes to the parent chat. The agent loop's limits and the stop button remain the controls.
+
+`spawn_subtask` is the exception: delegated work nests at most `MaxSubtaskDepth` levels (chat automation settings, default 1). At the default a chat may delegate and its subtasks may not. The tool stays in a subtask's list — the list is part of the prompt prefix a subtask may share with its parent — and the call is refused with a message telling the subtask to do the work itself or report it as unresolved; the subtask's `run.subtask` instruction says the same up front. A value below 1 is read as 1: forbidding delegation altogether is what a `Deny` policy on the tool is for.
 
 ## Mutation behavior
 

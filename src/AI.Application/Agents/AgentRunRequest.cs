@@ -15,6 +15,7 @@ using Chat;
 /// Background delegation is deliberately bounded: a narrow task that still needs dozens of model round
 /// trips is exploring rather than executing. Null keeps ordinary chats unlimited.
 /// </param>
+/// <param name="SubtaskDepth">How many delegations started this run: 0 for a chat's own turn.</param>
 public sealed record AgentRunRequest(
     Guid ProjectId,
     Guid ChatId,
@@ -23,4 +24,5 @@ public sealed record AgentRunRequest(
     bool Interactive = true,
     Guid? ParentBranchId = null,
     bool OverlayPromptsAllowed = true,
-    int? MaxModelSteps = null);
+    int? MaxModelSteps = null,
+    int SubtaskDepth = 0);

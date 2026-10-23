@@ -15,7 +15,9 @@ So the first differing token is near the very start, and nothing after it is reu
 
 ## Stage 1. Shared cache key
 
-Requests carry no cache routing key today. OpenAI-style providers route prompt caching by `prompt_cache_key` (and some by a `session-id` header); without it, two requests with the same prefix may land on different cache shards.
+Status: implemented. The key is `chat-<chat id>`, set by `ChatAgent` for every request of a run; the capability is detected per endpoint on a refusal and remembered for the life of the process, like `stream_options` (see [token usage](28-token-usage.md#prompt-cache-diagnostics)).
+
+Requests carried no cache routing key before this stage. OpenAI-style providers route prompt caching by `prompt_cache_key` (and some by a `session-id` header); without it, two requests with the same prefix may land on different cache shards.
 
 - Every request of a chat sends `prompt_cache_key` derived from the chat id: the main branch, its branches and every subtask started from them share one key. This is what opencode does (`SessionAffinity`: children use the parent's key, forks the fork source's).
 - The key is sent only to connections known to accept it. A strict OpenAI-compatible server may reject an unknown field, so the capability is per connection, detected or switched off on a `400` that names the field, and remembered.
@@ -24,6 +26,8 @@ Requests carry no cache routing key today. OpenAI-style providers route prompt c
 Done when parent and subtask requests to a supporting provider carry the same key, an unsupporting endpoint keeps working unchanged, and the usage widget shows cached input for subtask requests whose prefix matches.
 
 ## Stage 2. No recursive delegation by default
+
+Status: implemented. The limit is `ChatAutomationSettings.MaxSubtaskDepth`, set through the settings API; the settings screen does not show it yet.
 
 A subtask that delegates again multiplies cost and slots, and a forked subtask (stage 3) sees the parent's own decision to delegate, which invites it to repeat the same `spawn_subtask` call. opencode denies `subagent` to its subagents and limits nesting with `experimental.subagent_depth`, default 1.
 

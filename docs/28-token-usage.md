@@ -50,6 +50,12 @@ denominator. It never divides a local estimate by provider input. Older ledger r
 readable and contribute usage and change counts; their overlap estimates without denominators
 are excluded. No migration or reconstruction of old prompts is needed.
 
+Every request of an agent run carries `prompt_cache_key` = `chat-<chat id>`: a turn, its checkpoints
+and compaction, and the subtasks it starts share one key, so a provider that routes caching by key
+sends them to the same cache. An endpoint that refuses the field with 400 or 422 naming it is sent
+the request again without it and is remembered for the life of the process, as for
+`stream_options`. The key only steers routing; it does not make differing prefixes match.
+
 `Prefix changes` counts application changes, not complete provider cache resets. A changed tool
 catalogue may still receive partial hits. High overlap with low cache hits does not establish
 expiry, lack of support or a provider fault: serialization and eligibility are provider-dependent.

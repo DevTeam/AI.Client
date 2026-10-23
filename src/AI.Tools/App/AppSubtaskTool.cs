@@ -170,6 +170,11 @@ public sealed class AppSubtaskTool(
         if (tasks is not { Length: > 0 }) return Failed("At least one task is required.");
         if (tasks.Length > MaxTasks) return Failed($"At most {MaxTasks} tasks can be delegated in one call.");
         if (tasks.Any(item => item is null || string.IsNullOrWhiteSpace(item.Task))) return Failed("A task cannot be empty.");
+        // Refused here rather than by dropping the tool from a subtask's list: the list is part of the
+        // prompt prefix the subtask may share with its parent, and a refusal says why.
+        if (!SubtaskNesting.CanDelegate(run.SubtaskDepth, await settings.LoadAsync(cancellationToken)))
+            return Failed("Delegation is not available from a subtask at this depth. Do the work yourself, "
+                + "or report what is left as unresolved so the conversation that started you can delegate it.");
 
         // Every connection is resolved before anything starts: a batch that would fail on its last
         // task's endpoint should not first spend a minute on the others.
@@ -255,7 +260,8 @@ public sealed class AppSubtaskTool(
                     // said once for every tool rather than per call.
                     Interactive: false,
                     ParentBranchId: run.BranchId,
-                    MaxModelSteps: 40),
+                    MaxModelSteps: 40,
+                    SubtaskDepth: run.SubtaskDepth + 1),
                 sink, cancellationToken);
             var rawText = sink.Answer.ToString();
             var (text, evidence) = ExtractEvidence(rawText);

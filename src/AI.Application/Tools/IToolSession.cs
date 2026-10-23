@@ -53,9 +53,13 @@ public sealed record ToolDirectoryGrant(string Root, bool Recursive, IReadOnlyLi
 /// Whether this run was delegated by another agent. The application server uses it to reject nested
 /// work immediately when every concurrency slot is held, rather than deadlocking behind its parents.
 /// </param>
+/// <param name="SubtaskDepth">
+/// How many delegations lie between this run and the chat: 0 for the chat's own run, 1 for its
+/// subtask. Compared with the configured limit before a run may delegate again.
+/// </param>
 public sealed record ToolRunContext(Guid ProjectId, Guid ChatId, Guid BranchId, bool Interactive,
     ChatKind Kind = default, JsonElement? KindState = null, int KindStateVersion = 1,
-    bool OverlayPromptsAllowed = true, bool IsSubtask = false)
+    bool OverlayPromptsAllowed = true, bool IsSubtask = false, int SubtaskDepth = 0)
 {
     /// <summary>
     /// No run at all: a session opened to inspect what the servers offer, never to call anything.

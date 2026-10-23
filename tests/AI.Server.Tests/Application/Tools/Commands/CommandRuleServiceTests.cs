@@ -36,7 +36,7 @@ public sealed class CommandRuleServiceTests
         var clock = new Mock<IClock>();
         clock.Setup(item => item.UtcNow).Returns(() => DateTimeOffset.UtcNow);
         _service = new CommandRuleService(_repository, projects.Object,
-            new ToolRuleProfiles(TestPrograms.Parser(), TestPrograms.Paths), ids.Object, clock.Object);
+            new ToolRuleProfiles(TestPrograms.Parser(), TestPrograms.Paths), ids.Object, clock.Object, Temporary());
     }
 
     [Fact]
@@ -190,6 +190,14 @@ public sealed class CommandRuleServiceTests
     private async Task<CommandEvaluation> EvaluateAsync(string executable, string[] arguments) =>
         (await _service.EvaluateAsync(_projectId, _chatId, CommandRule.ProcessRun, Arguments(executable, arguments), CancellationToken.None))
         .ShouldNotBeNull();
+
+    private static IChatTemporaryDirectory Temporary()
+    {
+        var temporary = new Mock<IChatTemporaryDirectory>();
+        temporary.Setup(item => item.ChatRoot(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .Returns((Guid projectId, Guid chatId) => Path.Combine(TestPrograms.Root, "scratch", chatId.ToString("N")));
+        return temporary.Object;
+    }
 
     private static string Arguments(string executable, string[] arguments) =>
         JsonSerializer.Serialize(new { executable, arguments, workingDirectory = TestPrograms.Project });

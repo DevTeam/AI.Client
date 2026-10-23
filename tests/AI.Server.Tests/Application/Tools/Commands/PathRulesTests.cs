@@ -2,6 +2,7 @@ namespace AI.Application.Tests.Tools.Commands;
 
 using System.Text.Json;
 using AI.Application.Projects;
+using AI.Application.Tools;
 using AI.Application.Tools.Commands;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
@@ -16,6 +17,7 @@ public sealed class PathRulesTests
     private readonly Guid _chatId = Guid.CreateVersion7();
     private readonly CommandRuleService _service;
     private IReadOnlyList<CommandRule> _rules = [];
+    private readonly string _scratch = Path.Combine(TestPrograms.Root, "chat-scratch");
 
     public PathRulesTests()
     {
@@ -34,7 +36,7 @@ public sealed class PathRulesTests
         var clock = new Mock<IClock>();
         clock.Setup(item => item.UtcNow).Returns(() => DateTimeOffset.UtcNow);
         _service = new CommandRuleService(repository.Object, projects.Object,
-            new ToolRuleProfiles(TestPrograms.Parser(), TestPrograms.Paths), ids.Object, clock.Object);
+            new ToolRuleProfiles(TestPrograms.Parser(), TestPrograms.Paths), ids.Object, clock.Object, Temporary());
     }
 
     [Fact]
@@ -123,6 +125,32 @@ public sealed class PathRulesTests
     }
 
     [Fact]
+    public async Task ShouldConfirmAScratchWriteIsTheChatsOwnSpaceAndNotOutsideTheProject()
+    {
+        var scratchFile = Path.Combine(_scratch, "notes", "a.txt");
+
+        var evaluation = await EvaluateAsync("write_file", new { path = scratchFile, content = "x" });
+
+        evaluation.Decision.ShouldBeNull();
+        evaluation.Subject.BlocksAllow.ShouldBeFalse();
+        evaluation.Subject.Warnings.ShouldBeEmpty();
+        using var details = JsonDocument.Parse(JsonSerializer.Serialize(evaluation.Subject.Details));
+        details.RootElement.GetProperty("scratch").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ShouldKeepAScratchPathOutOfTheProjectRules()
+    {
+        await AddAsync("write_file", "**", "Allow");
+
+        var evaluation = await EvaluateAsync("write_file", new { path = Path.Combine(_scratch, "a.txt"), content = "x" });
+
+        // No project pattern reaches the scratch directory, so the tool's own policy stands there.
+        evaluation.Decision.ShouldBeNull();
+        evaluation.Subject.Options.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ShouldDeleteOnlyByAnExactPath()
     {
         await AddAsync("delete_file", "docs/**", "Allow");
@@ -164,4 +192,11 @@ public sealed class PathRulesTests
         .ShouldNotBeNull();
 
     private static string Full(string relative) => Path.Combine([Project, .. relative.Split('/')]);
+
+    private IChatTemporaryDirectory Temporary()
+    {
+        var temporary = new Mock<IChatTemporaryDirectory>();
+        temporary.Setup(item => item.ChatRoot(_projectId, _chatId)).Returns(_scratch);
+        return temporary.Object;
+    }
 }

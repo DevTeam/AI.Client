@@ -33,14 +33,17 @@ public sealed class PathRuleProfile(IPath paths, string tool, IReadOnlyList<stri
     public Task<RuleSubject?> ReadAsync(string arguments, RuleContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var targets = Paths(arguments).Select(path => Target(path, context.Grants)).ToArray();
+        var targets = Paths(arguments).Select(path => Target(path, context)).ToArray();
         if (targets.Length == 0) return Task.FromResult<RuleSubject?>(null);
         var warnings = new List<string>();
         var blocks = false;
         foreach (var target in targets)
         {
             var parts = target.Full.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-            if (target.Relative is null)
+            // A path in the chat's own scratch directory is neither outside the project's space nor
+            // reachable by a project rule: it is reported apart, and only the tool's own policy
+            // decides the call.
+            if (target.Relative is null && !target.Scratch)
             {
                 warnings.Add($"It changes a path outside the project: {target.Full}.");
                 blocks = true;
@@ -60,7 +63,15 @@ public sealed class PathRuleProfile(IPath paths, string tool, IReadOnlyList<stri
         var display = $"{tool} {string.Join(" → ", targets.Select(Show))}";
         var subject = new RuleSubject(display, warnings.Distinct(StringComparer.Ordinal).ToArray(), blocks, deletes,
             Options(targets), new PathCall(targets), null,
-            new { paths = targets.Select(target => target.Full).ToArray(), insideProject = targets.All(target => target.Relative is not null), deletes });
+            new
+            {
+                paths = targets.Select(target => target.Full).ToArray(),
+                insideProject = targets.All(target => target.Relative is not null),
+                // A path in the chat's scratch directory is writable without a stored grant, but no
+                // project rule reaches it, so it is reported apart from the project's paths.
+                scratch = targets.Any(target => target.Scratch),
+                deletes
+            });
         return Task.FromResult<RuleSubject?>(subject);
     }
 
@@ -94,13 +105,17 @@ public sealed class PathRuleProfile(IPath paths, string tool, IReadOnlyList<stri
         || parts[^1].StartsWith("id_ecdsa", StringComparison.OrdinalIgnoreCase)
         || SecretExtensions.Any(extension => parts[^1].EndsWith(extension, StringComparison.OrdinalIgnoreCase));
 
-    private PathTarget Target(string path, IReadOnlyList<CommandGrant> grants)
+    private PathTarget Target(string path, RuleContext context)
     {
         var full = paths.GetFullPath(path);
-        var grant = grants.Where(item => paths.IsInside(full, item.Root, item.Recursive))
+        var grant = context.Grants.Where(item => paths.IsInside(full, item.Root, item.Recursive))
             .OrderByDescending(item => item.Root.Length)
             .FirstOrDefault();
-        if (grant is null) return new PathTarget(full, null);
+        if (grant is null)
+        {
+            var scratch = context.ScratchRoot is { } root && paths.IsInside(full, root, recursive: true);
+            return new PathTarget(full, null, scratch);
+        }
         var relative = paths.GetRelativePath(grant.Root, full);
         return new PathTarget(full, relative is "" or "." ? [] : relative.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries));
     }

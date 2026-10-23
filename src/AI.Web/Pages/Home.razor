@@ -946,6 +946,12 @@
                                           Run="@widgetRun"
                                           Skills="@_composerSkills" />
                         break;
+                    case ChatWidgetCatalog.ChatMemory:
+                        <ChatMemoryWidget Widget="@widget"
+                                          Entries="@_chatMemoryEntries"
+                                          ProjectId="@widgetChat?.ProjectId"
+                                          ChatId="@widgetChat?.Id" />
+                        break;
                     case ChatWidgetCatalog.ChatPerformance:
                         <ChatPerformanceWidget Widget="@widget"
                                               ChatUsage="@widgetUsage"
@@ -3967,6 +3973,7 @@ else if (_guideInvitation is { } guideInvitation)
         if (_selectedProject is not { } project || _selectedChat is not { } chat) return;
         _usageChatId = chat.Id;
         if (await ChatUsage.RefreshAsync(project.Id, chat.Id, CancellationToken.None)) await InvokeAsync(StateHasChanged);
+        await LoadChatMemoryAsync(project.Id, reload: false);
         // The Skills widget names and draws skills from the same list the slash command offers.
         if (_composerSkillsProjectId != project.Id)
         {
@@ -3982,6 +3989,29 @@ else if (_guideInvitation is { } guideInvitation)
             }
         }
     }
+
+    /// <summary>
+    /// The memory the open chat works with: the person's entries followed by its project's, read
+    /// once per project. The Memory widget shows them; a reload follows a save in the memory
+    /// editor, so an entry added there appears without reopening the chat.
+    /// </summary>
+    private async Task LoadChatMemoryAsync(Guid projectId, bool reload)
+    {
+        if (!reload && _chatMemoryProjectId == projectId) return;
+        try
+        {
+            _chatMemoryEntries = await MemoryApi.ListAsync(projectId, CancellationToken.None);
+            _chatMemoryProjectId = projectId;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (HttpRequestException)
+        {
+            // Without the list the widget stays as it was; the chat itself works.
+        }
+    }
+
+    private IReadOnlyList<AI.Contracts.Memory.MemoryEntry> _chatMemoryEntries = [];
+    private Guid? _chatMemoryProjectId;
 
     private bool _compactingHistory;
     private string? _compactionNote;
@@ -8405,6 +8435,8 @@ else if (_guideInvitation is { } guideInvitation)
         {
             // The badge is a convenience; a Host that cannot answer now is reported elsewhere.
         }
+        // The memory editor saves on close, so the Memory widget reads the catalog again then.
+        if (_selectedProject is { } memoryProject) await LoadChatMemoryAsync(memoryProject.Id, reload: true);
     }
 
     private async Task LoadGlobalSettingsAsync()

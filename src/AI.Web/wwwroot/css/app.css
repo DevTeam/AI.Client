@@ -10200,3 +10200,8 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-team-parent b { color: var(--color-text); font-weight: 600; }
 .chat-team-parent .app-icon { flex: none; width: .75rem; height: .75rem; color: var(--color-text-subtle); }
 .chat-team-parent:hover:not(:disabled), .chat-team-parent:focus-visible { border-color: var(--color-border); background: var(--color-fill-hover); color: var(--color-text); outline: none; }
+
+/* Memory widget: the entries the open chat works with. A row names one entry and opens Memory
+   settings. "Saved here" is the only mark of its own: it says the assistant wrote the entry in
+   the chat on screen, which the kind and scope words beside it cannot. */
+.chat-memory-widget .chat-memory-here { color: var(--color-accent-text); }

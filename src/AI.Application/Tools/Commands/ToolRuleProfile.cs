@@ -1,7 +1,13 @@
 namespace AI.Application.Tools.Commands;
 
 /// <summary>What a profile needs to know about the project a call runs in.</summary>
-public sealed record RuleContext(IReadOnlyList<CommandGrant> Grants);
+/// <param name="Grants">The project's directory grants.</param>
+/// <param name="ScratchRoot">
+/// The chat's private scratch directory, which the tool session is granted read and write to without
+/// a stored grant. It is kept apart from <paramref name="Grants"/> because a rule written for the
+/// project must not reach it.
+/// </param>
+public sealed record RuleContext(IReadOnlyList<CommandGrant> Grants, string? ScratchRoot = null);
 
 /// <summary>
 /// One call as rules see it, whatever the tool: what it does, in a form a person reads and a

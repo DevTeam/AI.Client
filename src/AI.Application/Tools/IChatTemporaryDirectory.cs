@@ -5,6 +5,9 @@ public interface IChatTemporaryDirectory
 {
     string GetOrCreate(Guid projectId, Guid chatId);
 
+    /// <summary>The directory of one chat's scratch space; it is not created.</summary>
+    string ChatRoot(Guid projectId, Guid chatId);
+
     /// <summary>The directory holding every chat directory of the project; it is not created.</summary>
     string ProjectRoot(Guid projectId);
 

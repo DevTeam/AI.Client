@@ -24,6 +24,7 @@ public class ChatToolRiskAssessSkillTests
     private readonly Guid _chatId = Guid.CreateVersion7();
     private readonly Guid _connectionId = Guid.CreateVersion7();
     private readonly Guid _questionId = Guid.CreateVersion7();
+    private readonly string _scratch = Path.Combine(Path.GetTempPath(), "AI.Client-test", "scratch");
     private readonly List<ChatCompletionRequest> _requests = [];
     private ToolApprovalMode _mode = ToolApprovalMode.Auto;
     private IReadOnlyList<ChatMessageView>? _messages;
@@ -191,6 +192,19 @@ public class ChatToolRiskAssessSkillTests
     }
 
     [Fact]
+    public async Task ShouldTellTheAssessmentWhereTheChatMayWriteItsScratchFiles()
+    {
+        await CreateApprover("""{"decision":"allow","risk":"low","reason":"Writes a scratch file."}""")
+            .DecideAsync(_projectId, _chatId, _chatId, Tool(), """{"path":"C:\\\\temp\\\\scratch\\\\a.txt"}""",
+                TestContext.Current.CancellationToken);
+
+        using var input = Input();
+        var scratch = input.RootElement.GetProperty("chat_temporary_directory").GetProperty("path").GetString();
+        scratch.ShouldBe(_scratch);
+        input.RootElement.GetProperty("chat_temporary_directory").GetProperty("writable").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task ShouldPassTheParsedCommandOfAProcessRunCall()
     {
         _evaluation = Evaluation(null);
@@ -300,12 +314,14 @@ public class ChatToolRiskAssessSkillTests
                 "test-model", true, true, false)], [], []));
         var secrets = new Mock<IGlobalSecretStore>(MockBehavior.Strict);
         secrets.Setup(item => item.GetAsync("connection", _connectionId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        var temporary = new Mock<IChatTemporaryDirectory>();
+        temporary.Setup(item => item.ChatRoot(_projectId, _chatId)).Returns(_scratch);
         var completion = new Mock<IChatCompletionClient>(MockBehavior.Strict);
         completion.Setup(item => item.StreamAsync(It.IsAny<ChatCompletionRequest>(), It.IsAny<CancellationToken>()))
             .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, answer, token));
         var catalog = Catalog();
         var skill = new ChatToolRiskAssessSkill(catalog, new SkillGuide(catalog), chats.Object, projects.Object, settings.Object, secrets.Object,
-            completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
+            temporary.Object, completion.Object, NullLogger<ChatToolRiskAssessSkill>.Instance);
         var commands = new Mock<ICommandRuleService>();
         commands.Setup(item => item.Decides(DefaultMcpServer.Id, "process_run")).Returns(true);
         commands.Setup(item => item.EvaluateAsync(_projectId, _chatId, "process_run", It.IsAny<string>(), It.IsAny<CancellationToken>()))

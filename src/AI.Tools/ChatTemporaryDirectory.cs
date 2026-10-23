@@ -32,11 +32,18 @@ public sealed partial class ChatTemporaryDirectory(
             throw new ArgumentException("A project and chat are required for temporary storage.");
 
         var project = ProjectPath(projectId);
-        var chat = Path.Combine(project, chatId.ToString("N"));
+        var chat = ChatRoot(projectId, chatId);
         EnsurePrivateDirectory(Root);
         EnsurePrivateDirectory(project);
         EnsurePrivateDirectory(chat);
         return chat;
+    }
+
+    public string ChatRoot(Guid projectId, Guid chatId)
+    {
+        if (projectId == Guid.Empty || chatId == Guid.Empty)
+            throw new ArgumentException("A project and chat are required for temporary storage.");
+        return Path.Combine(ProjectPath(projectId), chatId.ToString("N"));
     }
 
     public void DeleteChat(Guid projectId, Guid chatId)

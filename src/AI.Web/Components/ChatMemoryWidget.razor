@@ -1,0 +1,160 @@
+@using AI.Contracts.Memory
+@inject IChatMemoryStatisticsCalculator Calculator
+@* The memory the open chat works with: the person's own enabled entries, which every chat sees,
+   and the enabled entries of the chat's project. What is stored but switched off reaches no run,
+   so it is not counted here; the entry itself opens the Memory settings, where it is edited. *@
+<ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-memory-widget">
+    @if (_stats.Total == 0)
+    {
+        <p class="chat-usage-empty">Memory appears here once you or the assistant save an entry that applies to this chat.</p>
+    }
+    else
+    {
+        <div class="chat-usage-section">
+            <div class="chat-widget-headline">
+                <span class="chat-widget-count" title="@($"Enabled memory entries the next request of this chat is built with: {_stats.UserEntries} of the person and {_stats.ProjectEntries} of the project. Disabled entries are stored but reach no run, so they are not counted")">@_stats.Total</span>
+                <span class="chat-usage-muted">@(_stats.Total == 1 ? "entry" : "entries")</span>
+                @if (_stats.FromThisChat > 0)
+                {
+                    <span class="chat-widget-headline-aside chat-usage-muted" title="Entries the assistant saved with app_memory from this chat; they apply to every chat the catalog reaches">
+                        @_stats.FromThisChat saved here
+                    </span>
+                }
+            </div>
+            <dl class="chat-usage-grid">
+                @foreach (var kind in Enum.GetValues<MemoryKind>())
+                {
+                    if (_stats.Count(kind) is > 0 and var count)
+                    {
+                        <dt title="@KindTitle(kind)">@KindLabel(kind)</dt>
+                        <dd title="@($"Enabled {KindLabel(kind).ToLowerInvariant()} entries in scope")">@count</dd>
+                    }
+                }
+                @if (_stats.Pinned > 0)
+                {
+                    <dt title="Pinned entries reach the model in full on every run, not only by title">Pinned</dt>
+                    <dd title="@($"{_stats.Pinned} of {_stats.Total} entries are pinned")">@_stats.Pinned</dd>
+                }
+            </dl>
+        </div>
+
+        <div class="chat-usage-section">
+            <div class="chat-usage-row chat-usage-heading"><span>Entries</span><span class="chat-usage-muted">@(_stats.HasProject ? "you and this project" : "you")</span></div>
+            <ul class="chat-widget-rows">
+                @foreach (var entry in _showAll ? _stats.Entries : _stats.Entries.Take(VisibleEntries))
+                {
+                    <ChatWidgetRow @key="entry.Id" Widget="@Widget" Link="@MemoryLink"
+                                   OpenTitle="@($"Open {entry.Title} in Memory settings")">
+                        <Tile><AppIcon Name="@(entry.Pinned ? "pin" : entry.Scope == MemoryScope.Project ? "folder" : "user")" /></Tile>
+                        <Name>@entry.Title</Name>
+                        <Details>
+                            <span title="@KindTitle(entry.Kind)">@KindLabel(entry.Kind)</span>
+                            <span title="@ScopeTitle(entry.Scope)">@ScopeLabel(entry.Scope)</span>
+                            @if (entry.Pinned) { <span title="Reaches the model in full on every run">pinned</span> }
+                            @if (_selectedChatId is { } chatId && entry.IsFromChat(chatId)) { <span class="chat-memory-here" title="The assistant saved this entry from this chat">saved here</span> }
+                            <span title="@UpdatedTitle(entry)">@Updated(entry)</span>
+                        </Details>
+                    </ChatWidgetRow>
+                }
+            </ul>
+            @if (_stats.Total > VisibleEntries)
+            {
+                <button class="chat-usage-link chat-widget-more" type="button" @onclick="() => _showAll = !_showAll">@(_showAll ? "Show fewer" : $"Show {_stats.Total - VisibleEntries} more")</button>
+            }
+        </div>
+
+        <div class="chat-usage-section chat-usage-footnote">
+            <span title="Memory is facts; project instructions are rules and a skill is a procedure. An entry reaches the model as an index every run and in full when it is read or pinned">
+                @(_stats.HasProject
+                    ? $"Seen in this project's chats: {_stats.UserEntries} about you, {_stats.ProjectEntries} about the project"
+                    : "Seen in every chat of every project")
+            </span>
+        </div>
+    }
+</ChatWidget>
+
+@code {
+    private const int VisibleEntries = 6;
+
+    private const string MemoryLink = "aiclient://navigate/settings.memory";
+
+    [Parameter, EditorRequired]
+    public ChatWidgetContext Widget { get; set; } = null!;
+
+    /// <summary>The person's and the project's stored entries, as the Memory settings list them.</summary>
+    [Parameter]
+    public IReadOnlyList<MemoryEntry> Entries { get; set; } = [];
+
+    /// <summary>The project of the open chat; null for a chat that has none yet.</summary>
+    [Parameter]
+    public Guid? ProjectId { get; set; }
+
+    /// <summary>The open chat, so an entry the assistant saved here says so.</summary>
+    [Parameter]
+    public Guid? ChatId { get; set; }
+
+    private ChatMemoryStatistics _stats = ChatMemoryStatistics.Empty;
+    private bool _showAll;
+
+    private bool _statisticsInitialized;
+    private IReadOnlyList<MemoryEntry> _statisticsEntries = [];
+    private Guid? _statisticsProjectId;
+    private Guid? _selectedChatId;
+
+    protected override void OnParametersSet()
+    {
+        // Parent renders also follow typing and modifier keys; only changed data needs statistics.
+        if (_statisticsInitialized
+            && ReferenceEquals(_statisticsEntries, Entries)
+            && _statisticsProjectId == ProjectId
+            && _selectedChatId == ChatId) return;
+
+        Refresh();
+        _statisticsInitialized = true;
+        _statisticsEntries = Entries;
+        _statisticsProjectId = ProjectId;
+        _selectedChatId = ChatId;
+    }
+
+    private void Refresh()
+    {
+        _stats = Calculator.Calculate(Entries, ProjectId, ChatId);
+        if (_stats.Total <= VisibleEntries) _showAll = false;
+    }
+
+    private string? GetSummary()
+    {
+        if (_stats.Total == 0) return null;
+        var parts = new List<string> { $"{_stats.Total} {(_stats.Total == 1 ? "entry" : "entries")}" };
+        if (_stats.Pinned > 0) parts.Add($"{_stats.Pinned} pinned");
+        else if (_stats.FromThisChat > 0) parts.Add($"{_stats.FromThisChat} here");
+        return string.Join(" · ", parts);
+    }
+
+    private static string Updated(ChatMemoryEntry entry) =>
+        entry.Author == MemoryAuthor.Model ? "by the assistant" : "by you";
+
+    private static string UpdatedTitle(ChatMemoryEntry entry) =>
+        $"{Updated(entry)} · {entry.UpdatedAt.LocalDateTime:g}";
+
+    private static string KindLabel(MemoryKind kind) => kind switch
+    {
+        MemoryKind.Profile => "Profile",
+        MemoryKind.Preference => "Preference",
+        _ => "Fact"
+    };
+
+    private static string KindTitle(MemoryKind kind) => kind switch
+    {
+        MemoryKind.Profile => "Who the person is, or what the project is",
+        MemoryKind.Preference => "How the work should be done: answer style, code style, commands",
+        _ => "Anything else worth keeping: decisions, addresses, names"
+    };
+
+    private static string ScopeLabel(MemoryScope scope) =>
+        scope == MemoryScope.Project ? "project" : "you";
+
+    private static string ScopeTitle(MemoryScope scope) => scope == MemoryScope.Project
+        ? "Applies in the chats of this project only"
+        : "Applies in every project; a project entry on the same subject wins";
+}

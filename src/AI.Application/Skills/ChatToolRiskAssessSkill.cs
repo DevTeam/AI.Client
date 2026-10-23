@@ -6,6 +6,7 @@ using AI.Application.Chat;
 using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
+using AI.Application.Tools;
 using AI.Contracts.Chats;
 using AI.Contracts.Skills;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class ChatToolRiskAssessSkill(
     IProjectService projects,
     IGlobalSettingsRepository settings,
     IGlobalSecretStore secrets,
+    IChatTemporaryDirectory temporaryDirectory,
     IChatCompletionClient completion,
     ILogger<ChatToolRiskAssessSkill> logger) : ISkillExecutor
 {
@@ -110,6 +112,12 @@ public sealed class ChatToolRiskAssessSkill(
                     path = grant.CanonicalRoot,
                     recursive = grant.Recursive
                 }).ToArray() ?? [],
+                // Every run of the chat is granted its own scratch directory, so a call that stays
+                // there is as much inside the user's space as one in the project; its files go with
+                // the chat instead of staying.
+                chat_temporary_directory = ChatRoot(projectId, chatId) is { } scratch
+                    ? new { path = scratch, writable = true }
+                    : null,
                 tool = new
                 {
                     name = toolName,
@@ -197,6 +205,21 @@ public sealed class ChatToolRiskAssessSkill(
     private static bool Lists(SkillDefinition skill, string? name, string? reference) =>
         (skill.AllowedTools ?? []).Any(allowed => allowed == name || allowed == reference
             || reference?.EndsWith("__" + allowed, StringComparison.Ordinal) == true);
+
+    /// <summary>The chat's scratch directory, the way the tool session is granted it; null without a chat.</summary>
+    private string? ChatRoot(Guid projectId, Guid chatId)
+    {
+        if (chatId == Guid.Empty) return null;
+        try
+        {
+            return temporaryDirectory.ChatRoot(projectId, chatId);
+        }
+        catch (ArgumentException)
+        {
+            // A scratch path the application cannot name is one the assessment simply does not get.
+            return null;
+        }
+    }
 
     private static (string Decision, string Risk, string? Reason)? Parse(string content)
     {

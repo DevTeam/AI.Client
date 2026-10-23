@@ -8,7 +8,11 @@ using AI.Contracts.FileSystem;
 /// Its segments below the project directory that holds it — empty for that directory itself — or
 /// null when no project directory holds it.
 /// </param>
-public sealed record PathTarget(string Full, IReadOnlyList<string>? Relative);
+/// <param name="Scratch">
+/// Whether it lies in the chat's scratch directory instead. Rules match only paths below the
+/// project's grants, so such a path still has no <paramref name="Relative"/>.
+/// </param>
+public sealed record PathTarget(string Full, IReadOnlyList<string>? Relative, bool Scratch = false);
 
 /// <summary>The paths one file tool call changes, in the order its arguments name them.</summary>
 public sealed record PathCall(IReadOnlyList<PathTarget> Targets);

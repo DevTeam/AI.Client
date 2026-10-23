@@ -84,10 +84,11 @@ The assessment is one model call on the chat's own connection. It sees the user'
 messages on the branch, so that a short follow-up such as "go on" is read with the task it
 continues, the playbook the chat is following (found from its `run_skill` call within the last few
 turns, with the text taken from the skill catalog rather than from the call), whether that playbook
-lists the tool among its `allowed-tools`, the project's directory grants, the tool's description and
+lists the tool among its `allowed-tools`, the project's directory grants, the chat's own temporary
+directory, the tool's description and
 annotations (as unverified hints) and the exact arguments, all passed as data. A step of the
 active playbook counts as asked for by the user; it never lifts the rules on secrets, paths outside
-the project, uploads, deletion or history rewrites. For a `process_run` call it also sees the
+the project and the chat's temporary directory, uploads, deletion or history rewrites. For a `process_run` call it also sees the
 command as the Host parsed it, with the guard's findings and the command rule that matched (see
 [Command rules](#command-rules)); a rule that asks about the command is never overridden by the
 assessment. Switching the mode while a card
@@ -211,9 +212,15 @@ write_file      deploy/**        Deny    global
 - **Matching.** A path is matched by its parts below the directory grant that holds it. A call that
   names several paths needs all of them to match an `Allow` or `Ask`, and any one to match a `Deny`.
 - **Guard.** An `Allow` never lets a call through unasked when it changes a path outside the
-  project's directory grants, anything under `.git` (hooks and config can make git run code), or a
+  project's directory grants and the chat's temporary directory, anything under `.git` (hooks and
+  config can make git run code), or a
   file that may hold secrets (`.env`, `.env.*`, `.ssh`, `.aws`, `.npmrc`, `id_rsa*`, `*.pem`,
   `*.key`, …). A deletion is allowed only by its exact path.
+- **Scratch.** The chat's temporary directory is granted to its tool session without a stored grant,
+  so a call that stays there is reported apart (`scratch` in the profile's findings) instead of as a
+  path outside the project, and the risk check is told its path. No rule matches there, since a
+  pattern names paths below the project's directories only: such a call keeps the tool's own
+  policy.
 - **Card.** It offers the folder with everything below it (`src/app/**`, preselected), the exact
   path and the whole project (`**`); a deletion only its exact path.
 

@@ -46,7 +46,8 @@ public interface ICommandRuleService
 /// </para>
 /// </remarks>
 public sealed class CommandRuleService(ICommandRuleRepository repository, IProjectService projects,
-    IToolRuleProfiles profiles, IIdGenerator ids, IClock clock) : ICommandRuleService
+    IToolRuleProfiles profiles, IIdGenerator ids, IClock clock, IChatTemporaryDirectory temporaryDirectory)
+    : ICommandRuleService
 {
     private static readonly string[] Decisions = ["Allow", "Ask", "Deny"];
 
@@ -101,7 +102,8 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         var project = await projects.GetAsync(projectId, cancellationToken);
         var grants = project?.DirectoryGrants.Select(grant => new CommandGrant(grant.CanonicalRoot, grant.Recursive)).ToArray()
             ?? [];
-        if (await profile.ReadAsync(arguments, new RuleContext(grants), cancellationToken) is not { } subject) return null;
+        if (await profile.ReadAsync(arguments, new RuleContext(grants, ScratchOf(projectId, chatId)), cancellationToken)
+            is not { } subject) return null;
         var matching = (await ListAsync(projectId, chatId, cancellationToken))
             .Where(rule => rule.Tool == tool)
             .Select(rule => (Rule: rule, Pattern: profile.TryParsePattern(rule.Pattern, out var pattern, out _) ? pattern : null))
@@ -124,6 +126,24 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         CommandRule.Chat => projectId is not null && chatId is not null && rule.ProjectId == projectId && rule.ChatId == chatId,
         _ => false
     };
+
+    /// <summary>
+    /// The chat's scratch directory, which its tool session is granted read and write to without a
+    /// stored grant. A profile reports it so the risk check can tell it from the rest of the disk; no
+    /// rule matches a path there, since patterns name paths below the project's directories only.
+    /// </summary>
+    private string? ScratchOf(Guid projectId, Guid chatId)
+    {
+        if (projectId == Guid.Empty || chatId == Guid.Empty) return null;
+        try
+        {
+            return temporaryDirectory.ChatRoot(projectId, chatId);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
 
     private static int Rank(string scope) => scope switch
     {

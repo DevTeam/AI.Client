@@ -18,6 +18,7 @@ Current widgets:
 | `chat-files` | Files | `diff` | `ChatFilesWidget` | Files changed, lines added and removed, links to review |
 | `chat-tools` | Tools | `tool` | `ChatToolsWidget` | Tool calls, outcomes and most used tools |
 | `chat-skills` | Skills | `skill` | `ChatSkillsWidget` | Skills started from the slash list and run by the assistant, split by who started them, with run outcomes, skill searches; a row opens the skill's settings and locates its uses |
+| `chat-memory` | Memory | `memory` | `ChatMemoryWidget` | The enabled memory the open chat works with — the person's own entries and the chat's project's — by kind and pin, with the entries the assistant saved from this chat marked; a row opens Memory settings |
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch: reads by tool, then the most read sources, each opening its preview or page and locating its reads |
@@ -542,6 +543,45 @@ Skill use on the visible branch (`ChatSkillsWidget`, `IChatSkillStatisticsCalcul
   number of skills.
 - **What is not counted.** A playbook's steps are the assistant's ordinary tool calls and appear in
   the Tools widget; skills run inside subtasks are not in this branch's transcript.
+
+## Memory widget
+
+What the open chat works with from long-term memory (`ChatMemoryWidget`,
+`IChatMemoryStatisticsCalculator`).
+
+- **Scope.** No scope switch: memory is not per turn. What applies is decided before the first
+  request and stays as it is until an entry, its enabled flag or the project changes.
+- **What counts.** Entries the Memory settings list for the chat's project: the person's own
+  (`MemoryScope.User`), which every chat of every project sees, and the project's
+  (`MemoryScope.Project`, `ProjectId` equal to the chat's project). An entry of another project, and
+  a disabled entry, reach no run, so neither is counted — the count is the catalog the next request
+  is built from, not what is stored. A chat without a project owns no project entries, and the
+  footer says so.
+- **What the assistant wrote here.** `MemoryEntry.ChatId` names the chat the model wrote an entry in;
+  the person's own entries have none. An entry saved from this chat carries "saved here" in the
+  accent text and is counted beside the total. It is not a separate section: an entry from this
+  chat applies exactly as far as its scope says.
+- **Layout.** The enabled count with how many are the person's and how many the project's; a grid
+  of kinds (Profile, Preference, Fact) and, when any, pins; then Entries — pinned first, then the
+  ones saved here, then newest first, six shown with Show more. A row is a widget row with a pin, a
+  project or a person icon on its tile, the entry's title, details — kind, scope, "pinned", "saved
+  here", who wrote it last and when — and opens that entry in Memory settings
+  (`aiclient://navigate/settings.memory`). Rows carry no locate button: an entry is stored, not used
+  by a message, so there is no message to step to.
+- **Honesty rules.** Nothing here is derived from message timestamps and nothing is estimated: every
+  figure is a count of stored entries, and the tooltips say that disabled entries are left out and
+  that pinned entries reach the model in full while the rest come by title until the model reads
+  them. How many entries actually reached a request is not stored, so it is not shown.
+- **Empty state.** "Memory appears here once you or the assistant save an entry that applies to this
+  chat." — which is also the state of a Host whose memory list has not loaded.
+- **Folded summary.** The enabled count, then pins when there are any, else how many entries were
+  saved from this chat.
+- **Data flow.** `Home` reads `IMemoryApi.ListAsync(projectId)` once per project with the chat's
+  usage and again when the Memory settings drawer closes, because that drawer saves on close. The
+  widget receives the list, the chat's `ProjectId` and its `Id` and recomputes only when one of them
+  changes.
+- **Not shown.** Memory is not per branch: the catalog is the project's, so the widget looks the
+  same on every branch of a chat. A count of writes the model attempted and refused is not stored.
 
 ## Performance widget
 

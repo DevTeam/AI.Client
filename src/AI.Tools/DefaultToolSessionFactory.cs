@@ -36,7 +36,8 @@ public sealed class DefaultToolSessionFactory(
         // fall back to the legacy initialize handshake on the same connection.
         var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
-            ProtocolVersion = ProtocolVersion
+            ProtocolVersion = ProtocolVersion,
+            DiscoverProbeTimeout = TimeSpan.FromSeconds(30)
         }, cancellationToken: cancellationToken);
         try
         {

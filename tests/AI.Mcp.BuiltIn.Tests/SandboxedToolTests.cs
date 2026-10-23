@@ -55,7 +55,11 @@ public sealed class SandboxedToolTests : IAsyncLifetime
                 },
                 ShutdownTimeout = TimeSpan.FromMilliseconds(500)
             }),
-            new McpClientOptions { ProtocolVersion = ProtocolVersion },
+            new McpClientOptions
+            {
+                ProtocolVersion = ProtocolVersion,
+                DiscoverProbeTimeout = TimeSpan.FromSeconds(30)
+            },
             cancellationToken: Token);
     }
 

@@ -539,6 +539,15 @@ This replaces the parts of the 2026-10-13 Chat files and 2026-10-14 sidebar deci
 - They are split because the costs differ. A script needs nothing outside the grants but the compiler and the runtime, which the sandbox opens for reading; a command usually needs its toolchain's caches. And only a sandboxed script is safe to run unasked, which is what makes scripts usable in subtasks that cannot ask.
 - The switches are a Host setting (`GlobalSettings.Sandbox` with `Commands` and `Scripts`, `PUT /api/settings/sandbox`) applied on click like the model helpers, not part of the connections or MCP editors' save; a document written before them reads as the defaults. They take effect for tool sessions opened afterwards: the Host starts the built-in server with `AI_CLIENT_SANDBOX=1` for commands and `AI_CLIENT_SCRIPT_SANDBOX=1` for scripts (`DefaultToolSessionFactory.SandboxVariable`, `ScriptSandboxVariable`). The default decision of `cs_run` follows the script switch (`ToolDefaultDecision`): `Allow` while it is on, `Ask` while it is off.
 
+## Commands and scripts always run sandboxed (2026-10-23)
+
+This replaces the 2026-10-21 sandbox switches decision.
+
+- Settings → Tools has no sandbox switches any more. `cs_run` and `process_run` always run in the [sandbox](38-process-sandbox.md) and run without asking by default, in subtasks too; commands keep the network. A stored `sandbox` member in an older settings document is ignored.
+- `process_run_unrestricted` takes the same arguments and runs without the sandbox. It asks before every call unless a saved policy or a `process_run` command rule allows it, and its approval card says the process runs with the user's permissions; a card for a sandboxed run says it is confined to the granted directories.
+- The sandbox opens no toolchain or cache directory on its own. When a run is denied a path outside the grants, the model asks through `ask_user` to grant that directory to the project and retries; only when the user declines does it use `process_run_unrestricted`. What a program may reach is thus always visible in the project's folders.
+- The switch made the user decide up front, for every command, between a boundary that breaks toolchains and none at all. Two tools move that decision to the moment a command actually needs more, where the user sees which command and which directory.
+
 ## Picking a chat leaves the sidebar's shape alone (2026-10-22)
 
 This replaces the parts of the 2026-10-13 Chat files, 2026-10-14 sidebar and 2026-10-20 directory row decisions that place directories and `Chat files` in the sidebar.

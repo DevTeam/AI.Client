@@ -918,10 +918,11 @@ public sealed partial class ChatExecutionTests
     public async Task AManualApprovalCardShouldNotWaitForItsRiskAdvice()
     {
         await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferUnrestricted = true;
         fixture.Completion.RiskRelease = new TaskCompletionSource();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
         first.Answer.SetResult("");
 
         // The card is up while the assessment is still being written.
@@ -1284,9 +1285,10 @@ public sealed partial class ChatExecutionTests
     public async Task ScopedApprovalShouldPersistAtTheSelectedLevel(ToolApprovalAction action)
     {
         await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferUnrestricted = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
@@ -1307,9 +1309,10 @@ public sealed partial class ChatExecutionTests
     public async Task RememberedCommandShouldBeSavedAsACommandRuleOfTheOfferedPattern()
     {
         await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferUnrestricted = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run",
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted",
             """{"executable":"git","arguments":["log","--oneline"]}""")];
         first.Answer.SetResult("");
         var pending = (await fixture.WaitAsync(run => run.PendingApproval is not null)).PendingApproval!;
@@ -1366,9 +1369,10 @@ public sealed partial class ChatExecutionTests
     public async Task SwitchingToFullAccessShouldAnswerTheWaitingCard()
     {
         await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferUnrestricted = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
 
@@ -1612,9 +1616,10 @@ public sealed partial class ChatExecutionTests
     public async Task AnswerWhileTheSwitchedModeIsAssessingMustWinAndTakeTheCardDown()
     {
         await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferUnrestricted = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         var approvalId = pending.PendingApproval!.Id;
@@ -3143,6 +3148,12 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "process_run", "schema");
 
+        // The unsandboxed command runner: the built-in tool that still asks before every call.
+        private static readonly AgentTool ProcessRunUnrestricted = new(
+            new ChatToolDefinition("mcp_built_in__process_run_unrestricted", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__process_run_unrestricted", "process_run_unrestricted", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            DefaultMcpServer.Id, "process_run_unrestricted", "schema");
+
         private static readonly AgentTool ScriptRun = new(
             new ChatToolDefinition("mcp_built_in__cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
             ToolDescriptor.Basic("mcp_built_in__cs_run", "cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
@@ -3159,6 +3170,7 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "trigger_wait", "schema");
 
+        public bool OfferUnrestricted { get; set; }
         public bool OfferCSharp { get; set; }
         public bool OfferExternalReads { get; set; }
         public bool OfferTrigger { get; set; }
@@ -3203,7 +3215,7 @@ public sealed partial class ChatExecutionTests
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
+            [ProcessRun, .. OfferUnrestricted ? [ProcessRunUnrestricted] : Array.Empty<AgentTool>(), .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
                 .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),

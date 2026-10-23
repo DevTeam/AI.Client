@@ -90,7 +90,9 @@
                 }
                 <div class="tool-approval-details-label">@Approval.Name · Arguments</div>
                 <pre>@Approval.Arguments</pre>
-                <p>Timeout: @Approval.TimeoutSeconds seconds. The process runs with your account's permissions; the working directory is not a sandbox.</p>
+                <p>Timeout: @Approval.TimeoutSeconds seconds. @(Approval.Name is "process_run" or "cs_run"
+                    ? "It runs in a sandbox limited to the project's granted directories and the chat's temporary directory."
+                    : "The process runs with your account's permissions; the working directory is not a sandbox.")</p>
                 @if (Approval.BatchSize > 1)
                 {
                     <p>Each call is confirmed separately.</p>

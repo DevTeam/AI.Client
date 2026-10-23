@@ -166,8 +166,8 @@ public sealed class ToolRuleProfiles : IToolRuleProfiles
 
     public IReadOnlyList<IToolRuleProfile> All { get; }
 
-    public IToolRuleProfile? Find(string tool) => All.FirstOrDefault(profile => profile.Tool == tool);
+    public IToolRuleProfile? Find(string tool) => All.FirstOrDefault(profile => profile.Tool == CommandRule.RulesOf(tool));
 
     public IToolRuleProfile? Find(Guid serverId, string tool) =>
-        All.FirstOrDefault(profile => profile.ServerId == serverId && profile.Tool == tool);
+        All.FirstOrDefault(profile => profile.ServerId == serverId && profile.Tool == CommandRule.RulesOf(tool));
 }

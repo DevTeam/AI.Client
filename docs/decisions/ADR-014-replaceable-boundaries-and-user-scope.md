@@ -337,7 +337,7 @@ resolved in one place:
 | Level | Holds | Resolved by |
 | --- | --- | --- |
 | Instance | nothing yet | — |
-| User | connections, MCP servers, tool policies, sandbox, chat automation, command rules (`settings.json`, `command-rules.json` under the user's directory since step 1) | `IGlobalSettingsRepository` |
+| User | connections, MCP servers, tool policies, chat automation, command rules (`settings.json`, `command-rules.json` under the user's directory since step 1) | `IGlobalSettingsRepository` |
 | Project | connection, directory grants, MCP bindings and tool policies, instructions | `IProjectService` |
 | Chat | connection, reasoning effort, approval mode, tool policies | `IChatBranchSettingsResolver`, falling back from the branch |
 | Branch | the same, inherited along the branch's ancestry | `IChatBranchSettingsResolver` (`Effective` also names the level each value came from) |
@@ -361,7 +361,7 @@ Implemented on 2026-10-22.
 - `IToolEnvironment.Launch(ToolProcessLaunch)` returns the MCP transport of a tool server process; the
   launch names the command, arguments, working directory, environment and whether the Host's
   environment is inherited. `LocalToolEnvironment` starts it as a child process over stdio, as before.
-- `DefaultToolSessionFactory` (the built-in server, with its directory grants and sandbox switches in its
+- `DefaultToolSessionFactory` (the built-in server, with its directory grants in its
   environment) and `ExternalToolSessionFactory` (user-configured stdio servers) start processes only
   through it. HTTP servers and the in-process app server start no process and are unaffected.
 - `ToolEnvironmentTests` checks that both launches go through the environment with what they need.

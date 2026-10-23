@@ -73,7 +73,7 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         if (!profile.TryParsePattern(request.Pattern, out var pattern, out var problem))
             throw new ArgumentException(problem, nameof(request));
         var rule = new CommandRule(ids.Create(), request.Scope, projectId, chatId, pattern!.Text, request.Decision, clock.UtcNow,
-            request.Tool);
+            profile.Tool);
         await repository.UpdateAsync(rules => rules
             .Where(item => !(item.Tool == rule.Tool && item.Scope == rule.Scope && item.ProjectId == rule.ProjectId
                              && item.ChatId == rule.ChatId && item.Pattern == rule.Pattern))
@@ -105,7 +105,7 @@ public sealed class CommandRuleService(ICommandRuleRepository repository, IProje
         if (await profile.ReadAsync(arguments, new RuleContext(grants, ScratchOf(projectId, chatId)), cancellationToken)
             is not { } subject) return null;
         var matching = (await ListAsync(projectId, chatId, cancellationToken))
-            .Where(rule => rule.Tool == tool)
+            .Where(rule => rule.Tool == profile.Tool)
             .Select(rule => (Rule: rule, Pattern: profile.TryParsePattern(rule.Pattern, out var pattern, out _) ? pattern : null))
             .Where(item => item.Pattern is not null && item.Pattern.Matches(subject, any: item.Rule.Decision == "Deny")
                            && (item.Rule.Decision != "Allow" || item.Pattern.IsExact || !subject.ExactOnly))

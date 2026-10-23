@@ -6,7 +6,7 @@ namespace AI.Contracts.Tools;
 /// <summary>The built-in process runner.</summary>
 public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdapter
 {
-    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run" };
+    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run", "process_run_unrestricted" };
 
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
     {

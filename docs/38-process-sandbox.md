@@ -4,11 +4,26 @@ Status: Accepted
 
 `process_run` and `cs_run` start programs. Without a sandbox those programs run with everything the
 Host user can do, and the project's directory grants bind only the file tools. The sandbox closes
-that gap: when it is switched on, a started program and everything it starts reach only the
-session's grants. Settings → Tools switches it separately: for C# scripts it is on by default
-("Run C# scripts in a sandbox", `AI_CLIENT_SCRIPT_SANDBOX=1`), for commands off ("Run commands in a
-sandbox", `AI_CLIENT_SANDBOX=1`). While scripts are sandboxed, `cs_run` runs without asking by
-default (`ToolDefaultDecision`), which is also what lets subtasks, which cannot ask, use it.
+that gap: a started program and everything it starts reach only the session's grants. `cs_run` and
+`process_run` always run in it; there is no setting. Because they are confined, both run without
+asking by default (`ToolDefaultDecision`), which is also what lets subtasks, which cannot ask, use
+them.
+
+`process_run_unrestricted` takes the same arguments as `process_run` and runs the program without
+the sandbox, with everything the Host user can do. It asks before every call unless a saved policy
+or command rule says otherwise, and shares the command rules of `process_run`
+(`CommandRule.RulesOf`). Subtasks cannot use it, because they cannot ask.
+
+## When a run is denied
+
+The sandbox opens no directory on its own beyond the grants, the chat's temporary directory and the
+system locations below: no toolchain profile, no package caches. When a run fails because a path
+outside them was denied, the tool description and the execution capabilities in the system prompt
+tell the model to ask the user through `ask_user` to grant that directory to the project
+(read-only unless it must be written) and retry once it is granted (`app_security`
+`AddDirectoryGrant`). Only when the user declines, or no grant can cover what the program needs, does
+the model fall back to `process_run_unrestricted`, whose call the user approves. A grant is then the
+user's decision, visible in the project's folders, rather than a list hidden in the launcher.
 
 ## What a confined program may do
 
@@ -32,8 +47,8 @@ runs unasked, and one that could read the grants and send them anywhere would be
 boundary. On an older Linux kernel the network stays open and the tool description says so.
 
 Programs that keep caches or configuration in the user profile, such as NuGet, npm, pip and git,
-fail under the sandbox unless those directories are granted. This is why the command sandbox is off
-by default. A program also cannot start in a working directory outside the grants.
+fail under the sandbox unless those directories are granted; that is the case the grant flow above
+is for. A program also cannot start in a working directory outside the grants.
 
 ## Design
 
@@ -104,8 +119,9 @@ on every macOS and used by Chrome, Bazel and Nix.
 ### Failure modes
 
 A policy the machine cannot enforce fails the start (`SandboxUnavailableException`) instead of
-running the program unconfined. When the sandbox is switched on but unavailable, the tool
-descriptions say so and every run fails with the reason. A launcher failure before the program
+running the program unconfined. When the machine has no sandbox, `process_run` and `cs_run` stay
+listed, their descriptions say so and every run fails with the reason; `process_run_unrestricted`
+still works. A launcher failure before the program
 runs exits with 125 and a message starting with `ai-sandbox:`.
 
 ## cs_run inside the sandbox
@@ -122,8 +138,8 @@ opening its diagnostic channel in the user's temporary directory. The spare work
   tests: reading and writing inside and outside the policy, children of a confined program, exit
   code, working directory, environment, standard input, the deadline, cancellation, a missing
   program and the Windows process limit.
-- `tests/AI.Mcp.BuiltIn.Tests/SandboxedToolTests` starts the built-in server as the Host does with
-  the sandbox on and checks `process_run` and `cs_run` against read-only, writable, temporary and
+- `tests/AI.Mcp.BuiltIn.Tests/SandboxedToolTests` starts the built-in server as the Host does and
+  checks `process_run` and `cs_run` against read-only, writable, temporary and
   ungranted directories.
 
 A machine without a sandbox skips the confined tests. CI sets `AI_SANDBOX_REQUIRED=1`, which turns

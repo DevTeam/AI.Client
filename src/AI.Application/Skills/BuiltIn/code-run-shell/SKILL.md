@@ -6,7 +6,7 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","list_allowed_directories","process_run","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","list_allowed_directories","process_run","process_run_unrestricted","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
 
 For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
@@ -59,11 +59,15 @@ or scripts, and a dedicated tool when it better serves the task.
    check `$LASTEXITCODE` immediately after important native programs and propagate an appropriate
    `exit` code. Nonterminating PowerShell errors and native program failures need separate checks.
 5. Assess deletion, overwrite, moves, database/network changes and disk exhaustion before launch.
-   The working directory restricts nothing by itself. When the `process_run` description says it
-   is sandboxed, programs reach only the granted directories and the chat's temporary directory,
-   start only in a granted directory, and results carry `sandbox`; tools that keep caches in the
-   user profile may fail there, and an access error outside the grants is the boundary: ask for a
-   grant as the access rules say, never work around it. Verify full targets, empty inputs, source/destination
+   `process_run` always runs in a sandbox: programs reach only the granted directories, the chat's
+   temporary directory and read-only system locations, start only in a granted directory, keep
+   the network, and results carry `sandbox`. Tools that keep SDKs or caches elsewhere, such as in
+   the user profile, may fail there. An access error outside the grants is the boundary: ask the
+   user through `ask_user` to grant that directory to the project (read-only unless it must be
+   written) and retry after the grant. Only when the user declines or no grant can cover it, use
+   `process_run_unrestricted`, which runs the same arguments without the sandbox after the user
+   approves the call and is unavailable in subtasks. Never work around the sandbox otherwise.
+   Verify full targets, empty inputs, source/destination
    overlap, existing outputs and symlinks/junctions. Before recursive deletion/moves confirm the
    final path is within the intended authorized area, not an accidental root, home or entire
    working tree. Preview targets or use dry-run/-WhatIf where supported; preserve important

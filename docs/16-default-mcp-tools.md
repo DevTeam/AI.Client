@@ -2,14 +2,15 @@
 
 ## Composition
 
-The built-in server ships 23 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`. File changes, `process_run`, and network `fetch` default to `Ask`. `cs_run` defaults to `Allow` while C# scripts run in the [sandbox](38-process-sandbox.md), which is the default, and to `Ask` when that sandbox is switched off. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
+The built-in server ships 24 tools. On first discovery, local file and archive reads, searches, directory-grant listing, and `trigger_wait` default to `Allow`, and so do `process_run` and `cs_run`, which always run in the [sandbox](38-process-sandbox.md). File changes, `process_run_unrestricted`, and network `fetch` default to `Ask`. Unknown tools still default to `Ask`. Saved global, project, and chat policies take precedence over these defaults.
 
 In addition, the Host ships a second built-in server — [App tools](17-app-tools.md) with five tools over the application's own data.
 
 | Tool | Purpose | Required capability grant |
 |---|---|---|
-| `process_run` | launch a program and wait for completion | — (confined to the grants only by the [sandbox](38-process-sandbox.md)) |
-| `cs_run` | compile and run a C# script in a disposable worker process | — (confined to the grants only by the [sandbox](38-process-sandbox.md)) |
+| `process_run` | launch a program in the [sandbox](38-process-sandbox.md) and wait for completion | — (the sandbox confines it to the grants) |
+| `process_run_unrestricted` | launch a program without the sandbox; same arguments as `process_run` | — (asks before each call) |
+| `cs_run` | compile and run a C# script in a disposable worker process | — (the [sandbox](38-process-sandbox.md) confines it to the grants) |
 | `trigger_wait` | wait for a time, file, or process condition during the current chat run | `read` for file paths |
 | `fetch` | download an http/https URL as Markdown | — (network) |
 | `list_allowed_directories` | enumerate the current session's directory grants | — |
@@ -62,15 +63,15 @@ Input:
 
 `workingDirectory` is required and must be absolute. Arguments are passed as separate array elements; there is no implicit command shell. For a script, the shell is specified explicitly, for example `powershell.exe` with `-NoProfile`, `-NonInteractive`, `-Command`. Interactive stdin is closed.
 
-The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded` and `sandbox` (the OS mechanism that confined the run, or `null`). A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block. Streams are read as bytes and decoded as UTF-8 when they are valid UTF-8, otherwise in the OEM code page of the user's locale, which is what `cmd` and Windows PowerShell write when redirected; a cut at the byte limit drops a split final character before that judgement. Decoding everything in the console code page turned the UTF-8 that most tools write into mojibake for every non-Latin character, and the model then spent steps working around its own tool output. The child environment also sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, so Python writes UTF-8 rather than the ANSI code page.
+The structured result contains `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `error`, `limitExceeded` and `sandbox` (the OS mechanism that confined the run, or `null` for `process_run_unrestricted`). A non-zero exit code is recorded as the process result with MCP `isError` rather than being swallowed by an exception. Each stream is limited to 32768 characters; remaining data continues to be read and discarded so the process does not block. Streams are read as bytes and decoded as UTF-8 when they are valid UTF-8, otherwise in the OEM code page of the user's locale, which is what `cmd` and Windows PowerShell write when redirected; a cut at the byte limit drops a split final character before that judgement. Decoding everything in the console code page turned the UTF-8 that most tools write into mojibake for every non-Latin character, and the model then spent steps working around its own tool output. The child environment also sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, so Python writes UTF-8 rather than the ANSI code page.
 
 Limits: up to 256 arguments, up to 2097152 characters of arguments JSON on the Host side (`ToolCallLimits.ArgumentCharacters`, shared with the stream parser and set above the largest content any tool accepts, so a call its schema allows is never refused after the model has spent minutes generating it), up to 56535 calls of a single tool per run by default, a default timeout of 600 seconds and a configurable maximum of 86400 seconds per process, and up to 24 hours for the agent loop, excluding time waiting for a person. There is no separate model-iteration limit; the number of parallel `tool_calls` in a single assistant message is capped at 1024. Tool policies inherit chat -> project -> global, with an allowed timeout range of 1..86400 seconds. Saved shorter timeouts remain in effect.
 
-For `process_run` and `cs_run`, `timeoutMs` accepts 1..86400000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 3600 seconds.
+For `process_run`, `process_run_unrestricted` and `cs_run`, `timeoutMs` accepts 1..86400000 milliseconds and defaults to 600000. Omit it to use the effective tool policy; an explicit value can shorten the run but cannot exceed that policy. The Host passes the effective run timeout to the server before confirmation. Other tools use the policy as a silence timeout renewed by progress, subject to their own internal limits. `fetch` retains its 30-second HTTP timeout, and `app_runs` accepts a wait window of up to 3600 seconds.
 
 ### Resource limits
 
-Every process tree started by `process_run`, and the disposable worker of `cs_run`, runs within resource limits (`ChildProcessLimits` and `ChildProcessJob` in `AI.Sandbox`, applied by its `IProcessLauncher` together with the deadline and, when switched on, the [sandbox](38-process-sandbox.md)). Two of them are call parameters, so the model can raise them for a program that legitimately needs more:
+Every process tree started by `process_run` or `process_run_unrestricted`, and the disposable worker of `cs_run`, runs within resource limits (`ChildProcessLimits` and `ChildProcessJob` in `AI.Sandbox`, applied by its `IProcessLauncher` together with the deadline and, except for `process_run_unrestricted`, the [sandbox](38-process-sandbox.md)). Two of them are call parameters, so the model can raise them for a program that legitimately needs more:
 
 | Parameter | Default | Allowed | Meaning |
 | --- | --- | --- | --- |
@@ -184,7 +185,7 @@ Only the `http` and `https` schemes are allowed; credentials in the URL are reje
 
 ## Access and lifecycle
 
-The process runs under the Host account's permissions. Unless the [sandbox](38-process-sandbox.md) is switched on, working directory and directory grants are not a boundary for arbitrary programs: permission to run a process can grant it access to the files and network of that account. With the sandbox, `process_run` and `cs_run` reach only the session's grants, the chat's temporary directory and the read-only system locations.
+The process runs under the Host account's permissions. `process_run` and `cs_run` always run in the [sandbox](38-process-sandbox.md) and reach only the session's grants, the chat's temporary directory and the read-only system locations. For `process_run_unrestricted`, working directory and directory grants are not a boundary: permission to run it can grant the program access to the files and network of that account.
 
 The Host and the server pass only the selected system environment variables required to launch programs. Arbitrary Host variables and saved API credentials are not passed automatically. This does not stop the program itself from reading the credential files available to it.
 

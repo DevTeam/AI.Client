@@ -37,7 +37,7 @@ public sealed class ToolDefaultDecisionTests
     [Theory]
     [InlineData("write_file")]
     [InlineData("delete_directory")]
-    [InlineData("process_run")]
+    [InlineData("process_run_unrestricted")]
     [InlineData("fetch")]
     public void BuiltInToolsWithSideEffectsOrNetworkAccessStillAsk(string name) =>
         _defaults.GetDecision(DefaultMcpServer.Id, name).ShouldBe("Ask");
@@ -58,14 +58,13 @@ public sealed class ToolDefaultDecisionTests
         _defaults.GetDecision(Guid.NewGuid(), "cs_run").ShouldBe("Ask");
     }
 
-    [Fact]
-    public void ScriptsRunWithoutApprovalOnlyWhileTheyAreSandboxed()
-    {
-        // The defaults sandbox scripts, so a script runs unasked unless the sandbox is switched off.
-        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run").ShouldBe("Allow");
-        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run", new ToolSandboxSettings(Scripts: true)).ShouldBe("Allow");
-        _defaults.GetDecision(DefaultMcpServer.Id, "cs_run", new ToolSandboxSettings(Commands: true, Scripts: false)).ShouldBe("Ask");
-        // The command sandbox changes nothing for process_run's default: commands keep the network.
-        _defaults.GetDecision(DefaultMcpServer.Id, "process_run", new ToolSandboxSettings(Commands: true)).ShouldBe("Ask");
-    }
+    /// <summary>
+    /// Commands and scripts always run in the sandbox, so they run unasked; the unsandboxed variant
+    /// of process_run is the one that asks.
+    /// </summary>
+    [Theory]
+    [InlineData("process_run")]
+    [InlineData("cs_run")]
+    public void SandboxedCommandsAndScriptsRunWithoutApproval(string name) =>
+        _defaults.GetDecision(DefaultMcpServer.Id, name).ShouldBe("Allow");
 }

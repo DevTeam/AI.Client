@@ -35,10 +35,8 @@ public sealed class ToolEnvironmentTests
     public async Task TheBuiltInServerIsLaunchedThroughTheEnvironmentWithoutTheHostsEnvironment()
     {
         var environment = new RecordingEnvironment();
-        var settings = new Mock<IGlobalSettingsRepository>();
-        settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new GlobalSettings([], [], []));
         var factory = new DefaultToolSessionFactory(Mock.Of<IToolResultModelProjector>(),
-            Mock.Of<AI.Application.Tools.IChatTemporaryDirectory>(), settings.Object, environment);
+            Mock.Of<AI.Application.Tools.IChatTemporaryDirectory>(), environment);
 
         await Should.ThrowAsync<LaunchRefusedException>(() => factory.OpenAsync([],
             new AI.Application.Tools.ToolRunContext(Guid.Empty, Guid.Empty, Guid.Empty, true),

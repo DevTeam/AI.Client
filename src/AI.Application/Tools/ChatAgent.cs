@@ -170,7 +170,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var approvalMode = executionTools.Length > 0
             ? await autoApprover().ModeAsync(projectId, chatId, branchId, token)
             : ToolApprovalMode.Ask;
-        var installedPrograms = executionTools.Any(tool => tool.OriginalName == ToolPolicyResolver.ProcessRun)
+        var installedPrograms = executionTools.Any(tool => tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted)
             ? await InstalledProgramsAsync(executables, token)
             : [];
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
@@ -628,7 +628,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             // What the rules were checked against is what runs: process_run's bare program
                             // name is pinned to the file PATH found for it, and the card shows that.
                             if (policy.Command?.Subject.Arguments is { } pinned) arguments = pinned;
-                            if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait")
+                            if (tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted or "cs_run" or "trigger_wait")
                             {
                                 var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                                 var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
@@ -769,7 +769,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     }
 
     private static bool IsExecutionTool(AgentTool tool) =>
-        tool.OriginalName is ToolPolicyResolver.ProcessRun or "cs_run";
+        tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted or "cs_run";
 
     private static async Task<string[]> InstalledProgramsAsync(
         IExecutableLocator executables, CancellationToken cancellationToken)
@@ -802,8 +802,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             };
             text.Append("\n- ").Append(item.Tool.OriginalName).Append(": ").Append(state).Append('.');
         }
-        if (offered.Any(item => item.Tool.OriginalName == ToolPolicyResolver.ProcessRun))
+        if (offered.Any(item => item.Tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted))
         {
+            // The sandbox is what makes process_run safe to run unasked, and it is also why a run can
+            // fail for a reason that is not the program's: the way out is a grant, not a workaround.
+            text.Append("\n- process_run and cs_run always run in a sandbox limited to the granted directories and the chat's ")
+                .Append("temporary directory. When a run fails because a path outside them was denied, or an SDK or package ")
+                .Append("cache that exists on the machine is not found, ask the user through ask_user to grant that directory to ")
+                .Append("the project (read-only unless it must be written) and retry after the grant. Only when the user declines ")
+                .Append("or no grant can cover it, use process_run_unrestricted, which runs without the sandbox after the user ")
+                .Append("approves the call. Never work around the sandbox.");
             text.Append("\n- Programs currently found on PATH for process_run: ")
                 .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
                 .Append(". Other programs may exist; do not assume one without checking.")

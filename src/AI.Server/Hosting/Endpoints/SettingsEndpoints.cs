@@ -77,11 +77,6 @@ public sealed class SettingsEndpoints : IEndpointModule
                 service.SetChatAutomationAsync(request, cancellationToken));
 
         routes.MapPut(
-            "/api/settings/sandbox",
-            (ToolSandboxSettings request, IGlobalSettingsService service, CancellationToken cancellationToken) =>
-                service.SetSandboxAsync(request, cancellationToken));
-
-        routes.MapPut(
             "/api/settings/connections/{id:guid}/credential",
             async (Guid id, UpdateSecretRequest request, IGlobalSettingsService service, CancellationToken cancellationToken) =>
                 await service.SetConnectionCredentialAsync(id, request.Value, cancellationToken)

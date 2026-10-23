@@ -228,37 +228,6 @@ public class GlobalSettingsServiceTests
         var result = await CreateInstance().GetAsync(CancellationToken.None);
 
         result.ChatAutomation.ShouldBe(new ChatAutomationSettings(AutoTitle: true, SuggestReplies: true));
-        result.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: false, Scripts: true));
-    }
-
-    [Fact]
-    public async Task ShouldStoreTheSandboxAndKeepItWhenConnectionsAreSaved()
-    {
-        GlobalSettings saved = new([], [], []);
-        _repository.Setup(item => item.SaveAsync(It.IsAny<GlobalSettings>(), CancellationToken.None))
-            .Callback<GlobalSettings, CancellationToken>((settings, _) => saved = settings)
-            .Returns(Task.CompletedTask);
-        _repository.Setup(item => item.LoadAsync(CancellationToken.None)).ReturnsAsync(() => saved);
-        _repository.Setup(item => item.UpdateAsync(
-                It.IsAny<Func<GlobalSettings, CancellationToken, Task<GlobalSettings>>>(), CancellationToken.None))
-            .Returns(async (Func<GlobalSettings, CancellationToken, Task<GlobalSettings>> update, CancellationToken token) =>
-            {
-                saved = await update(saved, token);
-                return saved;
-            });
-        _secretStore.Setup(item => item.ExistsAsync("connection", It.IsAny<Guid>(), CancellationToken.None))
-            .ReturnsAsync(false);
-        var service = CreateInstance();
-
-        var result = await service.SetSandboxAsync(new ToolSandboxSettings(Commands: true, Scripts: false), CancellationToken.None);
-        result.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
-
-        await service.SaveAsync(new SaveGlobalSettingsRequest(
-            [new ConnectionSettings(Guid.CreateVersion7(), "One", "https://one/v1", "one", true, true, false)], [], []),
-            CancellationToken.None);
-
-        saved.Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
-        (await service.GetAsync(CancellationToken.None)).Sandbox.ShouldBe(new ToolSandboxSettings(Commands: true, Scripts: false));
     }
 
     [Fact]

@@ -3,12 +3,17 @@ namespace AI.Mcp.BuiltIn.Process;
 using AI.Sandbox;
 
 /// <param name="Limits">The resources the process tree may use; <c>null</c> means <see cref="ChildProcessLimits.Default"/>.</param>
+/// <param name="Sandboxed">
+/// Whether the tree is confined to the session's grants: <c>process_run</c> always is,
+/// <c>process_run_unrestricted</c> never.
+/// </param>
 public sealed record ProcessRequest(
     string Executable,
     string[] Arguments,
     string WorkingDirectory,
     int TimeoutMs = ProcessRunner.MaxTimeoutMs,
-    ChildProcessLimits? Limits = null);
+    ChildProcessLimits? Limits = null,
+    bool Sandboxed = true);
 
 /// <param name="LimitExceeded">
 /// <see cref="ChildProcessJob.Memory"/> or <see cref="ChildProcessJob.Processes"/> when the tree ran into

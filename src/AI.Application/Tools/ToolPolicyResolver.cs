@@ -94,7 +94,7 @@ public sealed class ToolPolicyResolver(IProjectService projects, IChatService ch
             && item.Name == name && item.SchemaHash == schemaHash);
         var policyDecision = (branchPolicies.Count > 0 ? branchPolicies[0].Decision : null)
             ?? chatPolicy?.Decision ?? projectPolicy?.Decision ?? globalPolicy?.Decision
-            ?? defaults.GetDecision(serverId, name, global.Sandbox);
+            ?? defaults.GetDecision(serverId, name);
         var decision = server is not { Enabled: true } || server.Policy == "Deny" || binding is { Enabled: false } || policyDecision == "Deny"
             ? "Deny" : policyDecision == "Allow" ? "Allow" : "Ask";
         var maxCalls = branchPolicies.Select(policy => policy.MaxCallsPerRun).FirstOrDefault(value => value is not null)

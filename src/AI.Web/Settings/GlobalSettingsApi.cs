@@ -68,14 +68,6 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
                ?? throw new InvalidOperationException("Global settings response is empty.");
     }
 
-    public async Task<GlobalSettings> SetSandboxAsync(ToolSandboxSettings sandbox, CancellationToken cancellationToken)
-    {
-        using var response = await httpClient.PutAsJsonAsync("api/settings/sandbox", sandbox, cancellationToken);
-        if (!response.IsSuccessStatusCode) await ThrowRefusalAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<GlobalSettings>(cancellationToken)
-               ?? throw new InvalidOperationException("Global settings response is empty.");
-    }
-
     public async Task<IReadOnlyList<CommandRule>> GetCommandRulesAsync(Guid? projectId, Guid? chatId,
         CancellationToken cancellationToken)
     {

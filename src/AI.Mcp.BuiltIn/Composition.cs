@@ -31,7 +31,10 @@ internal sealed partial class Composition
             // The spare script worker is state the whole session shares.
             .Singleton<SystemFileSystem, SystemPath, ScriptWorkers>()
             // Tools
-            .Transient<ProcessRunTool, ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
+            // Bound to their one contract: registered as a whole they would also expose their shared base.
+            .Bind<IToolFactory>(Tag.Unique).To<ProcessRunTool>()
+            .Bind<IToolFactory>(Tag.Unique).To<ProcessRunUnrestrictedTool>()
+            .Transient<ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)

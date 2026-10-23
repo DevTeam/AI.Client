@@ -7,8 +7,7 @@ using Xunit;
 namespace AI.Mcp.BuiltIn.Tests;
 
 /// <summary>
-/// Starts the built-in server the way the Host does with the sandbox switched on: directory grants
-/// and <c>AI_CLIENT_SANDBOX=1</c> in its environment. Then <c>process_run</c> and <c>cs_run</c> must
+/// Starts the built-in server the way the Host does: directory grants in its environment. Then <c>process_run</c> and <c>cs_run</c> must
 /// reach exactly the granted directories: read-only grants for reading, writable grants and the
 /// chat's temporary directory for writing, and nothing else.
 /// </summary>
@@ -49,9 +48,7 @@ public sealed class SandboxedToolTests : IAsyncLifetime
             Arguments = [Path.Combine(AppContext.BaseDirectory, "AI.Mcp.BuiltIn.dll")],
             EnvironmentVariables = new Dictionary<string, string?>
             {
-                ["AI_CLIENT_DIRECTORY_GRANTS"] = grants,
-                ["AI_CLIENT_SANDBOX"] = "1",
-                ["AI_CLIENT_SCRIPT_SANDBOX"] = "1"
+                ["AI_CLIENT_DIRECTORY_GRANTS"] = grants
             },
             ShutdownTimeout = TimeSpan.FromMilliseconds(500)
         }), cancellationToken: Token);

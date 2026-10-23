@@ -85,7 +85,7 @@ public sealed class BuiltInToolTests
         await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
-            "process_run", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
+            "process_run", "process_run_unrestricted", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
             "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create", "cs_run"
         ], ignoreOrder: true);
@@ -108,7 +108,11 @@ public sealed class BuiltInToolTests
             clamped.RootElement.GetProperty("timeoutMs").GetInt64().ShouldBe(86400000);
             clamped.RootElement.GetProperty("memoryLimitMb").GetInt64().ShouldBe(ChildProcessLimits.MinimumMemoryMb);
         }
-        var result = await session.CallAsync(tool, arguments, null, timeout.Token);
+        // The session grants no directory, so the sandboxed runner may not enter BaseDirectory: the run
+        // goes through the unrestricted runner, which takes the same arguments.
+        var unrestricted = session.Tools.Single(item => item.OriginalName == "process_run_unrestricted");
+        unrestricted.ModelDefinition.InputSchema.GetRawText().ShouldBe(tool.ModelDefinition.InputSchema.GetRawText());
+        var result = await session.CallAsync(unrestricted, arguments, null, timeout.Token);
         result.IsError.ShouldBeFalse();
         result.StructuredContent.ShouldNotBeNull();
         result.StructuredContent!.Value.GetProperty("exitCode").GetInt32().ShouldBe(0);
@@ -139,7 +143,7 @@ public sealed class BuiltInToolTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary, SandboxOff(), new LocalToolEnvironment())
+            await using (var session = await new DefaultToolSessionFactory(new ToolResultModelProjector(), temporary, new LocalToolEnvironment())
                              .OpenAsync([], new ToolRunContext(projectId, chatId, chatId, true), timeout.Token))
             {
                 var description = session.Tools.Single(item => item.OriginalName == "list_allowed_directories")
@@ -1013,16 +1017,7 @@ public sealed class BuiltInToolTests
     }
 
     private static DefaultToolSessionFactory CreateFactory() =>
-        new(new ToolResultModelProjector(), NewTemporaryDirectory(), SandboxOff(), new LocalToolEnvironment());
-
-    /// <summary>Global settings with the sandbox off, as a fresh installation has them.</summary>
-    private static IGlobalSettingsRepository SandboxOff()
-    {
-        var settings = new Mock<IGlobalSettingsRepository>();
-        settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GlobalSettings([], [], []));
-        return settings.Object;
-    }
+        new(new ToolResultModelProjector(), NewTemporaryDirectory(), new LocalToolEnvironment());
 
     /// <summary>The scratch directory over the real file system, as these integration tests drive it.</summary>
     private static ChatTemporaryDirectory NewTemporaryDirectory() =>

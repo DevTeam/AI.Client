@@ -29,10 +29,11 @@ belongs to the file tools.
    showed was wrong, and change only that.
 4. Risks: a script that deletes, moves or overwrites must resolve and verify its targets inside the
    intended area first and keep important originals; ask only for authorization the request does
-   not already give. When the tool description says the script is sandboxed (the default), it
-   reaches only the granted directories and the chat's temporary directory, usually without the
-   network, and runs without asking; an access error outside them is the boundary: ask for a grant,
-   never work around it, and use `fetch` or `process_run` for anything online.
+   not already give. A script always runs in a sandbox: it reaches only the granted directories and
+   the chat's temporary directory, usually without the network, and runs without asking. An access
+   error outside them is the boundary: ask the user through `ask_user` to grant that directory to
+   the project and retry after the grant, never work around it, and use `fetch` or `process_run`
+   for anything online.
 5. Long work: keep `timeoutMs` at its default unless a shorter deadline is intended; split work
    that can outlast it into batches with checkpoints in the chat's temporary directory. Never stop
    a process this run did not start.

@@ -2,7 +2,7 @@ namespace AI.Mcp.BuiltIn.Sandbox;
 
 using AI.Sandbox;
 
-/// <summary>The programs of the built-in server, each with a sandbox switch of its own.</summary>
+/// <summary>The programs of the built-in server that run confined to the session's grants.</summary>
 public enum SandboxedTool
 {
     /// <summary><c>process_run</c> commands.</summary>
@@ -13,12 +13,12 @@ public enum SandboxedTool
 }
 
 /// <summary>
-/// The sandbox the programs of this session run in. The Host switches it on separately for
-/// commands and for scripts, and it opens exactly the session's directory grants.
+/// The sandbox the programs of this session run in. It opens exactly the session's directory grants;
+/// <c>process_run_unrestricted</c> is the only way past it.
 /// </summary>
 public interface IToolSandbox
 {
-    /// <summary>The policy to start <paramref name="tool"/>'s programs with, or <c>null</c> when its sandbox is off.</summary>
+    /// <summary>The policy to start <paramref name="tool"/>'s programs with; <c>null</c> only outside a session.</summary>
     SandboxPolicy? Policy(SandboxedTool tool);
 
     /// <summary>
@@ -27,6 +27,6 @@ public interface IToolSandbox
     /// </summary>
     string? TemporaryDirectory { get; }
 
-    /// <summary>One sentence for a tool description that says what <paramref name="tool"/>'s programs may reach.</summary>
+    /// <summary>One paragraph for a tool description: what <paramref name="tool"/>'s programs may reach and what to do past it.</summary>
     string Describe(SandboxedTool tool);
 }

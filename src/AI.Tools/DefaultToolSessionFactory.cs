@@ -1,6 +1,5 @@
 namespace AI.Infrastructure.Tools;
 
-using Application.Settings;
 using Application.Tools;
 using Contracts.Settings;
 using Contracts.Tools;
@@ -14,7 +13,6 @@ using System.Text.Json;
 public sealed class DefaultToolSessionFactory(
     IToolResultModelProjector modelProjector,
     IChatTemporaryDirectory temporaryDirectory,
-    IGlobalSettingsRepository settings,
     IToolEnvironment toolEnvironment) : IMcpServerConnection
 {
     public Guid ServerId => DefaultMcpServer.Id;
@@ -22,22 +20,10 @@ public sealed class DefaultToolSessionFactory(
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
     public const string DirectoryGrantsVariable = "AI_CLIENT_DIRECTORY_GRANTS";
 
-    /// <summary>
-    /// Name of the environment variable that switches the built-in server's process sandbox on for
-    /// <c>process_run</c> commands. It is set to <c>1</c> only when the setting is on.
-    /// </summary>
-    public const string SandboxVariable = "AI_CLIENT_SANDBOX";
-
-    /// <summary>
-    /// Name of the environment variable that switches the sandbox on for <c>cs_run</c> scripts. The
-    /// setting is on by default, so this is normally set; the server itself treats its absence as off.
-    /// </summary>
-    public const string ScriptSandboxVariable = "AI_CLIENT_SCRIPT_SANDBOX";
-
     public async Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
     {
         var executable = Path.Combine(AppContext.BaseDirectory, "mcp", "AI.Mcp.BuiltIn" + (OperatingSystem.IsWindows() ? ".exe" : ""));
-        var environment = await CreateEnvironmentAsync(directoryGrants, run, cancellationToken);
+        var environment = CreateEnvironment(directoryGrants, run);
         // Closing the session waits ShutdownTimeout for the process to exit, and the run's answer is
         // not saved until it is closed. At the SDK's 5 s default every turn that used a tool sat
         // finished but unsaved for five seconds, its answer shown as a live copy that was then
@@ -55,12 +41,11 @@ public sealed class DefaultToolSessionFactory(
     }
 
     /// <summary>
-    /// The whole environment the built-in server process starts with: a minimal inherited set, the
-    /// directory grants (the project's and the chat's temporary directory), and the sandbox switches
-    /// for commands and scripts that the global settings turn on.
+    /// The whole environment the built-in server process starts with: a minimal inherited set and the
+    /// directory grants, the project's and the chat's temporary directory, which are also all its
+    /// commands and scripts may reach: they always run in the sandbox.
     /// </summary>
-    public async Task<IDictionary<string, string?>> CreateEnvironmentAsync(
-        IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run, CancellationToken cancellationToken)
+    public IDictionary<string, string?> CreateEnvironment(IReadOnlyList<ToolDirectoryGrant> directoryGrants, ToolRunContext run)
     {
         ArgumentNullException.ThrowIfNull(directoryGrants);
         var environment = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
@@ -78,11 +63,6 @@ public sealed class DefaultToolSessionFactory(
                 capabilities = (IReadOnlyList<string>)["read", "write", "edit", "delete"], purpose = "chatTemporary"
             });
         environment[DirectoryGrantsVariable] = JsonSerializer.Serialize(effectiveGrants);
-        // A switched-off sandbox leaves its variable out rather than set to 0, so the server never
-        // inherits a value it did not get from these settings.
-        var sandbox = (await settings.LoadAsync(cancellationToken)).Sandbox ?? new ToolSandboxSettings();
-        if (sandbox.Commands) environment[SandboxVariable] = "1";
-        if (sandbox.Scripts) environment[ScriptSandboxVariable] = "1";
         return environment;
     }
 }

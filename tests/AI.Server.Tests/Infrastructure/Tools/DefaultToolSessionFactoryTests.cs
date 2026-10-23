@@ -1,8 +1,7 @@
 namespace AI.Infrastructure.Tests.Tools;
 
-using AI.Application.Settings;
+using System.Text.Json;
 using AI.Application.Tools;
-using AI.Contracts.Settings;
 using AI.Contracts.Tools;
 using AI.Infrastructure.Tools;
 using Moq;
@@ -11,39 +10,24 @@ using Xunit;
 
 public sealed class DefaultToolSessionFactoryTests
 {
+    /// <summary>
+    /// Commands and scripts always run in the sandbox, which opens exactly these grants, so the grants
+    /// are all the server is told: there is no switch to pass any more.
+    /// </summary>
     [Fact]
-    public async Task ShouldSandboxScriptsButNotCommandsByDefault()
+    public void ShouldHandTheServerTheProjectGrantsAndTheChatTemporaryDirectory()
     {
-        var environment = await Factory(null)
-            .CreateEnvironmentAsync([], ToolRunContext.None, TestContext.Current.CancellationToken);
+        var temporary = new Mock<IChatTemporaryDirectory>();
+        temporary.Setup(item => item.GetOrCreate(It.IsAny<Guid>(), It.IsAny<Guid>())).Returns(@"C:\temp\chat");
+        var factory = new DefaultToolSessionFactory(Mock.Of<IToolResultModelProjector>(), temporary.Object, new LocalToolEnvironment());
+        var run = ToolRunContext.None with { ProjectId = Guid.NewGuid(), ChatId = Guid.NewGuid() };
 
-        environment.ContainsKey(DefaultToolSessionFactory.SandboxVariable).ShouldBeFalse();
-        environment[DefaultToolSessionFactory.ScriptSandboxVariable].ShouldBe("1");
-        environment.ContainsKey(DefaultToolSessionFactory.DirectoryGrantsVariable).ShouldBeTrue();
-    }
+        var environment = factory.CreateEnvironment([new ToolDirectoryGrant(@"C:\work", true, ["read"])], run);
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task ShouldPassEachSandboxSwitchOnlyWhenItIsOn(bool commands, bool scripts)
-    {
-        var environment = await Factory(new ToolSandboxSettings(commands, scripts))
-            .CreateEnvironmentAsync([], ToolRunContext.None, TestContext.Current.CancellationToken);
-
-        DefaultToolSessionFactory.SandboxVariable.ShouldBe("AI_CLIENT_SANDBOX");
-        DefaultToolSessionFactory.ScriptSandboxVariable.ShouldBe("AI_CLIENT_SCRIPT_SANDBOX");
-        environment.ContainsKey(DefaultToolSessionFactory.SandboxVariable).ShouldBe(commands);
-        environment.ContainsKey(DefaultToolSessionFactory.ScriptSandboxVariable).ShouldBe(scripts);
-    }
-
-    private static DefaultToolSessionFactory Factory(ToolSandboxSettings? sandbox)
-    {
-        var settings = new Mock<IGlobalSettingsRepository>();
-        settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GlobalSettings([], [], [], null, sandbox));
-        return new DefaultToolSessionFactory(Mock.Of<IToolResultModelProjector>(),
-            Mock.Of<IChatTemporaryDirectory>(), settings.Object, new LocalToolEnvironment());
+        var grants = JsonDocument.Parse(environment[DefaultToolSessionFactory.DirectoryGrantsVariable]!).RootElement
+            .EnumerateArray().Select(grant => (Root: grant.GetProperty("root").GetString(), Purpose: grant.GetProperty("purpose").GetString()))
+            .ToArray();
+        grants.ShouldBe([(@"C:\work", "project"), (@"C:\temp\chat", "chatTemporary")]);
+        environment.Keys.ShouldNotContain(key => key.Contains("SANDBOX", StringComparison.Ordinal));
     }
 }

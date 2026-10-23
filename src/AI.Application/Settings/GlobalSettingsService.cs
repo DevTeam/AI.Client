@@ -72,8 +72,7 @@ public sealed class GlobalSettingsService(
                 };
             })),
             settings.ToolPolicies,
-            settings.ChatAutomation ?? new ChatAutomationSettings(),
-            settings.Sandbox ?? new ToolSandboxSettings());
+            settings.ChatAutomation ?? new ChatAutomationSettings());
     }
 
     public async Task<GlobalSettings> SaveAsync(
@@ -127,7 +126,7 @@ public sealed class GlobalSettingsService(
         var stored = await repository.LoadAsync(cancellationToken);
         connections = connections.Select(item =>
             KeepDetection(item, stored.Connections.SingleOrDefault(current => current.Id == item.Id))).ToArray();
-        var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation, stored.Sandbox);
+        var settings = new GlobalSettings(connections, mcpServers, toolPolicies, stored.ChatAutomation);
         await repository.SaveAsync(settings, cancellationToken);
         return await GetAsync(cancellationToken);
     }
@@ -315,13 +314,6 @@ public sealed class GlobalSettingsService(
     {
         ArgumentNullException.ThrowIfNull(automation);
         await repository.UpdateAsync((settings, _) => Task.FromResult(settings with { ChatAutomation = automation }), cancellationToken);
-        return await GetAsync(cancellationToken);
-    }
-
-    public async Task<GlobalSettings> SetSandboxAsync(ToolSandboxSettings sandbox, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(sandbox);
-        await repository.UpdateAsync((settings, _) => Task.FromResult(settings with { Sandbox = sandbox }), cancellationToken);
         return await GetAsync(cancellationToken);
     }
 

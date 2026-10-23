@@ -61,8 +61,7 @@ internal sealed class Composition
             // usage accounting, preview tickets, parsed caches and the running update service.
             // The ambient user context is one instance so that a scope entered by a request is the
             // one every service of that request reads.
-            .Singleton<AmbientUserContext>()
-            .Singleton<FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
+            .Singleton<AmbientUserContext, FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
                 JsonProjectRepository, JsonProjectOrderRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,

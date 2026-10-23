@@ -49,7 +49,13 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p artifacts/test-results
-          dotnet test --solution AI.slnx --no-build --results-directory artifacts/test-results --no-ansi --no-progress 2>&1 | tee artifacts/test-results/test.log
+          module_args=()
+          # Five concurrent test modules can starve the process-sandbox helpers on the smaller
+          # Windows hosted runner until otherwise ordinary commands hit their one-minute timeout.
+          if [ "$RUNNER_OS" = Windows ]; then
+            module_args+=(--max-parallel-test-modules 1)
+          fi
+          dotnet test --solution AI.slnx --no-build "${module_args[@]}" --results-directory artifacts/test-results --no-ansi --no-progress 2>&1 | tee artifacts/test-results/test.log
       # Each failed test becomes an annotation with its message, so a failure can be read from the
       # run page and the checks API without downloading the logs.
       - name: Report failed tests

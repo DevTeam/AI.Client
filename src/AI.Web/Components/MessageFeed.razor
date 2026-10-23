@@ -818,6 +818,8 @@
     private (ChatTokenUsage? ChatUsage, bool ShowTurnTokens, HistoryCheckpoint? ActiveCheckpoint, TurnTokenUsage? TurnUsage) _usageState;
     private int _usageVersion;
     private TimeSpan? _renderedGeneratingElapsed;
+    // The running turn's open segment opener and the run's elapsed time when it was first seen.
+    private KeyValuePair<Guid, TimeSpan> _openSegmentStart;
     private int _renderedTranscriptRunPresentationVersion;
     private int _renderedReviewVersion;
     private int _renderedExpandedTurnsVersion;
@@ -2164,11 +2166,16 @@
     private TimeSpan GetSegmentDuration(FeedTurn turn, TurnSegment segment, ChatMessageView? opener, bool isLast)
     {
         if (segment.Index == 0 && isLast) return GetTurnDuration(turn);
-        if (opener is null || turn.UserMessage is not { } user) return TimeSpan.Zero;
+        if (opener is null) return TimeSpan.Zero;
         if (isLast && IsRunningTurn(turn) && GeneratingElapsed is { } generating)
         {
-            var before = opener.CreatedAt - user.CreatedAt;
-            return generating > before ? generating - before : TimeSpan.Zero;
+            // The run's elapsed time counts only the model's own work, while the opener's offset
+            // from the question is wall-clock time with tool calls and the person's answer in it,
+            // so the two cannot be subtracted. The segment counts from the run's time when its
+            // opener was first seen instead.
+            if (_openSegmentStart.Key != opener.Id) _openSegmentStart = new(opener.Id, generating);
+            var start = _openSegmentStart.Value;
+            return generating > start ? generating - start : TimeSpan.Zero;
         }
 
         var last = isLast

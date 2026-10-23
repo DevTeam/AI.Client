@@ -14,6 +14,8 @@ namespace AI.Mcp.BuiltIn.Tests;
 [Trait("Category", "Integration")]
 public sealed class ScriptRunToolTests : IAsyncLifetime
 {
+    private const string ProtocolVersion = "2026-07-28";
+
     private static readonly string[] TwoArguments = ["hello", "world"];
     private static readonly string[] XmlImports = ["System.Xml.Linq"];
     private static readonly string[] XmlReferences = ["System.Xml.Linq"];
@@ -27,15 +29,18 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
     {
         var assembly = Path.Combine(AppContext.BaseDirectory, "AI.Mcp.BuiltIn.dll");
         File.Exists(assembly).ShouldBeTrue($"The server assembly must be next to the tests: {assembly}");
-        _client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Name = "Default tools",
-            // Started through the muxer rather than the apphost so the test does not depend on
-            // which runtime the test host resolved.
-            Command = "dotnet",
-            Arguments = [assembly],
-            ShutdownTimeout = TimeSpan.FromMilliseconds(500)
-        }), cancellationToken: Token);
+        _client = await McpClient.CreateAsync(
+            new StdioClientTransport(new StdioClientTransportOptions
+            {
+                Name = "Default tools",
+                // Started through the muxer rather than the apphost so the test does not depend on
+                // which runtime the test host resolved.
+                Command = "dotnet",
+                Arguments = [assembly],
+                ShutdownTimeout = TimeSpan.FromMilliseconds(500)
+            }),
+            new McpClientOptions { ProtocolVersion = ProtocolVersion },
+            cancellationToken: Token);
     }
 
     public async ValueTask DisposeAsync() => await _client.DisposeAsync();

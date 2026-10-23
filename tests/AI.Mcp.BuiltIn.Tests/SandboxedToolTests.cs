@@ -14,6 +14,8 @@ namespace AI.Mcp.BuiltIn.Tests;
 [Trait("Category", "Integration")]
 public sealed class SandboxedToolTests : IAsyncLifetime
 {
+    private const string ProtocolVersion = "2026-07-28";
+
     private static readonly string[] ReadOnly = ["read"];
     private static readonly string[] Everything = ["read", "write", "edit", "delete"];
 
@@ -41,17 +43,20 @@ public sealed class SandboxedToolTests : IAsyncLifetime
             new { root = _writable, recursive = true, capabilities = Everything, purpose = "project" },
             new { root = _temporary, recursive = true, capabilities = Everything, purpose = "chatTemporary" }
         });
-        _client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Name = "Default tools",
-            Command = "dotnet",
-            Arguments = [Path.Combine(AppContext.BaseDirectory, "AI.Mcp.BuiltIn.dll")],
-            EnvironmentVariables = new Dictionary<string, string?>
+        _client = await McpClient.CreateAsync(
+            new StdioClientTransport(new StdioClientTransportOptions
             {
-                ["AI_CLIENT_DIRECTORY_GRANTS"] = grants
-            },
-            ShutdownTimeout = TimeSpan.FromMilliseconds(500)
-        }), cancellationToken: Token);
+                Name = "Default tools",
+                Command = "dotnet",
+                Arguments = [Path.Combine(AppContext.BaseDirectory, "AI.Mcp.BuiltIn.dll")],
+                EnvironmentVariables = new Dictionary<string, string?>
+                {
+                    ["AI_CLIENT_DIRECTORY_GRANTS"] = grants
+                },
+                ShutdownTimeout = TimeSpan.FromMilliseconds(500)
+            }),
+            new McpClientOptions { ProtocolVersion = ProtocolVersion },
+            cancellationToken: Token);
     }
 
     public async ValueTask DisposeAsync()

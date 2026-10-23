@@ -15,6 +15,8 @@ public sealed class DefaultToolSessionFactory(
     IChatTemporaryDirectory temporaryDirectory,
     IToolEnvironment toolEnvironment) : IMcpServerConnection
 {
+    private const string ProtocolVersion = "2026-07-28";
+
     public Guid ServerId => DefaultMcpServer.Id;
 
     /// <summary>Name of the environment variable through which the built-in server receives its directory grants.</summary>
@@ -30,7 +32,12 @@ public sealed class DefaultToolSessionFactory(
         // replaced. Every call has returned by then, so there is nothing left to wait for.
         var transport = toolEnvironment.Launch(new ToolProcessLaunch("Default tools", executable, [], null, environment,
             InheritEnvironment: false, ShutdownTimeout: TimeSpan.FromMilliseconds(500)));
-        var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
+        // This is our own current server, so do not let a slow discovery response make the SDK
+        // fall back to the legacy initialize handshake on the same connection.
+        var client = await McpClient.CreateAsync(transport, new McpClientOptions
+        {
+            ProtocolVersion = ProtocolVersion
+        }, cancellationToken: cancellationToken);
         try
         {
             var tools = await client.ListToolsAsync(cancellationToken: cancellationToken);

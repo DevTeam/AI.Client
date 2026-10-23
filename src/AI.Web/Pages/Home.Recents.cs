@@ -112,7 +112,7 @@ public partial class Home
             .Concat(openProjectChats)
             // A scheduled chat is listed by the Scheduled section instead: it is not the latest
             // thing that happened, it is work the Host is going to start on its own.
-            .Where(chat => chat.Kind != ChatSchedule.Kind)
+            .Where(chat => !chat.HasSchedule)
             .OrderByDescending(chat => chat.LastActivityAt)
             .Take(count)
             .ToList();

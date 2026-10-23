@@ -9,6 +9,7 @@ using Contracts.Projects;
 using Contracts.Schedules;
 using Contracts.Resources;
 using Application.Resources;
+using Application.Schedules;
 using Application.Workspace;
 using Contracts.Workspace;
 using Contracts.Runs;
@@ -153,19 +154,21 @@ public sealed class ChatEndpoints : IEndpointModule
 
         routes.MapGet(
             "/api/projects/{projectId:guid}/chats",
-            (Guid projectId, IChatService service, CancellationToken cancellationToken) => service.ListAsync(projectId, cancellationToken));
+            (Guid projectId, IChatService service, IChatScheduleService schedules, CancellationToken cancellationToken) =>
+                ListWithSchedulesAsync(projectId, service, schedules, cancellationToken));
 
         // The sidebar's Recents: the chats with the latest activity across every project, as the
         // chat list of each project shows them (no archived chat, no chat without a message yet).
         // A scheduled chat is left out: the sidebar's Scheduled section lists it instead, and if it
         // stayed here it would also spend one of the few places on a chat nothing has happened in.
         routes.MapGet("/api/chats/recent", async (int? limit, IProjectService projects, IChatService service,
+            IChatScheduleService schedules,
             CancellationToken cancellationToken) =>
         {
             var recent = new List<ChatSummary>();
             foreach (var project in await projects.ListAsync(cancellationToken))
-                recent.AddRange((await service.ListAsync(project.Id, cancellationToken))
-                    .Where(chat => chat.ArchivedAt is null && !chat.IsEmpty && chat.Kind != ChatSchedule.Kind));
+                recent.AddRange((await ListWithSchedulesAsync(project.Id, service, schedules, cancellationToken))
+                    .Where(chat => chat.ArchivedAt is null && !chat.IsEmpty && !chat.HasSchedule));
             return recent.OrderByDescending(chat => chat.LastActivityAt)
                 .Take(Math.Clamp(limit ?? 10, 1, 50)).ToArray();
         });
@@ -304,5 +307,18 @@ public sealed class ChatEndpoints : IEndpointModule
                     ? Results.NoContent()
                     : result.Revision == 0 ? Results.NotFound() : Results.Conflict(result);
             });
+    }
+
+    private static async Task<IReadOnlyList<ChatSummary>> ListWithSchedulesAsync(Guid projectId,
+        IChatService chats, IChatScheduleService schedules, CancellationToken cancellationToken)
+    {
+        var summaries = await chats.ListAsync(projectId, cancellationToken);
+        var scheduledChatIds = await schedules.ListScheduledChatIdsAsync(projectId, cancellationToken);
+        return summaries.Select(chat => chat with
+        {
+            // Keep the kind check for old guide/demo chats while their external schedule document
+            // is being migrated or repaired.
+            HasSchedule = scheduledChatIds.Contains(chat.Id) || chat.Kind == ChatSchedule.Kind
+        }).ToArray();
     }
 }

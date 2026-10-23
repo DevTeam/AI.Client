@@ -21,6 +21,9 @@ public interface IChatScheduleService
     /// </summary>
     Task<IReadOnlyList<ChatScheduleView>?> ListAsync(Guid projectId, Guid chatId, CancellationToken cancellationToken);
 
+    /// <summary>The chats that have a schedule on at least one existing branch.</summary>
+    Task<IReadOnlySet<Guid>> ListScheduledChatIdsAsync(Guid projectId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Sets the schedule of a conversation or a scheduled chat. A conversation becomes scheduled
     /// with its history intact; an empty chat gets the task as its first message, so the chat has
@@ -83,6 +86,9 @@ public sealed class ChatScheduleService(
             .Select(item => View(projectId, chatId, item.BranchId, new StoredSchedule(chat.Kind, item.Schedule, chat.Revision)))
             .ToArray();
     }
+
+    public async Task<IReadOnlySet<Guid>> ListScheduledChatIdsAsync(Guid projectId, CancellationToken cancellationToken) =>
+        (await store.ListAsync(projectId, cancellationToken)).Select(item => item.ChatId).ToHashSet();
 
     public Task<ChatScheduleView?> SetAsync(Guid projectId, Guid chatId, SetChatScheduleRequest request, CancellationToken cancellationToken) =>
         SetAsync(projectId, chatId, chatId, request, cancellationToken);

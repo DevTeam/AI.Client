@@ -1420,7 +1420,7 @@ else if (_guideInvitation is { } guideInvitation)
             }
             else
             {
-                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? "F2" : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P F2" : "Alt+P F2")" @onkeydown="e => HandleChatRowKeyDownAsync(e, chat, surface)" @onclick="() => OpenChatRowAsync(chat, surface)" @ondblclick="() => BeginChatRename(chat, surface)"><span class="chat-icon-with-branch-count run-status-icon">@if (_selectedChat is { } openChat && openChat.Id == chat.Id && openChat.IsTeamLead(chat.Id)) { <MemberDot Lead="true" /> } else { <AppIcon Name="@(chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind ? "stopwatch" : chat.IsPinned ? "pin" : "message-circle")" /> }<span class="status-dot @chatStatus" aria-hidden="true"></span></span><span class="nav-item-label">@chat.Title</span>@if (surface == ChatListSurface.Recents && _projects.FirstOrDefault(project => project.Id == chat.ProjectId) is { } chatProject) { <span class="nav-item-project" aria-hidden="true">@chatProject.Name</span> }@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)" aria-hidden="true"><AppIcon Name="git-branch" />@FormatBranchCount(branchCount)</span> }@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
+                <button @attributes="@(ControlHints.Attributes("chat", nativeTooltip: false))" class="workspace-nav-item chat-link" type="button" aria-keyshortcuts="@(inList ? "F2" : chat.IsPinned ? "Alt+ArrowUp Alt+ArrowDown Alt+P F2" : "Alt+P F2")" @onkeydown="e => HandleChatRowKeyDownAsync(e, chat, surface)" @onclick="() => OpenChatRowAsync(chat, surface)" @ondblclick="() => BeginChatRename(chat, surface)"><span class="chat-icon-with-branch-count run-status-icon">@if (_selectedChat is { } openChat && openChat.Id == chat.Id && openChat.IsTeamLead(chat.Id)) { <MemberDot Lead="true" /> } else { <AppIcon Name="@GetChatIcon(chat)" /> }<span class="status-dot @chatStatus" aria-hidden="true"></span></span><span class="nav-item-label">@chat.Title</span>@if (surface == ChatListSurface.Recents && _projects.FirstOrDefault(project => project.Id == chat.ProjectId) is { } chatProject) { <span class="nav-item-project" aria-hidden="true">@chatProject.Name</span> }@if (branchCount > 0) { <span class="chat-branch-count @GetChatBranchStatusClass(chat.Id)" title="@GetChatBranchCountTitle(chat, branchCount)" aria-hidden="true"><AppIcon Name="git-branch" />@FormatBranchCount(branchCount)</span> }@if (branchCount > 0) { <span class="visually-hidden">, @GetBranchCountTitle(branchCount)</span> }@if (noticeClass is not null) { <span class="nav-notice-dot @noticeClass" aria-hidden="true"></span><span class="visually-hidden">, unread notification</span> }</button>
             }
             <button class="icon-action chat-row-action chat-menu-button @(_chatMenuId == chat.Id && actionsHere ? "menu-open" : string.Empty)" type="button" title="Chat menu" aria-label="Chat menu" @onclick="() => ToggleChatMenuAsync(chat, surface)"><AppIcon Name="more" /></button>
             @if (_chatMenuId == chat.Id && actionsHere)
@@ -1495,6 +1495,11 @@ else if (_guideInvitation is { } guideInvitation)
             }
         </div>
     }
+
+    private static string GetChatIcon(ChatSummary chat) => chat.HasSchedule
+        || chat.Kind == AI.Contracts.Schedules.ChatSchedule.Kind
+            ? "stopwatch"
+            : chat.IsPinned ? "pin" : "message-circle";
 
     /// <summary>
     /// The list under an unfolded project, drawn the same for the open project and any other: its

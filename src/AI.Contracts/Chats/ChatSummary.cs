@@ -16,4 +16,8 @@ public sealed record ChatSummary(
     // No message has been written yet: the sidebar hides such a chat until its first message.
     bool IsEmpty = false,
     DateTimeOffset? ArchivedAt = null,
-    Guid? ArchiveOperationId = null, string Kind = "conversation");
+    Guid? ArchiveOperationId = null,
+    string Kind = "conversation",
+    // A schedule may belong to any branch and is stored outside the chat document, so Kind alone
+    // cannot tell the sidebar which chats are scheduled.
+    bool HasSchedule = false);

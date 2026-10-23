@@ -45,7 +45,7 @@ public sealed class ScheduledChatQuery(
             var title = owner.BranchId == summary.Id ? null
                 : (await chats.GetAsync(project.Id, summary.Id, cancellationToken))?.Branches?
                     .FirstOrDefault(branch => branch.Id == owner.BranchId)?.Title;
-            listed.Add(new ScheduledChatSummary(summary, due, finished, owner.BranchId, title));
+            listed.Add(new ScheduledChatSummary(summary with { HasSchedule = true }, due, finished, owner.BranchId, title));
         }
         }
         return ScheduledChats.Soon(listed, now, horizon, limit);

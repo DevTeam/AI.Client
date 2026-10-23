@@ -26,19 +26,35 @@ public sealed class HomeRecentsExclusionTests
         SetField(page, "_selectedProject", openProject);
         SetField(page, "_projects", new List<ProjectSummary> { openProject, otherProject });
         var otherNormal = Summary(otherProject.Id, now, "conversation");
-        var otherScheduled = Summary(otherProject.Id, now, ChatSchedule.Kind);
+        var otherScheduled = Summary(otherProject.Id, now, "conversation") with { HasSchedule = true };
         SetField(page, "_recentChats", new List<ChatSummary> { otherNormal, otherScheduled });
         SetField(page, "_chats", new List<ChatSummary>
         {
-            Summary(openProject.Id, now, ChatSchedule.Kind),
+            Summary(openProject.Id, now, "conversation") with { HasSchedule = true },
             Summary(openProject.Id, now, "conversation")
         });
 
         var recents = (List<ChatSummary>)Invoke(page, "GetRecentChats", 10)!;
 
         recents.ShouldContain(otherNormal);
-        recents.ShouldAllBe(chat => chat.Kind != ChatSchedule.Kind);
+        recents.ShouldAllBe(chat => !chat.HasSchedule);
         recents.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false, false, "message-circle")]
+    [InlineData(false, true, "pin")]
+    [InlineData(true, false, "stopwatch")]
+    [InlineData(true, true, "stopwatch")]
+    public void AChatWithAnyBranchScheduleUsesTheStopwatch(bool hasSchedule, bool isPinned, string expected)
+    {
+        var chat = Summary(Guid.NewGuid(), DateTimeOffset.UtcNow, "conversation") with
+        {
+            HasSchedule = hasSchedule,
+            IsPinned = isPinned
+        };
+
+        Invoke(new Home(), "GetChatIcon", chat).ShouldBe(expected);
     }
 
     [Fact]
@@ -74,5 +90,5 @@ public sealed class HomeRecentsExclusionTests
         typeof(Home).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(page, value);
 
     private static object? Invoke(Home page, string method, params object[] arguments) =>
-        typeof(Home).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(page, arguments);
+        typeof(Home).GetMethod(method, BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(page, arguments);
 }

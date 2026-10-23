@@ -4,6 +4,7 @@ using AI.Application.Projects;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
+using AI.Contracts.Schedules;
 using AI.Contracts.Settings;
 using AI.Domain.Chats;
 using AI.Domain.Projects;
@@ -18,6 +19,44 @@ using Xunit;
 [Trait("Category", "Integration")]
 public sealed class ServerStartupTests
 {
+    [Fact]
+    public async Task ChatListMarksAConversationWithASchedule()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var directory = Path.Combine(AppContext.BaseDirectory, "startup-schedule-list-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var composition = new StartupComposition(new ServerOptions(directory, "http://127.0.0.1:0", false,
+                StopOnProcessSignals: false));
+            await using var server = await composition.Server.StartAsync(composition, token);
+            using var http = new HttpClient { BaseAddress = server.Address };
+            var projectResponse = await http.PostAsJsonAsync("/api/projects",
+                new AI.Contracts.Projects.CreateProjectRequest("Project", ""), token);
+            projectResponse.EnsureSuccessStatusCode();
+            var project = (await projectResponse.Content.ReadFromJsonAsync<AI.Contracts.Projects.ProjectDetails>(token))!;
+            var chatResponse = await http.PostAsJsonAsync($"/api/projects/{project.Id}/chats",
+                new CreateChatRequest("Chat"), token);
+            chatResponse.EnsureSuccessStatusCode();
+            var chat = (await chatResponse.Content.ReadFromJsonAsync<ChatDetails>(token))!;
+            var day = DateTimeOffset.UtcNow.AddDays(2).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            var request = new SetChatScheduleRequest(new ChatScheduleSettings("Check the build",
+                new ScheduleRecurrence(ScheduleFrequency.Once, day, "09:00"), "UTC"));
+
+            using var scheduleResponse = await http.PutAsJsonAsync(
+                $"/api/projects/{project.Id}/chats/{chat.Id}/branches/{chat.Id}/schedule", request, token);
+            scheduleResponse.EnsureSuccessStatusCode();
+            var listed = await http.GetFromJsonAsync<ChatSummary[]>($"/api/projects/{project.Id}/chats", token);
+
+            var summary = listed.ShouldNotBeNull().ShouldHaveSingleItem();
+            summary.Kind.ShouldBe("conversation");
+            summary.HasSchedule.ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task SubmitsAndReplacesABranchWithTheProductionComposition()
     {

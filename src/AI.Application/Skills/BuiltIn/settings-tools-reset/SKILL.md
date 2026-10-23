@@ -17,7 +17,7 @@ tools: ["app_read","app_security","ask_user"]
    use `ask_user` to request the missing selection. Dismissal or no answer leaves policies unchanged.
    No tool discovery is needed: existing records supply serverId, name and schemaHash, including
    obsolete schemas and disabled servers. Never remove policies from another scope.
-   Read `app_read` resource=CommandRules too: command rules decide `process_run` by command and
+   Read `app_read` resource=CommandRules too: command rules decide `process_run` and `process_run_unrestricted` by command and
    the file tools by path, at global, project or chat scope. A reset of all overrides in a global,
    project or chat scope includes that scope's command rules; with names, include the rules of the
    named tools or the exact patterns the user named. A branch has no command rules of its own: a

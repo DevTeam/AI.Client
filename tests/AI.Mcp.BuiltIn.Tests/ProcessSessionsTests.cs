@@ -152,12 +152,16 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         {
             var request = OperatingSystem.IsWindows()
                 ? new ProcessRequest("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-                    "$child = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 120'; [Console]::WriteLine($child.Id); Start-Sleep -Seconds 120"], _root, 120000, Sandboxed: false)
-                : new ProcessRequest("/bin/sh", ["-c", "sleep 120 & child=$!; echo $child; wait"], _root, 120000, Sandboxed: false);
+                    "$child = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep -Seconds 600'; [Console]::WriteLine($child.Id); Start-Sleep -Seconds 600"], _root, 600000, Sandboxed: false)
+                : new ProcessRequest("/bin/sh", ["-c", "sleep 600 & child=$!; echo $child; wait"], _root, 600000, Sandboxed: false);
             var started = await sessions.RunAsync(request, 0, Token);
             var page = started;
+            // Two cold PowerShell starts on a loaded windows-latest runner once took over a minute
+            // before the child's PID was printed, so the readiness budget has to stay well above the
+            // time a shell may need to start; the process's own deadline above is longer than this
+            // budget, and its sleep longer than both, so a slow start cannot be mistaken for an exit.
             using var ready = CancellationTokenSource.CreateLinkedTokenSource(Token);
-            ready.CancelAfter(TimeSpan.FromSeconds(60));
+            ready.CancelAfter(TimeSpan.FromSeconds(300));
             while (!page.Stdout.Contains('\n', StringComparison.Ordinal))
             {
                 page.Status.ShouldBe("running", page.ToString());
@@ -167,7 +171,7 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
             child = System.Diagnostics.Process.GetProcessById(pid);
             if (shutdown) await sessions.DisposeAsync();
             else (await sessions.StopAsync(started.ProcessId!, Token)).Status.ShouldBe("stopped");
-            await child.WaitForExitAsync(Token).WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await child.WaitForExitAsync(Token).WaitAsync(TimeSpan.FromSeconds(60), Token);
             child.HasExited.ShouldBeTrue();
         }
         finally

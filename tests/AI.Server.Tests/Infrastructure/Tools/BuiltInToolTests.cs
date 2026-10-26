@@ -81,7 +81,10 @@ public sealed class BuiltInToolTests
     [Fact]
     public async Task ShouldDiscoverValidateAndRunOverStdio()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        // The call below lets the tool wait 60 s for `dotnet --info`, and opening the built-in server
+        // adds a cold start on a fresh runner. A test budget below that only ever reports its own
+        // cancellation: on windows-latest it expired at 30 s inside the call, not in the assertion.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(180));
         await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
@@ -113,7 +116,8 @@ public sealed class BuiltInToolTests
         var unrestricted = session.Tools.Single(item => item.OriginalName == "process_run_unrestricted");
         unrestricted.ModelDefinition.InputSchema.GetRawText().ShouldBe(tool.ModelDefinition.InputSchema.GetRawText());
         var result = await session.CallAsync(unrestricted, arguments, null, timeout.Token);
-        result.IsError.ShouldBeFalse();
+        // A non-zero run reports through the result, so say what it was rather than only that it failed.
+        result.IsError.ShouldBeFalse(result.ModelContent);
         result.StructuredContent.ShouldNotBeNull();
         result.StructuredContent!.Value.GetProperty("exitCode").GetInt32().ShouldBe(0);
         result.StructuredContent!.Value.GetProperty("stdout").GetString().ShouldNotBeNullOrWhiteSpace();

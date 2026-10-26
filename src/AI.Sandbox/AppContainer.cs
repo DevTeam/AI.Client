@@ -21,6 +21,8 @@ using static WindowsNative;
 /// everything below them the first time; they stay, so later launches with the same path start at
 /// once. The container itself reads the <c>Windows</c> and <c>Program Files</c> directories through
 /// <c>ALL APPLICATION PACKAGES</c>, which is what lets an ordinary program load at all.
+/// Ancestors receive separate, non-inheriting metadata capabilities: resolving a granted path
+/// may inspect its parents, but must not open their contents or their other descendants.
 /// </remarks>
 [SupportedOSPlatform("windows")]
 internal static partial class AppContainer
@@ -46,8 +48,20 @@ internal static partial class AppContainer
     {
         var container = ContainerSid();
         var capabilities = new List<SecurityIdentifier>();
+        var ancestors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in policy.Paths)
         {
+            if (Directory.Exists(entry.Path) || File.Exists(entry.Path))
+            {
+                for (var parent = Directory.GetParent(entry.Path); parent is not null; parent = parent.Parent)
+                {
+                    if (ancestors.Add(parent.FullName) && GrantMetadata(parent) is { } metadata)
+                    {
+                        capabilities.Add(metadata);
+                    }
+                }
+            }
+
             if (Grant(entry) is { } capability)
             {
                 capabilities.Add(capability);
@@ -60,6 +74,32 @@ internal static partial class AppContainer
         }
 
         return Launch(container, capabilities, executable, arguments);
+    }
+
+    private static SecurityIdentifier? GrantMetadata(DirectoryInfo directory)
+    {
+        var capability = CapabilitySid(directory.FullName, "Metadata");
+        const FileSystemRights rights = FileSystemRights.Traverse | FileSystemRights.ReadAttributes
+                                       | FileSystemRights.ReadExtendedAttributes | FileSystemRights.Synchronize;
+        try
+        {
+            var security = directory.GetAccessControl(AccessControlSections.Access);
+            if (!Granted(security, capability, rights))
+            {
+                // This directory only: no ListDirectory, file contents, writes or inheritance.
+                security.AddAccessRule(new FileSystemAccessRule(capability, rights, AccessControlType.Allow));
+                WindowsDirectorySecurity.SetAccessControl(directory.FullName, security);
+            }
+
+            return capability;
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException or IOException or Win32Exception)
+        {
+            // Ancestors owned by the OS may already be traversable. Never widen the grant or
+            // run unconfined when their ACL cannot be changed.
+            Console.Error.WriteLine($"ai-sandbox: cannot grant metadata access to {directory.FullName}: {error.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -141,10 +181,12 @@ internal static partial class AppContainer
     }
 
     /// <summary>A capability for one path and access, stable across launches.</summary>
-    private static SecurityIdentifier CapabilitySid(SandboxPath entry)
+    private static SecurityIdentifier CapabilitySid(SandboxPath entry) => CapabilitySid(entry.Path, entry.Access.ToString());
+
+    private static SecurityIdentifier CapabilitySid(string path, string access)
     {
-        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entry.Path.ToUpperInvariant())))[..32];
-        var name = $"{ContainerName}.{entry.Access}.{digest}";
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path.ToUpperInvariant())))[..32];
+        var name = $"{ContainerName}.{access}.{digest}";
         if (!DeriveCapabilitySidsFromName(name, out var groups, out var groupCount, out var sids, out var count))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "DeriveCapabilitySidsFromName failed");

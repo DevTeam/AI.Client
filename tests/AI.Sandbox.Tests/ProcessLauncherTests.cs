@@ -2,6 +2,7 @@ namespace AI.Sandbox.Tests;
 
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.AccessControl;
 using Shouldly;
 using Xunit;
 
@@ -82,6 +83,87 @@ public sealed class ProcessLauncherTests : IDisposable
 
         result.ExitCode.ShouldNotBe(0);
         result.Stdout.ShouldNotContain("secret-content");
+    }
+
+    [Fact]
+    public async Task WindowsAncestorsAllowMetadataButNotListingOrFileContents()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Shell.RequireSandbox(_launcher);
+        var secret = Path.Combine(_root, "ancestor-secret.txt");
+        await File.WriteAllTextAsync(secret, "ancestor-secret-content", Token);
+        var closedAcl = new DirectoryInfo(_closed).GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorBinaryForm();
+
+        var metadata = await RunAsync(WindowsPowerShell($"[IO.File]::GetAttributes('{_root}')"), Policy);
+        metadata.ExitCode.ShouldBe(0, metadata.Stderr);
+        metadata.Stdout.ShouldContain("Directory");
+
+        var listing = await RunAsync(WindowsPowerShell($"[IO.Directory]::GetFileSystemEntries('{_root}')"), Policy);
+        listing.ExitCode.ShouldNotBe(0);
+        listing.Stdout.ShouldNotContain("ancestor-secret.txt");
+
+        var content = await RunAsync(WindowsPowerShell($"[IO.File]::ReadAllText('{secret}')"), Policy);
+        content.ExitCode.ShouldNotBe(0);
+        content.Stdout.ShouldNotContain("ancestor-secret-content");
+
+        var sibling = await RunAsync(WindowsPowerShell($"[IO.File]::ReadAllText('{Path.Combine(_closed, "secret.txt")}')"), Policy);
+        sibling.ExitCode.ShouldNotBe(0);
+        sibling.Stdout.ShouldNotContain("secret-content");
+        new DirectoryInfo(_closed).GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorBinaryForm().ShouldBe(closedAcl);
+    }
+
+    [Fact]
+    public async Task WindowsFileGrantsAllowParentMetadataWithoutOpeningSiblingFiles()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Shell.RequireSandbox(_launcher);
+        var file = Path.Combine(_readable, "open.txt");
+        var sibling = Path.Combine(_readable, "sibling.txt");
+        await File.WriteAllTextAsync(sibling, "sibling-secret", Token);
+        var policy = new SandboxPolicy([new(file, SandboxAccess.Read), new(_writable, SandboxAccess.ReadWrite)]);
+
+        var metadata = await RunAsync(WindowsPowerShell($"[IO.File]::GetAttributes('{_readable}')"), policy);
+        metadata.ExitCode.ShouldBe(0, metadata.Stderr);
+        metadata.Stdout.ShouldContain("Directory");
+        var content = await RunAsync(WindowsPowerShell($"[IO.File]::ReadAllText('{file}')"), policy);
+        content.ExitCode.ShouldBe(0, content.Stderr);
+        content.Stdout.ShouldContain("open-content");
+
+        var denied = await RunAsync(WindowsPowerShell($"[IO.File]::ReadAllText('{sibling}')"), policy);
+        denied.ExitCode.ShouldNotBe(0);
+        denied.Stdout.ShouldNotContain("sibling-secret");
+    }
+
+    [Fact]
+    public async Task WindowsAncestorMetadataCapabilitiesDoNotLeakBetweenPolicies()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Shell.RequireSandbox(_launcher);
+        var nested = Directory.CreateDirectory(Path.Combine(_closed, "nested")).FullName;
+        var opening = new SandboxPolicy([new(nested, SandboxAccess.Read), new(_writable, SandboxAccess.ReadWrite)]);
+        var inspect = WindowsPowerShell($"[IO.File]::GetAttributes('{_closed}')");
+
+        var allowed = await RunAsync(inspect, opening);
+        allowed.ExitCode.ShouldBe(0, allowed.Stderr);
+        allowed.Stdout.ShouldContain("Directory");
+        var denied = await RunAsync(inspect, Policy);
+        denied.ExitCode.ShouldNotBe(0);
+    }
+
+    private ProcessStartInfo WindowsPowerShell(string command)
+    {
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        {
+            WorkingDirectory = _writable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; " + command })
+            start.ArgumentList.Add(argument);
+        return start;
     }
 
     [Fact]

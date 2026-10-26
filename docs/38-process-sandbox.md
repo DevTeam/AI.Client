@@ -99,6 +99,23 @@ the `Windows` and `Program Files` directories comes from `ALL APPLICATION PACKAG
 entry. An AppContainer gets its own temporary directory (`%LOCALAPPDATA%\Packages\ai.client.sandbox\AC\Temp`)
 whatever `TEMP` says, and cannot send ICMP or reach loopback services of other processes.
 
+Resolving a granted path can also inspect its ancestors: Node, for example, checks each directory
+up to the drive root when loading a script. The launcher gives those ancestors separate metadata
+capabilities, derived from each ancestor's path. Their access entries allow traversal, attributes,
+extended attributes and synchronization on that directory only, without inheritance. They do not
+allow listing the ancestor, reading its files or modifying it, and another launch gets only the
+metadata capabilities needed by its own policy. This also applies to ancestors of individual file
+grants and the read-only program/runtime locations. An ancestor whose ACL cannot be updated stays
+closed unless existing permissions already allow the operation; the launcher reports the failure.
+In particular, a user may be unable to update a drive root's ACL. A CLI that explicitly queries that
+root can still fail, even though other ancestor queries and access to the granted files work.
+The launcher does not elevate privileges or replace a metadata grant with a recursive read grant.
+
+Metadata entries are written with `SetSecurityInfo` through a `MAXIMUM_ALLOWED` directory handle,
+which suppresses propagation to children. Updating them with `DirectoryInfo.SetAccessControl`
+would otherwise reprocess inherited permissions throughout a potentially large ancestor tree,
+even though the new entry itself does not inherit. Content grants retain their recursive behavior.
+
 ### Linux: Landlock
 
 The launcher creates a Landlock ruleset that handles every file-system right the kernel's ABI

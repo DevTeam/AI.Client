@@ -13,6 +13,12 @@ Set up the requested CLI using the current project's ordinary directory grants. 
 existing installation, configuration and caches. Do not create a separate environment, replace
 user configuration or install tools unless the task requires it and the user authorizes it.
 
+For a diagnosis-only request, stop when the requested minimal probe settles the question. A
+successful command in a granted working directory proves that the sandbox can start a process
+there; it cannot recover an omitted fatal path from an earlier log. Report that limit instead of
+expanding the experiment to other tools, denied directories or write/delete probes. Continue to
+directory setup only when the requested task actually needs it.
+
 1. Read the project and revision with `app_read` resource=Project and inspect
    `list_allowed_directories`. Identify the execution host's OS, executable and working directory
    from available execution capabilities and permitted checks. Resolve relevant child programs too:
@@ -23,6 +29,18 @@ user configuration or install tools unless the task requires it and the user aut
    login, HTTP 401/403, failing tests, resource limit or unsupported sandbox operation needs its
    own diagnosis; none alone is evidence that another directory grant will help. Obtain a bounded
    diagnostic or complete authorized log when the failure is truncated. Do not dump credentials.
+   Exit 125 with an `ai-sandbox:` failure means the launcher could not start the program. Identify
+   its fatal operation and path: a preceding "cannot grant metadata access" warning alone does
+   not prove that all sandboxed programs are unusable. An existing project grant whose read/write
+   ACL cannot be installed needs OS permissions, not another grant for the same directory.
+   Once a failing operation and its dependency are established, do not repeat equivalent probes
+   or retry a dismissed access question. Report an OS restriction rather than promise that an
+   ordinary directory grant will fix it when the launcher has already reported an ACL failure.
+   A shell may report only "Access is denied" for an unreadable CLI script or entrypoint. Inspect
+   the requested script when permitted and identify its named dependencies; do not run a broad
+   ACL, device or CLI-version matrix before asking for a clearly missing directory. If the same
+   access remains denied after a covering grant, stop and report the mismatch instead of adding
+   equivalent grants or continuing with unrelated probes.
 3. Determine the narrowest required directories and access from the actual installation, error
    paths and the CLI's current documentation. Discover and use a fetch tool only when documentation
    is needed. Respect current grants while investigating; do not use an unrestricted process to
@@ -64,5 +82,12 @@ user configuration or install tools unless the task requires it and the user aut
    Report the added paths/access and result. If still blocked, identify the remaining dependency
    rather than repeatedly broadening access. Windows ancestor metadata can remain inaccessible
    when the host user cannot change its ACL; directory grants also cannot fix unavailable devices,
-   credential stores or other OS restrictions. Use process_run_unrestricted only under its existing
-   approval rules when the user declines the needed grants or no grant can cover the operation.
+   credential stores or other OS restrictions.
+7. When directory grants cannot cover an established sandbox limitation, or the user declines
+   the needed grants, offer `process_run_unrestricted` for the original command. Explain the
+   specific limitation and that this runner has the host user's full access; preserve the intended
+   command, working directory and limits. Let the tool's existing approval or saved-rule flow
+   authorize execution; declining directory access alone does not authorize an unrestricted run.
+   Respect an explicit prohibition or a declined/dismissed unrestricted request. Do not change
+   security rules to Allow, request elevation or use unrestricted probes to bypass that decision.
+   Unrestricted execution does not fix host-user permissions, authentication or failing tests.

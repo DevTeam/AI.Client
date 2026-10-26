@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using AI.Contracts.Chats;
 using AI.Contracts.Runs;
 using AI.Contracts.Usage;
+using AI.Contracts.Projects;
 
 /// <summary>
 /// One attempt: a fresh Host and workspace, the scenario's turns sent as a person would send them,
@@ -23,6 +24,7 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         var scratch = Path.Combine(Path.GetTempPath(), "ai-agent-evals", Guid.CreateVersion7().ToString("N"));
         var data = Path.Combine(scratch, "data");
         var root = Path.Combine(scratch, "workspace");
+        var external = Path.Combine(scratch, "external");
         Directory.CreateDirectory(data);
         var before = Workspace.Snapshot(root);
 
@@ -33,9 +35,20 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         int turns = 0, approvals = 0, denied = 0, prompts = 0;
         ChatDetails? chat = null;
         ChatTokenUsage? usage = null;
+        ProjectDetails? finalProject = null;
         try
         {
             await source.PrepareAsync(scenario, root, token);
+            if (Directory.Exists(Path.Combine(scenario.Directory, "external")))
+                Workspace.Copy(Path.Combine(scenario.Directory, "external"), external);
+            scenario = scenario with
+            {
+                Prompts = scenario.Prompts?.Select(rule => rule with
+                {
+                    Answer = rule.Answer is { } answer ? Expand(answer, root, external) : null,
+                    Paths = rule.Paths?.Select(path => Expand(path, root, external)).ToArray()
+                }).ToArray()
+            };
             before = Workspace.Snapshot(root);
             await using var host = await EvalHost.StartAsync(hostAssembly, data, Path.Combine(resultDirectory, "host.log"), token);
             var connection = await host.ConfigureAsync(model with { ContextWindow = scenario.ContextWindow ?? model.ContextWindow }, token);
@@ -48,7 +61,7 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
                 foreach (var text in scenario.Turns)
                 {
                     turns++;
-                    var message = text.Replace("{workspace}", root, StringComparison.Ordinal);
+                    var message = Expand(text, root, external);
                     trace.Write(new { kind = "turn", turn = turns, message });
                     var run = await host.SubmitAsync(project.Id, created.Id, message, deadline.Token);
                     var ended = await DriveAsync(host, scenario, run, trace, deadline.Token);
@@ -73,6 +86,8 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
             chat = EvalHost.ReadChat(json);
             usage = await host.GetUsageAsync(project.Id, created.Id, token);
             await File.WriteAllTextAsync(Path.Combine(resultDirectory, "usage.json"), JsonSerializer.Serialize(usage, Indented), token);
+            finalProject = await host.GetProjectAsync(project.Id, token);
+            await File.WriteAllTextAsync(Path.Combine(resultDirectory, "project.json"), JsonSerializer.Serialize(finalProject, Indented), token);
         }
         catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or TimeoutException
             or IOException or JsonException or InvalidDataException)
@@ -101,7 +116,8 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
                 await source.RevealAsync(scenario, root, token);
                 checks = await Checks.RunAsync(scenario.Checks ?? [], before, after, changes,
                     new AttemptFacts(answer, calls.Length, toolErrors, prompts, scenario.Directory,
-                        calls.Select(call => $"{call.Name} {call.Arguments}").ToArray()), token);
+                        calls.Select(call => $"{call.Name} {call.Arguments}").ToArray(), finalProject?.DirectoryGrants,
+                        Transcript(messages)), token);
             }
             catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException)
             {
@@ -201,6 +217,11 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         {
             var rule = rules.FirstOrDefault(item => Regex.IsMatch(question.Text, item.Match, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)));
             if (rule is { Dismiss: true }) continue;
+            if (rule?.Paths is { } paths && question.PathKind == "directories")
+            {
+                answers.Add(new UserPromptAnswer(question.Id, [], null, paths));
+                continue;
+            }
             var option = rule?.Option is { } pattern
                 ? IndexOf(question, option => Regex.IsMatch(option.Label, pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)))
                 : rule?.Answer is { } text && !question.AllowOther
@@ -218,6 +239,23 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         for (var index = 0; index < question.Options.Count; index++)
             if (predicate(question.Options[index])) return index;
         return -1;
+    }
+
+    private static string Expand(string text, string workspace, string external) => text
+        .Replace("{workspace}", workspace, StringComparison.Ordinal)
+        .Replace("{external}", external, StringComparison.Ordinal);
+
+    /// <summary>Pairs each result with its own call; a later successful probe cannot validate an earlier failed command.</summary>
+    public static IReadOnlyList<string> Transcript(IReadOnlyList<ChatMessageView> messages)
+    {
+        var calls = messages.SelectMany(message => message.ToolCalls ?? []).GroupBy(call => call.Id)
+            .ToDictionary(group => group.Key, group => group.Last());
+        return messages.Where(message => Role(message, "Tool") && message.ToolCallId is not null && calls.ContainsKey(message.ToolCallId))
+            .Select(message =>
+            {
+                var call = calls[message.ToolCallId!];
+                return $"CALL {call.Name} {call.Arguments}\nRESULT {message.Content}";
+            }).ToArray();
     }
 
     // The answer a person reads at the end: the last assistant message with text on the main branch.

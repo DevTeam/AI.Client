@@ -130,6 +130,9 @@ public sealed class EvalHost : IAsyncDisposable
     public async Task<JsonElement> GetChatJsonAsync(Guid projectId, Guid chatId, CancellationToken token) =>
         await _http.GetFromJsonAsync<JsonElement>(new Uri($"api/projects/{projectId}/chats/{chatId}", UriKind.Relative), Web, token);
 
+    public Task<ProjectDetails?> GetProjectAsync(Guid projectId, CancellationToken token) =>
+        _http.GetFromJsonAsync<ProjectDetails>(new Uri($"api/projects/{projectId}", UriKind.Relative), Web, token);
+
     public async Task<ChatTokenUsage?> GetUsageAsync(Guid projectId, Guid chatId, CancellationToken token) =>
         await _http.GetFromJsonAsync<ChatTokenUsage>(new Uri($"api/projects/{projectId}/chats/{chatId}/usage", UriKind.Relative), Web, token);
 

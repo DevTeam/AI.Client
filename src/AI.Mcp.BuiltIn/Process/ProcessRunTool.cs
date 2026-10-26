@@ -41,8 +41,8 @@ public sealed class ProcessRunUnrestrictedTool(IProcessRunner processRunner, IBu
 
     protected override string Boundary =>
         "The program runs without any sandbox and can read and write anything the host user can, the whole user profile included. "
-        + "Use it only when process_run cannot do the job because the program needs a path outside the grants that the user did not grant; "
-        + "first prefer asking the user to grant the directory to the project and using process_run. Every call asks the user to approve it "
+        + "Use it only when process_run cannot do the job because required directory grants were declined or cannot cover an established sandbox limitation; "
+        + "first prefer project directory grants and process_run when they can cover the operation. Respect an explicit prohibition or declined unrestricted request. Every call asks the user to approve it "
         + "unless a saved rule allows it, and subtasks cannot ask. ";
 }
 

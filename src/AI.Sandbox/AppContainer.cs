@@ -147,8 +147,10 @@ internal static partial class AppContainer
                 }
             }
         }
-        catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException or IOException && entry.Access == SandboxAccess.Read)
+        catch (Exception error) when (error is UnauthorizedAccessException or InvalidOperationException or IOException)
         {
+            if (entry.Access == SandboxAccess.ReadWrite)
+                throw new UnauthorizedAccessException($"Cannot grant read/write access to '{entry.Path}': {error.Message}", error);
             // A directory the user may not change the ACL of, such as one owned by the system, is
             // left closed rather than failing the whole launch over something the program may not need.
             Console.Error.WriteLine($"ai-sandbox: cannot grant read access to {entry.Path}: {error.Message}");

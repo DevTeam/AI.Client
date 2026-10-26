@@ -37,6 +37,35 @@ data directory leaves out `credentials`.
 
 `list` prints the scenarios. The exit code of `run` is 0 only when every attempt passed.
 
+### CLI setup evaluations (Windows)
+
+Run `--filter tag:cli-setup --repeat 3 --parallel 2` to exercise real .NET, gh and npm commands,
+directory selection and batch grants, dismissal, unauthenticated gh, a failing .NET self-check and
+an exit-125 diagnostic that distinguishes a metadata warning from a fatal launcher error.
+These scenarios require the CLIs on the execution host; npm currently targets the standard
+`C:\Program Files\nodejs` installation. Their `platform: "windows"` excludes them on other OSes;
+scenarios can likewise specify `linux` or `macos`. They are not cross-platform compatibility claims.
+
+A scenario's optional `external/` fixture is copied beside, not inside, the granted workspace.
+`{external}` in turns and prompt answers selects that private per-attempt copy. No user's real
+credentials or configuration are copied. Prompt rules support `paths` for a real multi-directory
+picker answer and `dismiss` for refusal; an unanswered picker does not synthesize authorization.
+The runner saves `project.json` alongside `chat.json` so checks see actual persisted grants.
+`projectGrantCount` and `projectGrantMatches` inspect them. `toolTranscriptMatches` checks calls
+and actual result messages in order; `maxMatchingCalls` limits grant batches. Checks must establish
+success from sandboxed tool results, since post-run command checks execute outside the sandbox.
+
+`audit-cli <run-dir>` rechecks saved CLI attempts with the current scenario assertions, pairing
+each tool result with its own call ID. It writes `audit-cli.json` and `audit-cli.md` without changing
+the original result or summary files or making model requests. This allows checker corrections
+to be verified against the original evidence; it does not substitute for a new model run after
+changing a skill. Calls-not-match patterns should anchor the tool name, since plan arguments can
+mention tools that were never called. A later successful version probe must not validate an earlier
+failed original command.
+
+Deterministic runner checks live in `evals/AI.Agent.Evals.Tests`, outside normal CI. They verify
+picker answers, dismissal and that grant/transcript verdicts require real evidence.
+
 ## One attempt
 
 1. The scenario's `workspace` folder, or the files of a repository commit, are copied to a temporary

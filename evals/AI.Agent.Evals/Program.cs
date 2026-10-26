@@ -18,6 +18,7 @@ internal static class Program
           trace    <attempt-dir> [--width <n>]   a short timeline of one attempt
           summarize <run-dir>... [--out <dir>]   rebuild a summary from recorded attempts; a later run
                    replaces a scenario of an earlier one, so partial runs and reruns merge into one
+          audit-cli <run-dir> [--filter <...>]   recheck saved CLI evidence without model calls or changing original results
 
         The endpoint comes from evals/connection.json (see evals/connection.example.json; the file is
         ignored by git). AI_AGENT_EVAL_BASE_URL, _MODEL, _API_KEY, _CONTEXT_WINDOW, _REASONING_EFFORT and
@@ -37,6 +38,7 @@ internal static class Program
                 "compare" => Compare(new Options(args[1..])),
                 "trace" => Trace(new Options(args[1..])),
                 "summarize" => Summarize(new Options(args[1..])),
+                "audit-cli" => await AuditCliAsync(new Options(args[1..]), cancel.Token),
                 _ => Fail(Usage)
             };
         }
@@ -45,6 +47,10 @@ internal static class Program
             return Fail(error.Message);
         }
     }
+
+    private static Task<int> AuditCliAsync(Options options, CancellationToken token) =>
+        CliSetupAudit.RunAsync(options.Positional.FirstOrDefault() ?? throw new ArgumentException("A run directory is required."),
+            Path.Combine(RepositoryRoot(), "evals", "scenarios"), options.Value("--filter") ?? "tag:cli-setup", token);
 
     private static async Task<int> RunAsync(Options options, CancellationToken token)
     {

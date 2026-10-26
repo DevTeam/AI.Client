@@ -37,7 +37,8 @@ public sealed record Scenario(
     RepositorySource? Repository = null,
     IReadOnlyList<HiddenFile>? HiddenFiles = null,
     bool Git = true,
-    long? ContextWindow = null)
+    long? ContextWindow = null,
+    string? Platform = null)
 {
     [JsonIgnore]
     public string Directory { get; init; } = "";
@@ -76,6 +77,15 @@ public sealed record Scenario(
             if (string.IsNullOrWhiteSpace(scenario.Id) || scenario.Turns is not { Count: > 0 })
                 throw new InvalidDataException($"{file} needs an id and at least one turn.");
             scenario = scenario with { Directory = Path.GetDirectoryName(file)! };
+            var supported = scenario.Platform switch
+            {
+                null => true,
+                "windows" => OperatingSystem.IsWindows(),
+                "linux" => OperatingSystem.IsLinux(),
+                "macos" => OperatingSystem.IsMacOS(),
+                _ => throw new InvalidDataException($"{file}: unsupported platform '{scenario.Platform}'.")
+            };
+            if (!supported) continue;
             var slow = scenario.Tags?.Contains("slow", StringComparer.OrdinalIgnoreCase) == true;
             if (filter is null ? includeSlow || !slow : Matches(scenario, filter)) scenarios.Add(scenario);
         }
@@ -107,7 +117,8 @@ public sealed record HiddenFile(string Path, string? Commit = null);
 /// whose label matches <paramref name="Option"/>, or the free text <paramref name="Answer"/>.
 /// <paramref name="Dismiss"/> leaves the choice to the model.
 /// </summary>
-public sealed record PromptRule(string Match, string? Option = null, string? Answer = null, bool Dismiss = false);
+public sealed record PromptRule(string Match, string? Option = null, string? Answer = null, bool Dismiss = false,
+    IReadOnlyList<string>? Paths = null);
 
 public enum CheckType
 {
@@ -140,7 +151,14 @@ public enum CheckType
     CallsNotMatch,
     /// <summary>The model asked the person (<c>ask_user</c>) at least <see cref="Check.Value"/> times.</summary>
     MinPrompts,
-    MaxPrompts
+    MaxPrompts,
+    /// <summary>The final project has exactly Value ordinary directory grants.</summary>
+    ProjectGrantCount,
+    /// <summary>A stored grant, as JSON, matches Pattern.</summary>
+    ProjectGrantMatches,
+    /// <summary>A tool call and its actual result, in order, match Pattern.</summary>
+    ToolTranscriptMatches,
+    MaxMatchingCalls
 }
 
 /// <param name="Pattern">A .NET regular expression, matched case-insensitively.</param>

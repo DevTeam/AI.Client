@@ -2,13 +2,16 @@ namespace AI.Agent.Evals;
 
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using AI.Contracts.Projects;
 
 /// <summary>Deterministic verdicts on an attempt: what is on disk, what the program does, what was answered.</summary>
 /// <summary>What the checks need to know about the attempt beside the workspace.</summary>
 /// <param name="ScenarioDirectory">Replaces <c>{scenario}</c> in a command's arguments, for files the model must not see.</param>
 /// <param name="Calls">Every tool call of the attempt as "name arguments".</param>
 public sealed record AttemptFacts(string? Answer, int ToolCalls, int ToolErrors, int Prompts, string ScenarioDirectory,
-    IReadOnlyList<string>? Calls = null);
+    IReadOnlyList<string>? Calls = null, IReadOnlyList<DirectoryGrantSettings>? ProjectGrants = null,
+    IReadOnlyList<string>? ToolTranscript = null);
 
 public static class Checks
 {
@@ -40,7 +43,10 @@ public static class Checks
     private static async Task<CheckResult> RunAsync(Check check, Workspace before, Workspace after, IReadOnlyList<string> changes,
         AttemptFacts facts, CancellationToken token)
     {
-        var (answer, toolCalls, toolErrors, prompts, _, _) = facts;
+        var answer = facts.Answer;
+        var toolCalls = facts.ToolCalls;
+        var toolErrors = facts.ToolErrors;
+        var prompts = facts.Prompts;
         var name = Name(check);
         switch (check.Type)
         {
@@ -103,6 +109,17 @@ public static class Checks
                 return new CheckResult(name, prompts >= check.Value, $"{prompts} questions");
             case CheckType.MaxPrompts:
                 return new CheckResult(name, prompts <= check.Value, $"{prompts} questions");
+            case CheckType.ProjectGrantCount:
+                return new CheckResult(name, facts.ProjectGrants?.Count == check.Value, $"{facts.ProjectGrants?.Count} stored grants");
+            case CheckType.ProjectGrantMatches:
+                return new CheckResult(name, facts.ProjectGrants?.Any(grant => Match(JsonSerializer.Serialize(grant, Scenario.Json), check)) == true);
+            case CheckType.ToolTranscriptMatches:
+                return new CheckResult(name, Match(string.Join('\n', facts.ToolTranscript ?? []), check));
+            case CheckType.MaxMatchingCalls:
+            {
+                var count = (facts.Calls ?? []).Count(call => Match(call, check));
+                return new CheckResult(name, count <= check.Value, $"{count} matching calls");
+            }
             default:
                 throw new ArgumentException($"Unknown check type {check.Type}.");
         }

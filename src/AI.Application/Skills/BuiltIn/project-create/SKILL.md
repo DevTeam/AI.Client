@@ -20,10 +20,9 @@ tools: ["ask_user","app_projects","app_security","app_chats","app_runs","app_nav
    - "Access": "Read and write (Recommended)" and "Read only".
    Dismissed answers take the recommended options.
 4. `app_projects` Create with the name (without the recommendation suffix) and `description` when known.
-5. For each directory, `app_security` AddDirectoryGrant with the returned project id and the
-   revision from the previous step, a fresh grant id, `recursive` true, the final segment as the
-   display name and toolNames ["read","write","edit","delete"] or ["read"]. Each grant returns
-   the revision for the next one.
+5. `app_security` AddDirectoryGrants once with the returned project id, revision and all selected
+   paths in `directoryGrants`. Each item has a fresh grant id, `recursive` true, the final segment
+   as its display name and toolNames ["read","write","edit","delete"] or ["read"].
 6. Always give the project its first chat, with or without a task: `app_chats` Create with the new
    project id and a title that names the task in two to five words in the user's language, or
    "Getting started" in the user's language when there is no task.

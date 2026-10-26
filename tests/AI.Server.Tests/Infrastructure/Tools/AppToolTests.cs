@@ -717,6 +717,102 @@ public sealed partial class AppToolTests
     }
 
     [Fact]
+    public async Task AddingDirectoryGrantsAtomicallyPreservesExistingSettingsAndSkipsDuplicates()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        var original = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        var existing = new DirectoryGrantSettings(Guid.NewGuid(), "existing", "/existing", true, ["read"]);
+        var seeded = await fixture.Projects.UpdateSecurityAsync(fixture.ProjectId,
+            new UpdateProjectSecurityRequest(original.Revision, [existing],
+                [new AI.Contracts.Projects.McpServerSettings(DefaultMcpServer.Id, "Built-in tools", "Stdio", true)],
+                [new ToolPolicySettings(DefaultMcpServer.Id, "read_text_file", "schema", "Allow", 10, 60)]), CancellationToken.None);
+        await using var session = await fixture.OpenAsync();
+        var cache = new DirectoryGrantSettings(Guid.NewGuid(), "cache", "/cache", true, ["read", "write"]);
+        var operationId = Guid.NewGuid();
+        var arguments = new
+        {
+            operation = "AddDirectoryGrants", projectId = fixture.ProjectId, operationId, revision = seeded.Revision,
+            directoryGrants = new[] { existing with { Id = Guid.NewGuid(), DisplayName = "duplicate" }, cache, cache }
+                .Select(grant => new { id = grant.Id, displayName = grant.DisplayName, canonicalRoot = grant.CanonicalRoot,
+                    recursive = grant.Recursive, toolNames = grant.ToolNames }).ToArray(),
+        };
+
+        var result = await AppFixture.CallAsync(session, "app_security", arguments);
+        result.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        var updated = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        updated.Revision.ShouldBe(seeded.Revision + 1);
+        updated.DirectoryGrants.Count.ShouldBe(2);
+        updated.DirectoryGrants.Single(grant => grant.Id == existing.Id).DisplayName.ShouldBe("existing");
+        updated.McpServers.ShouldHaveSingleItem().Id.ShouldBe(DefaultMcpServer.Id);
+        updated.ToolPolicies.ShouldHaveSingleItem().Name.ShouldBe("read_text_file");
+
+        await AppFixture.CallAsync(session, "app_security", arguments);
+        (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!.Revision.ShouldBe(updated.Revision);
+    }
+
+    [Fact]
+    public async Task InvalidDirectoryGrantBatchLeavesEveryGrantUnchanged()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var project = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "AddDirectoryGrants", projectId = fixture.ProjectId, operationId = Guid.NewGuid(), revision = project.Revision,
+            directoryGrants = new[]
+            {
+                new { id = Guid.NewGuid(), displayName = "valid", canonicalRoot = "/valid", recursive = true, toolNames = ReadOnlyCapability },
+                new { id = Guid.NewGuid(), displayName = "", canonicalRoot = "/invalid", recursive = true, toolNames = ReadOnlyCapability },
+            },
+        }, expectError: true);
+
+        var current = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        current.Revision.ShouldBe(project.Revision);
+        current.DirectoryGrants.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AStaleDirectoryGrantBatchReturnsCurrentStateWithoutApplyingAnyGrant()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var project = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "AddDirectoryGrants", projectId = fixture.ProjectId, operationId = Guid.NewGuid(), revision = project.Revision - 1,
+            directoryGrants = new[]
+            {
+                new { id = Guid.NewGuid(), displayName = "config", canonicalRoot = "/config", recursive = true, toolNames = ReadOnlyCapability },
+                new { id = Guid.NewGuid(), displayName = "cache", canonicalRoot = "/cache", recursive = true, toolNames = ReadOnlyCapability },
+            },
+        }, expectError: true);
+
+        result.GetProperty("status").GetString().ShouldBe("Conflict");
+        result.GetProperty("revision").GetInt64().ShouldBe(project.Revision);
+        result.GetProperty("current").GetProperty("directoryGrants").GetArrayLength().ShouldBe(0);
+        (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!.Revision.ShouldBe(project.Revision);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EmptyOrNullDirectoryGrantEntriesAreRejectedWithoutMutation(bool empty)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        var project = (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!;
+        var result = await AppFixture.CallAsync(session, "app_security", new
+        {
+            operation = "AddDirectoryGrants", projectId = fixture.ProjectId, operationId = Guid.NewGuid(), revision = project.Revision,
+            directoryGrants = empty ? Array.Empty<object?>() : new object?[] { null },
+        }, expectError: true);
+
+        result.GetProperty("applied").GetBoolean().ShouldBeFalse();
+        result.GetProperty("error").GetString().ShouldNotBeNullOrWhiteSpace();
+        (await fixture.Projects.GetAsync(fixture.ProjectId, CancellationToken.None))!.Revision.ShouldBe(project.Revision);
+    }
+
+    [Fact]
     public async Task RemovingDirectoryGrantKeepsTheOtherGrantsBindingsAndPolicies()
     {
         await using var fixture = await AppFixture.CreateAsync();

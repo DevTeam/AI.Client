@@ -124,6 +124,27 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task DirectoryGrantBatchReopensToolSessionOnceWithAllDirectories()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetPolicyAsync("Allow");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Configure CLI folders"));
+        var first = await fixture.NextCallAsync();
+        fixture.Tools.OpenCount.ShouldBe(1);
+        await fixture.AddGrantsAsync(
+            [new(Guid.NewGuid(), "config", @"C:\CLI\config", true, ["read"]),
+             new(Guid.NewGuid(), "cache", @"C:\CLI\cache", true, ["read", "write"])]);
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.Answer.SetResult("");
+
+        var next = await fixture.NextCallAsync();
+        fixture.Tools.OpenCount.ShouldBe(2);
+        fixture.Tools.Grants.Select(grant => grant.Root).ShouldBe([@"C:\CLI\config", @"C:\CLI\cache"], ignoreOrder: true);
+        next.Answer.SetResult("Configured");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task AnswerShouldStartADraftOfTheReplyWhenSuggestionsAreOn()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -2920,6 +2941,13 @@ public sealed partial class ChatExecutionTests
             var project = (await Projects.GetAsync(ProjectId, CancellationToken.None))!;
             var result = await Projects.AddDirectoryGrantAsync(ProjectId, project.Revision,
                 new DirectoryGrantSettings(Guid.NewGuid(), "sample", root, true, ["read"]), CancellationToken.None);
+            result.Status.ShouldBe(ProjectUpdateStatus.Updated);
+        }
+
+        public async Task AddGrantsAsync(IReadOnlyList<DirectoryGrantSettings> grants)
+        {
+            var project = (await Projects.GetAsync(ProjectId, CancellationToken.None))!;
+            var result = await Projects.AddDirectoryGrantsAsync(ProjectId, project.Revision, grants, CancellationToken.None);
             result.Status.ShouldBe(ProjectUpdateStatus.Updated);
         }
         public async Task SetConnectionLimitsAsync(long contextWindowTokens, long reservedOutputTokens)

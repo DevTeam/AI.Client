@@ -348,8 +348,9 @@ public sealed partial class AdaptiveContextPolicy(
         " Discover omitted capabilities with mcp_app__tool_search only when its schema is offered; matching schemas are prioritized within the next step's budget. "
         + "Use mcp_app__skill_search to find a matching skill and mcp_app__run_skill to follow its playbook. "
         + "Ask the user only for missing choices or approval. Writes need a fresh operationId and the current revision; on conflict re-read. "
-        + "app_security replaces whole sections: preserve unrelated fields. Access outside grants requires ask_user for directories "
-        + "(pathKind 'directories') and access level, then app_read and app_security AddDirectoryGrant if approved; never infer approval. "
+        + "app_security SetProjectSecurity replaces whole sections; AddDirectoryGrants adds a list atomically. Access outside grants requires ask_user for directories "
+        + "(pathKind 'directories') and access level, then app_read and app_security AddDirectoryGrants if approved; never infer approval. "
+        + "For CLI setup or inaccessible CLI installation/configuration/cache directories, load code-cli-configure with run_skill before requesting grants. "
         + "Batch archive requires previewed ids/revisions and its own confirmation. Rename another chat only when explicitly requested. "
         + "For requested navigation discover app_navigate and apply it before confirming success. Work in another project belongs in its chat.";
 }

@@ -180,6 +180,21 @@ The real check lives elsewhere and works independently: `PathGuard` inside the b
 
 For one directory, use `AddDirectoryGrant` with the project revision and a single grant. It leaves MCP server bindings and tool policies intact. `RemoveDirectoryGrant` revokes one grant by `grantId` the same way. `SetProjectSecurity` still replaces the full security document and should be reserved for intentional full replacements.
 
+For several directories, use `AddDirectoryGrants` with `projectId`, one `revision` and a
+`directoryGrants` array of the same grant payloads. The batch is validated before mutation and
+saved once: an invalid grant or conflicting ID adds nothing, and a stale revision returns a
+conflict. Equivalent canonical-root, recursive and capability grants are skipped, including
+duplicates within the batch; display names and existing grants are preserved. IDs cannot be reused
+for different access. Path comparisons use the supplied canonical spelling. The additions appear
+as ordinary folders in the existing project settings and can be revoked individually.
+
+The `code-cli-configure` playbook diagnoses inaccessible CLI installation, configuration and cache
+directories, prefers the user's existing paths, obtains any missing authorization with the usual
+directory picker, and applies the approved list through `AddDirectoryGrants`. It verifies the
+original command in the next model step, after tool sessions refresh their grants. Both the process
+tool description and standing instructions point to this skill; the skill body loads only when
+used. No separate CLI permission store or environment-management tool is introduced.
+
 ## Confirmations and call batches
 
 While a confirmation card is up, the Host re-reads the effective policy every two seconds. Permission granted in settings or through the `app_security` tool releases the waiting call in the same way as the button on the card, and prohibition rejects it. Without this, a user who went to change settings instead of clicking the button would only wait for the timeout.

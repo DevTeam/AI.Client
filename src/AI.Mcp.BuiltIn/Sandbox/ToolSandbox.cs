@@ -77,7 +77,8 @@ public sealed class ToolSandbox : IToolSandbox
     /// <summary>What to do when the sandbox, rather than the program, is why a run failed.</summary>
     private static string AccessDenied(SandboxedTool tool) =>
         "When a run fails because a path outside the grants was denied (an access or permission error naming it, or a "
-        + "missing SDK or package cache that does exist on the machine), that is the boundary, not a bug: ask the user "
+        + "missing SDK or package cache that does exist on the machine), load the code-cli-configure skill with run_skill "
+        + "when available to diagnose CLI setup before requesting grants. Ask the user "
         + "to grant that directory to the project, read-only unless it must be written, then retry; never work around it. "
         + (tool == SandboxedTool.Commands
             ? "When the user declines or the command must reach beyond any grant, process_run_unrestricted runs it without "

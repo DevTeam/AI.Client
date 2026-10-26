@@ -13,7 +13,7 @@ public class BuiltInSkillCatalogTests
     private static readonly Dictionary<string, string> Abbreviations = new(StringComparer.Ordinal)
     {
         ["api"] = "API", ["ci"] = "CI", ["csharp"] = "C#", ["devops"] = "DevOps", ["e2e"] = "E2E",
-        ["er"] = "ER", ["mcp"] = "MCP", ["qa"] = "QA", ["svg"] = "SVG", ["ui"] = "UI",
+        ["er"] = "ER", ["mcp"] = "MCP", ["qa"] = "QA", ["svg"] = "SVG", ["ui"] = "UI", ["cli"] = "CLI",
     };
 
     [Fact]
@@ -28,6 +28,22 @@ public class BuiltInSkillCatalogTests
         shell.Kind.ShouldBe(SkillKinds.Playbook);
         shell.Aliases.ShouldNotBeNull().ShouldContain("powershell");
         shell.AllowedTools.ShouldNotBeNull().ShouldContain("process_run");
+    }
+
+    [Fact]
+    public void ShouldExposeCliSetupThroughExistingProjectPermissions()
+    {
+        var catalog = new BuiltInSkillCatalog();
+        var skill = catalog.GetById("code-cli-configure").ShouldNotBeNull();
+        skill.Kind.ShouldBe(SkillKinds.Playbook);
+        skill.AllowedTools.ShouldNotBeNull().ShouldContain("app_security");
+        skill.AllowedTools.ShouldContain("process_run");
+        skill.AllowedTools.ShouldContain("ask_user");
+        skill.Description.ShouldContain("inaccessible");
+        skill.Content.ShouldContain("AddDirectoryGrants");
+        skill.Content.ShouldContain("existing installation, configuration and caches");
+        skill.Content.ShouldContain("visible in project folder settings");
+        catalog.GetById("code-run-shell").ShouldNotBeNull().Content.ShouldContain(skill.Id);
     }
 
     [Fact]

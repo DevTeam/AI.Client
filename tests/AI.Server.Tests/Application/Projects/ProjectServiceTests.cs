@@ -247,6 +247,51 @@ public class ProjectServiceTests
         result.ToolPolicies.ShouldHaveSingleItem().Decision.ShouldBe("Allow");
     }
 
+    [Fact]
+    public async Task AddingDirectoryGrantsSavesOnceWithTheExpectedRevision()
+    {
+        var project = CreateProject("Project");
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 3));
+        _clock.SetupGet(i => i.UtcNow).Returns(_now);
+        _repository.Setup(i => i.SaveAsync(project, 3, CancellationToken.None)).ReturnsAsync(ProjectSaveResult.Saved(4));
+
+        var result = await CreateInstance().AddDirectoryGrantsAsync(_projectId.Value, 3,
+            [new(Guid.NewGuid(), "config", "/config", true, ["read"]),
+             new(Guid.NewGuid(), "cache", "/cache", true, ["read", "write"])], CancellationToken.None);
+
+        result.Status.ShouldBe(ProjectUpdateStatus.Updated);
+        result.Revision.ShouldBe(4);
+        result.Project.ShouldNotBeNull().DirectoryGrants.Count.ShouldBe(2);
+        _repository.Verify(i => i.SaveAsync(project, 3, CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task AddingDirectoryGrantsWithStaleRevisionDoesNotMutateTheProject()
+    {
+        var project = CreateProject("Project");
+        _repository.Setup(i => i.GetAsync(_projectId, CancellationToken.None)).ReturnsAsync(new StoredProject(project, 3));
+
+        var result = await CreateInstance().AddDirectoryGrantsAsync(_projectId.Value, 2,
+            [new(Guid.NewGuid(), "config", "/config", true, ["read"])], CancellationToken.None);
+
+        result.Status.ShouldBe(ProjectUpdateStatus.Conflict);
+        result.Revision.ShouldBe(3);
+        project.DirectoryGrants.ShouldBeEmpty();
+        _repository.Verify(i => i.SaveAsync(It.IsAny<Project>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AnInvalidGrantDoesNotPartiallyMutateTheProject()
+    {
+        var project = CreateProject("Project");
+        await Should.ThrowAsync<DomainException>(() => CreateInstance().AddDirectoryGrantsAsync(_projectId.Value, 1,
+            [new(Guid.NewGuid(), "valid", "/valid", true, ["read"]),
+             new(Guid.NewGuid(), "", "/invalid", true, ["read"])], CancellationToken.None));
+
+        project.DirectoryGrants.ShouldBeEmpty();
+        _repository.Verify(i => i.SaveAsync(It.IsAny<Project>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private ProjectService CreateInstance() => new(
         _repository.Object,
         _idGenerator.Object,

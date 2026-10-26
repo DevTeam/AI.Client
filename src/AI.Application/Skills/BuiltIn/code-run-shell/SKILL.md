@@ -6,7 +6,7 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","list_allowed_directories","process_run","process_run_unrestricted","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","run_skill","list_allowed_directories","process_run","process_run_unrestricted","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
 
 For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
@@ -18,6 +18,9 @@ The user's instructions take precedence. Follow repository instructions and use 
 permission-checked tools; this playbook grants no access. Report in the user's language.
 Prefer a direct executable and argv array. Use a shell for its built-ins, pipelines, redirection
 or scripts, and a dedicated tool when it better serves the task.
+
+When CLI installation, configuration or cache access is denied, load `code-cli-configure` with
+`run_skill` before requesting directory grants. Return to the original command after setup.
 
 1. Establish the goal, inputs and authorized side effects. Check `process_run` availability,
    discovering it through `tool_search` if needed, and read its current description/schema.

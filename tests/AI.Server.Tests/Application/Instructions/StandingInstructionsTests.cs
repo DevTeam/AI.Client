@@ -102,6 +102,8 @@ public sealed class StandingInstructionsTests : IDisposable
         // Access outside the grants is asked for, not worked around.
         preview.Layers[0].Content.ShouldContain("pathKind 'directories'");
         preview.Layers[0].Content.ShouldContain("AddDirectoryGrant");
+        preview.Layers[0].Content.ShouldContain("AddDirectoryGrants");
+        preview.Layers[0].Content.ShouldContain("code-cli-configure");
         preview.Layers[0].Content.ShouldContain("Specify the language after the opening fence");
         preview.Layers[0].Tokens.ShouldBeLessThanOrEqualTo(preview.Layers[0].BudgetTokens);
         var project = preview.Layers[1];

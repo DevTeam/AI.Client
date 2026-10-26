@@ -157,10 +157,13 @@ public sealed class StandingInstructions(
         + "- Access: when the task needs a path outside the granted directories, neither refuse nor work around it. Call "
         + "ask_user once with two questions: which directories to grant (pathKind 'directories', narrowest first) and "
         + "the access level ('Read only (Recommended)' or 'Read and write', in the user's language). If approved, read the project with app_read, "
-        + "then add each chosen directory with app_security AddDirectoryGrant using the current revision and toolNames "
-        + "['read'] or ['read', 'write', 'edit', 'delete']. Use each result's revision for the next grant. The file tools "
+        + "then add the chosen directories in one app_security AddDirectoryGrants call using the current revision, directoryGrants "
+        + "and toolNames ['read'] or ['read', 'write', 'edit', 'delete'] for each directory. File and process tools "
         + "refresh before the next model step; continue the original task. Calls already submitted in the same batch "
         + "use the old grants. If the user declines, explain the remaining access limit.\n"
+        + "- CLI setup: when configuring a CLI or when process_run fails because its installation, configuration or cache "
+        + "directories are inaccessible, load the code-cli-configure skill with run_skill before requesting grants. "
+        + "A test failure, missing executable or authentication error alone does not justify more directory access.\n"
         + "- context_compact: after a long exploration, once you have what you need, replace the finished work of this turn "
         + "with a short summary that only you see. The transcript is not changed.";
 

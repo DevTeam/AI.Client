@@ -19,9 +19,12 @@ or command rule says otherwise, and shares the command rules of `process_run`
 The sandbox opens no directory on its own beyond the grants, the chat's temporary directory and the
 system locations below: no toolchain profile, no package caches. When a run fails because a path
 outside them was denied, the tool description and the execution capabilities in the system prompt
-tell the model to ask the user through `ask_user` to grant that directory to the project
-(read-only unless it must be written) and retry once it is granted (`app_security`
-`AddDirectoryGrant`). Only when the user declines, or no grant can cover what the program needs, does
+tell the model to load the `code-cli-configure` skill when available. It diagnoses CLI requirements
+and collects missing installation, configuration and cache directories before asking the user
+through `ask_user` to grant them to the project (read-only unless they must be written). The approved
+list is added atomically with `app_security` `AddDirectoryGrants`; `AddDirectoryGrant` remains
+available for one directory. Retry in the next model step, after tool sessions refresh their grants.
+Only when the user declines, or no grant can cover what the program needs, does
 the model fall back to `process_run_unrestricted`, whose call the user approves. A grant is then the
 user's decision, visible in the project's folders, rather than a list hidden in the launcher.
 

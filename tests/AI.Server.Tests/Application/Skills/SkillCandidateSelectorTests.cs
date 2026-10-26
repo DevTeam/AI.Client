@@ -21,6 +21,8 @@ public sealed class SkillCandidateSelectorTests
     [InlineData("summary", "chat-summary")]
     [InlineData("diagrams", "mermaid-create")]
     [InlineData("bug report.", "qa-bug-report")]
+    [InlineData("Configure gh CLI configuration and cache directory access", "code-cli-configure")]
+    [InlineData("process_run cannot access npm installation and cache directories", "code-cli-configure")]
     public void ShouldRetrieveRelevantSkillsWithinTheRoutingLimit(string request, string expectedId)
     {
         var candidates = _selector.FindCandidates(request, _skills, SkillRouteSkill.MaxCandidates);

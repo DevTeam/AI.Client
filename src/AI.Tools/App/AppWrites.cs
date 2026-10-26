@@ -3,6 +3,7 @@ namespace AI.Mcp.App;
 using AI.Application.Notifications;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
+using AI.Domain.Common;
 
 /// <summary>
 /// The parts every mutating tool shares: replay protection, the change signal, and turning an
@@ -30,7 +31,7 @@ public sealed class AppWrites(IAppOperationLog log, IAppDataChangeSignal signal,
         {
             result = await body(AppWriteBuilder.For(operation));
         }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException or JsonException)
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or JsonException or DomainException)
         {
             result = AppWriteBuilder.For(operation).Failed(error.Message);
         }

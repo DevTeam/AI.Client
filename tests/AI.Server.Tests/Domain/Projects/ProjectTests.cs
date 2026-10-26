@@ -70,6 +70,52 @@ public sealed class ProjectTests
     }
 
     [Fact]
+    public void AddingDirectoryGrantsRejectsTheWholeBatchWhenALaterIdConflicts()
+    {
+        var project = CreateProject();
+        var existing = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "existing", "/existing", true, ["read"]);
+        project.AddDirectoryGrant(existing, _createdAt);
+        var added = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "new", "/new", true, ["read"]);
+        var conflicting = new DirectoryGrant(existing.Id, "changed", "/other", true, ["write"]);
+
+        Should.Throw<DomainException>(() => project.AddDirectoryGrants([added, conflicting], _createdAt.AddMinutes(1)));
+
+        project.DirectoryGrants.ShouldHaveSingleItem().ShouldBeSameAs(existing);
+        project.UpdatedAt.ShouldBe(_createdAt);
+    }
+
+    [Fact]
+    public void AddingDirectoryGrantsSkipsEquivalentAccessWithoutReplacingNamesOrMergingRights()
+    {
+        var project = CreateProject();
+        var existing = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "original", "/config", true, ["read"]);
+        project.AddDirectoryGrant(existing, _createdAt);
+        var equivalent = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "renamed", "/config", true, ["read"]);
+        var writable = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "writable", "/config", true, ["read", "write"]);
+
+        project.AddDirectoryGrants([existing, equivalent, writable, writable], _createdAt.AddMinutes(1));
+
+        project.DirectoryGrants.Count.ShouldBe(2);
+        project.DirectoryGrants.ShouldContain(existing);
+        project.DirectoryGrants.ShouldContain(writable);
+        existing.DisplayName.ShouldBe("original");
+        existing.ToolNames.ShouldBe(["read"]);
+    }
+
+    [Fact]
+    public void DuplicateIdsCannotChangeAccessEvenWhenTheFirstEntryWasAlreadyCovered()
+    {
+        var project = CreateProject();
+        project.AddDirectoryGrant(new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "existing", "/config", true, ["read"]), _createdAt);
+        var id = new DirectoryGrantId(Guid.NewGuid());
+        var duplicate = new DirectoryGrant(id, "duplicate", "/config", true, ["read"]);
+        var changed = new DirectoryGrant(id, "changed", "/config", true, ["read", "write"]);
+
+        Should.Throw<DomainException>(() => project.AddDirectoryGrants([duplicate, changed], _createdAt.AddMinutes(1)));
+        project.DirectoryGrants.ShouldHaveSingleItem().ToolNames.ShouldBe(["read"]);
+    }
+
+    [Fact]
     public void SetToolPolicyThrowsDomainExceptionWhenServerIsNotConnected()
     {
         var project = CreateProject();

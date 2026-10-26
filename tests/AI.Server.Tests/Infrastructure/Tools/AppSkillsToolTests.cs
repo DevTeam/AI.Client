@@ -36,6 +36,30 @@ public sealed class AppSkillsToolTests
         """;
 
     [Fact]
+    public async Task ShouldDiscoverAndLoadCliSetupWithoutChangingProjectAccess()
+    {
+        await using var composition = new SubtaskComposition(new ServerOptions("data", null, true),
+            new MemoryFileSystem(), Mock.Of<IChatCompletionClient>(), Mock.Of<IToolSessionFactory>());
+        var project = await composition.Projects.CreateAsync(new CreateProjectRequest("CLI", ""), CancellationToken.None);
+        var chat = await composition.Chats.CreateAsync(project.Id, new CreateChatRequest("CLI"), CancellationToken.None);
+        await using var session = await composition.Sessions.OpenAsync([],
+            new ToolRunContext(project.Id, chat.Id, chat.Id, true), TestContext.Current.CancellationToken);
+        var search = session.Tools.Single(tool => tool.OriginalName == "skill_search");
+        var run = session.Tools.Single(tool => tool.OriginalName == "run_skill");
+
+        var found = await session.CallAsync(search, """{"query":"cli-setup"}""", null, TestContext.Current.CancellationToken);
+        found.IsError.ShouldBeFalse();
+        found.StructuredContent!.Value.GetProperty("skills")[0].GetProperty("id").GetString().ShouldBe("code-cli-configure");
+        var loaded = await session.CallAsync(run,
+            """{"skillId":"code-cli-configure","parameters":{"cli":"gh","error":"Access denied to configuration"}}""",
+            null, TestContext.Current.CancellationToken);
+        loaded.IsError.ShouldBeFalse(loaded.StructuredContent?.GetRawText());
+        loaded.StructuredContent!.Value.GetProperty("status").GetString().ShouldBe("Completed");
+        loaded.StructuredContent.Value.GetProperty("output").GetProperty("instructions").GetString()!.ShouldContain("AddDirectoryGrants");
+        (await composition.Projects.GetAsync(project.Id, CancellationToken.None))!.DirectoryGrants.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ShouldDiscoverAndInvokeSkillThroughAppMcpSession()
     {
         await using var composition = new SubtaskComposition(

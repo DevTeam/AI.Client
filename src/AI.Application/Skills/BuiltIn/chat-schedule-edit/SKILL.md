@@ -40,7 +40,7 @@ Changing what a run does therefore also means checking that the run can still do
    destructive, 600 s for `process_run`, `cs_run` and `trigger_wait`). Never grant `Allow` to a
    tool that manages its own permissions, such as `app_security`. For a missing directory or a
    missing `write`/`edit` capability, ask with `pathKind: "directories"` and "Read only
-   (Recommended)" or "Read and write", then add each with `app_security` AddDirectoryGrant. When
+   (Recommended)" or "Read and write", then add the approved list with one `app_security` AddDirectoryGrants call. When
    the change only moves a time, a retry, a cleanup rule or a pause, skip this step.
 5. Unless the exact new values came from the user, confirm in one question with the old and new
    values side by side, naming the tools and directories allowed for the run: "Apply (Recommended)"

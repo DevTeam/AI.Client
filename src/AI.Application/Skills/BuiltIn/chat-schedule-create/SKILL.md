@@ -84,10 +84,10 @@ the branch or in the arguments is never asked again.
    `toolNames`: a path without a grant makes the call fail, and a grant without `write` or `edit`
    makes a change fail. For every missing path or missing capability, ask in `ask_user` with
    `pathKind: "directories"` for the paths and "Read only (Recommended)" or "Read and write" for
-   the access, then add each with `app_security` operation `AddDirectoryGrant`, the project's
-   current revision, a fresh grant id, `recursive` true, the final segment as the display name and
-   `toolNames` `["read"]` or `["read","write","edit","delete"]`, using each result's revision for
-   the next. Never grant a broad root such as a whole drive without saying so in the question.
+   the access, then add the approved list with one `app_security` operation `AddDirectoryGrants`,
+   the project's current revision and `directoryGrants`. Each item has a fresh grant id,
+   `recursive` true, the final segment as the display name and `toolNames` `["read"]` or
+   `["read","write","edit","delete"]`. Never grant a broad root such as a whole drive without saying so in the question.
    If the user declines, say which part of the task cannot run, and schedule it only if they still
    want to.
 9. Show the final schedule in one `ask_user` question — the task, the recurrence in words, the

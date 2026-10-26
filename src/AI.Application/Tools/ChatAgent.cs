@@ -814,7 +814,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             // fail for a reason that is not the program's: the way out is a grant, not a workaround.
             text.Append("\n- process_run and cs_run always run in a sandbox limited to the granted directories and the chat's ")
                 .Append("temporary directory. When a run fails because a path outside them was denied, or an SDK or package ")
-                .Append("cache that exists on the machine is not found, ask the user through ask_user to grant that directory to ")
+                .Append("cache that exists on the machine is not found, first load the code-cli-configure skill with run_skill when available. ")
+                .Append("Use it to diagnose the CLI and collect its missing directories, then ask the user through ask_user to grant them to ")
                 .Append("the project (read-only unless it must be written) and retry after the grant. Only when the user declines ")
                 .Append("or no grant can cover it, use process_run_unrestricted, which runs without the sandbox after the user ")
                 .Append("approves the call. Never work around the sandbox.");

@@ -139,6 +139,29 @@ public sealed class ProjectService(
             : ProjectUpdateResult.Conflict(result.Revision);
     }
 
+    public async Task<ProjectUpdateResult> AddDirectoryGrantsAsync(
+        Guid id, long expectedRevision, IReadOnlyList<DirectoryGrantSettings> grants, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(grants);
+        if (grants.Count == 0) throw new ArgumentException("At least one directory grant is required.", nameof(grants));
+        // Construct every grant before touching the aggregate, including when storage is in memory.
+        var additions = grants.Select(grant =>
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            return new DirectoryGrant(new DirectoryGrantId(grant.Id), grant.DisplayName,
+                grant.CanonicalRoot, grant.Recursive, grant.ToolNames);
+        }).ToArray();
+        var stored = await repository.GetAsync(new ProjectId(id), cancellationToken);
+        if (stored is null) return ProjectUpdateResult.NotFound();
+        if (stored.Revision != expectedRevision) return ProjectUpdateResult.Conflict(stored.Revision);
+
+        stored.Project.AddDirectoryGrants(additions, clock.UtcNow);
+        var result = await repository.SaveAsync(stored.Project, expectedRevision, cancellationToken);
+        return result.IsSaved
+            ? ProjectUpdateResult.Updated(ToDetails(stored.Project, result.Revision))
+            : ProjectUpdateResult.Conflict(result.Revision);
+    }
+
     public async Task<ProjectUpdateResult> RemoveDirectoryGrantAsync(
         Guid id, long expectedRevision, Guid grantId, CancellationToken cancellationToken)
     {

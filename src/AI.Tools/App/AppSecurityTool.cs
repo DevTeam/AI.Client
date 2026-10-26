@@ -16,6 +16,9 @@ public enum SecurityOperation
     /// <summary>Add one directory grant without changing other project security settings.</summary>
     AddDirectoryGrant,
 
+    /// <summary>Add directories atomically without replacing security settings. Needs 'directoryGrants'.</summary>
+    AddDirectoryGrants,
+
     /// <summary>Remove one directory grant by 'grantId' without changing other project security settings.</summary>
     RemoveDirectoryGrant,
 
@@ -108,25 +111,17 @@ public sealed class AppSecurityTool(
         new McpServerToolCreateOptions
         {
             SerializerOptions = reply.Json,
-            Description = "Change this application's access settings: directory grants, MCP server bindings, per-tool policies and "
-                          + "connection credentials. Use 'AddDirectoryGrant' with 'projectId', 'revision' and 'directoryGrant' "
-                          + "to add one directory without changing server bindings or policies, and 'RemoveDirectoryGrant' with "
-                          + "'projectId', 'revision' and 'grantId' (the grant's id from app_read) to revoke one. "
-                          + "Use UpsertConnection or UpsertMcpServer to change one global item and RemoveConnection or "
-                          + "RemoveMcpServer to delete one. Supply the previously read item as 'expectedConnection' or "
-                          + "'expectedMcpServer' when changing an existing item. A new id needs no expected item. "
-                          + "'SetProjectSecurity' and 'SaveGlobalSettings' replace the whole state they cover, so "
-                          + "read it with 'app_read' first and send it back with your change applied — anything you leave out is removed. "
-                          + "Secrets are write-only: a key can be stored and never read back, and passing null clears it. 'operationId' "
-                          + "must be a fresh UUID per distinct change. Use AddDirectoryGrant to grant one directory in your project; "
-                          + "the file tools refresh before the next model step. Calls already submitted in the same batch keep the old grants. "
-                          + "A branch inherits tool policies from its parent branch and the chat; SetBranchToolPolicy overrides one for "
-                          + "a branch and the branches below it, RemoveBranchToolPolicy makes it inherit again. "
-                          + "SetCommandRule decides calls of one built-in tool, inside its own policy: process_run by the program and "
-                          + "arguments it runs ('git diff *'), the file tools (write_file, edit_file, create_directory, move_file, "
-                          + "delete_file, delete_directory, zip_create, zip_extract) by the paths they change, below the project "
-                          + "('docs/**'). A matching Deny wins, otherwise the most specific pattern. "
-                          + "RemoveCommandRule drops one by 'ruleId'."
+            Description = "Change application access settings: directory grants, MCP bindings, tool policies and credentials. "
+                          + "AddDirectoryGrants needs projectId, revision and directoryGrants; it adds the list atomically, skips equivalent "
+                          + "canonical-path/recursive/capability grants and rejects conflicting ids, preserving all other settings. "
+                          + "AddDirectoryGrant takes directoryGrant for one folder; RemoveDirectoryGrant takes grantId. "
+                          + "Folders remain visible in project settings. File and process tools refresh next step; already-submitted calls keep old grants. "
+                          + "Use a fresh operationId per change. Read current state with app_read; SetProjectSecurity and SaveGlobalSettings replace "
+                          + "their whole sections, removing omitted entries. UpsertConnection/UpsertMcpServer change one item; supply the read "
+                          + "expectedConnection/expectedMcpServer for existing items. RemoveConnection/RemoveMcpServer delete one item. "
+                          + "Secrets are write-only; null clears them. SetBranchToolPolicy overrides inherited policy for a branch and descendants; "
+                          + "RemoveBranchToolPolicy restores inheritance. SetCommandRule matches process_run program/arguments ('git diff *') or "
+                          + "file-tool paths below the project ('docs/**'); Deny wins, otherwise the most specific rule. RemoveCommandRule takes ruleId."
         });
 
     [McpServerTool(Name = "app_security", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false,
@@ -139,6 +134,7 @@ public sealed class AppSecurityTool(
         Guid? branchId = null,
         long revision = 0,
         DirectoryGrantPayload? directoryGrant = null,
+        IReadOnlyList<DirectoryGrantPayload>? directoryGrants = null,
         Guid? grantId = null,
         ProjectSecurityPayload? security = null,
         ToolPolicyPayload? toolPolicy = null,
@@ -157,6 +153,7 @@ public sealed class AppSecurityTool(
         writes.RunAsync(operation.ToString(), operationId, builder => operation switch
         {
             SecurityOperation.AddDirectoryGrant => AddDirectoryGrantAsync(builder, projectId, revision, directoryGrant, cancellationToken),
+            SecurityOperation.AddDirectoryGrants => AddDirectoryGrantsAsync(builder, projectId, revision, directoryGrants, cancellationToken),
             SecurityOperation.RemoveDirectoryGrant => RemoveDirectoryGrantAsync(builder, projectId, revision, grantId, cancellationToken),
             SecurityOperation.SetProjectSecurity => SetProjectSecurityAsync(builder, projectId, revision, security, cancellationToken),
             SecurityOperation.SetProjectToolPolicy => SetProjectToolPolicyAsync(builder, projectId, toolPolicy, cancellationToken),
@@ -196,6 +193,24 @@ public sealed class AppSecurityTool(
             grant.Id, grant.DisplayName, grant.CanonicalRoot, grant.Recursive, grant.ToolNames), cancellationToken);
         return AppProjectsTool.Describe(builder, result, id,
             project => $"Granted access to '{grant.CanonicalRoot}' in '{project.Name}'.", current, reply.Json);
+    }
+
+    private async Task<AppWriteResult> AddDirectoryGrantsAsync(
+        AppWriteBuilder builder, Guid? projectId, long revision, IReadOnlyList<DirectoryGrantPayload>? directoryGrants,
+        CancellationToken cancellationToken)
+    {
+        var id = Required(projectId, nameof(projectId));
+        var grants = Required(directoryGrants, nameof(directoryGrants));
+        var current = await projects.GetAsync(id, cancellationToken);
+        var additions = grants.Select(grant =>
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            return new DirectoryGrantSettings(grant.Id, grant.DisplayName, grant.CanonicalRoot, grant.Recursive, grant.ToolNames);
+        }).ToArray();
+        var result = await projects.AddDirectoryGrantsAsync(id, revision, additions, cancellationToken);
+        return AppProjectsTool.Describe(builder, result, id,
+            project => $"Added {project.DirectoryGrants.Count - (current?.DirectoryGrants.Count ?? 0)} directory grant(s) to '{project.Name}'; "
+                       + "existing access settings were preserved.", current, reply.Json);
     }
 
     private async Task<AppWriteResult> RemoveDirectoryGrantAsync(

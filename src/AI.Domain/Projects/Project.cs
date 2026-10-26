@@ -95,6 +95,38 @@ public sealed class Project
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>Adds a validated batch without replacing existing grants or partially applying it.</summary>
+    public void AddDirectoryGrants(IEnumerable<DirectoryGrant> grants, DateTimeOffset updatedAt)
+    {
+        ArgumentNullException.ThrowIfNull(grants);
+        EnsureTimestampDoesNotMoveBackwards(updatedAt);
+        var pending = new Dictionary<DirectoryGrantId, DirectoryGrant>(_directoryGrants);
+        var requested = new Dictionary<DirectoryGrantId, DirectoryGrant>();
+        foreach (var grant in grants)
+        {
+            ArgumentNullException.ThrowIfNull(grant);
+            if (requested.TryGetValue(grant.Id, out var previous) && !SameAccess(previous, grant))
+                throw new DomainException($"Directory grant '{grant.Id}' is repeated with different access.");
+            requested.TryAdd(grant.Id, grant);
+            if (pending.TryGetValue(grant.Id, out var existing))
+            {
+                if (!SameAccess(existing, grant))
+                    throw new DomainException($"Directory grant '{grant.Id}' already exists with different access.");
+                continue;
+            }
+
+            if (!pending.Values.Any(item => SameAccess(item, grant))) pending.Add(grant.Id, grant);
+        }
+
+        foreach (var grant in pending.Values)
+            _directoryGrants.TryAdd(grant.Id, grant);
+        UpdatedAt = updatedAt;
+    }
+
+    private static bool SameAccess(DirectoryGrant left, DirectoryGrant right) =>
+        string.Equals(left.CanonicalRoot, right.CanonicalRoot, StringComparison.Ordinal)
+        && left.Recursive == right.Recursive && left.ToolNames.SetEquals(right.ToolNames);
+
     public void AddMcpServer(McpServerBinding server, DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(server);

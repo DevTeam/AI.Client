@@ -21,6 +21,7 @@ public sealed class ToolDefaultDecisionTests
     [InlineData("zip_list")]
     [InlineData("zip_read")]
     [InlineData("trigger_wait")]
+    [InlineData("process_wait")]
     public void BuiltInReadToolsRunWithoutApproval(string name) =>
         _defaults.GetDecision(DefaultMcpServer.Id, name).ShouldBe("Allow");
 
@@ -56,6 +57,8 @@ public sealed class ToolDefaultDecisionTests
         _defaults.GetDecision(DefaultMcpServer.Id, "new_tool").ShouldBe("Ask");
         _defaults.GetDecision(Guid.NewGuid(), "read_text_file").ShouldBe("Ask");
         _defaults.GetDecision(Guid.NewGuid(), "cs_run").ShouldBe("Ask");
+        _defaults.GetDecision(Guid.NewGuid(), "process_wait").ShouldBe("Ask");
+        _defaults.GetDecision(Guid.NewGuid(), "process_stop").ShouldBe("Ask");
     }
 
     /// <summary>
@@ -65,6 +68,7 @@ public sealed class ToolDefaultDecisionTests
     [Theory]
     [InlineData("process_run")]
     [InlineData("cs_run")]
+    [InlineData("process_stop")]
     public void SandboxedCommandsAndScriptsRunWithoutApproval(string name) =>
         _defaults.GetDecision(DefaultMcpServer.Id, name).ShouldBe("Allow");
 }

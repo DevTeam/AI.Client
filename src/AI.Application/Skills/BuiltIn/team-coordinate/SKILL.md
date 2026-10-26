@@ -5,7 +5,7 @@ icon: workflow
 kind: playbook
 description: Lead a team from its coordinating branch: answer teammates, record decisions, unblock, track status, integrate.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill"]
+tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","process_wait","process_stop","run_skill"]
 ---
 
 The user's instructions take precedence over this playbook, and the user's messages in this branch
@@ -80,8 +80,7 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    (`action=remove`); retain their branches for recovery. For tests, start with filters for the
    affected modules; run a full suite only as a final relevant check.
    Use the runner's supported quiet/minimal output while preserving failures and counts, and set
-   an explicit finite timeout within the tool limit. Split long suites and report timeouts as
-   incomplete. Teammates never commit or otherwise change the Git state of the shared working
+   an explicit finite timeout within the tool limit. continue a running process with `process_wait` and report a hard timeout as incomplete. Teammates never commit or otherwise change the Git state of the shared working
    directory. In worktree mode they commit only on their own branches, and integration creates
    local commits in the lead's checkout. Report those hashes; never push without a separate request.
    For a nested team, this lead's assigned worktree is the integration checkout. Cherry-pick child

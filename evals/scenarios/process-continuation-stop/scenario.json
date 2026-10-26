@@ -1,0 +1,56 @@
+{
+  "id": "process-continuation-stop",
+  "description": "Real-model owned process stop with incomplete verification.",
+  "tags": [
+    "process-continuation",
+    "windows"
+  ],
+  "platform": "windows",
+  "git": false,
+  "timeoutSeconds": 300,
+  "turns": [
+    "Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run_unrestricted; I explicitly authorize this launch outside the sandbox. Use waitTimeoutMs=1000 for the launch and any waits. Once TESTS_STARTED appears, stop this owned process using process_stop and report that the check was stopped before completion. Do not kill unrelated processes. Keep both fixture files unchanged."
+  ],
+  "checks": [
+    {
+      "type": "fileAbsent",
+      "path": "unexpected-success.txt"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "run.cmd"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "tests.ps1"
+    },
+    {
+      "type": "maxMatchingCalls",
+      "pattern": "^\\S*__process_run(?:_unrestricted)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
+      "value": 1,
+      "name": "no repeated original launch"
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__process_run_unrestricted\\s.*run\\.cmd"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "pattern": "\"status\"\\s*:\\s*\"stopped\"",
+      "name": "observes terminal stop"
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "stop|\u043e\u0441\u0442\u0430\u043d\u043e\u0432|\u043f\u0440\u0435\u0440\u0432\u0430\u043d",
+      "name": "reports incomplete verification"
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 22
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__process_stop\\s"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ aliases: ["conflicts"]
 kind: playbook
 description: Resolve conflicts in an existing merge, rebase, cherry-pick or revert, stage resolved files and continue the authorized operation after checks.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["read_text_file","grep_files","process_run","ask_user","run_skill","read_multiple_files","edit_file","write_file"]
+tools: ["read_text_file","grep_files","process_run","process_wait","process_stop","ask_user","run_skill","read_multiple_files","edit_file","write_file"]
 ---
 
 1. Find the repository root and inspect status, unmerged entries and Git operation metadata.
@@ -22,8 +22,7 @@ tools: ["read_text_file","grep_files","process_run","ask_user","run_skill","read
 4. Stage only resolved paths; verify the unmerged index is empty, check for introduced markers
    and run relevant build/tests. Filter tests to affected projects/modules first; use the full
    suite as a final relevant check. Select supported quiet/minimal output that retains failures
-   and counts, and set an explicit finite test timeout within the tool limit. Split long suites
-   and report timeouts as incomplete. Continue only the operation the user authorized, with its matching
+   and counts, and set an explicit finite test timeout within the tool limit. continue a running process with `process_wait` and report a hard timeout as incomplete. Continue only the operation the user authorized, with its matching
    `--continue` and the existing commit message. If continuation was not authorized, ask once.
    Repeat for further conflicts; never bypass hooks or skip a failing commit. For stash conflicts
    do not run --continue or make a commit: report the resolved working tree and retained stash.

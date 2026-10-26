@@ -5,7 +5,7 @@ icon: code
 kind: playbook
 description: Implement a feature or code change end to end: explore, plan, edit files, run the build and tests, remove leftovers and summarize the change; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What to build or change, in the user's words"},"scope":{"type":"string","description":"Files, modules or limits the user named"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill"]
 ---
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
@@ -41,7 +41,7 @@ steps where they differ: their build, test and style rules are the ones to follo
    full suite as a final check when relevant and feasible within the timeout. Use the runner's
    supported quiet/minimal output or concise reporter and short traceback options while keeping
    failure details and counts available. Set an explicit finite timeout for each test run within
-   the effective tool limit; split or delegate longer suites, and report a timeout as incomplete.
+   the effective tool limit; continue a running process with `process_wait` and report a hard timeout as incomplete.
    Read the output and exit code; on a failure fix the cause and run again, at most three rounds
    per failure. Never skip, weaken or delete a test to get green. Claim only what you ran: "should
    work" is not a result. When something cannot be run, say what and why.

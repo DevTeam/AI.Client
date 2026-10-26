@@ -1,0 +1,84 @@
+{
+  "id": "process-continuation-unrestricted",
+  "description": "Real-model long process continuation, original byte logs and exactly one launch (unrestricted).",
+  "tags": [
+    "process-continuation",
+    "windows"
+  ],
+  "platform": "windows",
+  "git": false,
+  "timeoutSeconds": 300,
+  "turns": [
+    "Run the existing test runner cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run_unrestricted. I explicitly authorize this command outside the sandbox; use process_run_unrestricted for this launch. Keep both fixture files unchanged. Wait for the actual final test result and report the number of passed tests and the full stdout log path. Do not restart, split or replace the test runner."
+  ],
+  "checks": [
+    {
+      "type": "fileContains",
+      "path": "launches.txt",
+      "pattern": "\\A1\\r?\\n\\z",
+      "name": "runner started exactly once"
+    },
+    {
+      "type": "fileContains",
+      "path": "result.txt",
+      "pattern": "TESTS_PASSED total=3",
+      "name": "runner actually completed"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "run.cmd"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "tests.ps1"
+    },
+    {
+      "type": "maxMatchingCalls",
+      "pattern": "^\\S*__process_run(?:_unrestricted)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
+      "value": 1,
+      "name": "one original launch call"
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__process_run_unrestricted\\s.*run\\.cmd"
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__process_wait\\s",
+      "name": "continues managed process"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "pattern": "(?s)\"status\"\\s*:\\s*\"running\".*CALL \\S*__process_wait .*\"status\"\\s*:\\s*\"completed\"",
+      "name": "running then completed through wait"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "pattern": "\"stdoutPath\"\\s*:\\s*\"[^\"\\n]+stdout\\.log\"",
+      "name": "full stdout log recorded"
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "3",
+      "name": "reports verified test count"
+    },
+    {
+      "type": "callsNotMatch",
+      "pattern": "^\\S*__process_stop\\s",
+      "name": "does not stop successful test run"
+    },
+    {
+      "type": "maxToolErrors",
+      "value": 0
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 22
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "wait addresses original running handle",
+      "pattern": "(?s)\"status\"\\s*:\\s*\"running\"\\s*,\\s*\"processId\"\\s*:\\s*\"(?<handle>[a-f0-9]+)\".*CALL \\S*__process_wait [^\\n]*\"processId\"\\s*:\\s*\"\\k<handle>\""
+    }
+  ]
+}

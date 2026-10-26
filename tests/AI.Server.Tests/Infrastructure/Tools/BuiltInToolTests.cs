@@ -85,7 +85,7 @@ public sealed class BuiltInToolTests
         await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
-            "process_run", "process_run_unrestricted", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
+            "process_run", "process_run_unrestricted", "process_wait", "process_stop", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
             "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create", "cs_run"
         ], ignoreOrder: true);
@@ -98,7 +98,7 @@ public sealed class BuiltInToolTests
         properties.GetProperty("memoryLimitMb").GetProperty("minimum").GetInt32().ShouldBe(ChildProcessLimits.MinimumMemoryMb);
         properties.GetProperty("processLimit").GetProperty("maximum").GetInt32().ShouldBe(ChildProcessLimits.MaximumProcesses);
         tool.ModelDefinition.Description.ShouldContain($"default {ChildProcessLimits.DefaultMemoryMb}");
-        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 86400000 });
+        var arguments = JsonSerializer.Serialize(new { executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory, timeoutMs = 86400000, waitTimeoutMs = 60000 });
         session.ValidateArguments(tool, arguments).ShouldNotBeNullOrWhiteSpace();
         // A number past its bound is brought back to it rather than refused: the bound is what the
         // tool would have applied anyway, and a refusal costs the model a whole step.

@@ -91,6 +91,51 @@ public sealed class SandboxedToolTests : IAsyncLifetime
         tools.Single(tool => tool.Name == "cs_run").Description.ShouldNotBeNull().ShouldContain("sandbox");
     }
 
+    [Theory]
+    [InlineData("process_run")]
+    [InlineData("process_run_unrestricted")]
+    public async Task ManagedCommandsContinueOverStdioWithoutRelaunching(string tool)
+    {
+        if (tool == "process_run") RequireSandbox();
+        var release = Path.Combine(_writable, "release");
+        var launches = Path.Combine(_writable, "launches");
+        var (shell, arguments) = OperatingSystem.IsWindows()
+            ? (Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"), new[]
+            {
+                "-NoProfile", "-NonInteractive", "-Command",
+                $"[IO.File]::AppendAllText('{launches}', '1'); [Console]::Write('ready'); while (!(Test-Path -LiteralPath '{release}')) {{ Start-Sleep -Milliseconds 50 }}; [Console]::Write('done'); exit 7"
+            })
+            : ("/bin/sh", new[] { "-c", $"printf 1 >> '{launches}'; printf ready; while [ ! -f '{release}' ]; do sleep 0.05; done; printf done; exit 7" });
+        var started = await CallAsync(tool, new Dictionary<string, object?>
+        {
+            ["executable"] = shell, ["arguments"] = arguments, ["workingDirectory"] = _writable,
+            ["timeoutMs"] = 120000, ["waitTimeoutMs"] = 0
+        });
+        started.GetProperty("status").GetString().ShouldBe("running");
+        var id = started.GetProperty("processId").GetString();
+        var page = await CallAsync("process_wait", new Dictionary<string, object?>
+        {
+            ["processId"] = id, ["waitTimeoutMs"] = 50
+        });
+        page.GetProperty("status").GetString().ShouldBe("running");
+        await File.WriteAllTextAsync(release, "go", Token);
+        var final = await CallAsync("process_wait", new Dictionary<string, object?>
+        {
+            ["processId"] = id, ["waitTimeoutMs"] = 60000
+        });
+        final.GetProperty("status").GetString().ShouldBe("completed", final.ToString());
+        final.GetProperty("exitCode").GetInt32().ShouldBe(7);
+        final.GetProperty("stdout").GetString().ShouldBe("readydone");
+        (await File.ReadAllTextAsync(launches, Token)).ShouldBe("1");
+        var log = final.GetProperty("stdoutPath").GetString()!;
+        log.ShouldStartWith(_temporary);
+        (await File.ReadAllTextAsync(log, Token)).ShouldBe("readydone");
+        if (tool == "process_run") final.GetProperty("sandbox").GetString().ShouldNotBeNullOrWhiteSpace();
+        else final.GetProperty("sandbox").ValueKind.ShouldBe(JsonValueKind.Null);
+        var stopped = await CallAsync("process_stop", new Dictionary<string, object?> { ["processId"] = id });
+        stopped.GetProperty("exitCode").GetInt32().ShouldBe(7);
+    }
+
     [Fact]
     public async Task ACommandReadsAReadOnlyGrantButNotAnUngrantedDirectory()
     {

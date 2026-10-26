@@ -29,12 +29,12 @@ internal sealed partial class Composition
             .Root<ScriptRunner>(nameof(Worker))
             // File system: the platform is one implementation of the contract, a fake in tests is another.
             // The spare script worker is state the whole session shares.
-            .Singleton<SystemFileSystem, SystemPath, ScriptWorkers>()
+            .Singleton<SystemFileSystem, SystemPath, ScriptWorkers, ProcessSessions>()
             // Tools
             // Bound to their one contract: registered as a whole they would also expose their shared base.
             .Bind<IToolFactory>(Tag.Unique).To<ProcessRunTool>()
             .Bind<IToolFactory>(Tag.Unique).To<ProcessRunUnrestrictedTool>()
-            .Transient<ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
+            .Transient<ProcessWaitTool, ProcessStopTool, ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)

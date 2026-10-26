@@ -8,7 +8,7 @@ public sealed class ToolDefaultDecision : IToolDefaultDecision
         if (serverId == DefaultMcpServer.Id && name is
             "list_allowed_directories" or "read_text_file" or "read_multiple_files" or "read_image_file"
             or "list_directory" or "directory_tree" or "search_files" or "grep_files" or "get_file_info"
-            or "zip_list" or "zip_read" or "trigger_wait")
+            or "zip_list" or "zip_read" or "trigger_wait" or "process_wait" or "process_stop")
             return "Allow";
 
         // Commands and scripts always run in the sandbox, which reaches the grants and the chat's

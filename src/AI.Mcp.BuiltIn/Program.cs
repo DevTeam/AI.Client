@@ -2,7 +2,7 @@ using AI.Mcp.BuiltIn;
 using AI.Mcp.BuiltIn.Scripts;
 using ModelContextProtocol.Server;
 
-var composition = new Composition();
+await using var composition = new Composition();
 if (args is [ScriptWorkers.WorkerArgument])
 {
     await ScriptWorker.RunAsync(composition.Worker);

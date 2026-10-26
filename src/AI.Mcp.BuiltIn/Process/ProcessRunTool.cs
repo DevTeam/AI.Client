@@ -13,8 +13,8 @@ namespace AI.Mcp.BuiltIn.Process;
 /// so it is allowed by default and works in subtasks, which cannot ask.
 /// </summary>
 [McpServerToolType]
-public sealed class ProcessRunTool(IProcessRunner processRunner, IBuiltInToolReply reply, IToolSandbox sandbox)
-    : ProcessRunToolBase(processRunner, reply)
+public sealed class ProcessRunTool(IProcessSessions processes, IBuiltInToolReply reply, IToolSandbox sandbox)
+    : ProcessRunToolBase(processes, reply)
 {
     public const string ToolName = "process_run";
 
@@ -30,8 +30,8 @@ public sealed class ProcessRunTool(IProcessRunner processRunner, IBuiltInToolRep
 /// cover. It reaches everything the user's account can, so every call is asked about by default.
 /// </summary>
 [McpServerToolType]
-public sealed class ProcessRunUnrestrictedTool(IProcessRunner processRunner, IBuiltInToolReply reply)
-    : ProcessRunToolBase(processRunner, reply)
+public sealed class ProcessRunUnrestrictedTool(IProcessSessions processes, IBuiltInToolReply reply)
+    : ProcessRunToolBase(processes, reply)
 {
     public const string ToolName = "process_run_unrestricted";
 
@@ -47,7 +47,7 @@ public sealed class ProcessRunUnrestrictedTool(IProcessRunner processRunner, IBu
 }
 
 /// <summary>The program-running tool both variants share; only the sandbox and the wording differ.</summary>
-public abstract class ProcessRunToolBase(IProcessRunner processRunner, IBuiltInToolReply reply) : IToolFactory
+public abstract class ProcessRunToolBase(IProcessSessions processes, IBuiltInToolReply reply) : IToolFactory
 {
     protected abstract string Name { get; }
 
@@ -61,12 +61,16 @@ public abstract class ProcessRunToolBase(IProcessRunner processRunner, IBuiltInT
         new McpServerToolCreateOptions
         {
             Name = Name,
-            Description = $"Run a program and wait for completion. No implicit shell or interactive input. " +
+            Description = $"Run a program once, returning completion or a running processId after waitTimeoutMs. No implicit shell or interactive input. " +
+                          "A running result is not an error: use process_wait with that ID and the returned stdoutOffset/stderrOffset; do not restart or split a running test suite. " +
+                          "Only a terminal result with exitCode establishes the outcome. process_stop stops this session's process tree. " +
+                          "Full stdout/stderr byte logs are saved at stdoutPath/stderrPath in their original encoding, normally in the chat's temporary directory. " +
+                          "Handles belong to this MCP session; closing it stops remaining processes. " +
                           $"Output is limited to {ProcessRunner.OutputLimit} characters per stream. " +
                           $"Host OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture}). " +
                           $"Arguments are passed as a JSON array of strings; each element becomes one argv entry, with no shell parsing, " +
                           $"glob expansion, or environment-variable substitution. The process's standard input is closed immediately after launch. " +
-                          $"On timeout, cancellation, or hard error the process tree is killed. " +
+                          $"timeoutMs is the hard process deadline, independent of waitTimeoutMs; reaching it kills the tree and returns timed_out. " +
                           Boundary +
                           ChildProcessLimits.Describe()
         });
@@ -80,22 +84,23 @@ public abstract class ProcessRunToolBase(IProcessRunner processRunner, IBuiltInT
         [Description("Timeout in milliseconds before the process tree is killed. Must be in [1, 86400000]; defaults to 600000. Omit it to use the configured tool timeout; set a smaller value only when the command needs a shorter deadline.")] [Range(1, ProcessRunner.MaxTimeoutMs)] int timeoutMs = ProcessRunner.DefaultTimeoutMs,
         [Description("Committed memory, in megabytes, the whole process tree may use (Windows only). Omit it for the machine's default, stated in the tool description; raise it only when a previous run reported `limitExceeded: \"memory\"` or the program is known to need more.")] [Range(ChildProcessLimits.MinimumMemoryMb, ChildProcessLimits.SchemaMaximumMemoryMb)] int? memoryLimitMb = null,
         [Description("Processes that may be alive at once in the tree, the program itself included (Windows only). Omit it for the default; raise it only when a previous run reported `limitExceeded: \"processes\"`.")] [Range(1, ChildProcessLimits.MaximumProcesses)] int? processLimit = null,
+        [Description("How long this call waits before returning status running and processId. The process continues under its original sandbox, limits and timeoutMs. 0 returns immediately; default 10000, maximum 60000.")] [Range(0, ProcessSessions.MaxWaitTimeoutMs)] int waitTimeoutMs = ProcessSessions.DefaultWaitTimeoutMs,
         CancellationToken cancellationToken = default)
     {
         ProcessResult result;
         try
         {
             var limits = ChildProcessLimits.Create(memoryLimitMb, processLimit);
-            result = await processRunner.RunAsync(
-                new ProcessRequest(executable, arguments ?? [], workingDirectory ?? "", timeoutMs, limits, Sandboxed), cancellationToken);
+            result = await processes.RunAsync(
+                new ProcessRequest(executable, arguments ?? [], workingDirectory ?? "", timeoutMs, limits, Sandboxed), waitTimeoutMs, cancellationToken);
         }
-        catch (ArgumentException error)
+        catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            result = new ProcessResult(null, "", "", 0, false, false, error.Message);
+            result = new ProcessResult(null, "", "", 0, false, false, error.Message, Status: "failed");
         }
 
         return reply.Reply(
             result,
-            isError: result.Error is not null || result.TimedOut || result.ExitCode != 0);
+            isError: result.Status != "running" && (result.Error is not null || result.TimedOut || result.ExitCode != 0));
     }
 }

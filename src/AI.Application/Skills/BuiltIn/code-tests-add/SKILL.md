@@ -5,7 +5,7 @@ icon: code-tests-add
 kind: playbook
 description: Add tests for selected behavior, uncovered edge cases or regressions using the project's existing test framework, then run them; never commits.
 parameters: {"type":"object","properties":{"behavior":{"type":"string","description":"The behavior or regression to cover"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
 ---
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
@@ -52,8 +52,7 @@ run database migrations, stage, commit, checkout, stash, reset or push as part o
 actual change: start with the new tests using a project/module/class/test filter, then run a wider
 or full suite as a final check when relevant and feasible. Use runner-supported quiet/minimal
 output or a concise reporter and short traceback options, retaining failure details and counts.
-Set an explicit finite timeout for each test run within the effective tool limit; split longer
-suites and report a timeout as incomplete. Read output and exit codes, and distinguish passed,
+Set an explicit finite timeout for each test run within the effective tool limit; continue a running process with `process_wait` and report a hard timeout as incomplete. Read output and exit codes, and distinguish passed,
 failed, skipped and zero tests.
 Do not disable hooks, weaken tests, suppress useful diagnostics or claim a check was run when it
 was not. Respect an explicit request not to add tests. Compare final status with the baseline;

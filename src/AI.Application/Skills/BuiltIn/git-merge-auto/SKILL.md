@@ -5,7 +5,7 @@ icon: git-merge-auto
 kind: playbook
 description: Merge a chosen branch into the current branch, creating a merge commit when needed, keeping a recovery ref and resolving compatible conflicts automatically; never pushes.
 parameters: {"type":"object","properties":{"branch":{"type":"string","description":"Source branch"}},"additionalProperties":false}
-tools: ["read_text_file","grep_files","process_run","ask_user","run_skill","read_multiple_files","edit_file","write_file"]
+tools: ["read_text_file","grep_files","process_run","process_wait","process_stop","ask_user","run_skill","read_multiple_files","edit_file","write_file"]
 ---
 
 Use `process_run` with git argument arrays in the repository root, never shell interpolation.
@@ -46,7 +46,7 @@ Follow project instructions. Never fetch or push unless the user separately requ
    before continuing, and again after completion. Filter tests to affected projects/modules first;
    reserve the full suite for a final relevant check. Use supported quiet/minimal runner output
    that retains failures and counts. Set an explicit finite test timeout within the tool limit;
-   split long suites and report timeouts as incomplete. Use a noninteractive Git editor only to accept
+   continue a running process with `process_wait` and report a hard timeout as incomplete. Use a noninteractive Git editor only to accept
    the existing message when continuing. Repeat for each conflicted commit. Never bypass hooks
    or report success after a failed command. Finish with the resulting branch and HEAD, checks,
    resolutions made and the recovery ref, or the precise paused state.

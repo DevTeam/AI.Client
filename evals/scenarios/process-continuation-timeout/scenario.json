@@ -1,0 +1,52 @@
+{
+  "id": "process-continuation-timeout",
+  "description": "Real-model owned process timeout with incomplete verification.",
+  "tags": [
+    "process-continuation",
+    "windows"
+  ],
+  "platform": "windows",
+  "git": false,
+  "timeoutSeconds": 300,
+  "turns": [
+    "Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run_unrestricted; I explicitly authorize this launch outside the sandbox. Use timeoutMs=1000 as an intentional hard process deadline and waitTimeoutMs=100. Wait for the terminal outcome. Report the timeout as incomplete verification, do not retry it or claim tests passed. Keep both fixture files unchanged."
+  ],
+  "checks": [
+    {
+      "type": "fileAbsent",
+      "path": "unexpected-success.txt"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "run.cmd"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "tests.ps1"
+    },
+    {
+      "type": "maxMatchingCalls",
+      "pattern": "^\\S*__process_run(?:_unrestricted)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
+      "value": 1,
+      "name": "no repeated original launch"
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__process_run_unrestricted\\s.*run\\.cmd"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "pattern": "\"status\"\\s*:\\s*\"timed_out\"",
+      "name": "observes terminal timeout"
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "timeout|timed out|\u0442\u0430\u0439\u043c|\u0432\u0440\u0435\u043c\u0435\u043d\u0438",
+      "name": "reports incomplete verification"
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 22
+    }
+  ]
+}

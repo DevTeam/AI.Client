@@ -5,7 +5,7 @@ icon: bug
 kind: playbook
 description: Find and fix the root cause of a bug, error or failing test: reproduce it, add a test that fails, fix, rerun the tests, remove leftovers and summarize; never commits.
 parameters: {"type":"object","properties":{"problem":{"type":"string","description":"The symptom, error text or failing test, in the user's words"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill"]
 ---
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
@@ -32,7 +32,7 @@ The project instructions and instruction files win over these steps where they d
    and a wider or full suite as a final check when relevant and feasible. Use the runner's
    supported quiet/minimal output or concise reporter and short traceback options while keeping
    failure details and counts available. Set an explicit finite timeout for each test run within
-   the effective tool limit; split longer suites and report a timeout as incomplete. Read the
+   the effective tool limit; continue a running process with `process_wait` and report a hard timeout as incomplete. Read the
    output and exit code; claim only what you ran. A failure caused by another process holding the
    binaries is an environment blocker, not a bug: report it and name the holder. Never stop, kill
    or restart a process this run did not start. For a process this run started, call `ask_user`

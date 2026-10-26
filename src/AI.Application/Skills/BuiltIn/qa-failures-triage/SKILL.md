@@ -5,7 +5,7 @@ icon: qa-failures-triage
 kind: playbook
 description: Investigate test failures and flakiness with bounded isolated reruns, distinguish product, test and environment causes and report evidence; never disables tests.
 parameters: {"type":"object","properties":{"failures":{"type":"string","description":"The failing tests, run identifiers or diagnostics"},"environment":{"type":"string","description":"The authorized test target"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","cs_run","ask_user","tool_search","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -70,7 +70,7 @@ not passed. Attach the expected/actual outcome and evidence to the actual revisi
 For automated reruns, filter to the failing test first; expand to the suite only when order or
 shared state is under investigation or for a final relevant check. Select runner-supported
 quiet/minimal output or a concise reporter that retains failures and counts. Set an explicit
-finite timeout within the tool limit; split long suites and mark timeouts incomplete. Read exit
+finite timeout within the tool limit; continue a running process with `process_wait` and report a hard timeout as incomplete. Read exit
 codes and test counts: a runner that found zero tests or could not start is not a pass.
 Do not suppress failures, disable tests, replace assertions with snapshots blindly or claim
 complete coverage from absence of findings. Compare final status with the baseline and remove

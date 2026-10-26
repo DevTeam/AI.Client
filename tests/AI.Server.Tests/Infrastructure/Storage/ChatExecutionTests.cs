@@ -604,16 +604,19 @@ public sealed partial class ChatExecutionTests
         fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
     }
 
-    [Fact]
-    public async Task APersonsMessageShouldEndATriggerWaitSoTheTurnReadsItNow()
+    [Theory]
+    [InlineData("trigger_wait")]
+    [InlineData("process_wait")]
+    public async Task APersonsMessageShouldEndAWaitSoTheTurnReadsItNow(string toolName)
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SetChatAutomationAsync(new ChatAutomationSettings(AutoTitle: false, SuggestReplies: false));
-        await fixture.SetPolicyAsync("Allow", timeoutSeconds: 600, toolName: "trigger_wait");
-        fixture.Tools.OfferTrigger = true;
+        await fixture.SetPolicyAsync("Allow", timeoutSeconds: 600, toolName: toolName);
+        fixture.Tools.OfferTrigger = toolName == "trigger_wait";
+        fixture.Tools.OfferProcessWait = toolName == "process_wait";
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Wait for the build"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__trigger_wait", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__" + toolName, "{}")];
         fixture.Tools.HangNextCall = true;
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.ActiveTools is { Count: > 0 });
@@ -1028,19 +1031,23 @@ public sealed partial class ChatExecutionTests
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
 
-    [Fact]
-    public async Task AChangingCallShouldBeABarrierBetweenReadOnlyGroups()
+    [Theory]
+    [InlineData("process_run")]
+    [InlineData("process_wait")]
+    public async Task AChangingOrWaitingCallShouldBeABarrierBetweenReadOnlyGroups(string toolName)
     {
         await using var fixture = await Fixture.CreateAsync();
         fixture.Tools.OfferReads = true;
+        fixture.Tools.OfferProcessWait = toolName == "process_wait";
         await fixture.SetPolicyAsync("Allow");
+        if (toolName == "process_wait") await fixture.SetPolicyAsync("Allow", toolName: toolName);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Read, change, then read"));
 
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
             new ChatToolCall("before", "mcp_built_in__read_text_file", "{\"delayMs\":20}"),
-            new ChatToolCall("change", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("change", "mcp_built_in__" + toolName, "{}"),
             new ChatToolCall("after", "mcp_built_in__read_text_file", "{\"delayMs\":1000}")
         ];
         first.Answer.SetResult("");
@@ -1733,10 +1740,13 @@ public sealed partial class ChatExecutionTests
     [InlineData("process_run", null, null, 600000)]
     [InlineData("process_run", 600, null, 600000)]
     [InlineData("process_run", 90, null, 90000)]
+    [InlineData("process_run", 1, null, 1000)]
     [InlineData("process_run", 90, 600000, 90000)]
     [InlineData("process_run", 600, 120000, 120000)]
     [InlineData("process_run", 3600, null, 3600000)]
     [InlineData("process_run", 86400, null, 86400000)]
+    [InlineData("process_run_unrestricted", 90, 600000, 90000)]
+    [InlineData("process_run_unrestricted", 3600, null, 3600000)]
     [InlineData("cs_run", null, null, 600000)]
     [InlineData("cs_run", 600, null, 600000)]
     [InlineData("cs_run", 90, null, 90000)]
@@ -1755,6 +1765,7 @@ public sealed partial class ChatExecutionTests
         await using var fixture = await Fixture.CreateAsync();
         fixture.Tools.OfferCSharp = toolName == "cs_run";
         fixture.Tools.OfferTrigger = toolName == "trigger_wait";
+        fixture.Tools.OfferUnrestricted = toolName == "process_run_unrestricted";
         await fixture.SetPolicyAsync("Allow", timeoutSeconds: policySeconds, toolName: toolName);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
@@ -1762,6 +1773,7 @@ public sealed partial class ChatExecutionTests
         {
             "cs_run" => "mcp_built_in__cs_run",
             "trigger_wait" => "mcp_built_in__trigger_wait",
+            "process_run_unrestricted" => "mcp_built_in__process_run_unrestricted",
             _ => "mcp_built_in__process_run"
         };
         var arguments = requestedMs is { } ms ? JsonSerializer.Serialize(new { timeoutMs = ms }) : "{}";
@@ -1771,6 +1783,8 @@ public sealed partial class ChatExecutionTests
         var second = await fixture.NextCallAsync();
         using var executed = JsonDocument.Parse(fixture.Tools.LastExecutionArguments!);
         executed.RootElement.GetProperty("timeoutMs").GetInt32().ShouldBe(expectedMs);
+        if (toolName is "process_run" or "process_run_unrestricted")
+            executed.RootElement.GetProperty("waitTimeoutMs").GetInt32().ShouldBe(Math.Min(10000, expectedMs));
         second.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
@@ -3202,6 +3216,12 @@ public sealed partial class ChatExecutionTests
         public bool OfferCSharp { get; set; }
         public bool OfferExternalReads { get; set; }
         public bool OfferTrigger { get; set; }
+        public bool OfferProcessWait { get; set; }
+        private static readonly AgentTool ProcessWait = new(
+            new ChatToolDefinition("mcp_built_in__process_wait", "Wait for command", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__process_wait", "process_wait", "Wait", JsonSerializer.Deserialize<JsonElement>("{}"))
+                with { Annotations = new ToolAnnotations(null, true, false, true, false) },
+            DefaultMcpServer.Id, "process_wait", "schema");
         public string? LastExecutionArguments { get; private set; }
 
         /// <summary>
@@ -3245,6 +3265,7 @@ public sealed partial class ChatExecutionTests
         public IReadOnlyList<AgentTool> Tools =>
             [ProcessRun, .. OfferUnrestricted ? [ProcessRunUnrestricted] : Array.Empty<AgentTool>(), .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
                 .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
+                .. OfferProcessWait ? [ProcessWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
                 .. OfferReads ? [ReadTextFile] : Array.Empty<AgentTool>()];
@@ -3276,7 +3297,7 @@ public sealed partial class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _callCount);
-            if (tool.Descriptor.Annotations?.ReadOnlyHint == true)
+            if (tool.Descriptor.Annotations?.ReadOnlyHint == true && tool.OriginalName != "process_wait")
             {
                 var active = Interlocked.Increment(ref _activeReads);
                 for (var most = _mostReadsAtOnce; active > most; most = _mostReadsAtOnce)
@@ -3294,9 +3315,9 @@ public sealed partial class ChatExecutionTests
                 }
                 return _codec.Read("{\"structuredContent\":{\"content\":\"text\"}}");
             }
-            if (tool.OriginalName == "process_run" && Volatile.Read(ref _activeReads) > 0)
+            if (tool.OriginalName is "process_run" or "process_wait" && Volatile.Read(ref _activeReads) > 0)
                 Interlocked.Exchange(ref _changingCallOverlappedRead, 1);
-            if (tool.OriginalName is "process_run" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
+            if (tool.OriginalName is "process_run" or "process_run_unrestricted" or "process_wait" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
                 return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");

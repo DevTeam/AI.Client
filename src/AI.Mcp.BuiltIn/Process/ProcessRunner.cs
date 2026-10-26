@@ -54,7 +54,7 @@ public sealed partial class ProcessRunner : IProcessRunner
     public const int DefaultTimeoutMs = 600000;
     public const int MaxTimeoutMs = 86400000;
 
-    public async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken)
+    public async Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken, ProcessOutput? output = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Executable);
@@ -143,10 +143,10 @@ public sealed partial class ProcessRunner : IProcessRunner
         {
             var process = launched;
             process.StandardInput.Close();
-            var stdout = new MemoryStream();
-            var stderr = new MemoryStream();
-            var output = DrainAsync(process.StandardOutput.BaseStream, stdout, launched.Deadline);
-            var errors = DrainAsync(process.StandardError.BaseStream, stderr, launched.Deadline);
+            using var stdout = new MemoryStream();
+            using var stderr = new MemoryStream();
+            var outputTask = DrainAsync(process.StandardOutput.BaseStream, stdout, output?.StandardOutput, launched.Kill, launched.Deadline);
+            var errors = DrainAsync(process.StandardError.BaseStream, stderr, output?.StandardError, launched.Kill, launched.Deadline);
             try
             {
                 await launched.WaitForExitAsync(cancellationToken);
@@ -154,10 +154,10 @@ public sealed partial class ProcessRunner : IProcessRunner
             finally
             {
                 // The streams close with the tree; a descendant that kept them open is gone with it.
-                await Task.WhenAll(output, errors);
+                await Task.WhenAll(outputTask, errors);
             }
 
-            var (outText, outCut) = Decode(stdout, output.Result);
+            var (outText, outCut) = Decode(stdout, outputTask.Result);
             var (errorText, errorCut) = Decode(stderr, errors.Result);
             // The failure reads like a missing grant, and asking for one would not help.
             var nullDevice = policy is not null && !_launcher.Support.OpensNullDevice && process.ExitCode != 0
@@ -200,7 +200,7 @@ public sealed partial class ProcessRunner : IProcessRunner
         }
     });
 
-    private static async Task<bool> DrainAsync(Stream source, MemoryStream target, CancellationToken token)
+    private static async Task<bool> DrainAsync(Stream source, MemoryStream target, Stream? log, Action stop, CancellationToken token)
     {
         var buffer = new byte[4096];
         var truncated = false;
@@ -211,11 +211,22 @@ public sealed partial class ProcessRunner : IProcessRunner
                 var keep = (int)Math.Min(count, OutputBytes - target.Length);
                 target.Write(buffer, 0, keep);
                 truncated |= keep != count;
+                if (log is not null)
+                {
+                    await log.WriteAsync(buffer.AsMemory(0, count), token);
+                    await log.FlushAsync(token);
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // Ignored
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // A failed log sink must not leave a producer blocked on a pipe nobody drains.
+            stop();
+            throw;
         }
 
         return truncated;
@@ -226,7 +237,7 @@ public sealed partial class ProcessRunner : IProcessRunner
     /// produces by accident, and in the locale's OEM code page otherwise. Decoding everything in
     /// one fixed code page garbled whichever of the two the program did not use.
     /// </summary>
-    private static (string Text, bool Truncated) Decode(MemoryStream bytes, bool cut)
+    internal static (string Text, bool Truncated) Decode(MemoryStream bytes, bool cut)
     {
         var data = bytes.GetBuffer().AsSpan(0, (int)bytes.Length);
         if (data.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])) data = data[3..];

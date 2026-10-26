@@ -170,7 +170,32 @@ public class BuiltInToolPresentationTests
     {
         Result("process_run", "{}",
                 """{"exitCode":null,"stdout":"","stderr":"","durationMs":600,"timedOut":true,"truncated":false}""")
-            .Summary.ShouldBe("Timed out");
+            .Summary.ShouldBe("Timed out · verification incomplete");
+    }
+
+    [Theory]
+    [InlineData("process_run")]
+    [InlineData("process_run_unrestricted")]
+    [InlineData("process_wait")]
+    public void ShouldShowRunningWithoutClaimingCompletionOrFailure(string tool)
+    {
+        var described = Result(tool, "{}",
+            """{"status":"running","processId":"session-handle","exitCode":null,"stdout":"working","stderr":"","durationMs":10,"timedOut":false,"truncated":false,"stdoutPath":"/tmp/stdout.log"}""");
+        described.Summary.ShouldBe("Running");
+        described.Severity.ShouldBe(ToolResultSeverity.Ok);
+        described.Facts.ShouldContain(fact => fact.Label == "Process" && fact.Value == "session-handle");
+        described.Facts.ShouldContain(fact => fact.Label == "Stdout log" && fact.Value == "/tmp/stdout.log");
+    }
+
+    [Fact]
+    public void ShouldShowAStoppedProcessAsIncompleteVerification()
+    {
+        var described = Result("process_stop", "{}",
+            """{"status":"stopped","exitCode":null,"stdout":"partial","stderr":"","durationMs":10,"timedOut":false,"truncated":false,"error":"Process stopped before completion; partial effects may have occurred."}""");
+        described.Summary.ShouldBe("Stopped · verification incomplete");
+        described.Severity.ShouldBe(ToolResultSeverity.Warning);
+        Call("process_wait", """{"processId":"owned"}""").Title.ShouldBe("Wait for command");
+        Call("process_stop", """{"processId":"owned"}""").Detail.ShouldBe("owned");
     }
 
     [Fact]

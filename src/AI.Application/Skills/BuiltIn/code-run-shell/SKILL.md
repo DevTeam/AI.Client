@@ -6,7 +6,7 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","run_skill","list_allowed_directories","process_run","process_run_unrestricted","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","run_skill","list_allowed_directories","process_run","process_run_unrestricted","process_wait","process_stop","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
 
 For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
@@ -28,14 +28,13 @@ When CLI installation, configuration or cache access is denied, load `code-cli-c
    tools automatically. Identify the server OS, not the client's OS, and verify executable paths,
    shell availability/version and working directory with permitted read-only checks.
 2. Use `executable`, string-array `arguments`, verified `workingDirectory` and supported
-   `timeoutMs`. In the known contract, a bare executable name is resolved through PATH even with
+   `timeoutMs` and `waitTimeoutMs`. In the known contract, a bare executable name is resolved through PATH even with
    a working directory; use an absolute path or `./name` for a file in that directory. Each array
    element is one argv entry: do not wrap a path in extra quotes just because it contains spaces.
    There is no implicit shell, glob or variable expansion; `*`, `~`, `$VAR`, `%VAR%`, pipes and
    redirects are literal arguments unless a shell explicitly parses them. Stdin is closed at
-   launch: use noninteractive modes and supported input files, not interactive prompts. Known
-   parameters do not include stdin, environment, encoding, background mode or session polling;
-   do not invent them. The actual schema wins.
+   launch: use noninteractive modes and supported input files, not interactive prompts. Use `process_wait` and `process_stop` for managed continuation of either launch variant.
+   Do not invent stdin, environment, encoding or detached execution parameters; the actual schema wins.
 3. Choose the shell explicitly when required:
    - Windows PowerShell 7: `pwsh` with `-NoLogo`, `-NoProfile`, `-NonInteractive`, `-Command`,
      then one string of PowerShell code; or use `-File` for a verified .ps1 file.
@@ -82,28 +81,24 @@ When CLI installation, configuration or cache access is denied, load `code-cli-c
    Never stop, kill or restart a process this run did not start — another chat's tests or build,
    an IDE, a server. A timeout, a hang, a locked output file and an earlier approval for other
    work are not permission: report the process holding it, because freeing it is the user's
-   decision. For a process this run started, call `ask_user` (answerStyle='buttons') naming that exact process or PID and
-   act only on an explicit affirmative answer; a declined, dismissed, expired or interrupted
-   answer leaves it running.
-6. Estimate duration: builds, data processing and automation may take hours. Check tool/client
-   limits and whether a genuine managed long-running execution mechanism exists. The known
-   `timeoutMs` range is 1–86400000, default 600000. Omit it to use the effective tool policy;
-   set a smaller value only for an intentionally shorter deadline. Timeout/cancellation terminates the process tree of this call's own child only; a process the run did not start is never terminated.
-   Do not exceed the schema. If insufficient, use safely separable batches/stages with checkpoints,
-   or an available managed job/session/queue with identifier, status, logs, cancellation and final
-   result. Do not split atomic operations in ways that damage integrity. Change a timeout setting
-   only when actually supported and authorized. If no suitable mechanism exists, explain the
-   limit and prepare a reproducible script without claiming completion. Do not bypass limits with
-   nohup, &, detached processes or Start-Process: children may be terminated and launch does not
-   prove completion. When a supported workflow needs Start-Process on Windows, use -WindowStyle
-   Hidden unless a visible interactive window is explicitly needed. After timeout inspect actual
-   status, partial artifacts and logs before retrying safely resumable work.
-   When an independently managed job already has a known PID or a read-granted output file,
-   use one bounded `trigger_wait` call when offered to wait for exit or change instead of
-   repeatedly polling with `process_run`. A delay condition can replace repeated clock checks. The trigger is
-   cancelled when the chat stops and cannot resume a job; verify the managed job's own status and
-   output afterwards. A PID exit alone does not provide an exit code. A direct `process_run` call
-   already waits for its child and needs no trigger.
+   decision. Use `process_stop` only for a handle this MCP session started and when stopping
+   that work is within the user's authorized task. Stopping does not undo partial effects.
+6. Separate the response wait from the process deadline. `waitTimeoutMs` defaults to 10000 on
+   both launch tools (0..60000). It returns `status: running` and `processId` without stopping
+   the command. `timeoutMs` remains the hard tree deadline (1..86400000, default 600000), bounded
+   by the effective tool policy. Omit it unless an intentionally shorter deadline is needed.
+   For `running`, use `process_wait` on the same ID, passing the returned `stdoutOffset` and
+   `stderrOffset`. Discover that tool if it is not offered. Waits may expire repeatedly; this is
+   not a test failure. Never restart or split a test suite merely because a wait expired, and do
+   not infer a hang solely from silence. Continue until a terminal result establishes the outcome.
+   `process_wait` defaults to a 60000 ms wait; cancellation ends the wait, not the process. A new
+   user message may end the wait early: read it before deciding whether to wait again.
+   `process_stop` explicitly stops the owned tree. Session shutdown also stops remaining work,
+   so finish verification before the final answer. Handles do not survive a new MCP session.
+   The states `stopped`, `timed_out` and `failed` do not establish successful verification.
+   Only after a diagnosed failure, resource limit or actual hard deadline should you consider
+   targeted reruns or safely separable batches. Respect the current deadline policy rather than
+   bypassing it with nohup, &, detached processes or Start-Process.
 7. Agree encodings for input files, stdout/stderr and artifacts. JSON argv is Unicode, but child
    byte streams and files may use UTF-8, OEM/ANSI or UTF-16. Prefer explicit UTF-8 modes when the
    program supports them; agree with the tool's decoder rather than assuming UTF-8. If the decoder
@@ -127,8 +122,11 @@ When CLI installation, configuration or cache access is denied, load `code-cli-c
      machine formats when needed.
 8. Inspect `exitCode`, `error`, `timedOut`, `truncated`, stdout and stderr. A nonzero code depends on
    the program's contract (for example a search with no matches); absence of stderr is not proof of
-   success. Known capture is limited to 32768 characters per stream; save complete authorized logs
-   through program options or an explicit shell redirect with a correct encoding. Verify the final
+   success. Each response contains at most 32768 original bytes per stream. `stdoutPath` and `stderrPath`
+   retain the full original byte logs in the chat temporary directory, in the program's encoding.
+   `stdoutOffset` and `stderrOffset` are byte cursors; pass them to the next wait. If
+   `hasMoreOutput` is true after completion, use `process_wait` with `waitTimeoutMs: 0` to page
+   the remaining output or inspect the saved logs. A truncated page is not a lost full log. Verify the final
    artifacts and intended postconditions. Before retrying failures inspect partial side effects.
    The final answer contains the requested command result or accessible artifacts, actual checks
    and any unresolved duration, encoding or completeness limits. A running job is not a passed run.

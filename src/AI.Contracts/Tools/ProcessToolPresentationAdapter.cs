@@ -6,10 +6,24 @@ namespace AI.Contracts.Tools;
 /// <summary>The built-in process runner.</summary>
 public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdapter
 {
-    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run", "process_run_unrestricted" };
+    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run", "process_run_unrestricted", "process_wait", "process_stop" };
+
+    public override ToolResultPresentation DescribeResult(ToolRef tool, JsonElement? arguments, ToolCallResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var structured = result.StructuredContent is { ValueKind: JsonValueKind.Object } value ? value : (JsonElement?)null;
+        // These are process outcomes, including partial logs, rather than broken invocations.
+        return Text(structured, "status") is "running" or "stopped" or "timed_out"
+               || (Number(structured, "exitCode") is not null && Text(structured, "error") is null)
+            ? Describe(tool, arguments, structured, result)
+            : base.DescribeResult(tool, arguments, result);
+    }
 
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
     {
+        if (tool.Name is "process_wait" or "process_stop")
+            return new ToolCallPresentation(tool.Name == "process_wait" ? "Wait for command" : "Stop command",
+                Argument(arguments, "processId"), tool.Name == "process_wait" ? ToolSafety.ReadOnly : ToolSafety.Destructive);
         var executable = Argument(arguments, "executable");
         var parts = ArgumentArray(arguments, "arguments");
         var detail = executable is null
@@ -29,7 +43,11 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
         var timedOut = Flag(structured, "timedOut");
         var truncated = Flag(structured, "truncated");
         var limit = Text(structured, "limitExceeded");
-        var summary = timedOut ? "Timed out"
+        var status = Text(structured, "status");
+        var running = status == "running";
+        var summary = running ? "Running"
+            : status == "stopped" ? "Stopped · verification incomplete"
+            : timedOut ? "Timed out · verification incomplete"
             : exitCode is { } code ? (code == 0 ? "Exit 0" : $"Exit {code}")
             : "Finished";
         var stdout = Text(structured, "stdout");
@@ -44,8 +62,11 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
             summary + (limit is null ? "" : $" · {limit} limit exceeded") + (truncated ? " · output truncated" : ""),
             // A non-zero exit is a real outcome the model will act on, not a host failure, so it
             // stays a warning: the row draws the eye without claiming the call broke.
-            SeverityFor(timedOut || truncated || limit is not null || exitCode is not 0),
+            SeverityFor(timedOut || status == "stopped" || truncated || limit is not null || (!running && exitCode is not 0)),
             Facts(("Exit code", exitCode?.ToString(CultureInfo.InvariantCulture)),
+                ("Process", Text(structured, "processId")),
+                ("Stdout log", Text(structured, "stdoutPath")),
+                ("Stderr log", Text(structured, "stderrPath")),
                 ("Duration", Size(structured, "durationMs") is { } ms ? $"{ms} ms" : null),
                 ("Timed out", timedOut ? "yes" : null),
                 ("Limit exceeded", limit),

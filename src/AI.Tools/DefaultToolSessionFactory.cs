@@ -29,7 +29,8 @@ public sealed class DefaultToolSessionFactory(
         // Closing the session waits ShutdownTimeout for the process to exit, and the run's answer is
         // not saved until it is closed. At the SDK's 5 s default every turn that used a tool sat
         // finished but unsaved for five seconds, its answer shown as a live copy that was then
-        // replaced. Every call has returned by then, so there is nothing left to wait for.
+        // replaced. Closing the server also stops managed command trees; callers must finish
+        // waiting on their handles before reporting verification.
         var transport = toolEnvironment.Launch(new ToolProcessLaunch("Default tools", executable, [], null, environment,
             InheritEnvironment: false, ShutdownTimeout: TimeSpan.FromMilliseconds(500)));
         // This is our own current server, so do not let a slow discovery response make the SDK

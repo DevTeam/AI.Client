@@ -5,7 +5,7 @@ icon: flask
 kind: playbook
 description: Run focused and final test suites with concise output and bounded timeouts, then report verified totals and failure causes; changes nothing unless the user asks for a fix.
 parameters: {"type":"object","properties":{"filter":{"type":"string","description":"Test project, file, class or name pattern, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","trigger_wait","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_run_unrestricted","process_wait","process_stop","trigger_wait","ask_user","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -35,8 +35,12 @@ Remove task-created scratch files when finished.
    timeout where supported and appropriate. Prefer a native report file in the chat temporary
    directory when console output would be large; read its summary and only the relevant failing
    cases. Do not read the entire log into context. A broad suite that fits the deadline can run
-   directly with concise output. Split longer suites by project or module; use an existing
-   managed job only when it exposes status, cancellation and a final report.
+   directly with concise output. Both launch variants may return `status: running` and `processId`.
+   Continue that same run with `process_wait`, carrying its `stdoutOffset` and `stderrOffset`.
+   A wait expiring is not a test failure; never relaunch or split the suite just because it is
+   still running or quiet. Only split a suite when its known duration exceeds the hard policy
+   deadline or a diagnosed failure requires isolation. Full original byte logs are saved at
+   `stdoutPath` and `stderrPath`; inspect relevant excerpts rather than loading them in full.
 
    A test host that cannot start or build because another process holds the test binaries —
    another chat's run, a build, an IDE — is a blocked check: report the holding process and name
@@ -49,7 +53,7 @@ Remove task-created scratch files when finished.
    instead of repeated status queries. Use `stableForMs` if the report is written incrementally.
    The trigger does not start a job or survive chat cancellation. After it fires, check the
    managed job's exit status and complete report; if neither is available, completion is unverified.
-   For a direct `process_run` call, use its result without an extra trigger.
+   For a managed `process_run` or `process_run_unrestricted` handle, use `process_wait` instead of a trigger.
 4. Read the concise output, exit code and any failure report. A command that found no tests,
    failed to build, timed out, or returned truncated output without recoverable failure details
    is not a pass: report it as such.

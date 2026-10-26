@@ -334,7 +334,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     executionCapabilities = capabilityText;
                     if (capabilityText is null) instructions.Remove(run, "run.execution-capabilities");
                     else instructions.Upsert(run, new ModelInstruction("run.execution-capabilities", capabilityText,
-                        985, ModelInstructionLifetime.Run, Required: true));
+                        985, ModelInstructionLifetime.Run, Required: true,
+                        CompactContent: ExecutionCapabilities(candidates, resolved, approvalMode, installedPrograms, compact: true)));
                 }
             }
             if (maxModelSteps is { } warningLimit && modelSteps == Math.Max(1, warningLimit - 5))
@@ -641,6 +642,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                 input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
                                 arguments = input.ToJsonString();
                             }
+                            if (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName is "process_run" or "process_run_unrestricted" or "process_wait")
+                            {
+                                var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
+                                // Foreground patience bounds this call, not the lifetime of the managed process.
+                                var wait = tool.OriginalName == "process_wait" ? 60000 : 10000;
+                                input["waitTimeoutMs"] = Math.Min(input["waitTimeoutMs"]?.GetValue<int>() ?? wait, (int)policy.TimeoutSeconds * 1000);
+                                arguments = input.ToJsonString();
+                            }
                             var count = counts.GetValueOrDefault(call.Name) + 1;
                             counts[call.Name] = count;
                             if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
@@ -666,7 +675,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                                     // A wait gives way to a message joining the turn: the model waits for
                                     // something to happen, and the person writing to it is that something.
-                                    var joined = tool.OriginalName == "trigger_wait"
+                                    var joined = tool.OriginalName is "trigger_wait" or "process_wait"
                                         ? joinSignal?.Invoke() ?? CancellationToken.None
                                         : CancellationToken.None;
                                     using var wake = joined.Register(timeout.Cancel);
@@ -790,7 +799,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         IReadOnlyList<AgentTool> tools,
         IReadOnlyList<EffectiveToolPolicy> policies,
         ToolApprovalMode approvalMode,
-        string[] installedPrograms)
+        string[] installedPrograms,
+        bool compact = false)
     {
         var offered = tools.Select((tool, index) => (Tool: tool, Policy: policies[index]))
             .Where(item => IsExecutionTool(item.Tool)).ToArray();
@@ -808,6 +818,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             };
             text.Append("\n- ").Append(item.Tool.OriginalName).Append(": ").Append(state).Append('.');
         }
+        if (compact)
+            return text.Append("\nPrograms currently found on PATH: ")
+                .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
+                .Append(". Commands and scripts are sandboxed; request missing grants before unrestricted execution. ")
+                .Append("For status running, use process_wait on the same processId and output offsets; do not restart or split tests. ")
+                .Append("Only terminal status and exitCode establish completion. Session shutdown stops owned processes. ")
+                .Append("Use process_stop only within the authorized task. Prefer cs_run for computation and bulk data processing.").ToString();
         if (offered.Any(item => item.Tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted))
         {
             // The sandbox is what makes process_run safe to run unasked, and it is also why a run can
@@ -819,6 +836,12 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 .Append("the project (read-only unless it must be written) and retry after the grant. Only when the user declines ")
                 .Append("or no grant can cover it, use process_run_unrestricted, which runs without the sandbox after the user ")
                 .Append("approves the call. Never work around the sandbox.");
+            text.Append("\n- Both process_run variants may return status running and processId. This means the command is still running, not failed. ")
+                .Append("Discover process_wait if needed, then wait on the same ID with the returned stdoutOffset/stderrOffset. ")
+                .Append("Do not rerun or split a test suite because an individual wait expired. Quiet output alone does not prove a hang. ")
+                .Append("Only a terminal result and exitCode establish completion; stopped and timed_out mean the check is incomplete. ")
+                .Append("Full output is saved at stdoutPath/stderrPath. Use process_stop only for this session's authorized work. ")
+                .Append("Session shutdown stops remaining processes, so finish waiting before reporting the verification result.");
             text.Append("\n- Programs currently found on PATH for process_run: ")
                 .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
                 .Append(". Other programs may exist; do not assume one without checking.")
@@ -1302,7 +1325,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private static bool RunsAlongside(AgentTool tool) =>
         tool.Descriptor.Annotations?.ReadOnlyHint == true
-        && tool.OriginalName != "trigger_wait"
+        && tool.OriginalName is not ("trigger_wait" or "process_wait")
         && !AsksTheUser(tool);
 
     /// <summary>

@@ -5,7 +5,7 @@ icon: qa-accessibility-review
 kind: playbook
 description: Review selected UI accessibility using available semantic, keyboard, focus and contrast checks, reporting supported findings and unverified areas; does not edit code.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The UI target/build to inspect"},"scenarios":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The workflows or UI states to review"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","tool_search","run_skill"]
 ---
 
 The user's instructions take precedence. Follow project instructions, test conventions and
@@ -61,7 +61,7 @@ not passed. Attach the expected/actual outcome and evidence to the actual revisi
 For automated runs, filter to the relevant page/module/tests first; use the wider or full suite
 only for final coverage when relevant. Select runner-supported quiet/minimal output or a concise
 reporter that retains failures and counts. Set an explicit finite timeout within the tool limit;
-split long suites and mark timeouts incomplete. Read exit codes and test counts: a runner that
+continue a running process with `process_wait` and report a hard timeout as incomplete. Read exit codes and test counts: a runner that
 found zero tests or could not start is not a pass.
 Do not suppress failures, disable tests, replace assertions with snapshots blindly or claim
 complete coverage from absence of findings. Compare final status with the baseline and remove

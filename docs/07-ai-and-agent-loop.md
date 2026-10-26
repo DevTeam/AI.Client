@@ -96,7 +96,7 @@ flowchart TD
 - Max iterations, max calls, deadline, and cancellation.
 - Independent read-only calls may run in parallel only after policy evaluation. Implemented for
   the Host's own reads: when a model response holds two or more calls of the built-in server's
-  read-only tools (except `trigger_wait`) or of `app_read`, each allowed by its policy without a
+  read-only tools (except `trigger_wait` and `process_wait`) or of `app_read`, each allowed by its policy without a
   confirmation and within its call limit, `ChatAgent` starts them together. Their results are still
   taken, recorded, shown and sent in the batch's order, and a batch left early cancels the reads it
   started. A third-party server's `readOnlyHint` is its own claim, so its calls keep running in turn.

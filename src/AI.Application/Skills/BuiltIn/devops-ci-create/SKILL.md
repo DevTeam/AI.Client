@@ -5,7 +5,7 @@ icon: devops-ci-create
 kind: playbook
 description: Create a CI pipeline using the project's existing platform, build and test commands, caches and artifacts, then validate its configuration; does not trigger remote jobs.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The pipeline requirements"},"platform":{"type":"string","description":"The existing CI platform, when specified"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
 ---
 
 The user's instructions take precedence. Follow repository instructions, deployment runbooks
@@ -58,8 +58,7 @@ Never stage, commit, tag, push, deploy or run database migrations under this pre
 7. Use the existing documented validators, build/test commands, dry runs and safe checks relevant
 to the task. For test commands, filter to the affected project/module/tests first and use a full
 suite only as a final relevant check. Select supported quiet/minimal runner output that preserves
-failure details and counts. Set an explicit finite test timeout within the tool limit; split long
-suites and report timeouts as incomplete. Read results and exit codes; distinguish success, failure and unavailable
+failure details and counts. Set an explicit finite test timeout within the tool limit; continue a running process with `process_wait` and report a hard timeout as incomplete. Read results and exit codes; distinguish success, failure and unavailable
 checks. Never disable security checks, weaken tests or claim a validation that did not run.
 Compare final repository status with the baseline and remove only scratch artifacts created by
 this task. Never discard unrelated local or remote work.

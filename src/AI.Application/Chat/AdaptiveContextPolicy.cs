@@ -325,7 +325,8 @@ public sealed partial class AdaptiveContextPolicy(
                 or "skill_search" or "run_skill";
         return name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal)
             && tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
-                or "search_files" or "directory_tree" or ToolPolicyResolver.ProcessRun or CommandRule.ProcessRunUnrestricted or "cs_run";
+                or "search_files" or "directory_tree" or ToolPolicyResolver.ProcessRun or CommandRule.ProcessRunUnrestricted
+                or "process_wait" or "process_stop" or "cs_run";
     }
     private static ModelInstructionPlacement Position(ModelInstruction item) => item.Placement == ModelInstructionPlacement.Standing
         ? ModelInstructionPlacement.Standing : item.Lifetime != ModelInstructionLifetime.Run ? ModelInstructionPlacement.Trailing : item.Placement;

@@ -29,4 +29,11 @@ public sealed record ProcessResult(
     bool Truncated,
     string? Error,
     string? LimitExceeded = null,
-    string? Sandbox = null);
+    string? Sandbox = null,
+    string Status = "completed",
+    string? ProcessId = null,
+    string? StdoutPath = null,
+    string? StderrPath = null,
+    long StdoutOffset = 0,
+    long StderrOffset = 0,
+    bool HasMoreOutput = false);

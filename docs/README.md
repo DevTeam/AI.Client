@@ -76,4 +76,4 @@ All UI text, source-code comments, identifiers, technical messages, and project 
 Current decisions: [ADR-006](decisions/ADR-006-architecture-simplification.md).
 
 - [Default MCP tools](16-default-mcp-tools.md) — process execution, permissions, and CLI.
-- [Process sandbox](38-process-sandbox.md) — confining `process_run` and `cs_run` to the directory grants.
+- [Process sandbox](38-process-sandbox.md) — confining `process_run_sandboxed` and `cs_run` to the directory grants.

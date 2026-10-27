@@ -9,7 +9,7 @@
   "git": false,
   "timeoutSeconds": 300,
   "turns": [
-    "Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run_unrestricted; I explicitly authorize this launch outside the sandbox. Use waitTimeoutMs=1000 for the launch and any waits. Once TESTS_STARTED appears, stop this owned process using process_stop and report that the check was stopped before completion. Do not kill unrelated processes. Keep both fixture files unchanged."
+    "Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run; I explicitly authorize this launch outside the sandbox. Use waitTimeoutMs=1000 for the launch and any waits. Once TESTS_STARTED appears, stop this owned process using process_stop and report that the check was stopped before completion. Do not kill unrelated processes. Keep both fixture files unchanged."
   ],
   "checks": [
     {
@@ -26,13 +26,13 @@
     },
     {
       "type": "maxMatchingCalls",
-      "pattern": "^\\S*__process_run(?:_unrestricted)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
+      "pattern": "^\\S*__process_run(?:_sandboxed)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
       "value": 1,
       "name": "no repeated original launch"
     },
     {
       "type": "callsMatch",
-      "pattern": "^\\S*__process_run_unrestricted\\s.*run\\.cmd"
+      "pattern": "^\\S*__process_run\\s.*run\\.cmd"
     },
     {
       "type": "toolTranscriptMatches",

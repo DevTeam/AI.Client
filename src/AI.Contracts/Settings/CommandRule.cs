@@ -30,13 +30,12 @@ public sealed record CommandRule(
     public const string ProcessRun = "process_run";
 
     /// <summary>
-    /// <see cref="ProcessRun"/> without the sandbox. It has no rules of its own: a rule saved for a
-    /// command decides calls of both, as it did when process_run itself ran unsandboxed.
+    /// <see cref="ProcessRun"/> confined to the session's grants. Command rules decide both variants.
     /// </summary>
-    public const string ProcessRunUnrestricted = "process_run_unrestricted";
+    public const string ProcessRunSandboxed = "process_run_sandboxed";
 
     /// <summary>The tool whose rules decide calls of <paramref name="tool"/>.</summary>
-    public static string RulesOf(string tool) => tool == ProcessRunUnrestricted ? ProcessRun : tool;
+    public static string RulesOf(string tool) => tool == ProcessRunSandboxed ? ProcessRun : tool;
 
     /// <summary>
     /// The built-in tools whose calls command rules can decide: process_run by the command it runs,

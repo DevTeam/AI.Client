@@ -140,12 +140,14 @@ public class BuiltInToolPresentationTests
         described.Summary.ShouldBe("No directory grant covers this path.");
     }
 
-    [Fact]
-    public void ShouldShowTheCommandForAProcessRun()
+    [Theory]
+    [InlineData("process_run", "Run process")]
+    [InlineData("process_run_sandboxed", "Run process in sandbox")]
+    public void ShouldShowTheCommandForAProcessRun(string tool, string title)
     {
-        var call = Call("process_run", """{"executable":"dotnet","arguments":["build","--no-restore"]}""");
+        var call = Call(tool, """{"executable":"dotnet","arguments":["build","--no-restore"]}""");
 
-        call.Title.ShouldBe("Run command");
+        call.Title.ShouldBe(title);
         call.Detail.ShouldBe("dotnet build --no-restore");
         call.Safety.ShouldBe(ToolSafety.Destructive);
     }
@@ -175,7 +177,7 @@ public class BuiltInToolPresentationTests
 
     [Theory]
     [InlineData("process_run")]
-    [InlineData("process_run_unrestricted")]
+    [InlineData("process_run_sandboxed")]
     [InlineData("process_wait")]
     public void ShouldShowRunningWithoutClaimingCompletionOrFailure(string tool)
     {

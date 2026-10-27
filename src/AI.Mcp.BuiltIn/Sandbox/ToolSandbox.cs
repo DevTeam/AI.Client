@@ -4,7 +4,7 @@ using AI.Sandbox;
 using Grants;
 
 /// <summary>
-/// Turns the session's directory grants into the <see cref="SandboxPolicy"/> that <c>process_run</c>
+/// Turns the session's directory grants into the <see cref="SandboxPolicy"/> that <c>process_run_sandboxed</c>
 /// commands and <c>cs_run</c> scripts always run under. A grant that may write, edit or delete opens
 /// its directory for writing, a read-only grant for reading. A non-recursive grant is left out: the OS
 /// sandboxes open whole trees, and opening the tree would give more than the grant does. Nothing else
@@ -13,7 +13,7 @@ using Grants;
 /// </summary>
 /// <remarks>
 /// Commands keep the network: restoring packages and fetching sources are ordinary work for them.
-/// Scripts run without it wherever the OS can close it. <c>process_run_unrestricted</c> is the way
+/// Scripts run without it wherever the OS can close it. <c>process_run</c> is the way
 /// past the sandbox, and it asks the user first.
 /// </remarks>
 public sealed class ToolSandbox : IToolSandbox
@@ -51,7 +51,7 @@ public sealed class ToolSandbox : IToolSandbox
         if (!support.Available)
         {
             return $"The program must run in a sandbox, but {support.Mechanism} is unavailable on this machine ({support.Reason}), so every run fails"
-                   + (tool == SandboxedTool.Commands ? "; process_run_unrestricted, which asks the user first, still works. " : ". ");
+                   + (tool == SandboxedTool.Commands ? "; process_run, which asks the user first, still works. " : ". ");
         }
 
         var network = Policy(tool)!.AllowNetwork
@@ -71,8 +71,8 @@ public sealed class ToolSandbox : IToolSandbox
         "On this machine Windows does not let sandboxed programs open the null device (NUL), and no directory grant changes "
         + "that: a program that opens it fails here, Git for Windows at every start (\"could not open '/dev/null'\"). "
         + (tool == SandboxedTool.Commands
-            ? "Run such a program with process_run_unrestricted rather than asking for a grant. "
-            : "Run such a program with process_run_unrestricted. ");
+            ? "Run such a program with process_run rather than asking for a grant. "
+            : "Run such a program with process_run. ");
 
     /// <summary>What to do when the sandbox, rather than the program, is why a run failed.</summary>
     private static string AccessDenied(SandboxedTool tool) =>
@@ -81,7 +81,7 @@ public sealed class ToolSandbox : IToolSandbox
         + "when available to diagnose CLI setup before requesting grants. Ask the user "
         + "to grant that directory to the project, read-only unless it must be written, then retry; never work around it. "
         + (tool == SandboxedTool.Commands
-            ? "When the user declines or the command must reach beyond any grant, process_run_unrestricted runs it without "
+            ? "When the user declines or the command must reach beyond any grant, process_run runs it without "
               + "the sandbox after the user approves the call. "
             : "");
 }

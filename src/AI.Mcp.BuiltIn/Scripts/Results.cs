@@ -6,7 +6,7 @@ using AI.Sandbox;
 /// <summary>
 /// Everything one script run needs. The working directory and the environment are applied to the
 /// worker process for the run; they are a convenience for the script, not a boundary. What the
-/// script may reach is decided by the session's sandbox, exactly as for <c>process_run</c>.
+/// script may reach is decided by the session's sandbox, exactly as for <c>process_run_sandboxed</c>.
 /// </summary>
 public sealed record ScriptRequest(
     string Code,

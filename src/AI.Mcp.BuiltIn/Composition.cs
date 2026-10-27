@@ -33,7 +33,7 @@ internal sealed partial class Composition
             // Tools
             // Bound to their one contract: registered as a whole they would also expose their shared base.
             .Bind<IToolFactory>(Tag.Unique).To<ProcessRunTool>()
-            .Bind<IToolFactory>(Tag.Unique).To<ProcessRunUnrestrictedTool>()
+            .Bind<IToolFactory>(Tag.Unique).To<ProcessRunSandboxedTool>()
             .Transient<ProcessWaitTool, ProcessStopTool, ScriptRunTool, TriggerWaitTool, FetchTool, ListAllowedDirectoriesTool, ReadTextFileTool, ReadMultipleFilesTool, ReadImageFileTool,
                 ListDirectoryTool, DirectoryTreeTool,
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,

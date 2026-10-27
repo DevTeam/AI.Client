@@ -2,31 +2,25 @@
 
 Status: Accepted
 
-`process_run` and `cs_run` start programs. Without a sandbox those programs run with everything the
-Host user can do, and the project's directory grants bind only the file tools. The sandbox closes
-that gap: a started program and everything it starts reach only the session's grants. `cs_run` and
-`process_run` always run in it; there is no setting. Because they are confined, both run without
-asking by default (`ToolDefaultDecision`), which is also what lets subtasks, which cannot ask, use
-them.
+`process_run` is the default runner for commands, builds, tests and installed CLI tools. It runs
+with the Host user's permissions, without an OS sandbox. The working directory and project
+directory grants do not confine it. Its default policy is `Ask`; saved policies and command rules
+apply, including in subtasks, which cannot ask for approval.
 
-`process_run_unrestricted` takes the same arguments as `process_run` and runs the program without
-the sandbox, with everything the Host user can do. It asks before every call unless a saved policy
-or command rule says otherwise, and shares the command rules of `process_run`
-(`CommandRule.RulesOf`). Subtasks cannot use it, because they cannot ask.
+`process_run_sandboxed` takes the same arguments and is used when sandboxed execution is explicitly
+requested. It and `cs_run` are confined to session grants, the chat's temporary directory and
+read-only system locations. Both default to `Allow`. There is no switch that changes either
+process tool's mode. The two process tools share command rules (`CommandRule.RulesOf`), resource
+limits, managed handles, `process_wait`, `process_stop` and process-completion triggers.
 
-## When a run is denied
+## When an explicitly sandboxed run is denied
 
-The sandbox opens no directory on its own beyond the grants, the chat's temporary directory and the
-system locations below: no toolchain profile, no package caches. When a run fails because a path
-outside them was denied, the tool description and the execution capabilities in the system prompt
-tell the model to load the `code-cli-configure` skill when available. It diagnoses CLI requirements
-and collects missing installation, configuration and cache directories before asking the user
-through `ask_user` to grant them to the project (read-only unless they must be written). The approved
-list is added atomically with `app_security` `AddDirectoryGrants`; `AddDirectoryGrant` remains
-available for one directory. Retry in the next model step, after tool sessions refresh their grants.
-Only when the user declines, or no grant can cover what the program needs, does
-the model fall back to `process_run_unrestricted`, whose call the user approves. A grant is then the
-user's decision, visible in the project's folders, rather than a list hidden in the launcher.
+The sandbox opens no toolchain profile or package cache on its own. For explicitly requested
+sandboxed execution, `code-cli-configure` can identify missing installation, configuration and
+cache directories, collect approval and add the approved directory grants. Retry only after tool
+sessions refresh their grants. If the user requires confinement and the operation is incompatible
+with it, report that limitation. Ordinary CLI work starts with `process_run`; it does not first
+attempt sandboxed execution or request sandbox directory grants.
 
 ## What a confined program may do
 
@@ -140,7 +134,7 @@ on every macOS and used by Chrome, Bazel and Nix.
 
 A policy the machine cannot enforce fails the start (`SandboxUnavailableException`) instead of
 running the program unconfined. When the machine has no sandbox, `process_run` and `cs_run` stay
-listed, their descriptions say so and every run fails with the reason; `process_run_unrestricted`
+listed, their descriptions say so and every run fails with the reason; `process_run_sandboxed`
 still works. A launcher failure before the program
 runs exits with 125 and a message starting with `ai-sandbox:`.
 
@@ -152,7 +146,7 @@ Permission denied`. `ProcessLauncher` probes this once per process with `cmd /c 
 container with nothing granted (`SandboxSupport.OpensNullDevice`). When the device is closed, the
 descriptions of `process_run` and `cs_run` say so, and a failed `process_run` whose error output names
 the device carries an `error` saying that a grant will not help and that
-`process_run_unrestricted` will, so the model does not ask the user for a directory that cannot fix it.
+`process_run_sandboxed` will, so the model does not ask the user for a directory that cannot fix it.
 Opening the device to containers would mean changing its security descriptor as an administrator
 after every boot, which the application does not do.
 
@@ -171,8 +165,8 @@ opening its diagnostic channel in the user's temporary directory. The spare work
   code, working directory, environment, standard input, the deadline, cancellation, a missing
   program and the Windows process limit.
 - `tests/AI.Mcp.BuiltIn.Tests/SandboxedToolTests` starts the built-in server as the Host does and
-  checks `process_run` and `cs_run` against read-only, writable, temporary and
-  ungranted directories.
+  checks `process_run_sandboxed` and `cs_run` against read-only, writable, temporary and
+  ungranted directories, and verifies that ordinary `process_run` can use host access outside grants.
 
 A machine without a sandbox skips the confined tests. CI sets `AI_SANDBOX_REQUIRED=1`, which turns
 that skip into a failure, and runs every test on Windows, Linux and macOS in parallel

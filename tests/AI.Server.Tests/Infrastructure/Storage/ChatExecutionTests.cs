@@ -110,13 +110,13 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         fixture.Tools.OpenCount.ShouldBe(1);
         await fixture.AddGrantAsync(@"C:\Projects\DevTeam\dotnet-matrix");
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var next = await fixture.NextCallAsync();
         fixture.Tools.OpenCount.ShouldBe(2);
         fixture.Tools.Grants.ShouldHaveSingleItem().Root.ShouldBe(@"C:\Projects\DevTeam\dotnet-matrix");
-        next.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")];
+        next.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run_sandboxed", "{}")];
         next.Answer.SetResult("");
         (await fixture.NextCallAsync()).Answer.SetResult("Read complete");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -134,7 +134,7 @@ public sealed partial class ChatExecutionTests
         await fixture.AddGrantsAsync(
             [new(Guid.NewGuid(), "config", @"C:\CLI\config", true, ["read"]),
              new(Guid.NewGuid(), "cache", @"C:\CLI\cache", true, ["read", "write"])]);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var next = await fixture.NextCallAsync();
@@ -260,7 +260,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
 
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var published = await fixture.WaitAsync(run => run.MessageDelta?.Appends.Any(append => append.Message.ToolCallId == "call-1") == true);
@@ -269,7 +269,7 @@ public sealed partial class ChatExecutionTests
         appends[0].Message.Content.ShouldBe("Run command");
         appends.Zip(appends.Skip(1)).ShouldAllBe(pair => pair.First.Revision == pair.Second.BaseRevision);
         appends[^2].Revision.ShouldBe(appends[^1].BaseRevision);
-        appends[^2].Message.ToolCalls.ShouldHaveSingleItem().Name.ShouldBe("mcp_built_in__process_run");
+        appends[^2].Message.ToolCalls.ShouldHaveSingleItem().Name.ShouldBe("mcp_built_in__process_run_sandboxed");
         appends[^1].Message.ToolCallId.ShouldBe("call-1");
         // The output itself is loaded when the step is opened, as from the transcript.
         appends[^1].Message.ContentOmitted.ShouldBeTrue();
@@ -315,7 +315,7 @@ public sealed partial class ChatExecutionTests
         var drafting = await fixture.WaitAsync(run => run.DraftContent == "Checking the setup");
         drafting.StreamingContent.ShouldBeEmpty();
 
-        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         call.Answer.SetResult("");
         var landed = await fixture.WaitAsync(run => run.MessageDelta?.Appends
             .Any(append => append.Message.Content == "Checking the setup") == true);
@@ -330,15 +330,15 @@ public sealed partial class ChatExecutionTests
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.SetPolicyAsync("Allow");
-        fixture.Completion.NextToolCallStart = "mcp_built_in__process_run";
+        fixture.Completion.NextToolCallStart = "mcp_built_in__process_run_sandboxed";
         var call = await fixture.StreamPreludeAsync(
             new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"), "Creating the project and running it:");
 
         var starting = await fixture.WaitAsync(run => run.DraftToolCall is not null);
-        starting.DraftToolCall.ShouldBe("mcp_built_in__process_run");
+        starting.DraftToolCall.ShouldBe("mcp_built_in__process_run_sandboxed");
         starting.DraftContent.ShouldBe("Creating the project and running it:");
 
-        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        call.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         call.Answer.SetResult("");
         var landed = await fixture.WaitAsync(run => run.MessageDelta?.Appends
             .Any(append => append.Message.Content == "Creating the project and running it:") == true);
@@ -356,7 +356,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
 
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var last = await fixture.NextCallAsync();
         last.Request.Tools!.ShouldNotContain(tool => tool.Name.EndsWith("finish_run", StringComparison.Ordinal));
@@ -377,7 +377,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Analyze and save"));
 
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("## Report\n\n3 files. Saving it.");
         (await fixture.NextCallAsync()).Answer.SetResult("Saved.");
 
@@ -433,7 +433,7 @@ public sealed partial class ChatExecutionTests
         var queued = await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), aside,
             "They are in tests/Integration", ChatSubmitMode.Aside));
         queued.Queue.ShouldContain(item => item.Id == aside && item.IsAside);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var second = await fixture.NextCallAsync();
@@ -489,7 +489,7 @@ public sealed partial class ChatExecutionTests
             new SubmitChatMessageRequest(report, report, "Research finished: three findings."),
             new AI.Domain.Chats.ChatMessageSender(fixture.ChatId, Guid.NewGuid(), "done"), CancellationToken.None);
         queued.Queue.ShouldContain(item => item.Id == report && item.JoinsTurn && !item.IsAside);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var second = await fixture.NextCallAsync();
@@ -544,7 +544,7 @@ public sealed partial class ChatExecutionTests
         sent.Queue.Select(item => item.Id).Skip(1).ShouldBe([hint, later]);
         sent.Queue[1].JoinsTurn.ShouldBeTrue();
 
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         second.Request.ContextMessages!.ShouldContain(item => item.MessageId == hint);
@@ -890,13 +890,13 @@ public sealed partial class ChatExecutionTests
         for (var attempt = 0; attempt < 4; attempt++)
         {
             var work = await fixture.NextCallAsync();
-            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run_sandboxed", "{}")];
             work.Answer.SetResult("");
         }
 
         var answer = await fixture.NextCallAsync();
         // The tools stay offered, so the request starts as the ones before it did.
-        answer.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
+        answer.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_built_in__process_run_sandboxed");
         answer.Request.ContextMessages!.Where(IsInstruction)
             .ShouldContain(message => message.ForModel.Contains("no new information", StringComparison.Ordinal));
         answer.Answer.SetResult("I could not find the answer with the available tools.");
@@ -918,12 +918,12 @@ public sealed partial class ChatExecutionTests
         for (var attempt = 0; attempt < 4; attempt++)
         {
             var work = await fixture.NextCallAsync();
-            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run_sandboxed", "{}")];
             work.Answer.SetResult("");
         }
 
         var ignored = await fixture.NextCallAsync();
-        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
+        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run_sandboxed", "{}")];
         ignored.Answer.SetResult("");
 
         // The model is asked once more, with nothing to call, for its own account of the turn.
@@ -942,11 +942,11 @@ public sealed partial class ChatExecutionTests
     public async Task AManualApprovalCardShouldNotWaitForItsRiskAdvice()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.OfferUnrestricted = true;
+        fixture.Tools.OfferProcessRun = true;
         fixture.Completion.RiskRelease = new TaskCompletionSource();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
 
         // The card is up while the assessment is still being written.
@@ -1032,7 +1032,7 @@ public sealed partial class ChatExecutionTests
     }
 
     [Theory]
-    [InlineData("process_run")]
+    [InlineData("process_run_sandboxed")]
     [InlineData("process_wait")]
     public async Task AChangingOrWaitingCallShouldBeABarrierBetweenReadOnlyGroups(string toolName)
     {
@@ -1088,10 +1088,10 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Re-read what you need"));
 
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-0", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-0", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var again = await fixture.NextCallAsync();
-        again.ToolCalls = [.. Enumerable.Range(1, 4).Select(index => new ChatToolCall($"call-{index}", "mcp_built_in__process_run", "{}"))];
+        again.ToolCalls = [.. Enumerable.Range(1, 4).Select(index => new ChatToolCall($"call-{index}", "mcp_built_in__process_run_sandboxed", "{}"))];
         again.Answer.SetResult("");
 
         // Four repeated results in one step used to stop the turn on their own.
@@ -1120,11 +1120,11 @@ public sealed partial class ChatExecutionTests
         for (var attempt = 0; attempt < 4; attempt++)
         {
             var work = await fixture.NextCallAsync();
-            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run", "{}")];
+            work.ToolCalls = [new ChatToolCall($"call-{attempt}", "mcp_built_in__process_run_sandboxed", "{}")];
             work.Answer.SetResult("");
         }
         var ignored = await fixture.NextCallAsync();
-        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run", "{}")];
+        ignored.ToolCalls = [new ChatToolCall("call-ignored", "mcp_built_in__process_run_sandboxed", "{}")];
         ignored.Answer.SetResult("");
         (await fixture.NextCallAsync()).Answer.SetResult("The test runner never starts; I need the build fixed first.");
 
@@ -1162,7 +1162,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Remember that I use DI"));
 
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         (await fixture.NextCallAsync()).Answer.SetResult("");
         var retry = await fixture.NextCallAsync();
@@ -1228,7 +1228,7 @@ public sealed partial class ChatExecutionTests
 
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Change a file"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var final = await fixture.NextCallAsync();
 
@@ -1255,7 +1255,7 @@ public sealed partial class ChatExecutionTests
 
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Edit a file"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         await fixture.NextCallAsync();
         await fixture.WaitAsync(run => run.WorkspaceChanges is { IsEmpty: false });
@@ -1313,10 +1313,10 @@ public sealed partial class ChatExecutionTests
     public async Task ScopedApprovalShouldPersistAtTheSelectedLevel(ToolApprovalAction action)
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.OfferUnrestricted = true;
+        fixture.Tools.OfferProcessRun = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         (await fixture.Dispatcher.DecideToolAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId,
@@ -1337,10 +1337,10 @@ public sealed partial class ChatExecutionTests
     public async Task RememberedCommandShouldBeSavedAsACommandRuleOfTheOfferedPattern()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.OfferUnrestricted = true;
+        fixture.Tools.OfferProcessRun = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted",
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run",
             """{"executable":"git","arguments":["log","--oneline"]}""")];
         first.Answer.SetResult("");
         var pending = (await fixture.WaitAsync(run => run.PendingApproval is not null)).PendingApproval!;
@@ -1373,7 +1373,7 @@ public sealed partial class ChatExecutionTests
             new UpdateChatApprovalModeRequest(ToolApprovalMode.FullAccess), CancellationToken.None);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
 
         var second = await fixture.NextCallAsync();
@@ -1385,7 +1385,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Deny");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run it again"));
         var third = await fixture.NextCallAsync();
-        third.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")];
+        third.ToolCalls = [new ChatToolCall("call-2", "mcp_built_in__process_run_sandboxed", "{}")];
         third.Answer.SetResult("");
         var fourth = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(1);
@@ -1397,10 +1397,10 @@ public sealed partial class ChatExecutionTests
     public async Task SwitchingToFullAccessShouldAnswerTheWaitingCard()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.OfferUnrestricted = true;
+        fixture.Tools.OfferProcessRun = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
 
@@ -1423,8 +1423,8 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}")
+            new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run_sandboxed", "{}")
         ];
         first.Answer.SetResult("");
 
@@ -1437,7 +1437,7 @@ public sealed partial class ChatExecutionTests
         var result = fixture.Codec.Read(limited.Content);
         result.IsError.ShouldBeTrue();
         result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("tool_call_limit_reached");
-        result.StructuredContent.Value.GetProperty("tool").GetString().ShouldBe("mcp_built_in__process_run");
+        result.StructuredContent.Value.GetProperty("tool").GetString().ShouldBe("mcp_built_in__process_run_sandboxed");
         result.StructuredContent.Value.GetProperty("count").GetInt32().ShouldBe(2);
         result.StructuredContent.Value.GetProperty("limit").GetInt32().ShouldBe(1);
         result.StructuredContent.Value.GetProperty("scope").GetString().ShouldBe("project");
@@ -1565,7 +1565,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
         first.Request.Tools!.Count.ShouldBe(1);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(1);
@@ -1583,7 +1583,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
         first.Request.Tools!.Count.ShouldBe(decision == "Deny" ? 0 : 1);
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         fixture.Tools.CallCount.ShouldBe(expectedCalls);
@@ -1598,7 +1598,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         await fixture.SetPolicyAsync("Deny");
@@ -1618,7 +1618,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         fixture.Tools.CallCount.ShouldBe(0);
@@ -1644,10 +1644,10 @@ public sealed partial class ChatExecutionTests
     public async Task AnswerWhileTheSwitchedModeIsAssessingMustWinAndTakeTheCardDown()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Tools.OfferUnrestricted = true;
+        fixture.Tools.OfferProcessRun = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_unrestricted", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
         first.Answer.SetResult("");
         var pending = await fixture.WaitAsync(run => run.PendingApproval is not null);
         var approvalId = pending.PendingApproval!.Id;
@@ -1693,7 +1693,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
 
@@ -1717,8 +1717,8 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run_sandboxed", "{}"),
         ];
         fixture.Tools.HangNextCall = true;
         first.Answer.SetResult("");
@@ -1737,16 +1737,16 @@ public sealed partial class ChatExecutionTests
     }
 
     [Theory]
-    [InlineData("process_run", null, null, 600000)]
-    [InlineData("process_run", 600, null, 600000)]
-    [InlineData("process_run", 90, null, 90000)]
-    [InlineData("process_run", 1, null, 1000)]
+    [InlineData("process_run_sandboxed", null, null, 600000)]
+    [InlineData("process_run_sandboxed", 600, null, 600000)]
+    [InlineData("process_run_sandboxed", 90, null, 90000)]
+    [InlineData("process_run_sandboxed", 1, null, 1000)]
+    [InlineData("process_run_sandboxed", 90, 600000, 90000)]
+    [InlineData("process_run_sandboxed", 600, 120000, 120000)]
+    [InlineData("process_run_sandboxed", 3600, null, 3600000)]
+    [InlineData("process_run_sandboxed", 86400, null, 86400000)]
     [InlineData("process_run", 90, 600000, 90000)]
-    [InlineData("process_run", 600, 120000, 120000)]
     [InlineData("process_run", 3600, null, 3600000)]
-    [InlineData("process_run", 86400, null, 86400000)]
-    [InlineData("process_run_unrestricted", 90, 600000, 90000)]
-    [InlineData("process_run_unrestricted", 3600, null, 3600000)]
     [InlineData("cs_run", null, null, 600000)]
     [InlineData("cs_run", 600, null, 600000)]
     [InlineData("cs_run", 90, null, 90000)]
@@ -1765,7 +1765,7 @@ public sealed partial class ChatExecutionTests
         await using var fixture = await Fixture.CreateAsync();
         fixture.Tools.OfferCSharp = toolName == "cs_run";
         fixture.Tools.OfferTrigger = toolName == "trigger_wait";
-        fixture.Tools.OfferUnrestricted = toolName == "process_run_unrestricted";
+        fixture.Tools.OfferProcessRun = toolName == "process_run";
         await fixture.SetPolicyAsync("Allow", timeoutSeconds: policySeconds, toolName: toolName);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
@@ -1773,8 +1773,8 @@ public sealed partial class ChatExecutionTests
         {
             "cs_run" => "mcp_built_in__cs_run",
             "trigger_wait" => "mcp_built_in__trigger_wait",
-            "process_run_unrestricted" => "mcp_built_in__process_run_unrestricted",
-            _ => "mcp_built_in__process_run"
+            "process_run" => "mcp_built_in__process_run",
+            _ => "mcp_built_in__process_run_sandboxed"
         };
         var arguments = requestedMs is { } ms ? JsonSerializer.Serialize(new { timeoutMs = ms }) : "{}";
         first.ToolCalls = [new ChatToolCall("call-1", name, arguments)];
@@ -1783,7 +1783,7 @@ public sealed partial class ChatExecutionTests
         var second = await fixture.NextCallAsync();
         using var executed = JsonDocument.Parse(fixture.Tools.LastExecutionArguments!);
         executed.RootElement.GetProperty("timeoutMs").GetInt32().ShouldBe(expectedMs);
-        if (toolName is "process_run" or "process_run_unrestricted")
+        if (toolName is "process_run_sandboxed" or "process_run")
             executed.RootElement.GetProperty("waitTimeoutMs").GetInt32().ShouldBe(Math.Min(10000, expectedMs));
         second.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -1799,9 +1799,9 @@ public sealed partial class ChatExecutionTests
         var call = await fixture.NextCallAsync();
         var context = call.Request.ContextMessages.ShouldNotBeNull();
         context.ShouldContain(message => message.ForModel.Contains("Execution capabilities detected for this run", StringComparison.Ordinal));
-        context.ShouldContain(message => message.ForModel.Contains("process_run: allowed by current policy", StringComparison.Ordinal));
+        context.ShouldContain(message => message.ForModel.Contains("process_run_sandboxed: allowed by current policy", StringComparison.Ordinal));
         context.ShouldContain(message => message.ForModel.Contains("Programs currently found on PATH", StringComparison.Ordinal));
-        call.Request.Tools.ShouldNotBeNull().ShouldContain(tool => tool.Name == "mcp_built_in__process_run");
+        call.Request.Tools.ShouldNotBeNull().ShouldContain(tool => tool.Name == "mcp_built_in__process_run_sandboxed");
 
         call.Answer.SetResult("Done");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -1842,7 +1842,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Allow", timeoutSeconds: 1);
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Delegate some work"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         fixture.Tools.ReportNextCallFor = TimeSpan.FromSeconds(3);
         first.Answer.SetResult("");
 
@@ -1866,9 +1866,9 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("call-1", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("call-2", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("call-3", "mcp_built_in__process_run", "{}"),
+            new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("call-2", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("call-3", "mcp_built_in__process_run_sandboxed", "{}"),
         ];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
@@ -1891,7 +1891,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Ask");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.PendingApproval is not null);
         await fixture.Dispatcher.StopAsync(fixture.ProjectId, fixture.ChatId, fixture.ChatId, CancellationToken.None);
@@ -2052,14 +2052,14 @@ public sealed partial class ChatExecutionTests
             recovery.Answer.SetResult("");
             recovery = await fixture.NextCallAsync();
             recovery.Request.ContextMessages!.Single(message => message.ToolCallId == "search-call").ForModel
-                .ShouldContain("mcp_built_in__process_run");
+                .ShouldContain("mcp_built_in__process_run_sandboxed");
         }
         else
         {
             error.ShouldContain("No tool-discovery tool is offered");
             error.ShouldNotContain(ToolRef.ToolSearchName);
         }
-        recovery.ToolCalls = [new("read-call", "mcp_built_in__process_run", "{}")];
+        recovery.ToolCalls = [new("read-call", "mcp_built_in__process_run_sandboxed", "{}")];
         recovery.Answer.SetResult("");
         (await fixture.NextCallAsync()).Answer.SetResult("Architecture inspection continued with the available tools.");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
@@ -2573,15 +2573,15 @@ public sealed partial class ChatExecutionTests
         var first = await fixture.NextCallAsync();
         first.ToolCalls =
         [
-            new ChatToolCall("batch-1-call-1", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("batch-1-call-2", "mcp_built_in__process_run", "{}")
+            new ChatToolCall("batch-1-call-1", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("batch-1-call-2", "mcp_built_in__process_run_sandboxed", "{}")
         ];
         first.Answer.SetResult("");
         var second = await fixture.NextCallAsync();
         second.ToolCalls =
         [
-            new ChatToolCall("batch-2-call-1", "mcp_built_in__process_run", "{}"),
-            new ChatToolCall("batch-2-call-2", "mcp_built_in__process_run", "{}")
+            new ChatToolCall("batch-2-call-1", "mcp_built_in__process_run_sandboxed", "{}"),
+            new ChatToolCall("batch-2-call-2", "mcp_built_in__process_run_sandboxed", "{}")
         ];
         second.Answer.SetResult("");
         await fixture.NextCallAsync();
@@ -2707,7 +2707,7 @@ public sealed partial class ChatExecutionTests
         await fixture.SetPolicyAsync("Allow");
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run the build"));
         var first = await fixture.NextCallAsync();
-        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run", "{}")];
+        first.ToolCalls = [new ChatToolCall("call-1", "mcp_built_in__process_run_sandboxed", "{}")];
         fixture.Tools.HangNextCall = true;
         first.Answer.SetResult("");
         await fixture.WaitAsync(run => run.ActiveTools is { Count: > 0 });
@@ -2719,7 +2719,7 @@ public sealed partial class ChatExecutionTests
         // run names it so the person can check before resuming.
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("Its effects may have occurred");
-        interrupted.Interruption.ShouldNotBeNull().ToolName.ShouldBe("mcp_built_in__process_run");
+        interrupted.Interruption.ShouldNotBeNull().ToolName.ShouldBe("mcp_built_in__process_run_sandboxed");
     }
 
     [Fact]
@@ -3043,12 +3043,12 @@ public sealed partial class ChatExecutionTests
             await Settings.SaveAsync(global with
             {
                 McpServers = [DefaultMcpServer.Settings with { Policy = "Allow" }],
-                ToolPolicies = [new McpToolPolicySettings(DefaultMcpServer.Id, "process_run", "schema", decision, 20, 120)]
+                ToolPolicies = [new McpToolPolicySettings(DefaultMcpServer.Id, "process_run_sandboxed", "schema", decision, 20, 120)]
             }, CancellationToken.None);
         }
 
         public async Task SetPolicyAsync(string decision, long? timeoutSeconds = McpToolPolicySettings.DefaultTimeoutSeconds,
-            int maxCalls = 20, string toolName = "process_run")
+            int maxCalls = 20, string toolName = "process_run_sandboxed")
         {
             var server = DefaultMcpServer.Settings;
             var global = await Settings.LoadAsync(CancellationToken.None);
@@ -3185,16 +3185,16 @@ public sealed partial class ChatExecutionTests
                 with { Annotations = new ToolAnnotations(null, true, false, true, false) },
             DefaultMcpServer.Id, "read_text_file", "schema");
         public int OpenCount { get; private set; }
-        private static readonly AgentTool ProcessRun = new(
+        private static readonly AgentTool SandboxedProcess = new(
+            new ChatToolDefinition("mcp_built_in__process_run_sandboxed", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__process_run_sandboxed", "process_run_sandboxed", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
+            DefaultMcpServer.Id, "process_run_sandboxed", "schema");
+
+        // The unsandboxed command runner: the built-in tool that still asks before every call.
+        private static readonly AgentTool OrdinaryProcess = new(
             new ChatToolDefinition("mcp_built_in__process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             ToolDescriptor.Basic("mcp_built_in__process_run", "process_run", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "process_run", "schema");
-
-        // The unsandboxed command runner: the built-in tool that still asks before every call.
-        private static readonly AgentTool ProcessRunUnrestricted = new(
-            new ChatToolDefinition("mcp_built_in__process_run_unrestricted", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
-            ToolDescriptor.Basic("mcp_built_in__process_run_unrestricted", "process_run_unrestricted", "Run", JsonSerializer.Deserialize<JsonElement>("{}")),
-            DefaultMcpServer.Id, "process_run_unrestricted", "schema");
 
         private static readonly AgentTool ScriptRun = new(
             new ChatToolDefinition("mcp_built_in__cs_run", "Run script", JsonSerializer.Deserialize<JsonElement>("{}")),
@@ -3212,7 +3212,7 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
             DefaultMcpServer.Id, "trigger_wait", "schema");
 
-        public bool OfferUnrestricted { get; set; }
+        public bool OfferProcessRun { get; set; }
         public bool OfferCSharp { get; set; }
         public bool OfferExternalReads { get; set; }
         public bool OfferTrigger { get; set; }
@@ -3263,7 +3263,7 @@ public sealed partial class ChatExecutionTests
         public List<string> SkillRuns { get; } = [];
 
         public IReadOnlyList<AgentTool> Tools =>
-            [ProcessRun, .. OfferUnrestricted ? [ProcessRunUnrestricted] : Array.Empty<AgentTool>(), .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
+            [SandboxedProcess, .. OfferProcessRun ? [OrdinaryProcess] : Array.Empty<AgentTool>(), .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
                 .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. OfferProcessWait ? [ProcessWait] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
@@ -3315,11 +3315,11 @@ public sealed partial class ChatExecutionTests
                 }
                 return _codec.Read("{\"structuredContent\":{\"content\":\"text\"}}");
             }
-            if (tool.OriginalName is "process_run" or "process_wait" && Volatile.Read(ref _activeReads) > 0)
+            if (tool.OriginalName is "process_run_sandboxed" or "process_wait" && Volatile.Read(ref _activeReads) > 0)
                 Interlocked.Exchange(ref _changingCallOverlappedRead, 1);
-            if (tool.OriginalName is "process_run" or "process_run_unrestricted" or "process_wait" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
+            if (tool.OriginalName is "process_run_sandboxed" or "process_run" or "process_wait" or "cs_run" or "trigger_wait") LastExecutionArguments = arguments;
             if (tool.OriginalName == "tool_search")
-                return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run\","
+                return _codec.Read("{\"structuredContent\":{\"tools\":[{\"name\":\"mcp_built_in__process_run_sandboxed\","
                     + "\"description\":\"Read files through a shell command\"}],\"guidance\":\"Use an offered definition from the current request.\"}}");
             if (tool.OriginalName == "plan_update" && PlanCriteria)
                 return _codec.Read("{\"structuredContent\":{\"plan\":{\"title\":\"Fix\",\"steps\":[{\"title\":\"Study\","

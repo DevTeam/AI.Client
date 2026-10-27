@@ -9,7 +9,7 @@
   "git": false,
   "timeoutSeconds": 300,
   "turns": [
-    "Run the existing test runner cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run_unrestricted. I explicitly authorize this command outside the sandbox; use process_run_unrestricted for this launch. Keep both fixture files unchanged. Wait for the actual final test result and report the number of passed tests and the full stdout log path. Do not restart, split or replace the test runner."
+    "Run the existing test runner cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} exactly once using process_run. I explicitly authorize this command outside the sandbox; use process_run for this launch. Keep both fixture files unchanged. Wait for the actual final test result and report the number of passed tests and the full stdout log path. Do not restart, split or replace the test runner."
   ],
   "checks": [
     {
@@ -34,22 +34,22 @@
     },
     {
       "type": "maxMatchingCalls",
-      "pattern": "^\\S*__process_run(?:_unrestricted)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
+      "pattern": "^\\S*__process_run(?:_sandboxed)?\\s(?=[^\\n]*\"arguments\"\\s*:\\s*\\[\\s*\"/d\"\\s*,\\s*\"/c\"\\s*,\\s*\"run\\.cmd\"\\s*\\])",
       "value": 1,
       "name": "one original launch call"
     },
     {
       "type": "callsMatch",
-      "pattern": "^\\S*__process_run_unrestricted\\s.*run\\.cmd"
+      "pattern": "^\\S*__process_run\\s.*run\\.cmd"
     },
     {
       "type": "callsMatch",
-      "pattern": "^\\S*__process_wait\\s",
+      "pattern": "^\\S*__(?:process_wait|trigger_wait)\\s",
       "name": "continues managed process"
     },
     {
       "type": "toolTranscriptMatches",
-      "pattern": "(?s)\"status\"\\s*:\\s*\"running\".*CALL \\S*__process_wait .*\"status\"\\s*:\\s*\"completed\"",
+      "pattern": "(?s)\"status\"\\s*:\\s*\"running\".*CALL \\S*__(?:process_wait|trigger_wait) .*\"status\"\\s*:\\s*\"completed\"",
       "name": "running then completed through wait"
     },
     {
@@ -78,7 +78,12 @@
     {
       "type": "toolTranscriptMatches",
       "name": "wait addresses original running handle",
-      "pattern": "(?s)\"status\"\\s*:\\s*\"running\"\\s*,\\s*\"processId\"\\s*:\\s*\"(?<handle>[a-f0-9]+)\".*CALL \\S*__process_wait [^\\n]*\"processId\"\\s*:\\s*\"\\k<handle>\""
+      "pattern": "(?s)\"status\"\\s*:\\s*\"running\"\\s*,\\s*\"processId\"\\s*:\\s*\"(?<handle>[a-f0-9]+)\".*CALL \\S*__(?:process_wait(?= [^\\n]*\"processId\"\\s*:\\s*\"\\k<handle>\")|trigger_wait(?= [^\\n]*\"type\"\\s*:\\s*\"process_completed\")(?= [^\\n]*\"processSessionId\"\\s*:\\s*\"\\k<handle>\"))\\s"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "completion wait reports exit zero",
+      "pattern": "(?s)CALL \\S*__(?:process_wait|trigger_wait) [^\\n]*\\nRESULT (?=[^\\n]*\"exitCode\"\\s*:\\s*0)[^\\n]*\"status\"\\s*:\\s*\"completed\""
     }
   ]
 }

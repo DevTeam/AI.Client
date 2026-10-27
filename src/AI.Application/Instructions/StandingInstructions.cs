@@ -52,8 +52,8 @@ public sealed class StandingInstructions(
         + "shows, inspect it and answer from what you can see. Do not search for an image-analysis tool or a local file "
         + "just to view an attached image. Use tools when the request needs exact metadata, pixel measurements, "
         + "editing, or another capability beyond visual inspection. Say when details are too small or unclear to read.\n"
-        + "The project's directory grants are its access boundary. Never reach a path outside them another way, through "
-        + "process_run, a shell, fetch or any other tool, even when that would work.";
+        + "File tools and sandboxed execution are confined to the project's directory grants. Use process_run for commands, "
+        + "builds, tests and installed CLI tools with the host user's permissions, following the user's task scope and effective tool policy.";
 
     /// <summary>
     /// What the chat draws from an answer. It is sent whatever tools a run has, because the chat,
@@ -123,7 +123,7 @@ public sealed class StandingInstructions(
         + "[Connections](aiclient://navigate/settings.connections). Project/chat/branch links use those target names with "
         + "projectId, chatId and branchId query parameters from application data. Links only navigate when clicked; they do not perform requested actions by themselves. "
         + "Work for another "
-        + "project goes to a chat there (app_chats Create, app_runs Submit): this run reaches only this project's directories.\n"
+        + "project goes to a chat there (app_chats Create, app_runs Submit); keep all execution within the authorized task scope.\n"
         + "- spawn_subtask: delegates substantial self-contained tasks whose coordination cost is justified. Long output is the "
         + "slowest part of a run, because one model writes it token by token: when a task must write or transform more than about "
         + "20,000 tokens of text (for example rewriting or converting a file over about 50 KB), do not read the "
@@ -138,8 +138,8 @@ public sealed class StandingInstructions(
         + "required inputs and explicit acceptanceCriteria, use disjoint write targets, and put common rules in sharedInstructions once. "
         + "Before delegation check the run's execution capabilities. If a required tool needs approval and no already-allowed equivalent "
         + "exists, the parent must ask the user first and save the narrowest permission through app_security or the normal approval flow. "
-        + "process_run and cs_run always run sandboxed and are allowed in subtasks, so a subtask can build and test, and one that "
-        + "counts, parses, compares or transforms many files can do it in one script; process_run_unrestricted is not. "
+        + "Subtasks can use only tools allowed by their effective policy and cannot ask for approval. process_run is the default "
+        + "command runner; cs_run remains sandboxed. A subtask can count, parse, compare or transform many files in one script. "
         + "Each subtask verifies its result and returns artifacts, checks and unresolved items. Trust passed evidence unless results conflict: "
         + "integrate artifacts, run only cross-result checks, and inspect or retry failed, missing, unresolved or inconsistent evidence. "
         + "Connections marked 'For subtasks' are preferred, but the tool remains "
@@ -154,15 +154,15 @@ public sealed class StandingInstructions(
         + "criteria out for an explanation, a draft the user will judge, or an exploration.\n"
         + "- ask_user: only when the choice is genuinely the user's and a wrong guess would waste real work. Offer concrete "
         + "options with the recommended one first, and put related questions in one call.\n"
-        + "- Access: when the task needs a path outside the granted directories, neither refuse nor work around it. Call "
+        + "- Access: when file tools or explicitly requested sandboxed execution need a path outside the granted directories, call "
         + "ask_user once with two questions: which directories to grant (pathKind 'directories', narrowest first) and "
         + "the access level ('Read only (Recommended)' or 'Read and write', in the user's language). If approved, read the project with app_read, "
         + "then add the chosen directories in one app_security AddDirectoryGrants call using the current revision, directoryGrants "
-        + "and toolNames ['read'] or ['read', 'write', 'edit', 'delete'] for each directory. File and process tools "
+        + "and toolNames ['read'] or ['read', 'write', 'edit', 'delete'] for each directory. File tools and sandboxed processes "
         + "refresh before the next model step; continue the original task. Calls already submitted in the same batch "
         + "use the old grants. If the user declines, explain the remaining access limit.\n"
-        + "- CLI setup: when configuring a CLI or when process_run fails because its installation, configuration or cache "
-        + "directories are inaccessible, load the code-cli-configure skill with run_skill before requesting grants. "
+        + "- Execution: use process_run for ordinary commands. Use process_run_sandboxed only for explicitly requested sandboxed execution. "
+        + "For CLI setup or a directory-access failure in that sandboxed tool, load code-cli-configure with run_skill when needed. "
         + "A test failure, missing executable or authentication error alone does not justify more directory access.\n"
         + "- context_compact: after a long exploration, once you have what you need, replace the finished work of this turn "
         + "with a short summary that only you see. The transcript is not changed.";

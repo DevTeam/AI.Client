@@ -135,7 +135,9 @@ public sealed class StandingInstructionsTests : IDisposable
         // Without the App tools the base prompt does not describe them, and there is nothing to
         // remember with and nothing remembered: no memory layer.
         preview.Layers[0].Content.ShouldNotContain("spawn_subtask");
-        preview.Layers[0].Content.ShouldContain("access boundary");
+        preview.Layers[0].Content.ShouldContain("File tools and sandboxed execution are confined");
+        preview.Layers[0].Content.ShouldContain("Use process_run for commands");
+        preview.Layers[0].Content.ShouldContain("host user's permissions");
         // The chat draws diagrams whatever tools the run has, so that part is always there.
         preview.Layers[0].Content.ShouldContain("```mermaid");
         preview.Layers[0].Content.ShouldContain("xmlns=\"http://www.w3.org/2000/svg\"");

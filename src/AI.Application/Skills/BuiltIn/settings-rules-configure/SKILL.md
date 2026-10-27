@@ -12,7 +12,7 @@ Command rules refine one built-in tool inside its own permission: the tool's pol
 bound (a denied tool stays denied), and within it a matching rule decides Allow, Ask or Deny for one
 call. Write reports in the user's language.
 
-- `process_run` (its rules also decide `process_run_unrestricted`, the same command without the sandbox): A word matches
+- `process_run` (its rules also decide `process_run_sandboxed`, the same command confined to session grants): A word matches
   one argument exactly, or as a mask with `*` or `?` inside it; a lone `*` at the end matches any
   further arguments: `git status *`, `dotnet test *`, `git push --force *`. Git's options before the
   subcommand (`-C`, `-c`) are not part of the pattern; a forced push is always spelled `--force`.

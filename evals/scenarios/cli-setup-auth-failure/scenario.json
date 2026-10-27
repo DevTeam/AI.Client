@@ -8,13 +8,13 @@
   "git": false,
   "timeoutSeconds": 480,
   "turns": [
-    "Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} to check gh authentication. This is a fresh test configuration with no login. Report the authentication state. Do not sign in, read/copy real credentials, change configuration, or use an unrestricted process."
+    "Use process_run_sandboxed for this task; sandboxed execution is required. Run cmd.exe with arguments [\"/d\",\"/c\",\"run.cmd\"] in {workspace} to check gh authentication. This is a fresh test configuration with no login. Report the authentication state. Do not sign in, read/copy real credentials, change configuration, or use an unrestricted process."
   ],
   "prompts": [],
   "checks": [
     {
       "type": "callsMatch",
-      "pattern": "^\\S*__process_run\\s.*run\\.cmd"
+      "pattern": "^\\S*__process_run_sandboxed\\s.*run\\.cmd"
     },
     {
       "type": "toolTranscriptMatches",
@@ -39,7 +39,7 @@
     },
     {
       "type": "callsNotMatch",
-      "pattern": "^\\S*__process_run_unrestricted\\s"
+      "pattern": "^\\S*__process_run\\s"
     },
     {
       "type": "maxToolCalls",

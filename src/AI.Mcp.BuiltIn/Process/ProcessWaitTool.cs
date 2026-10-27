@@ -10,7 +10,7 @@ public sealed class ProcessWaitTool(IProcessSessions processes, IBuiltInToolRepl
 {
     public McpServerTool Create() => McpServerTool.Create(WaitAsync, new McpServerToolCreateOptions
     {
-        Description = "Wait for a processId returned by process_run or process_run_unrestricted in this MCP session. "
+        Description = "Wait for a processId returned by process_run or process_run_sandboxed in this MCP session. "
             + "For a longer completion wait prefer trigger_wait type process_completed with processSessionId set to this handle and the same output offsets. "
             + "This never launches a command or changes its sandbox, permissions or hard deadline. "
             + "A wait expiring returns status running, not an error; wait again instead of restarting or splitting tests. "

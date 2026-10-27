@@ -4,12 +4,17 @@ name: Code CLI configure
 icon: code-run-shell
 aliases: ["cli-setup","cli-configure"]
 kind: playbook
-description: Configure an existing CLI for process_run, including dotnet/.NET, gh, Git, npm/Node and pip/Python, or diagnose inaccessible installation, configuration and cache directories. Connect the user's existing directories through visible project grants; distinguish sandbox failures from authentication, missing programs and failing tests.
+description: Configure an existing CLI or explicitly requested process_run_sandboxed execution, including dotnet/.NET, gh, Git, npm/Node and pip/Python, or diagnose inaccessible installation, configuration and cache directories. Connect the user's existing directories through visible project grants; distinguish sandbox failures from authentication, missing programs and failing tests.
 parameters: {"type":"object","properties":{"cli":{"type":"string","description":"CLI to configure"},"command":{"type":"string","description":"Original command or task to verify"},"error":{"type":"string","description":"Observed failure, when available"}},"additionalProperties":false}
-tools: ["tool_search","app_read","app_security","ask_user","list_allowed_directories","process_run","process_run_unrestricted","get_file_info","list_directory","read_text_file","fetch"]
+tools: ["tool_search","app_read","app_security","ask_user","list_allowed_directories","process_run","process_run_sandboxed","get_file_info","list_directory","read_text_file","fetch"]
 ---
 
-Set up the requested CLI using the current project's ordinary directory grants. Prefer the user's
+Use `process_run` for ordinary CLI commands with the host user's permissions and effective policy.
+Do not propose sandboxed execution for ordinary CLI work. Directory grants configure file tools
+and explicitly requested `process_run_sandboxed` execution; they do not confine `process_run`.
+For ordinary CLI errors, diagnose the actual executable, configuration, authentication or test
+failure without requesting sandbox grants. The directory-grant procedure below applies only
+when sandboxed execution was explicitly requested. Prefer the user's
 existing installation, configuration and caches. Do not create a separate environment, replace
 user configuration or install tools unless the task requires it and the user authorizes it.
 
@@ -76,7 +81,7 @@ directory setup only when the requested task actually needs it.
    adds ordinary entries visible in project folder settings without replacing MCP bindings,
    policies or existing folders. On conflict, reread and recompute the approved additions. Reconfirm
    only if their meaning or access changes. Never use SetProjectSecurity to append folders.
-6. In the next model step, rerun the original command through `process_run`, respecting its side
+6. In the next model step, rerun the original command through `process_run_sandboxed`, respecting its side
    effects and limits. Newly opened sessions receive the grants; calls already submitted in the
    same batch retain the old ones. Verify the requested behavior, not merely the CLI version.
    Report the added paths/access and result. If still blocked, identify the remaining dependency
@@ -84,10 +89,11 @@ directory setup only when the requested task actually needs it.
    when the host user cannot change its ACL; directory grants also cannot fix unavailable devices,
    credential stores or other OS restrictions.
 7. When directory grants cannot cover an established sandbox limitation, or the user declines
-   the needed grants, offer `process_run_unrestricted` for the original command. Explain the
-   specific limitation and that this runner has the host user's full access; preserve the intended
+   the needed grants, explain the specific limitation. `process_run` can execute with the host
+   user's permissions if the task permits ordinary execution. Preserve the intended
    command, working directory and limits. Let the tool's existing approval or saved-rule flow
    authorize execution; declining directory access alone does not authorize an unrestricted run.
-   Respect an explicit prohibition or a declined/dismissed unrestricted request. Do not change
+   If the user requires confinement, report the limitation and keep that execution mode.
+   Respect an explicit prohibition or a declined/dismissed ordinary process request. Do not change
    security rules to Allow, request elevation or use unrestricted probes to bypass that decision.
    Unrestricted execution does not fix host-user permissions, authentication or failing tests.

@@ -153,18 +153,18 @@ public sealed class CommandRuleServiceTests
         var arguments = Arguments("git", ["status"]);
 
         async Task<string> ResolveAsync() => (await resolver.ResolveAsync(_projectId, _chatId, _chatId, DefaultMcpServer.Id,
-            CommandRule.ProcessRunUnrestricted, "hash", arguments, CancellationToken.None)).Decision;
+            CommandRule.ProcessRun, "hash", arguments, CancellationToken.None)).Decision;
 
         (await ResolveAsync()).ShouldBe("Ask");
         await AddAsync(CommandRule.Project, "git status", "Allow");
         (await ResolveAsync()).ShouldBe("Allow");
-        _chat = _chat with { ToolPolicies = [new ToolPolicySettings(DefaultMcpServer.Id, CommandRule.ProcessRunUnrestricted, "hash", "Deny", null, null)] };
+        _chat = _chat with { ToolPolicies = [new ToolPolicySettings(DefaultMcpServer.Id, CommandRule.ProcessRun, "hash", "Deny", null, null)] };
         (await ResolveAsync()).ShouldBe("Deny");
-        _chat = _chat with { ToolPolicies = [new ToolPolicySettings(DefaultMcpServer.Id, CommandRule.ProcessRunUnrestricted, "hash", "Allow", null, null)] };
+        _chat = _chat with { ToolPolicies = [new ToolPolicySettings(DefaultMcpServer.Id, CommandRule.ProcessRun, "hash", "Allow", null, null)] };
         await AddAsync(CommandRule.Chat, "git status", "Ask");
         (await ResolveAsync()).ShouldBe("Ask");
         var policy = await resolver.ResolveAsync(_projectId, _chatId, _chatId, DefaultMcpServer.Id,
-            CommandRule.ProcessRunUnrestricted, "hash", arguments, CancellationToken.None);
+            CommandRule.ProcessRun, "hash", arguments, CancellationToken.None);
         ((ParsedCommand)policy.Command.ShouldNotBeNull().Subject.Value).ExecutablePath.ShouldBe(TestPrograms.Git);
         (await resolver.ResolveAsync(_projectId, _chatId, _chatId, DefaultMcpServer.Id, "read_file", "hash", arguments,
             CancellationToken.None)).Command.ShouldBeNull();

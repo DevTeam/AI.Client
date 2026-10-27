@@ -176,7 +176,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var approvalMode = executionTools.Length > 0
             ? await autoApprover().ModeAsync(projectId, chatId, branchId, token)
             : ToolApprovalMode.Ask;
-        var installedPrograms = executionTools.Any(tool => tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted)
+        var installedPrograms = executionTools.Any(tool => tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunSandboxed)
             ? await InstalledProgramsAsync(executables, token)
             : [];
         var runKey = new WorkspaceRunKey(projectId, chatId, branchId);
@@ -635,14 +635,14 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                             // What the rules were checked against is what runs: process_run's bare program
                             // name is pinned to the file PATH found for it, and the card shows that.
                             if (policy.Command?.Subject.Arguments is { } pinned) arguments = pinned;
-                            if (tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted or "cs_run" or "trigger_wait")
+                            if (tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunSandboxed or "cs_run" or "trigger_wait")
                             {
                                 var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                                 var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
                                 input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
                                 arguments = input.ToJsonString();
                             }
-                            if (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName is "process_run" or "process_run_unrestricted" or "process_wait")
+                            if (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName is "process_run" or "process_run_sandboxed" or "process_wait")
                             {
                                 var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                                 // Foreground patience bounds this call, not the lifetime of the managed process.
@@ -784,7 +784,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     }
 
     private static bool IsExecutionTool(AgentTool tool) =>
-        tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted or "cs_run";
+        tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunSandboxed or "cs_run";
 
     private static async Task<string[]> InstalledProgramsAsync(
         IExecutableLocator executables, CancellationToken cancellationToken)
@@ -821,21 +821,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         if (compact)
             return text.Append("\nPrograms currently found on PATH: ")
                 .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
-                .Append(". Commands and scripts are sandboxed; request missing grants before unrestricted execution. ")
+                .Append(". Use process_run for commands, builds, tests and installed CLI tools. It uses the host user's permissions and effective policy. cs_run remains sandboxed. ")
                 .Append("For status running, prefer trigger_wait type process_completed with processSessionId set to the handle and output offsets; process_wait reads intermediate output. Do not restart or split tests. ")
                 .Append("Only terminal status and exitCode establish completion. Session shutdown stops owned processes. ")
                 .Append("Use process_stop only within the authorized task. Prefer cs_run for computation and bulk data processing.").ToString();
-        if (offered.Any(item => item.Tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted))
+        if (offered.Any(item => item.Tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunSandboxed))
         {
-            // The sandbox is what makes process_run safe to run unasked, and it is also why a run can
-            // fail for a reason that is not the program's: the way out is a grant, not a workaround.
-            text.Append("\n- process_run and cs_run always run in a sandbox limited to the granted directories and the chat's ")
-                .Append("temporary directory. When a run fails because a path outside them was denied, or an SDK or package ")
-                .Append("cache that exists on the machine is not found, first load the code-cli-configure skill with run_skill when available. ")
-                .Append("Use it to diagnose the CLI and collect its missing directories, then ask the user through ask_user to grant them to ")
-                .Append("the project (read-only unless it must be written) and retry after the grant. Only when the user declines ")
-                .Append("or no grant can cover it, use process_run_unrestricted, which runs without the sandbox after the user ")
-                .Append("approves the call. Never work around the sandbox.");
+            text.Append("\n- Use process_run for commands, builds, tests and installed CLI tools. It runs with the host user's permissions; ")
+                .Append("workingDirectory and project directory grants do not confine it. Follow the effective tool policy and saved command rules. ")
+                .Append("process_run_sandboxed is for explicitly requested sandboxed execution. cs_run remains confined to session grants.");
             text.Append("\n- Both process_run variants may return status running and processId. This means the command is still running, not failed. ")
                 .Append("Discover trigger_wait if needed; prefer type process_completed with processSessionId set to that handle and the returned stdoutOffset/stderrOffset for one bounded completion wait. ")
                 .Append("It returns processResult with terminal status, exitCode and new output. Use process_wait for intermediate output or if trigger_wait is unavailable. ")

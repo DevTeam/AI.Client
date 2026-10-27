@@ -88,7 +88,7 @@ public sealed class BuiltInToolTests
         await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
         session.Tools.Select(item => item.OriginalName).ShouldBe(
         [
-            "process_run", "process_run_unrestricted", "process_wait", "process_stop", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
+            "process_run", "process_run_sandboxed", "process_wait", "process_stop", "trigger_wait", "fetch", "list_allowed_directories", "read_text_file", "read_multiple_files", "read_image_file", "list_directory",
             "directory_tree", "search_files", "grep_files", "get_file_info", "write_file", "edit_file", "create_directory",
             "move_file", "delete_file", "delete_directory", "zip_list", "zip_read", "zip_extract", "zip_create", "cs_run"
         ], ignoreOrder: true);
@@ -113,9 +113,9 @@ public sealed class BuiltInToolTests
         }
         // The session grants no directory, so the sandboxed runner may not enter BaseDirectory: the run
         // goes through the unrestricted runner, which takes the same arguments.
-        var unrestricted = session.Tools.Single(item => item.OriginalName == "process_run_unrestricted");
-        unrestricted.ModelDefinition.InputSchema.GetRawText().ShouldBe(tool.ModelDefinition.InputSchema.GetRawText());
-        var result = await session.CallAsync(unrestricted, arguments, null, timeout.Token);
+        var sandboxed = session.Tools.Single(item => item.OriginalName == "process_run_sandboxed");
+        sandboxed.ModelDefinition.InputSchema.GetRawText().ShouldBe(tool.ModelDefinition.InputSchema.GetRawText());
+        var result = await session.CallAsync(tool, arguments, null, timeout.Token);
         // A non-zero run reports through the result, so say what it was rather than only that it failed.
         result.IsError.ShouldBeFalse(result.ModelContent);
         result.StructuredContent.ShouldNotBeNull();

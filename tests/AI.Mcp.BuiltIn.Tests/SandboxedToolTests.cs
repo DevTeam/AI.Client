@@ -7,7 +7,7 @@ using Xunit;
 namespace AI.Mcp.BuiltIn.Tests;
 
 /// <summary>
-/// Starts the built-in server the way the Host does: directory grants in its environment. Then <c>process_run</c> and <c>cs_run</c> must
+/// Starts the built-in server the way the Host does: directory grants in its environment. Then <c>process_run_sandboxed</c> and <c>cs_run</c> must
 /// reach exactly the granted directories: read-only grants for reading, writable grants and the
 /// chat's temporary directory for writing, and nothing else.
 /// </summary>
@@ -87,16 +87,17 @@ public sealed class SandboxedToolTests : IAsyncLifetime
         RequireSandbox();
         var tools = await _client.ListToolsAsync(cancellationToken: Token);
 
-        tools.Single(tool => tool.Name == "process_run").Description.ShouldNotBeNull().ShouldContain("sandbox");
+        tools.Single(tool => tool.Name == "process_run_sandboxed").Description.ShouldNotBeNull().ShouldContain("sandbox");
+        tools.Single(tool => tool.Name == "process_run").Description.ShouldNotBeNull().ShouldContain("The default tool");
         tools.Single(tool => tool.Name == "cs_run").Description.ShouldNotBeNull().ShouldContain("sandbox");
     }
 
     [Theory]
+    [InlineData("process_run_sandboxed")]
     [InlineData("process_run")]
-    [InlineData("process_run_unrestricted")]
     public async Task ManagedCommandsContinueOverStdioWithoutRelaunching(string tool)
     {
-        if (tool == "process_run") RequireSandbox();
+        if (tool == "process_run_sandboxed") RequireSandbox();
         var release = Path.Combine(_writable, "release");
         var launches = Path.Combine(_writable, "launches");
         var (shell, arguments) = OperatingSystem.IsWindows()
@@ -130,7 +131,7 @@ public sealed class SandboxedToolTests : IAsyncLifetime
         var log = final.GetProperty("stdoutPath").GetString()!;
         log.ShouldStartWith(_temporary);
         (await File.ReadAllTextAsync(log, Token)).ShouldBe("readydone");
-        if (tool == "process_run") final.GetProperty("sandbox").GetString().ShouldNotBeNullOrWhiteSpace();
+        if (tool == "process_run_sandboxed") final.GetProperty("sandbox").GetString().ShouldNotBeNullOrWhiteSpace();
         else final.GetProperty("sandbox").ValueKind.ShouldBe(JsonValueKind.Null);
         var stopped = await CallAsync("process_stop", new Dictionary<string, object?> { ["processId"] = id });
         stopped.GetProperty("exitCode").GetInt32().ShouldBe(7);
@@ -148,6 +149,16 @@ public sealed class SandboxedToolTests : IAsyncLifetime
         open.GetProperty("sandbox").GetString().ShouldNotBeNullOrWhiteSpace();
         closed.GetProperty("exitCode").GetInt32().ShouldNotBe(0);
         closed.GetProperty("stdout").GetString().ShouldNotBeNull().ShouldNotContain("secret-content");
+    }
+
+    [Fact]
+    public async Task ACommandUsesHostPermissionsByDefault()
+    {
+        var result = await RunCommandAsync(Read(Path.Combine(_closed, "secret.txt")), "process_run");
+
+        result.GetProperty("exitCode").GetInt32().ShouldBe(0, result.ToString());
+        result.GetProperty("stdout").GetString().ShouldNotBeNull().ShouldContain("secret-content");
+        result.GetProperty("sandbox").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     [Fact]
@@ -278,12 +289,12 @@ public sealed class SandboxedToolTests : IAsyncLifetime
 
     private static string Write(string file) => OperatingSystem.IsWindows() ? $"echo data> {file}" : $"echo data > '{file}'";
 
-    private async Task<JsonElement> RunCommandAsync(string command)
+    private async Task<JsonElement> RunCommandAsync(string command, string tool = "process_run_sandboxed")
     {
         var (shell, arguments) = OperatingSystem.IsWindows()
             ? (Path.Combine(Environment.SystemDirectory, "cmd.exe"), new[] { "/d", "/c", command })
             : ("/bin/sh", new[] { "-c", command });
-        return await CallAsync("process_run", new Dictionary<string, object?>
+        return await CallAsync(tool, new Dictionary<string, object?>
         {
             ["executable"] = shell,
             ["arguments"] = arguments,

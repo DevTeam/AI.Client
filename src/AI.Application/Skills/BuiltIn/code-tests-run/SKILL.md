@@ -5,7 +5,7 @@ icon: flask
 kind: playbook
 description: Run focused and final test suites with concise output and bounded timeouts, then report verified totals and failure causes; changes nothing unless the user asks for a fix.
 parameters: {"type":"object","properties":{"filter":{"type":"string","description":"Test project, file, class or name pattern, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_run_unrestricted","process_wait","process_stop","trigger_wait","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","ask_user","run_skill"]
 ---
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
@@ -17,7 +17,8 @@ Remove task-created scratch files when finished.
    files, README or CONTRIBUTING, CI workflow files, then manifests (package.json `test` script,
    *.sln or test *.csproj, pyproject.toml or pytest.ini, Cargo.toml, go.mod, Makefile targets).
    Do not guess a runner the project does not use.
-2. Run tests in their project directory. Start with the narrowest relevant project, module,
+2. Use `process_run` for tests by default; use `process_run_sandboxed` only for explicitly requested
+   sandboxed execution. Run tests in their project directory. Start with the narrowest relevant project, module,
    file, class or test-name filter, including an inferred filter when the user did not supply
    one. Run a broad/full suite as a final check when relevant and feasible; label a filtered
    result as filtered. Pass the runner as an executable with an argument array, not one shell

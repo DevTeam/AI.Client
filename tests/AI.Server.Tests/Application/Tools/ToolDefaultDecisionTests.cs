@@ -38,7 +38,7 @@ public sealed class ToolDefaultDecisionTests
     [Theory]
     [InlineData("write_file")]
     [InlineData("delete_directory")]
-    [InlineData("process_run_unrestricted")]
+    [InlineData("process_run")]
     [InlineData("fetch")]
     public void BuiltInToolsWithSideEffectsOrNetworkAccessStillAsk(string name) =>
         _defaults.GetDecision(DefaultMcpServer.Id, name).ShouldBe("Ask");
@@ -62,11 +62,10 @@ public sealed class ToolDefaultDecisionTests
     }
 
     /// <summary>
-    /// Commands and scripts always run in the sandbox, so they run unasked; the unsandboxed variant
-    /// of process_run is the one that asks.
+    /// Explicitly sandboxed commands and scripts run unasked; the default process runner asks.
     /// </summary>
     [Theory]
-    [InlineData("process_run")]
+    [InlineData("process_run_sandboxed")]
     [InlineData("cs_run")]
     [InlineData("process_stop")]
     public void SandboxedCommandsAndScriptsRunWithoutApproval(string name) =>

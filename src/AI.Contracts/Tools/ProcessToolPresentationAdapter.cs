@@ -6,7 +6,7 @@ namespace AI.Contracts.Tools;
 /// <summary>The built-in process runner.</summary>
 public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdapter
 {
-    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run", "process_run_unrestricted", "process_wait", "process_stop" };
+    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "process_run", "process_run_sandboxed", "process_wait", "process_stop" };
 
     public override ToolResultPresentation DescribeResult(ToolRef tool, JsonElement? arguments, ToolCallResult result)
     {
@@ -33,7 +33,8 @@ public sealed class ProcessToolPresentationAdapter : BuiltInToolPresentationAdap
                     .Where(part => part.ValueKind == JsonValueKind.String)
                     .Select(part => part.GetString()))).Trim()
                 : executable;
-        return new ToolCallPresentation("Run command", Shorten(detail), ToolSafety.Destructive);
+        return new ToolCallPresentation(tool.Name == "process_run_sandboxed" ? "Run process in sandbox" : "Run process",
+            Shorten(detail), ToolSafety.Destructive);
     }
 
     protected override ToolResultPresentation Describe(

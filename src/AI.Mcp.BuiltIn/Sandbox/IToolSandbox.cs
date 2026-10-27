@@ -5,7 +5,7 @@ using AI.Sandbox;
 /// <summary>The programs of the built-in server that run confined to the session's grants.</summary>
 public enum SandboxedTool
 {
-    /// <summary><c>process_run</c> commands.</summary>
+    /// <summary><c>process_run_sandboxed</c> commands.</summary>
     Commands,
 
     /// <summary><c>cs_run</c> scripts.</summary>
@@ -14,7 +14,7 @@ public enum SandboxedTool
 
 /// <summary>
 /// The sandbox the programs of this session run in. It opens exactly the session's directory grants;
-/// <c>process_run_unrestricted</c> is the only way past it.
+/// <c>process_run</c> executes without this policy.
 /// </summary>
 public interface IToolSandbox
 {

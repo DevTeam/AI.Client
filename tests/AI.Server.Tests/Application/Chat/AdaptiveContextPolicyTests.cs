@@ -239,17 +239,19 @@ public sealed class AdaptiveContextPolicyTests
     public void ShouldKeepBasicFileAndExecutionToolsForARequestNoDescriptionMatches()
     {
         string[] basic = ["read_text_file", "write_file", "edit_file", "grep_files", "list_directory", "search_files",
-            "directory_tree", "process_run", "process_run_unrestricted", "process_wait", "process_stop", "trigger_wait"];
+            "directory_tree", "process_run", "process_wait", "process_stop", "trigger_wait"];
         var core = basic.Select(name => Tool(name, new string('d', 1_500))).ToArray();
         // Shorter schemas would win every free place, and a pin narrows the ordinary ones to a handful.
         var others = Enumerable.Range(0, 30).Select(index => Tool($"other_{index}", "Short")).ToArray();
+        var sandboxed = Tool("process_run_sandboxed", new string('d', 1_500));
         var pinned = new HashSet<string>([others[0].ModelDefinition.Name], StringComparer.Ordinal);
 
         var selection = Policy().Choose(Connection(131_072), "Переведи фрагмент и запиши результат", [],
-            [.. others, .. core], pinned);
+            [.. others, .. core, sandboxed], pinned);
 
         selection.Tools.ShouldContain(others[0]);
         foreach (var tool in core) selection.Tools.ShouldContain(tool);
+        selection.Tools.ShouldNotContain(sandboxed);
         selection.Tools.Count.ShouldBeLessThan(others.Length + core.Length);
     }
 

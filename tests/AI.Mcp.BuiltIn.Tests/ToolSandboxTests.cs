@@ -22,7 +22,7 @@ public sealed class ToolSandboxTests
         var description = closed.Describe(SandboxedTool.Commands);
 
         description.ShouldContain("null device");
-        description.ShouldContain("process_run_unrestricted rather than asking for a grant");
+        description.ShouldContain("process_run rather than asking for a grant");
         closed.Describe(SandboxedTool.Scripts).ShouldContain("null device");
         open.Describe(SandboxedTool.Commands).ShouldNotContain("null device");
     }

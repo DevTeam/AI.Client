@@ -3,7 +3,7 @@ using AI.Mcp.BuiltIn.Process;
 using AI.Mcp.BuiltIn.Sandbox;
 using AI.Sandbox;
 
-// Deterministic CLI diagnostics through the actual process_run implementation, without a model.
+// Deterministic CLI diagnostics through the actual process_run_sandboxed implementation, without a model.
 // Configurations and caches are synthetic: never grant the user's profile or copy credentials.
 if (!OperatingSystem.IsWindows())
 {

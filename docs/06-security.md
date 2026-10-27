@@ -108,6 +108,11 @@ by the paths they change. A rule is a tool, a pattern, a decision (`Allow`, `Ask
 scope (global, project or chat); they are stored in `command-rules.json` beside `settings.json`,
 apart from chats and projects.
 
+`process_run` is the ordinary runner with the Host user's permissions. Its command rules also
+decide `process_run_sandboxed`, which confines the command to session grants. The two tools have
+separate tool policies: ordinary execution defaults to `Ask`, explicitly sandboxed execution to
+`Allow`. A command rule never overrides a tool-level `Deny`.
+
 Deciding, scoping, storing and showing rules are the same for every tool. What differs lives in the
 tool's rule profile (`IToolRuleProfile`): how its patterns are written, how a call of it reads
 (`RuleSubject`: what it does, its warnings, whether the guard stops an Allow, whether only an exact

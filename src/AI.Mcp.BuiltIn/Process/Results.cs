@@ -4,8 +4,8 @@ using AI.Sandbox;
 
 /// <param name="Limits">The resources the process tree may use; <c>null</c> means <see cref="ChildProcessLimits.Default"/>.</param>
 /// <param name="Sandboxed">
-/// Whether the tree is confined to the session's grants: <c>process_run</c> always is,
-/// <c>process_run_unrestricted</c> never.
+/// Whether the tree is confined to the session's grants: <c>process_run_sandboxed</c> always is,
+/// <c>process_run</c> never.
 /// </param>
 public sealed record ProcessRequest(
     string Executable,

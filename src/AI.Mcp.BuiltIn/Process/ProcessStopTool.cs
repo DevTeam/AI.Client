@@ -10,7 +10,7 @@ public sealed class ProcessStopTool(IProcessSessions processes, IBuiltInToolRepl
 {
     public McpServerTool Create() => McpServerTool.Create(StopAsync, new McpServerToolCreateOptions
     {
-        Description = "Stop the tree of a processId returned by process_run or process_run_unrestricted in this MCP session. "
+        Description = "Stop the tree of a processId returned by process_run or process_run_sandboxed in this MCP session. "
             + "Only this session's handles are accepted; never pass an OS PID or stop another chat's process. "
             + "Use only when stopping this run's work is authorized or necessary for the requested task. "
             + "Returns the terminal result and partial logs; stopped is not successful completion and does not undo side effects. "

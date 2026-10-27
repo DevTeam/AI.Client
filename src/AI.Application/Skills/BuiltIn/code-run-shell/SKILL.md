@@ -6,7 +6,7 @@ icon: code-run-shell
 kind: playbook
 description: Run programs and shell commands through process_run on Windows, Linux or macOS, including PowerShell; may change files or external data only within the user's authorized scope, with risk, duration and encoding checks.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The command or automation goal"},"shell":{"type":"string","description":"Shell explicitly chosen by the user"},"workingDirectory":{"type":"string","description":"Working directory provided by the user"}},"additionalProperties":false}
-tools: ["tool_search","run_skill","list_allowed_directories","process_run","process_run_unrestricted","process_wait","process_stop","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
+tools: ["tool_search","run_skill","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","read_text_file","get_file_info","list_directory","write_file","create_directory","ask_user"]
 ---
 
 For disposable scripts, logs or intermediate results, find the `purpose: "chatTemporary"` root with
@@ -19,8 +19,10 @@ permission-checked tools; this playbook grants no access. Report in the user's l
 Prefer a direct executable and argv array. Use a shell for its built-ins, pipelines, redirection
 or scripts, and a dedicated tool when it better serves the task.
 
-When CLI installation, configuration or cache access is denied, load `code-cli-configure` with
-`run_skill` before requesting directory grants. Return to the original command after setup.
+Use `process_run` by default for commands, builds, tests and installed CLI tools. It runs with
+the host user's permissions and follows the effective tool policy and command rules. Use
+`process_run_sandboxed` only when the user explicitly requests sandboxed execution. For CLI
+configuration or a denied directory in that explicit sandbox, load `code-cli-configure` when needed.
 
 1. Establish the goal, inputs and authorized side effects. Check `process_run` availability,
    discovering it through `tool_search` if needed, and read its current description/schema.
@@ -61,14 +63,10 @@ When CLI installation, configuration or cache access is denied, load `code-cli-c
    check `$LASTEXITCODE` immediately after important native programs and propagate an appropriate
    `exit` code. Nonterminating PowerShell errors and native program failures need separate checks.
 5. Assess deletion, overwrite, moves, database/network changes and disk exhaustion before launch.
-   `process_run` always runs in a sandbox: programs reach only the granted directories, the chat's
-   temporary directory and read-only system locations, start only in a granted directory, keep
-   the network, and results carry `sandbox`. Tools that keep SDKs or caches elsewhere, such as in
-   the user profile, may fail there. An access error outside the grants is the boundary: ask the
-   user through `ask_user` to grant that directory to the project (read-only unless it must be
-   written) and retry after the grant. Only when the user declines or no grant can cover it, use
-   `process_run_unrestricted`, which runs the same arguments without the sandbox after the user
-   approves the call and is unavailable in subtasks. Never work around the sandbox otherwise.
+   `process_run` uses the host user's permissions; its working directory and project directory
+   grants are not a boundary. Keep the command within the authorized task scope. When sandboxed
+   execution was explicitly requested, `process_run_sandboxed` is confined to session grants;
+   respect that request and report any limitation rather than silently switching modes.
    Verify full targets, empty inputs, source/destination
    overlap, existing outputs and symlinks/junctions. Before recursive deletion/moves confirm the
    final path is within the intended authorized area, not an accidental root, home or entire

@@ -9,41 +9,39 @@ using ModelContextProtocol.Server;
 namespace AI.Mcp.BuiltIn.Process;
 
 /// <summary>
-/// <c>process_run</c>: a program confined to the session's grants. It is safe to run without asking,
-/// so it is allowed by default and works in subtasks, which cannot ask.
+/// <c>process_run</c>: the default program runner, using the host user's permissions.
 /// </summary>
 [McpServerToolType]
-public sealed class ProcessRunTool(IProcessSessions processes, IBuiltInToolReply reply, IToolSandbox sandbox)
+public sealed class ProcessRunTool(IProcessSessions processes, IBuiltInToolReply reply)
     : ProcessRunToolBase(processes, reply)
 {
     public const string ToolName = "process_run";
 
     protected override string Name => ToolName;
 
-    protected override bool Sandboxed => true;
-
-    protected override string Boundary => sandbox.Describe(SandboxedTool.Commands);
-}
-
-/// <summary>
-/// <c>process_run_unrestricted</c>: the same program without the sandbox, for what the grants cannot
-/// cover. It reaches everything the user's account can, so every call is asked about by default.
-/// </summary>
-[McpServerToolType]
-public sealed class ProcessRunUnrestrictedTool(IProcessSessions processes, IBuiltInToolReply reply)
-    : ProcessRunToolBase(processes, reply)
-{
-    public const string ToolName = "process_run_unrestricted";
-
-    protected override string Name => ToolName;
-
     protected override bool Sandboxed => false;
 
     protected override string Boundary =>
-        "The program runs without any sandbox and can read and write anything the host user can, the whole user profile included. "
-        + "Use it only when process_run cannot do the job because required directory grants were declined or cannot cover an established sandbox limitation; "
-        + "first prefer project directory grants and process_run when they can cover the operation. Respect an explicit prohibition or declined unrestricted request. Every call asks the user to approve it "
-        + "unless a saved rule allows it, and subtasks cannot ask. ";
+        "The default tool for commands, builds, tests and installed CLI tools. The program runs with the host user's permissions, "
+        + "without a sandbox; workingDirectory and project directory grants do not confine it. "
+        + "Calls follow the effective tool policy and saved command rules; subtasks cannot ask for approval. ";
+}
+
+/// <summary>
+/// <c>process_run_sandboxed</c>: explicitly requested execution confined to the session's grants.
+/// </summary>
+[McpServerToolType]
+public sealed class ProcessRunSandboxedTool(IProcessSessions processes, IBuiltInToolReply reply, IToolSandbox sandbox)
+    : ProcessRunToolBase(processes, reply)
+{
+    public const string ToolName = "process_run_sandboxed";
+
+    protected override string Name => ToolName;
+
+    protected override bool Sandboxed => true;
+
+    protected override string Boundary =>
+        "For explicitly requested sandboxed execution. " + sandbox.Describe(SandboxedTool.Commands);
 }
 
 /// <summary>The program-running tool both variants share; only the sandbox and the wording differ.</summary>

@@ -62,7 +62,7 @@ public abstract class ProcessRunToolBase(IProcessSessions processes, IBuiltInToo
         {
             Name = Name,
             Description = $"Run a program once, returning completion or a running processId after waitTimeoutMs. No implicit shell or interactive input. " +
-                          "A running result is not an error: use process_wait with that ID and the returned stdoutOffset/stderrOffset; do not restart or split a running test suite. " +
+                          "A running result is not an error: prefer trigger_wait type process_completed with processSessionId set to that ID and the returned stdoutOffset/stderrOffset for a longer completion wait; process_wait reads intermediate output. Do not restart or split a running test suite. " +
                           "Only a terminal result with exitCode establishes the outcome. process_stop stops this session's process tree. " +
                           "Full stdout/stderr byte logs are saved at stdoutPath/stderrPath in their original encoding, normally in the chat's temporary directory. " +
                           "Handles belong to this MCP session; closing it stops remaining processes. " +

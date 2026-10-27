@@ -5,5 +5,6 @@ public interface IProcessSessions
 {
     Task<ProcessResult> RunAsync(ProcessRequest request, int waitTimeoutMs, CancellationToken cancellationToken);
     Task<ProcessResult> WaitAsync(string processId, int waitTimeoutMs, long stdoutOffset, long stderrOffset, CancellationToken cancellationToken);
+    Task<ProcessResult> WaitForCompletionAsync(string processId, long stdoutOffset, long stderrOffset, CancellationToken cancellationToken);
     Task<ProcessResult> StopAsync(string processId, CancellationToken cancellationToken);
 }

@@ -79,8 +79,11 @@ which remains the hard deadline bounded by policy. Waiting never widens the orig
 resource limits or permissions; unrestricted execution still needs its original launch approval.
 
 A response with `status: "running"`, `processId` and no `exitCode` is successful delivery of
-an active handle, not successful verification. Call `process_wait` with the same `processId`
-and the previous `stdoutOffset` and `stderrOffset`. Its default wait is 60000 ms; 0 snapshots
+an active handle, not successful verification. Prefer `trigger_wait` with type `process_completed`,
+`processSessionId` set to that handle, and the previous `stdoutOffset` and `stderrOffset` for a
+single longer completion wait. Its `processResult` contains the terminal status, exit code and
+new output. Use `process_wait` for intermediate output or when triggers are unavailable.
+Its default wait is 60000 ms; 0 snapshots
 status and output immediately. Expiry returns `running` without killing or restarting anything.
 Offsets count original bytes, start at 0 and can replay earlier output. `hasMoreOutput` means
 unread bytes remain, including after process completion; use zero-duration waits to page them.
@@ -144,6 +147,7 @@ Conditions use `type` and type-specific fields:
 | `delay` | `afterMs` | Elapsed time reaches the interval. |
 | `file_exists`, `file_missing`, `file_changed` | `path` | File state or a change after observation starts. The absolute path needs a read grant. |
 | `process_exit` | `processId` | The named process exits. It must exist when observation starts. |
+| `process_completed` | `processSessionId` | A managed `process_run` or `process_run_unrestricted` execution finishes, including output draining. The string handle must belong to this MCP session; an already finished execution matches immediately. |
 | `process_cpu_below`, `process_cpu_above` | `processId`, `cpuPercent` | Sampled CPU usage crosses a 0..100 percent threshold, normalized across logical processors. |
 | `process_memory_below`, `process_memory_above` | `processId`, `memoryBytes` | The named process's working set crosses a byte threshold. |
 
@@ -152,6 +156,26 @@ File observation combines `FileSystemWatcher` notifications with a bounded perio
 missed notification does not leave the call waiting indefinitely. The result reports
 `watcherOverflow` if the watcher reported an error. Process observation reads only the named PID;
 it neither enumerates processes nor stops them.
+
+For `process_completed`, pass the launch result's string `processId` as `processSessionId`,
+not as the numeric OS `processId`. Optional `stdoutOffset` and `stderrOffset` select new output
+(default 0). The trigger result includes `processResult`, with the same status, exit code,
+output pagination and log paths as `process_wait`. Any terminal status fires the condition;
+`triggered` does not imply the command succeeded. Use `process_wait` with `waitTimeoutMs: 0`
+if `processResult.hasMoreOutput` is true. `stableForMs` is not supported for this condition.
+Completion wakes the waiter directly, without repeated tool calls or OS PID polling.
+Timeout, a different condition winning, and cancellation release the observer without stopping
+the process or extending its original deadline. Session shutdown still stops owned processes.
+This observes the active run only; it does not persist a subscription or start an inactive chat.
+
+```json
+{
+  "conditions": [
+    { "type": "process_completed", "processSessionId": "<process_run processId>", "stdoutOffset": 0, "stderrOffset": 0 }
+  ],
+  "timeoutMs": 600000
+}
+```
 
 ## FileSystem tools
 

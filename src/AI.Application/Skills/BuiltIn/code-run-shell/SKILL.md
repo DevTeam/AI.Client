@@ -87,8 +87,11 @@ When CLI installation, configuration or cache access is denied, load `code-cli-c
    both launch tools (0..60000). It returns `status: running` and `processId` without stopping
    the command. `timeoutMs` remains the hard tree deadline (1..86400000, default 600000), bounded
    by the effective tool policy. Omit it unless an intentionally shorter deadline is needed.
-   For `running`, use `process_wait` on the same ID, passing the returned `stdoutOffset` and
-   `stderrOffset`. Discover that tool if it is not offered. Waits may expire repeatedly; this is
+   For `running`, prefer one bounded `trigger_wait` with type `process_completed`,
+   `processSessionId` set to the returned handle, and its `stdoutOffset` and `stderrOffset`.
+   Read the nested `processResult` for status, exit code and new output; `triggered` alone is not
+   command success. Use `process_wait` for intermediate output or if triggers are unavailable.
+   Discover the needed tool if it is not offered. Waits may expire repeatedly; this is
    not a test failure. Never restart or split a test suite merely because a wait expired, and do
    not infer a hang solely from silence. Continue until a terminal result establishes the outcome.
    `process_wait` defaults to a 60000 ms wait; cancellation ends the wait, not the process. A new

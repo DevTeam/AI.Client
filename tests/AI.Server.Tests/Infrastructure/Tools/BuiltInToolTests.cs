@@ -127,6 +127,15 @@ public sealed class BuiltInToolTests
         }, timeout.Token);
         trigger.GetProperty("outcome").GetString().ShouldBe("triggered");
         trigger.GetProperty("conditionIndex").GetInt32().ShouldBe(0);
+        var completion = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "process_completed",
+                processSessionId = result.StructuredContent.Value.GetProperty("processId").GetString() } },
+            timeoutMs = 60000
+        }, timeout.Token);
+        completion.GetProperty("outcome").GetString().ShouldBe("triggered");
+        completion.GetProperty("processResult").GetProperty("status").GetString().ShouldBe("completed");
+        completion.GetProperty("processResult").GetProperty("exitCode").GetInt32().ShouldBe(0);
         session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.InputSchema
             .GetProperty("properties").GetProperty("timeoutMs").GetProperty("maximum").GetInt32().ShouldBe(86400000);
         var canonical = session.ValidateArguments(tool, "{\"executable\":\"dotnet\"}");

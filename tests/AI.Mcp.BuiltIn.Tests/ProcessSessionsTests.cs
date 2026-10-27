@@ -1,6 +1,8 @@
 using System.Text;
 using AI.Mcp.BuiltIn.Process;
 using AI.Mcp.BuiltIn.Sandbox;
+using AI.Mcp.BuiltIn.Grants;
+using AI.Mcp.BuiltIn.Triggers;
 using AI.Sandbox;
 using Shouldly;
 using Xunit;
@@ -16,6 +18,127 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
     {
         Directory.Delete(_root, recursive: true);
         return ValueTask.CompletedTask;
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task TriggerReturnsTheSameExecutionIncludingCompletionBeforeRegistration(bool sandboxed, bool alreadyCompleted)
+    {
+        var runner = new ControlledRunner("first", "warning");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var request = new ProcessRequest("program", [], _root, 12345, Sandboxed: sandboxed);
+        var started = await sessions.RunAsync(request, 0, Token);
+        await runner.Written.Task.WaitAsync(Token);
+        var first = await sessions.WaitAsync(started.ProcessId!, 0, 0, 0, Token);
+        if (alreadyCompleted)
+        {
+            runner.Release.TrySetResult();
+            await sessions.WaitForCompletionAsync(started.ProcessId!, 0, 0, Token);
+        }
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+        var pending = waiter.WaitAsync([
+            new TriggerCondition("delay", AfterMs: 60000),
+            new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId,
+                StdoutOffset: first.StdoutOffset, StderrOffset: first.StderrOffset)
+        ], 60000, Token);
+        if (!alreadyCompleted)
+        {
+            pending.IsCompleted.ShouldBeFalse();
+            runner.Release.TrySetResult();
+        }
+        var triggered = await pending.WaitAsync(TimeSpan.FromSeconds(5), Token);
+        triggered.Outcome.ShouldBe("triggered");
+        triggered.ConditionIndex.ShouldBe(1);
+        triggered.ProcessId.ShouldBeNull();
+        var result = triggered.ProcessResult.ShouldNotBeNull();
+        result.Status.ShouldBe("completed");
+        result.ProcessId.ShouldBe(started.ProcessId);
+        result.ExitCode.ShouldBe(7);
+        result.Stdout.ShouldBe("last");
+        result.Stderr.ShouldBeEmpty();
+        runner.Request.ShouldBe(request);
+        runner.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task TriggerTimeoutCancellationAndLosingConditionLeaveExecutionAliveAndCanObserveStop()
+    {
+        var runner = new ControlledRunner("partial", "");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+        var condition = new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId);
+        (await waiter.WaitAsync([condition], 1, Token)).Outcome.ShouldBe("timeout");
+        (await waiter.WaitAsync([condition, new TriggerCondition("delay", AfterMs: 1)], 1000, Token))
+            .ConditionIndex.ShouldBe(1);
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var waiting = waiter.WaitAsync([condition], 60000, cancelled.Token);
+        await cancelled.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => waiting);
+        runner.Stopped.ShouldBeFalse();
+        (await sessions.WaitAsync(started.ProcessId!, 0, 0, 0, Token)).Status.ShouldBe("running");
+        var stopping = waiter.WaitAsync([condition], 60000, Token);
+        await sessions.StopAsync(started.ProcessId!, Token);
+        var result = await stopping.WaitAsync(TimeSpan.FromSeconds(5), Token);
+        result.Outcome.ShouldBe("triggered");
+        result.ProcessResult!.Status.ShouldBe("stopped");
+        runner.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task TriggerRejectsForeignHandlesAndInvalidConditionsWithoutStoppingOwnedProcesses()
+    {
+        var runner = new ControlledRunner("partial", "");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        await using var other = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        var foreignWaiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: other);
+        await Should.ThrowAsync<ArgumentException>(() => foreignWaiter.WaitAsync([
+            new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId)
+        ], 1000, Token));
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+        foreach (var invalid in new[] {
+                     new TriggerCondition("process_completed"),
+                     new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, StableForMs: 1),
+                     new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, StdoutOffset: -1),
+                     new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, ProcessId: 1) })
+            await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync([invalid], 1000, Token));
+        // A later invalid condition also cancels an observer that was already prepared.
+        await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync([
+            new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId),
+            new TriggerCondition("unknown")
+        ], 1000, Token));
+        runner.Stopped.ShouldBeFalse();
+    }
+
+    private sealed class EmptyGrants : IGrantSource
+    {
+        public IReadOnlyList<DirectoryGrantSpec> Load() => [];
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TriggerFiresForTimeoutAndLauncherFailureWithoutClaimingSuccess(bool timedOut)
+    {
+        var runner = new ControlledRunner("partial", "diagnostic", timedOut ?
+            new ProcessResult(null, "", "", 1, true, false, null) :
+            new ProcessResult(null, "", "", 1, false, false, "Could not start"));
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+        var waiting = waiter.WaitAsync([
+            new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId)
+        ], 60000, Token);
+        runner.Release.TrySetResult();
+        var result = await waiting.WaitAsync(TimeSpan.FromSeconds(5), Token);
+        result.Outcome.ShouldBe("triggered");
+        result.ProcessResult!.Status.ShouldBe(timedOut ? "timed_out" : "failed");
+        result.ProcessResult.ExitCode.ShouldBeNull();
+        result.ProcessResult.Stderr.ShouldBe("diagnostic");
     }
 
     [Theory]
@@ -186,7 +309,7 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         }
     }
 
-    private sealed class ControlledRunner(string stdout, string stderr) : IProcessRunner
+    private sealed class ControlledRunner(string stdout, string stderr, ProcessResult? terminalResult = null) : IProcessRunner
     {
         public TaskCompletionSource Written { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -206,7 +329,7 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
                 Written.TrySetResult();
                 await Release.Task.WaitAsync(cancellationToken);
                 await output.StandardOutput.WriteAsync("last"u8.ToArray(), cancellationToken);
-                return new ProcessResult(7, stdout + "last", stderr, 1, false, false, null);
+                return terminalResult ?? new ProcessResult(7, stdout + "last", stderr, 1, false, false, null);
             }
             catch (OperationCanceledException)
             {

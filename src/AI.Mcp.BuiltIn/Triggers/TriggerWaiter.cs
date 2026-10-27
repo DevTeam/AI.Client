@@ -3,6 +3,7 @@ namespace AI.Mcp.BuiltIn.Triggers;
 using System.Diagnostics;
 using AI.Contracts.FileSystem;
 using Grants;
+using Process;
 
 public sealed class TriggerWaiter : ITriggerWaiter
 {
@@ -14,6 +15,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private readonly IPathGuard _guard;
     private readonly IFileSystem _files;
     private readonly IPath _paths;
+    private readonly IProcessSessions? _processes;
 
     /// <param name="guard">The grants a condition path has to pass before it is watched.</param>
     /// <param name="files">
@@ -21,12 +23,14 @@ public sealed class TriggerWaiter : ITriggerWaiter
     /// it wants the platform does not have to say so; the composition injects the bound implementations.
     /// </param>
     /// <param name="paths">The path semantics this waiter judges with.</param>
-    public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null)
+    /// <param name="processes">Managed executions owned by this MCP session.</param>
+    public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null, IProcessSessions? processes = null)
     {
         ArgumentNullException.ThrowIfNull(guard);
         _guard = guard;
         _files = files ?? new SystemFileSystem();
         _paths = paths ?? new SystemPath();
+        _processes = processes;
     }
 
     public async Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs, CancellationToken cancellationToken)
@@ -38,14 +42,16 @@ public sealed class TriggerWaiter : ITriggerWaiter
             throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
         using var signal = new SemaphoreSlim(0, 1);
+        using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var states = new List<ConditionState>(conditions.Length);
         var watchOverflow = 0;
         var clock = Stopwatch.StartNew();
         try
         {
             for (var index = 0; index < conditions.Length; index++)
-                states.Add(await PrepareAsync(conditions[index], index, signal, () => Interlocked.Exchange(ref watchOverflow, 1), cancellationToken));
+                states.Add(await PrepareAsync(conditions[index], index, signal, () => Interlocked.Exchange(ref watchOverflow, 1), observers.Token));
 
+            var needsPolling = states.Any(state => state.Kind is not (TriggerKind.Delay or TriggerKind.ProcessCompleted));
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -58,7 +64,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
                     return new TriggerWaitResult("timeout", null, null, null, null, null, null, elapsed,
                         Volatile.Read(ref watchOverflow) != 0);
 
-                var waitMs = (int)Math.Min(PollIntervalMs, timeoutMs - elapsed);
+                var waitMs = (int)Math.Min(needsPolling ? PollIntervalMs : timeoutMs, timeoutMs - elapsed);
                 foreach (var state in states)
                 {
                     if (state.Kind == TriggerKind.Delay && state.Condition.AfterMs is { } afterMs && afterMs > elapsed)
@@ -75,6 +81,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
         finally
         {
+            await observers.CancelAsync();
+            await Task.WhenAll(states.Where(state => state.CompletionObserver is not null).Select(state => state.CompletionObserver!));
             foreach (var state in states) state.Dispose();
         }
     }
@@ -93,6 +101,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "file_missing" => TriggerKind.FileMissing,
             "file_changed" => TriggerKind.FileChanged,
             "process_exit" => TriggerKind.ProcessExit,
+            "process_completed" => TriggerKind.ProcessCompleted,
             "process_cpu_below" => TriggerKind.ProcessCpuBelow,
             "process_cpu_above" => TriggerKind.ProcessCpuAbove,
             "process_memory_below" => TriggerKind.ProcessMemoryBelow,
@@ -100,6 +109,18 @@ public sealed class TriggerWaiter : ITriggerWaiter
             _ => throw new ArgumentException($"Condition {index} has an unknown type.")
         };
         var state = new ConditionState(condition, kind, index);
+        if (kind == TriggerKind.ProcessCompleted)
+        {
+            if (string.IsNullOrWhiteSpace(condition.ProcessSessionId) || condition.StableForMs != 0
+                || condition.ProcessId is not null || condition.StdoutOffset < 0 || condition.StderrOffset < 0)
+                throw new ArgumentException($"Condition {index} requires processSessionId, nonnegative output offsets, no OS processId and no stableForMs.");
+            if (_processes is null)
+                throw new InvalidOperationException("Managed process observation is unavailable.");
+            state.Completion = _processes.WaitForCompletionAsync(condition.ProcessSessionId,
+                condition.StdoutOffset, condition.StderrOffset, cancellationToken);
+            state.CompletionObserver = WakeOnCompletionAsync(state.Completion, signal);
+            return state;
+        }
         if (kind == TriggerKind.Delay)
         {
             if (condition.AfterMs is not > 0 or > MaxTimeoutMs || condition.StableForMs != 0)
@@ -173,6 +194,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, CancellationToken cancellationToken)
     {
         var condition = state.Condition;
+        if (state.Completion is { } completion)
+            return completion.IsCompleted
+                ? Match(state, elapsedMs) with { ProcessResult = await completion }
+                : null;
         if (state.Kind == TriggerKind.Delay)
             return elapsedMs >= condition.AfterMs
                 ? Match(state, elapsedMs) : null;
@@ -265,11 +290,19 @@ public sealed class TriggerWaiter : ITriggerWaiter
         catch (ObjectDisposedException) { }
     }
 
+    private static async Task WakeOnCompletionAsync(Task<ProcessResult> completion, SemaphoreSlim signal)
+    {
+        try { await completion; }
+        // Evaluation propagates failures; disposal also observes cancelled/losing subscriptions.
+        catch (Exception) { }
+        finally { Wake(signal); }
+    }
+
     private readonly record struct FileStamp(bool Exists, long Length, long LastWriteTicks);
 
     private enum TriggerKind
     {
-        Delay, FileExists, FileMissing, FileChanged, ProcessExit,
+        Delay, FileExists, FileMissing, FileChanged, ProcessExit, ProcessCompleted,
         ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow, ProcessMemoryAbove
     }
 
@@ -281,6 +314,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public string? Path { get; set; }
         public FileSystemWatcher? Watcher { get; set; }
         public System.Diagnostics.Process? Process { get; set; }
+        public Task<ProcessResult>? Completion { get; set; }
+        public Task? CompletionObserver { get; set; }
         public FileStamp Baseline { get; set; }
         public FileStamp LastFile { get; set; }
         public int FileEvents;

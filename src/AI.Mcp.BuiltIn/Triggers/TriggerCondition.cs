@@ -1,5 +1,7 @@
 namespace AI.Mcp.BuiltIn.Triggers;
 
+using Process;
+
 public sealed record TriggerCondition(
     string Type,
     string? Path = null,
@@ -7,7 +9,10 @@ public sealed record TriggerCondition(
     int? AfterMs = null,
     double? CpuPercent = null,
     long? MemoryBytes = null,
-    int StableForMs = 0);
+    int StableForMs = 0,
+    string? ProcessSessionId = null,
+    long StdoutOffset = 0,
+    long StderrOffset = 0);
 
 public sealed record TriggerWaitResult(
     string Outcome,
@@ -19,7 +24,8 @@ public sealed record TriggerWaitResult(
     long? MemoryBytes,
     long ElapsedMs,
     bool WatcherOverflow,
-    string? Error = null);
+    string? Error = null,
+    ProcessResult? ProcessResult = null);
 
 public interface ITriggerWaiter
 {

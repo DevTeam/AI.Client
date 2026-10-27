@@ -15,10 +15,12 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
         {
             Description = "Wait once for the first file, process or time condition. The wait ends on a match, timeout or chat cancellation; it does not survive the current run. "
                           + "Types: delay (afterMs), file_exists/file_missing/file_changed (absolute path), process_exit, "
-                          + "process_cpu_below/process_cpu_above (processId and cpuPercent), process_memory_below/process_memory_above "
+                          + "process_completed (processSessionId from process_run or process_run_unrestricted, optional stdoutOffset/stderrOffset; returns processResult with status, exitCode and new output), "
+                          + "process_cpu_below/process_cpu_above (OS processId and cpuPercent), process_memory_below/process_memory_above "
                           + "(processId and memoryBytes). CPU percent is normalized across logical processors. "
                           + "stableForMs requires a file or metric condition to hold without change. "
-                          + "File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
+                          + "Prefer process_completed for one bounded wait on a managed command; it also matches commands already finished. Timeout/cancellation does not stop the command or change its hard deadline. "
+                          + "Managed handles belong to this MCP session, not OS PIDs. File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
         });
 
     [McpServerTool(Name = "trigger_wait", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = true,

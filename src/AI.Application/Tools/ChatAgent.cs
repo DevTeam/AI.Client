@@ -822,7 +822,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             return text.Append("\nPrograms currently found on PATH: ")
                 .Append(installedPrograms.Length == 0 ? "none from the standard probe list" : string.Join(", ", installedPrograms))
                 .Append(". Commands and scripts are sandboxed; request missing grants before unrestricted execution. ")
-                .Append("For status running, use process_wait on the same processId and output offsets; do not restart or split tests. ")
+                .Append("For status running, prefer trigger_wait type process_completed with processSessionId set to the handle and output offsets; process_wait reads intermediate output. Do not restart or split tests. ")
                 .Append("Only terminal status and exitCode establish completion. Session shutdown stops owned processes. ")
                 .Append("Use process_stop only within the authorized task. Prefer cs_run for computation and bulk data processing.").ToString();
         if (offered.Any(item => item.Tool.OriginalName is CommandRule.ProcessRun or CommandRule.ProcessRunUnrestricted))
@@ -837,7 +837,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 .Append("or no grant can cover it, use process_run_unrestricted, which runs without the sandbox after the user ")
                 .Append("approves the call. Never work around the sandbox.");
             text.Append("\n- Both process_run variants may return status running and processId. This means the command is still running, not failed. ")
-                .Append("Discover process_wait if needed, then wait on the same ID with the returned stdoutOffset/stderrOffset. ")
+                .Append("Discover trigger_wait if needed; prefer type process_completed with processSessionId set to that handle and the returned stdoutOffset/stderrOffset for one bounded completion wait. ")
+                .Append("It returns processResult with terminal status, exitCode and new output. Use process_wait for intermediate output or if trigger_wait is unavailable. ")
                 .Append("Do not rerun or split a test suite because an individual wait expired. Quiet output alone does not prove a hang. ")
                 .Append("Only a terminal result and exitCode establish completion; stopped and timed_out mean the check is incomplete. ")
                 .Append("Full output is saved at stdoutPath/stderrPath. Use process_stop only for this session's authorized work. ")

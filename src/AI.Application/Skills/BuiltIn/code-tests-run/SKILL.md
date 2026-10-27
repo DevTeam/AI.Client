@@ -36,7 +36,10 @@ Remove task-created scratch files when finished.
    directory when console output would be large; read its summary and only the relevant failing
    cases. Do not read the entire log into context. A broad suite that fits the deadline can run
    directly with concise output. Both launch variants may return `status: running` and `processId`.
-   Continue that same run with `process_wait`, carrying its `stdoutOffset` and `stderrOffset`.
+   Prefer one bounded `trigger_wait` of type `process_completed`, passing that handle as
+   `processSessionId` and carrying its `stdoutOffset` and `stderrOffset`. Read `processResult`
+   for the actual status, exit code and new output; `triggered` alone is not a passed check.
+   Use `process_wait` for intermediate output or when triggers are unavailable.
    A wait expiring is not a test failure; never relaunch or split the suite just because it is
    still running or quiet. Only split a suite when its known duration exceeds the hard policy
    deadline or a diagnosed failure requires isolation. Full original byte logs are saved at
@@ -53,7 +56,8 @@ Remove task-created scratch files when finished.
    instead of repeated status queries. Use `stableForMs` if the report is written incrementally.
    The trigger does not start a job or survive chat cancellation. After it fires, check the
    managed job's exit status and complete report; if neither is available, completion is unverified.
-   For a managed `process_run` or `process_run_unrestricted` handle, use `process_wait` instead of a trigger.
+   For a managed handle, use `process_completed` with its string `processSessionId`, not
+   `process_exit`, which requires a numeric OS PID. An already finished handle matches immediately.
 4. Read the concise output, exit code and any failure report. A command that found no tests,
    failed to build, timed out, or returned truncated output without recoverable failure details
    is not a pass: report it as such.

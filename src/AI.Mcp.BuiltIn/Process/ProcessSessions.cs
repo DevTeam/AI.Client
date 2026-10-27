@@ -64,6 +64,18 @@ public sealed class ProcessSessions(IProcessRunner runner, IToolSandbox sandbox)
             : SnapshotAsync(execution, waitTimeoutMs, stdoutOffset, stderrOffset, cancellationToken);
     }
 
+    public async Task<ProcessResult> WaitForCompletionAsync(string processId, long stdoutOffset, long stderrOffset,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(stdoutOffset);
+        ArgumentOutOfRangeException.ThrowIfNegative(stderrOffset);
+        var execution = Find(processId)
+            ?? throw new ArgumentException("Unknown or expired processId in this MCP session.", nameof(processId));
+        // Cancelling an observer never stops the execution or changes its original deadline.
+        await execution.Result.WaitAsync(cancellationToken);
+        return await SnapshotAsync(execution, 0, stdoutOffset, stderrOffset, cancellationToken);
+    }
+
     public async Task<ProcessResult> StopAsync(string processId, CancellationToken cancellationToken)
     {
         var execution = Find(processId);

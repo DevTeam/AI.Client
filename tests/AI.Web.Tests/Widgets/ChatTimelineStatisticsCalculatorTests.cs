@@ -237,6 +237,75 @@ public class ChatTimelineStatisticsCalculatorTests
         stats.Turns[0].Requests.ShouldBeNull();
     }
 
+    [Fact]
+    public void ShouldSplitBranchTimeIntoInsideTurnsAndGapsWhenNoRequestWasTimed()
+    {
+        var stats = _calculator.Calculate(
+            [User(T0), Assistant(T0.AddSeconds(5)), User(T0.AddSeconds(30)), Assistant(T0.AddSeconds(50))],
+            null, null, isRunning: false);
+
+        stats.Time.HasData.ShouldBeTrue();
+        stats.Time.TotalMs.ShouldBe(50_000);
+        stats.Time.Segments.ShouldBe([new TimelineTimeSegment("inside", 25_000), new TimelineTimeSegment("between", 25_000)]);
+    }
+
+    [Fact]
+    public void ShouldTakeModelTimeFromTheProviderAndLeaveTheRestInsideTheTurn()
+    {
+        var first = TurnUsage(Totals(Requests: 1, InputTokens: 10, OutputTokens: 5, durationMs: 3_000));
+        var second = TurnUsage(Totals(Requests: 1, InputTokens: 10, OutputTokens: 5, durationMs: 8_000),
+            startedAt: T0.AddSeconds(30));
+        var chat = ChatUsage(Totals(Requests: 2, InputTokens: 20, OutputTokens: 10, durationMs: 11_000),
+            turns: [first, second]);
+
+        var stats = _calculator.Calculate(
+            [User(T0), Assistant(T0.AddSeconds(5)), User(T0.AddSeconds(30)), Assistant(T0.AddSeconds(50))],
+            chat, null, isRunning: false);
+
+        stats.Time.Segments.ShouldBe([
+            new TimelineTimeSegment("model", 11_000),
+            new TimelineTimeSegment("inside", 14_000),
+            new TimelineTimeSegment("between", 25_000)
+        ]);
+        stats.Time.TotalMs.ShouldBe(50_000);
+    }
+
+    [Fact]
+    public void ShouldClampModelTimeToTheTurnItServed()
+    {
+        // A request that outlasted the turn's messages must not push the other parts below zero.
+        var turn = TurnUsage(Totals(Requests: 1, InputTokens: 10, OutputTokens: 5, durationMs: 90_000));
+        var chat = ChatUsage(Totals(Requests: 1, InputTokens: 10, OutputTokens: 5, durationMs: 90_000),
+            turns: [turn]);
+
+        var stats = _calculator.Calculate([User(T0), Assistant(T0.AddSeconds(5))], chat, null, isRunning: false);
+
+        stats.Time.Segments.ShouldBe([new TimelineTimeSegment("model", 5_000)]);
+        stats.Time.TotalMs.ShouldBe(5_000);
+    }
+
+    [Fact]
+    public void ShouldIgnoreNegativeGapsBetweenTurns()
+    {
+        // Timestamps of a legacy transcript may not be ordered; a gap that is not positive is zero.
+        var stats = _calculator.Calculate(
+            [User(T0.AddSeconds(60)), Assistant(T0.AddSeconds(70)), User(T0.AddSeconds(10)), Assistant(T0.AddSeconds(20))],
+            null, null, isRunning: false);
+
+        stats.Time.Segments.ShouldBe([new TimelineTimeSegment("inside", 20_000)]);
+        stats.Time.TotalMs.ShouldBe(20_000);
+    }
+
+    [Fact]
+    public void ShouldReportNoTimeBreakdownForASingleMessage()
+    {
+        var stats = _calculator.Calculate([User(T0)], null, null, isRunning: false);
+
+        stats.Time.HasData.ShouldBeFalse();
+        stats.Time.TotalMs.ShouldBe(0);
+        stats.Time.Segments.ShouldBeEmpty();
+    }
+
     private static ChatMessageView User(DateTimeOffset at) => new(Guid.NewGuid(), null, "User", "Hi", at);
 
     private static ChatMessageView Assistant(DateTimeOffset at) => new(Guid.NewGuid(), null, "Assistant", "answer", at);
@@ -251,8 +320,8 @@ public class ChatTimelineStatisticsCalculatorTests
 
     private static FileChange Change(string path) => new(path, FileChangeKind.Modified, 1, 0);
 
-    private static TokenUsageTotals Totals(int Requests, long InputTokens, long OutputTokens) =>
-        new(new TokenCounts(InputTokens, OutputTokens), Requests, 0, null, 0, 0);
+    private static TokenUsageTotals Totals(int Requests, long InputTokens, long OutputTokens, long durationMs = 0) =>
+        new(new TokenCounts(InputTokens, OutputTokens), Requests, 0, null, 0, durationMs);
 
     private static TurnTokenUsage TurnUsage(TokenUsageTotals totals, DateTimeOffset? startedAt = null) =>
         new(Guid.NewGuid(), Guid.NewGuid(), startedAt ?? T0, totals, []);

@@ -9732,6 +9732,19 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .chat-timeline-chip > .app-icon { flex: none; }
 .chat-timeline-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chat-timeline-more { justify-self: start; font-size: var(--font-size-sm); }
+/* The time split above the list: a donut whose arcs carry the three parts of the branch's
+   wall-clock, with the legend under it. Colours follow the Performance phases — accent for the
+   time a request was measured, muted for the rest of a turn, faint for the gaps between turns. */
+.chat-timeline-time { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .7rem; }
+.chat-timeline-time-ring { display: block; }
+.chat-timeline-time-ring circle { fill: none; }
+.chat-timeline-time-track { stroke: var(--color-fill); }
+.chat-timeline-time-model { stroke: var(--color-accent-text); background: var(--color-accent-text); }
+.chat-timeline-time-inside { stroke: var(--color-text-muted); background: var(--color-text-muted); }
+.chat-timeline-time-between { stroke: var(--color-text-faint); background: var(--color-text-faint); }
+.chat-timeline-time-legend { gap: .15rem .6rem; }
+.chat-timeline-time-swatch { display: inline-block; width: .55rem; height: .55rem; border-radius: 2px; }
+.chat-timeline-time-legend b { font-variant-numeric: tabular-nums; }
 @keyframes chat-timeline-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .chat-timeline-row.is-running .chat-timeline-dot { animation: none; } }
 /* Branches widget: one row per stored branch of the chat. Reuses the sidebar's branch tree line

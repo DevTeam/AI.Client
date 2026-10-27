@@ -37,6 +37,29 @@ public sealed record TimelineTurn(
     IReadOnlyList<string> FilesChanged,
     bool IsRunning);
 
+/// <summary>One part of the branch's wall-clock time, as the Timeline donut draws it.</summary>
+/// <param name="Key">
+/// Stable key — <c>model</c>, <c>inside</c> or <c>between</c>; the widget uses it for the arc class
+/// and for the legend swatch.
+/// </param>
+/// <param name="Milliseconds">How much of the branch's time this part holds.</param>
+public sealed record TimelineTimeSegment(string Key, long Milliseconds);
+
+/// <summary>
+/// Where the branch's wall-clock time went, in parts that add up to the span from the first message
+/// to the last: time inside measured model requests, time inside turns that no request was measured
+/// for (tool execution, local work, pauses between requests), and the gaps between one turn's last
+/// message and the next turn's first.
+/// </summary>
+/// <param name="TotalMs">Sum of <paramref name="Segments"/>; zero when nothing could be measured.</param>
+/// <param name="Segments">Non-zero parts only, in the order the donut draws them.</param>
+public sealed record TimelineTimeBreakdown(long TotalMs, IReadOnlyList<TimelineTimeSegment> Segments)
+{
+    public static TimelineTimeBreakdown Empty { get; } = new(0, []);
+
+    public bool HasData => TotalMs > 0 && Segments.Count > 0;
+}
+
 /// <summary>
 /// All turns on the visible branch, oldest first, in a shape the Timeline widget renders.
 /// Durations and timestamps come from message <c>CreatedAt</c> (approximate); request and token
@@ -45,11 +68,13 @@ public sealed record TimelineTurn(
 /// </summary>
 /// <param name="Turns">One entry per turn on the visible branch.</param>
 /// <param name="HasProviderData">True when at least one turn has a per-turn usage slice.</param>
+/// <param name="Time">Where the branch's time went, for the donut above the list.</param>
 public sealed record ChatTimelineStatistics(
     IReadOnlyList<TimelineTurn> Turns,
-    bool HasProviderData)
+    bool HasProviderData,
+    TimelineTimeBreakdown Time)
 {
-    public static ChatTimelineStatistics Empty { get; } = new([], false);
+    public static ChatTimelineStatistics Empty { get; } = new([], false, TimelineTimeBreakdown.Empty);
 
     public bool HasTurns => Turns.Count > 0;
 }
@@ -107,7 +132,41 @@ public sealed class ChatTimelineStatisticsCalculator : IChatTimelineStatisticsCa
             var turn = branchTurns[index];
             result.Add(BuildTurn(index + 1, turn, slices[index], isRunning && index == branchTurns.Count - 1));
         }
-        return new ChatTimelineStatistics(result, hasProvider);
+        return new ChatTimelineStatistics(result, hasProvider, BuildTime(branchTurns, slices));
+    }
+
+    // The same spans the rows show, split three ways. Every part is taken from message timestamps
+    // except the model time, which is provider-reported and clamped to its own turn: a request that
+    // outlasted the turn's messages would otherwise push the other parts below zero.
+    private static TimelineTimeBreakdown BuildTime(
+        List<List<ChatMessageView>> turns,
+        List<TurnTokenUsage?> slices)
+    {
+        long modelMs = 0;
+        long insideMs = 0;
+        long betweenMs = 0;
+        for (var index = 0; index < turns.Count; index++)
+        {
+            var turn = turns[index];
+            if (turn.Count > 1)
+            {
+                var span = Math.Max(0, (long)(turn[^1].CreatedAt - turn[0].CreatedAt).TotalMilliseconds);
+                var active = Math.Clamp(slices[index]?.Totals.DurationMs ?? 0, 0, span);
+                modelMs += active;
+                insideMs += span - active;
+            }
+            if (index > 0)
+            {
+                var gap = (long)(turn[0].CreatedAt - turns[index - 1][^1].CreatedAt).TotalMilliseconds;
+                betweenMs += Math.Max(0, gap);
+            }
+        }
+
+        var segments = new List<TimelineTimeSegment>(3);
+        if (modelMs > 0) segments.Add(new("model", modelMs));
+        if (insideMs > 0) segments.Add(new("inside", insideMs));
+        if (betweenMs > 0) segments.Add(new("between", betweenMs));
+        return segments.Count == 0 ? TimelineTimeBreakdown.Empty : new TimelineTimeBreakdown(modelMs + insideMs + betweenMs, segments);
     }
 
     private static TimelineTurn BuildTurn(int turnIndex, List<ChatMessageView> turn, TurnTokenUsage? slice, bool isRunning)

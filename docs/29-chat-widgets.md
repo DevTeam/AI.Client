@@ -22,7 +22,7 @@ Current widgets:
 | `chat-performance` | Performance | `timer` | `ChatPerformanceWidget` | Wall-clock vs active time, throughput and where request time was spent |
 | `chat-subtasks` | Subtasks | `fork` | `ChatSubtasksWidget` | Delegated work the chat ran on another model: requests, tokens and share of the whole chat or the last turn |
 | `chat-knowledge` | Knowledge | `book` | `ChatKnowledgeWidget` | Files and pages the assistant read on the visible branch: reads by tool, then the most read sources, each opening its preview or page and locating its reads |
-| `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | One row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
+| `chat-timeline` | Timeline | `history` | `ChatTimelineWidget` | A ring of where the branch's time went and one row per turn on the visible branch: when it started, how long it ran, its requests and tokens, and the tools and files it touched |
 | `chat-branches` | Branches | `git-branch` | `ChatBranchesWidget` | Every stored branch of the chat: title, depth, message count, child branches and head timestamp, with a click that switches the visible branch |
 | `chat-references` | References | `link` | `ChatReferencesWidget` | The files, directories, images, uploads, skills, diffs, chats and projects the messages named, added up over the whole chat or the last turn, each row opening its target and locating the messages that named it |
 | `chat-models` | Models | `cpu` | `ChatModelsWidget` | Which models answered the chat and how many answer requests each served, for the whole chat or the last turn |
@@ -686,8 +686,17 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
   turn and the live slice starts no earlier than the stored one (the same rule Performance and
   Subtasks use, so the widgets agree). Durations and timestamps come from message
   `CreatedAt` and so are marked "≈" in markup, the same way Performance marks wall-clock.
-- **What it shows.** One row per turn, newest last. Only the newest eight are shown; older ones
-  sit behind "Show N earlier turns" at the top of the list:
+- **What it shows.** A time ring above the list, then one row per turn, newest last. Only the newest
+  eight turns are shown; older ones sit behind "Show N earlier turns" at the top of the list:
+  - **Time ring.** Where the branch's wall-clock went, as a donut with a legend under it, each part
+    carrying its duration and its percentage. The parts add up to the span from the first message to
+    the last, split three ways: **Model requests** (provider-reported request time, clamped to the
+    turn it served), **Inside turns** (the rest of each turn's span: tool execution, local work,
+    pauses between requests) and **Between turns** (from a turn's last message to the next turn's
+    first — the time nobody was waiting on the model). A part that is zero is not drawn, so a
+    branch with no ledger has two arcs rather than a misleading third. The ring is omitted
+    altogether when nothing can be measured (a single-message branch). Arcs use `pathLength`, the
+    same technique as `ContextRing`, so only the dash pattern changes with the figures.
   - **Head.** Turn index (`Turn N`), local start time (`HH:mm` with full timestamp in the
     tooltip), duration when the turn has more than one message (`≈ N s` / `min` / `h`), and
     `running` while the last turn is the live one. The opening assistant turn (before the first
@@ -701,11 +710,14 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
     `OnSelectTurn`. The row's head is a button, so the keyboard reaches each turn too; the opening
     turn has no anchor, so its head is disabled and its row does not react.
 - **Honesty about numbers.**
-  - Provider-reported figures (requests, input, output) are quoted as they came in. A turn with
-    no ledger slice shows nothing rather than a placeholder.
+  - Provider-reported figures (requests, input, output, model time) are quoted as they came in. A
+    turn with no ledger slice shows nothing rather than a placeholder, and the ring then has no
+    Model requests part — the time is not guessed from timestamps.
+  - Model time is clamped to the turn it served, so a request that outlasted the turn's messages
+    cannot make the other parts negative; a gap that is not positive counts as zero.
   - Durations and timestamps are derived from message timestamps; they include whatever time
-    passed between two messages, which is not the model thinking. The "≈" marker and the tooltip
-    say so.
+    passed between two messages, which is not the model thinking. The "≈" marker, the ring's
+    aria-label and the tooltips say so.
   - Tool call names use the part a person recognises (after `__`), not the raw
     `mcp_server__tool` id.
 - **Folded summary.** `N turn(s)` when there are any, `Turn N running` while the last one is.
@@ -713,12 +725,18 @@ One row per turn on the visible branch (`ChatTimelineWidget`,
   running flag. Token formatting is shared with Usage through `IUsagePresentation`. Duration and
   time formatting live inside the widget — one rule each, both tiny.
 - **Architecture.** `IChatTimelineStatisticsCalculator` in `src/AI.Web/Widgets` returns a
-  `ChatTimelineStatistics` record holding one `TimelineTurn` per branch turn. Bound in
+  `ChatTimelineStatistics` record holding one `TimelineTurn` per branch turn and a
+  `TimelineTimeBreakdown` of non-zero `TimelineTimeSegment` parts for the ring. Bound in
   `Composition.cs` and tested in `tests/AI.Web.Tests/Widgets`. The widget itself is a
   `ChatWidget` with `Summary` and the same `chat-usage-*` building blocks; only the vertical
-  timeline layout (rail, dot, chips) uses widget-specific classes (`chat-timeline-*`). Clicking
+  timeline layout (rail, dot, chips) and the ring use widget-specific classes
+  (`chat-timeline-*`). Clicking
   a row raises `OnSelectTurn(messageId)` and `Home.ScrollToTurnAsync` forwards it to
   `MessageFeed.ScrollToMessageAsync`, so the timeline doubles as a table of contents.
+- **Ring colours.** The same roles the Performance phases use: `--color-accent-text` for measured
+  model time, `--color-text-muted` for the rest of a turn, `--color-text-faint` for the gaps.
+  One class per part paints both its arc (`stroke`) and its legend swatch (`background`), so the
+  two cannot drift apart; no new design token was needed.
 
 ## Branches widget
 

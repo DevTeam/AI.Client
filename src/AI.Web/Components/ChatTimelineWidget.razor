@@ -1,9 +1,11 @@
 @inject IChatTimelineStatisticsCalculator Calculator
+@using System.Globalization
 
-@* One row per turn on the visible branch: when it started, how long it ran, its requests and
-   tokens, and the tools and files it touched. Durations come from message timestamps and so are
-   marked approximate, the same way the Performance widget marks wall-clock. The list is the
-   whole branch, newest turns first in view and older ones folded behind "Show earlier" — the scope switch is not shown because the timeline of one turn is that turn,
+@* Where the branch's time went, as a ring above the list, then one row per turn: when it started,
+   how long it ran, its requests and tokens, and the tools and files it touched. Durations come
+   from message timestamps and so are marked approximate, the same way the Performance widget marks
+   wall-clock; the ring's model part is the only provider-reported time in the widget. The list is
+   the whole branch, newest turns first in view and older ones folded behind "Show earlier" — the scope switch is not shown because the timeline of one turn is that turn,
    and the widget's own empty state says so. A click on a row scrolls the transcript to the turn's
    first user message, so the timeline doubles as a table of contents. *@
 <ChatWidget Widget="@Widget" Summary="@GetSummary()" Class="chat-timeline-widget">
@@ -17,6 +19,39 @@
             <span class="chat-widget-count" title="Turns on the visible branch, including the opening turn and any turn still running">@_stats.Turns.Count</span>
             <span class="chat-usage-muted">@(_stats.Turns.Count == 1 ? "turn" : "turns")@(_stats.HasProviderData ? "" : " · no usage data yet")</span>
         </div>
+
+        @if (_stats.Time.HasData)
+        {
+            @* Where the branch's time went. Arcs are measured with pathLength, so the geometry is
+               provider-independent and only the dash pattern changes; the legend under the ring
+               names each part with its duration, so the ring never stands alone. *@
+            <div class="chat-usage-section chat-timeline-time">
+                <svg class="chat-timeline-time-ring" viewBox="0 0 @Number(Size) @Number(Size)" width="@Number(Size)" height="@Number(Size)"
+                     role="img" aria-label="@TimeAriaLabel()">
+                    <circle class="chat-timeline-time-track" cx="@Number(Center)" cy="@Number(Center)" r="@Number(Radius)"
+                            stroke-width="@Number(Thickness)" pathLength="@Number(Length)" />
+                    <g transform="rotate(-90 @Number(Center) @Number(Center))">
+                        @{ var start = 0d; }
+                        @foreach (var segment in _stats.Time.Segments)
+                        {
+                            var span = SegmentLength(segment);
+                            <circle @key="segment.Key" class="chat-timeline-time-segment chat-timeline-time-@segment.Key"
+                                    cx="@Number(Center)" cy="@Number(Center)" r="@Number(Radius)" stroke-width="@Number(Thickness)" pathLength="@Number(Length)"
+                                    stroke-dasharray="@Number(Math.Max(0, span - SegmentGap)) @Number(Length)" stroke-dashoffset="@Number(-start)">
+                                <title>@SegmentTitle(segment)</title>
+                            </circle>
+                            start += span;
+                        }
+                    </g>
+                </svg>
+                <div class="chat-usage-legend chat-timeline-time-legend">
+                    @foreach (var segment in _stats.Time.Segments)
+                    {
+                        <span @key="segment.Key"><span class="chat-timeline-time-swatch chat-timeline-time-@segment.Key" aria-hidden="true"></span>@SegmentLabel(segment.Key) <b title="@SegmentTitle(segment)">@FormatDuration(segment.Milliseconds)</b> <span class="chat-usage-muted">@FormatShare(segment)</span></span>
+                    }
+                </div>
+            </div>
+        }
 
         <div class="chat-usage-section chat-timeline-list" role="list">
             @if (HiddenTurns > 0)
@@ -156,6 +191,51 @@
 
     private Task OpenTurnAsync(TimelineTurn turn) =>
         turn.UserMessageId is { } userId ? OnSelectTurn.InvokeAsync(userId) : Task.CompletedTask;
+
+    private const double Length = 1000;
+    private const double Size = 42;
+    private const double Thickness = 8;
+    private const double Gap = 8;
+
+    private double Center => Size / 2;
+
+    private double Radius => (Size - Thickness) / 2;
+
+    private double SegmentLength(TimelineTimeSegment segment) =>
+        _stats.Time.TotalMs <= 0 ? 0 : segment.Milliseconds * Length / _stats.Time.TotalMs;
+
+    /// <summary>Arcs are separated so the boundary reads; a ring of one part closes instead.</summary>
+    private double SegmentGap => _stats.Time.Segments.Count > 1 ? Gap : 0;
+
+    private static string SegmentLabel(string key) => key switch
+    {
+        "model" => "Model requests",
+        "inside" => "Inside turns",
+        "between" => "Between turns",
+        _ => key
+    };
+
+    private static string SegmentTitle(TimelineTimeSegment segment) => segment.Key switch
+    {
+        "model" => $"Model requests: {FormatDuration(segment.Milliseconds)} the provider reported as request time, limited to the turn it served",
+        "inside" => $"Inside turns: {FormatDuration(segment.Milliseconds)} between two messages of one turn that no measured request accounts for — tool execution, local work, pauses before sending",
+        "between" => $"Between turns: {FormatDuration(segment.Milliseconds)} from a turn's last message to the next turn's first",
+        _ => FormatDuration(segment.Milliseconds)
+    };
+
+    private string FormatShare(TimelineTimeSegment segment) =>
+        _stats.Time.TotalMs <= 0
+            ? string.Empty
+            : $"{Math.Round(segment.Milliseconds * 100d / _stats.Time.TotalMs).ToString("0", CultureInfo.InvariantCulture)}%";
+
+    private string TimeAriaLabel()
+    {
+        var parts = _stats.Time.Segments.Select(segment =>
+            $"{SegmentLabel(segment.Key)} {FormatDuration(segment.Milliseconds)} ({FormatShare(segment)})");
+        return $"Where the branch's ≈ {FormatDuration(_stats.Time.TotalMs)} went: {string.Join(", ", parts)}";
+    }
+
+    private static string Number(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string FileName(string path)
     {

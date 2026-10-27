@@ -69,12 +69,24 @@ Each chat has a mode, chosen in the composer next to `+`, that answers a call it
 mode; the mode never touches them.
 
 ```text
-Ask for approval — every such call waits for the approval card (the default, and every older chat)
+Ask for approval — every such call waits for the approval card (also used by older chats without a saved mode)
 Approve for me   — the chat-tool-risk-assess executor judges the call; only "allow" with risk
                    "low" runs without a card, anything else (including a failed or unreadable
                    assessment) shows the card with the assessment's reason
 Full access      — every such call runs without asking
 ```
+
+New chats default to **Approve for me**, including chats created through the API when no mode is
+specified. Existing chats retain their saved mode, and documents predating approval modes still
+load as Ask for approval.
+
+The assessment treats ordinary implementation and verification steps as part of the user's task;
+the user need not spell out each command. Scoped reversible edits, source searches, builds and
+tests can be low risk, including short understood shell scripts and unsandboxed commands. The
+assessment checks their actual effects and the Host's findings; an interpreter or lack of a
+sandbox alone does not require a card. Ordinary build caches are allowed, but unrelated writes,
+secret access, private uploads, destructive changes, system changes, persistence and account
+actions still require confirmation. An explicit command rule set to Ask always requires a card.
 
 In "Ask for approval" mode the assessment is only advice, so the card does not wait for it: the card
 is shown at once and the assessment's reason joins it when it arrives, if the card is still waiting.

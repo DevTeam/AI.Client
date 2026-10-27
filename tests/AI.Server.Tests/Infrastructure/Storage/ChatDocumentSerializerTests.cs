@@ -56,15 +56,19 @@ public class ChatDocumentSerializerTests
         _serializer.Deserialize(_serializer.Serialize(restored, 2)).Chat.AutoTitlePending.ShouldBeFalse();
     }
 
-    [Fact]
-    public void ShouldPreserveApprovalModeAndReadOlderChatsAsAsk()
+    [Theory]
+    [InlineData(ChatApprovalMode.Ask)]
+    [InlineData(ChatApprovalMode.Auto)]
+    [InlineData(ChatApprovalMode.FullAccess)]
+    public void ShouldPreserveApprovalModeAndReadOlderChatsAsAsk(ChatApprovalMode mode)
     {
         var now = DateTimeOffset.UnixEpoch;
         var chat = new ChatThread(new ChatId(Guid.CreateVersion7()), new ProjectId(Guid.CreateVersion7()), "Chat", now);
-        chat.SetApprovalMode(ChatApprovalMode.FullAccess, now);
+        chat.ApprovalMode.ShouldBe(ChatApprovalMode.Auto);
+        chat.SetApprovalMode(mode, now);
 
         var json = _serializer.Serialize(chat, 1);
-        _serializer.Deserialize(json).Chat.ApprovalMode.ShouldBe(ChatApprovalMode.FullAccess);
+        _serializer.Deserialize(json).Chat.ApprovalMode.ShouldBe(mode);
 
         var older = JsonNode.Parse(json)!.AsObject();
         older.Remove("ApprovalMode").ShouldBeTrue();

@@ -185,7 +185,7 @@ public sealed class ChatService(IChatRepository repository, IIdGenerator idGener
             now,
             request.ConnectionId is { } endpointId ? new ConnectionId(endpointId) : null,
             request.AutoTitlePending, kind, request.KindState, request.KindStateVersion);
-        if (request.ApprovalMode != ToolApprovalMode.Ask) chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
+        chat.SetApprovalMode(ToDomain(request.ApprovalMode), now);
         if (request.ReasoningEffort is not null) chat.SetReasoningEffort(request.ReasoningEffort, now);
         var result = await repository.SaveAsync(chat, 0, cancellationToken);
         return await policy.InitializeAsync(ToDetails(chat, result.Revision), this, cancellationToken);

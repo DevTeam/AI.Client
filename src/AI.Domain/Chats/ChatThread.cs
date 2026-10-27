@@ -93,7 +93,7 @@ public sealed class ChatThread
     public IReadOnlyCollection<ChatMessage> Messages => _messages.Values;
     public ConnectionId? ConnectionId { get; private set; }
     public string? ReasoningEffort { get; private set; }
-    public ChatApprovalMode ApprovalMode { get; private set; }
+    public ChatApprovalMode ApprovalMode { get; private set; } = ChatApprovalMode.Auto;
     public IReadOnlyCollection<ChatBranch> Branches => _branches.Values;
 
     /// <summary>

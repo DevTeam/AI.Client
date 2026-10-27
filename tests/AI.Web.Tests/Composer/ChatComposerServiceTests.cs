@@ -12,8 +12,11 @@ using Xunit;
 
 public class ChatComposerServiceTests
 {
-    [Fact]
-    public async Task ShouldPassDraftReasoningEffortToFirstChat()
+    [Theory]
+    [InlineData(null, ToolApprovalMode.Auto)]
+    [InlineData(ToolApprovalMode.Ask, ToolApprovalMode.Ask)]
+    [InlineData(ToolApprovalMode.FullAccess, ToolApprovalMode.FullAccess)]
+    public async Task ShouldPassDraftSettingsToFirstChat(ToolApprovalMode? mode, ToolApprovalMode expected)
     {
         var history = new Mock<IChatHistoryApi>(MockBehavior.Strict);
         var runs = new Mock<IChatRunsApi>(MockBehavior.Strict);
@@ -22,15 +25,17 @@ public class ChatComposerServiceTests
         var chat = new ChatDetails(chatId, projectId, "Chat", DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch, 1, null, [], [new ChatBranchView(chatId, null, "Main")]);
         history.Setup(api => api.CreateAsync(projectId,
-                It.Is<CreateChatRequest>(request => request.ReasoningEffort == "high"), CancellationToken.None))
+                It.Is<CreateChatRequest>(request => request.ReasoningEffort == "high"
+                    && request.ApprovalMode == expected), CancellationToken.None))
             .ReturnsAsync(chat);
         runs.Setup(api => api.SubmitAsync(projectId, chatId,
                 It.IsAny<SubmitChatMessageRequest>(), CancellationToken.None))
             .ReturnsAsync(new ChatRunSnapshot(projectId, chatId, chatId, ChatRunStatus.Idle, "", [], false, null, 1));
 
-        var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(
-            new ComposerSubmitRequest(ComposerSubmitMode.Send, projectId, null, null, null, null,
-                null, null, null, "hello", null, ReasoningEffort: "high"), CancellationToken.None);
+        var request = new ComposerSubmitRequest(ComposerSubmitMode.Send, projectId, null, null, null, null,
+            null, null, null, "hello", null, ReasoningEffort: "high");
+        if (mode is { } explicitMode) request = request with { ApprovalMode = explicitMode };
+        var result = await new ChatComposerService(history.Object, runs.Object).SubmitAsync(request, CancellationToken.None);
 
         result.ShouldBeOfType<ComposerSubmitOutcome.Accepted>();
         history.VerifyAll();

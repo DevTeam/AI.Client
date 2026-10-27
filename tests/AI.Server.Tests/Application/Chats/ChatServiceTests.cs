@@ -18,6 +18,28 @@ public class ChatServiceTests
     private readonly ChatId _chatId = new(Guid.Parse("019f0000-0000-7000-8000-000000000002"));
     private readonly DateTimeOffset _now = new(2026, 8, 12, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(null, ChatApprovalMode.Auto)]
+    [InlineData(ToolApprovalMode.Ask, ChatApprovalMode.Ask)]
+    [InlineData(ToolApprovalMode.Auto, ChatApprovalMode.Auto)]
+    [InlineData(ToolApprovalMode.FullAccess, ChatApprovalMode.FullAccess)]
+    public async Task ShouldDefaultNewChatsToAutoAndPreserveExplicitModes(ToolApprovalMode? mode,
+        ChatApprovalMode expected)
+    {
+        _clock.SetupGet(clock => clock.UtcNow).Returns(_now);
+        _idGenerator.Setup(generator => generator.Create()).Returns(_chatId.Value);
+        _repository.Setup(repository => repository.SaveAsync(
+                It.Is<ChatThread>(chat => chat.ApprovalMode == expected), 0, CancellationToken.None))
+            .ReturnsAsync(ChatSaveResult.Saved(1));
+        var request = mode is { } explicitMode
+            ? new CreateChatRequest("Chat", ApprovalMode: explicitMode) : new CreateChatRequest("Chat");
+
+        var created = await CreateInstance().CreateAsync(_projectId.Value, request, CancellationToken.None);
+
+        created.ApprovalMode.ShouldBe((ToolApprovalMode)expected);
+        _repository.VerifyAll();
+    }
+
     [Fact]
     public async Task ShouldSaveReasoningEffortWhenCreatingChat()
     {

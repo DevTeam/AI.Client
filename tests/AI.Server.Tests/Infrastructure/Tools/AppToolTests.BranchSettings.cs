@@ -73,7 +73,7 @@ public sealed partial class AppToolTests
         inherited.GetProperty("reasoningEffortFrom").GetString().ShouldBe("branch \"Branch\"");
         inherited.GetProperty("approvalModeFrom").GetString().ShouldBe("branch \"Branch\"");
         (await EffectiveAsync(session, fixture, branch)).GetProperty("approvalModeFrom").GetString().ShouldBe("this branch");
-        (await EffectiveAsync(session, fixture, fixture.ChatId)).GetProperty("approvalMode").GetString().ShouldBe("Ask");
+        (await EffectiveAsync(session, fixture, fixture.ChatId)).GetProperty("approvalMode").GetString().ShouldBe("Auto");
 
         // Only the named field goes back to the parent; the connection override stays.
         await AppFixture.CallAsync(session, "app_chats", new

@@ -118,3 +118,12 @@ evals/AI.Routing.Evals/bin/Debug/net10.0/AI.Routing.Evals.exe -showLiveOutput
 ```
 
 The xUnit v3 runner is the test executable itself; the report is printed as test output.
+
+The same project checks `chat-tool-risk-assess` with `AI_TOOL_RISK_EVAL=1`, using the
+`AI_ROUTING_EVAL_BASE_URL`, `AI_ROUTING_EVAL_MODEL` and optional `AI_ROUTING_EVAL_API_KEY`
+connection settings. Run the executable with `-class '*ToolRiskEvaluationTests' -showLiveOutput`.
+It makes one real model call per case through the risk assessment executor, including its verdict
+parser. Cases cover ordinary project reads, shell scripts, edits, scratch files, builds and tests,
+as well as secrets, uploads, destructive commands, writes outside the project, opaque or remote
+scripts, persistent processes and explicit Ask rules. No evaluated tool call executes. These are
+skill decision checks, separate from a full Host and agent evaluation.

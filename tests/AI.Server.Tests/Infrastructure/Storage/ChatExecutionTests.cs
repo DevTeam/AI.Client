@@ -942,6 +942,8 @@ public sealed partial class ChatExecutionTests
     public async Task AManualApprovalCardShouldNotWaitForItsRiskAdvice()
     {
         await using var fixture = await Fixture.CreateAsync();
+        await fixture.Chats.UpdateApprovalModeAsync(fixture.ProjectId, fixture.ChatId,
+            new UpdateChatApprovalModeRequest(ToolApprovalMode.Ask), CancellationToken.None);
         fixture.Tools.OfferProcessRun = true;
         fixture.Completion.RiskRelease = new TaskCompletionSource();
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
@@ -1644,6 +1646,8 @@ public sealed partial class ChatExecutionTests
     public async Task AnswerWhileTheSwitchedModeIsAssessingMustWinAndTakeTheCardDown()
     {
         await using var fixture = await Fixture.CreateAsync();
+        await fixture.Chats.UpdateApprovalModeAsync(fixture.ProjectId, fixture.ChatId,
+            new UpdateChatApprovalModeRequest(ToolApprovalMode.Ask), CancellationToken.None);
         fixture.Tools.OfferProcessRun = true;
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
         var first = await fixture.NextCallAsync();

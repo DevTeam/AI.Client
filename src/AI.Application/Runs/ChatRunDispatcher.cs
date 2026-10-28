@@ -829,7 +829,10 @@ public sealed class ChatRunDispatcher(
             {
                 runtime.State.Interrupt(clock.UtcNow, runtime.ActiveTools.Values.FirstOrDefault()?.Name);
             }
-            else if (error is OperationCanceledException)
+            // Only the turn's own token being cancelled means Stop, Clear or a removal. A cancellation
+            // from anywhere else — a timeout inside a tool server's start, say — used to pause the
+            // branch as if the person had stopped it, with no error to say what happened.
+            else if (error is OperationCanceledException && runtime.Cancellation is { IsCancellationRequested: true })
             {
                 if (runtime.State.Queue.Count > 0) runtime.State.Pause();
             }
@@ -1410,6 +1413,7 @@ public sealed class ChatRunDispatcher(
     {
         RunDispatchException or InvalidOperationException or ArgumentException or HttpRequestException
             or Domain.Common.DomainException => error.Message,
+        OperationCanceledException => $"The turn was cancelled by something other than Stop ({error.Message}){Origin(error)}",
         _ => $"{error.GetType().Name}: {error.Message}{Origin(error)}",
     };
 

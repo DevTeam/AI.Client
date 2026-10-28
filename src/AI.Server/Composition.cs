@@ -58,7 +58,8 @@ internal sealed class Composition
             .Arg<ServerOptions>("options")
             // Shared state that must keep its identity across requests: storage repositories with their
             // write gates, chat synchronization, change and navigation signals, the run dispatcher,
-            // usage accounting, preview tickets, parsed caches and the running update service.
+            // usage accounting, preview tickets, parsed caches, the pool of running MCP servers and the
+            // running update service.
             // The ambient user context is one instance so that a scope entered by a request is the
             // one every service of that request reads.
             .Singleton<AmbientUserContext, FilePreviewService, ResourceAssetService, HostUpdateService, BrowserAccessService,
@@ -70,7 +71,8 @@ internal sealed class Composition
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, ContextTextTokenizer, ChatScheduler, JsonCommandRuleRepository,
-                ChatKindPolicyRegistry, ConnectionContextWindowDetector, JsonLineFileLoggerProvider, ChatReplySuggestions, ChatRepositoryRouter>()
+                ChatKindPolicyRegistry, ConnectionContextWindowDetector, JsonLineFileLoggerProvider, ChatReplySuggestions, ChatRepositoryRouter,
+                ExternalMcpServerPool, JsonMcpToolListCache>()
             .Bind<IPersistentChatRepository>().As(Lifetime.Singleton).To<JsonChatRepository>()
             .Bind<IHostLifetimeChatRepository>().As(Lifetime.Singleton).To<HostLifetimeChatRepository>()
             .Bind<IPersistentChatRunRepository>().As(Lifetime.Singleton).To<JsonChatRunRepository>()
@@ -118,7 +120,7 @@ internal sealed class Composition
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
                 AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
-                ExternalToolSessionFactory, LocalToolEnvironment, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
+                ExternalToolSessionFactory, ExternalMcpConnector, LocalToolEnvironment, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
                 RateLimitHeaderReader, ContextSummaryWriter, HistoryCheckpointService, ChatHistoryCompaction,
                 ToolAutoApprover, GuideChats, ConnectionChoice, ReviewCommentSuggestions, AppToolReply,

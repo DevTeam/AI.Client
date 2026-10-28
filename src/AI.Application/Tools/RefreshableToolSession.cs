@@ -15,6 +15,8 @@ internal sealed class RefreshableToolSession(
 
     public IReadOnlyList<AgentTool> Tools => _current.Tools;
 
+    public IReadOnlyList<ToolServerFailure> Failures => _current.Failures;
+
     public string ValidateArguments(AgentTool tool, string arguments) =>
         _current.ValidateArguments(tool, arguments);
 

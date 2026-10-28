@@ -169,6 +169,23 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         await using var session = initialSession is not null
             ? new RefreshableToolSession(sessionFactory!, initialSession, grants, servers, run)
             : null;
+        // A server that could not start is missing from the tools without a word otherwise: the
+        // model would look for its tools in vain, or quietly do the work some other way.
+        void ReportUnavailableServers()
+        {
+            var failures = session?.Failures ?? [];
+            if (failures.Count == 0)
+            {
+                instructions.Remove(run, "run.unavailable-servers");
+                return;
+            }
+            instructions.Upsert(run, new ModelInstruction("run.unavailable-servers",
+                "These MCP servers could not be started for this turn, so their tools are not offered: "
+                + string.Join("; ", failures.Select(failure => $"{failure.ServerName} ({failure.Reason})"))
+                + ". If the request needs one of them, tell the person which server failed and why.",
+                960, ModelInstructionLifetime.Run, Required: true));
+        }
+        ReportUnavailableServers();
         if (behavior.IncludeStandingInstructions)
             await UpsertStandingAsync(run, servers.Contains(AppMcpServer.Id) && !subtask,
                 await SkillsRunnableAsync(run, session?.Tools ?? [], kindPolicy, token), configuredConnection, token);
@@ -306,7 +323,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 var latestGrants = latestProject.DirectoryGrants
                     .Select(grant => new ToolDirectoryGrant(grant.CanonicalRoot, grant.Recursive, grant.ToolNames)).ToArray();
                 if (await session.RefreshAsync(latestGrants, token))
+                {
                     await workspace.UpdateGrantsAsync(runKey, latestGrants, token);
+                    ReportUnavailableServers();
+                }
             }
 
             // A continuation after truncation is the same answer carrying on, so its draft keeps

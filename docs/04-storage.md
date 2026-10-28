@@ -8,7 +8,7 @@ The data directory keeps what belongs to the installation — `keys/`, `logs/`, 
 `browser-access.txt` and the `.lock` file — and reaches it through `IInstanceStorageLocation`. Everything
 a user stores lives under `users/<user id>/` and is reached through `IUserStorageLocation`, which reads
 the user of the current scope on every call ([ADR-014](decisions/ADR-014-replaceable-boundaries-and-user-scope.md)):
-`settings.json`, `command-rules.json`, `credentials/`, `project-order.json`, `projects/`, `memory/`,
+`settings.json`, `command-rules.json`, `mcp-tools.json`, `credentials/`, `project-order.json`, `projects/`, `memory/`,
 `instructions/`, `resources/`, `assets/`, `usage/` and `skills/`. The paths below are relative to that
 user directory. A Host without sign-in has one user, whose id is `00000000-0000-0000-0000-000000000001`.
 

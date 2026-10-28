@@ -33,8 +33,8 @@ public sealed class ExternalToolSessionTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton<IGlobalSettingsService>(Mock.Of<IGlobalSettingsService>());
         builder.Services.AddSingleton<AI.Application.Settings.IConnectionImageProbe>(Mock.Of<AI.Application.Settings.IConnectionImageProbe>());
-        builder.Services.AddSingleton<IToolSessionFactory>(new CompositeToolSessionFactory([], repository.Object, external,
-            Mock.Of<AI.Application.Resources.IResourceAssetService>(), new ToolResultModelProjector()));
+        await using var pool = NewPool(Mock.Of<IGlobalSecretStore>());
+        builder.Services.AddSingleton<IToolSessionFactory>(NewComposite(repository.Object, Mock.Of<IGlobalSecretStore>(), pool, new ToolLists()));
         builder.Services.AddSingleton<IExternalToolSessionFactory>(external);
         await using var app = builder.Build();
         new SettingsEndpoints().Map(app);
@@ -77,9 +77,8 @@ public sealed class ExternalToolSessionTests
         first = first with { EnvironmentVariables = [new("SCRIPT_TEST_VALUE", null, true, true)] };
         repository.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([], [first, second], []));
-        var factory = new CompositeToolSessionFactory([], repository.Object,
-            NewFactory(secrets.Object, new ToolResultModelProjector()),
-            Mock.Of<AI.Application.Resources.IResourceAssetService>(), new ToolResultModelProjector());
+        await using var pool = NewPool(secrets.Object);
+        var factory = NewComposite(repository.Object, secrets.Object, pool, new ToolLists());
 
         await using var session = await factory.OpenAsync([], new HashSet<Guid> { first.Id, second.Id },
             ToolRunContext.None, Token);
@@ -186,7 +185,136 @@ public sealed class ExternalToolSessionTests
         new(Guid.NewGuid(), "External", transport, true, "Ask", null, command, [], directory, [], false);
 
     /// <summary>Supplies the path algebra and file-system contract the factory gained.</summary>
+    [Fact]
+    public async Task TheNextTurnShouldReuseTheRunningServerInsteadOfStartingAnother()
+    {
+        var server = Server("Stdio", BuiltInCommand, BuiltInDirectory);
+        var repository = Settings(server);
+        var environment = new CountingEnvironment();
+        var connector = NewConnector(Mock.Of<IGlobalSecretStore>(), environment);
+        await using var pool = NewPool(connector);
+        var lists = new ToolLists();
+        var factory = NewComposite(repository, connector, pool, lists);
+
+        await RunScriptAsync(factory, server.Id);
+        // The first session listed the tools, so the second offers them without starting anything
+        // and reaches the same process when called.
+        lists.Stored.ShouldContainKey(server.Id);
+        await RunScriptAsync(factory, server.Id);
+
+        environment.Launches.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AServerWithAKnownToolListShouldStartOnlyWhenCalledAndFailOnlyThatCall()
+    {
+        var server = Server("Stdio", "missing-mcp-server-" + Guid.NewGuid().ToString("N"), BuiltInDirectory);
+        var repository = Settings(server);
+        var secrets = Mock.Of<IGlobalSecretStore>();
+        await using var pool = NewPool(secrets);
+        var lists = new ToolLists();
+        var tool = JsonSerializer.Deserialize<JsonElement>("""
+            {"name":"inspect","description":"Inspect","inputSchema":{"type":"object","properties":{}}}
+            """);
+        await lists.SetAsync(server.Id, await NewConnector(secrets).FingerprintAsync(server, Token), [tool], Token);
+        var factory = NewComposite(repository, secrets, pool, lists);
+
+        await using var session = await factory.OpenAsync([], new HashSet<Guid> { server.Id }, ToolRunContext.None, Token);
+        session.Failures.ShouldBeEmpty();
+        var offered = session.Tools.ShouldHaveSingleItem();
+        offered.OriginalName.ShouldBe("inspect");
+
+        var result = await session.CallAsync(offered, "{}", null, Token);
+        result.IsError.ShouldBeTrue();
+        result.ModelContent.ShouldContain("could not be started");
+    }
+
+    [Fact]
+    public async Task AServerThatCannotStartShouldBeLeftOutWhileTheOthersServe()
+    {
+        var working = Server("Stdio", BuiltInCommand, BuiltInDirectory);
+        var broken = Server("Stdio", "missing-mcp-server-" + Guid.NewGuid().ToString("N"), BuiltInDirectory) with { Name = "Broken" };
+        var repository = Settings(working, broken);
+        await using var pool = NewPool(Mock.Of<IGlobalSecretStore>());
+        var factory = NewComposite(repository, Mock.Of<IGlobalSecretStore>(), pool, new ToolLists());
+
+        await using var session = await factory.OpenAsync([], new HashSet<Guid> { working.Id, broken.Id }, ToolRunContext.None, Token);
+
+        session.Tools.ShouldContain(tool => tool.ServerId == working.Id);
+        session.Tools.ShouldNotContain(tool => tool.ServerId == broken.Id);
+        var failure = session.Failures.ShouldHaveSingleItem();
+        failure.ServerId.ShouldBe(broken.Id);
+        failure.ServerName.ShouldBe("Broken");
+    }
+
+    private static async Task RunScriptAsync(CompositeToolSessionFactory factory, Guid serverId)
+    {
+        await using var session = await factory.OpenAsync([], new HashSet<Guid> { serverId }, ToolRunContext.None, Token);
+        var script = session.Tools.Single(tool => tool.OriginalName == "cs_run");
+        var result = await session.CallAsync(script, "{\"code\":\"40 + 2\"}", null, Token);
+        result.IsError.ShouldBeFalse();
+        result.StructuredContent!.Value.GetProperty("returnValue").GetString().ShouldBe("42");
+    }
+
+    private static IGlobalSettingsRepository Settings(params McpServerSettings[] servers)
+    {
+        var repository = new Mock<IGlobalSettingsRepository>();
+        repository.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GlobalSettings([], servers, []));
+        return repository.Object;
+    }
+
+    private static ExternalMcpConnector NewConnector(IGlobalSecretStore secrets, IToolEnvironment? environment = null) =>
+        new(secrets, new SystemFileSystem(), new SystemPath(), environment ?? new LocalToolEnvironment());
+
     private static ExternalToolSessionFactory NewFactory(IGlobalSecretStore secrets,
-        IToolResultModelProjector projector) =>
-        new(secrets, new SystemFileSystem(), new SystemPath(), projector, new LocalToolEnvironment());
+        IToolResultModelProjector projector) => new(NewConnector(secrets), projector);
+
+    private static ExternalMcpServerPool NewPool(IGlobalSecretStore secrets) => NewPool(NewConnector(secrets));
+
+    private static ExternalMcpServerPool NewPool(IExternalMcpConnector connector)
+    {
+        var users = new Mock<AI.Application.Users.IUserContext>();
+        users.Setup(item => item.Current).Returns(AI.Domain.Users.UserId.Local);
+        return new ExternalMcpServerPool(connector, users.Object);
+    }
+
+    private static CompositeToolSessionFactory NewComposite(IGlobalSettingsRepository settings, IGlobalSecretStore secrets,
+        ExternalMcpServerPool pool, IMcpToolListCache lists) => NewComposite(settings, NewConnector(secrets), pool, lists);
+
+    private static CompositeToolSessionFactory NewComposite(IGlobalSettingsRepository settings, IExternalMcpConnector connector,
+        ExternalMcpServerPool pool, IMcpToolListCache lists) =>
+        new([], settings, connector, pool, lists, Mock.Of<AI.Application.Resources.IResourceAssetService>(),
+            new ToolResultModelProjector(), Microsoft.Extensions.Logging.Abstractions.NullLogger<CompositeToolSessionFactory>.Instance);
+
+    /// <summary>Starts processes as the Host does and counts them.</summary>
+    private sealed class CountingEnvironment : IToolEnvironment
+    {
+        private readonly LocalToolEnvironment _local = new();
+        private int _launches;
+
+        public int Launches => _launches;
+
+        public ModelContextProtocol.Client.IClientTransport Launch(ToolProcessLaunch launch)
+        {
+            Interlocked.Increment(ref _launches);
+            return _local.Launch(launch);
+        }
+    }
+
+    /// <summary>The tool-list cache, kept in memory.</summary>
+    private sealed class ToolLists : IMcpToolListCache
+    {
+        public Dictionary<Guid, (string Fingerprint, IReadOnlyList<JsonElement> Tools)> Stored { get; } = [];
+
+        public Task<IReadOnlyList<JsonElement>?> GetAsync(Guid serverId, string fingerprint, CancellationToken cancellationToken) =>
+            Task.FromResult(Stored.TryGetValue(serverId, out var entry) && entry.Fingerprint == fingerprint ? entry.Tools : null);
+
+        public Task SetAsync(Guid serverId, string fingerprint, IReadOnlyList<JsonElement> tools, CancellationToken cancellationToken)
+        {
+            Stored[serverId] = (fingerprint, tools);
+            return Task.CompletedTask;
+        }
+    }
 }
+

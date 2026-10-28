@@ -32,11 +32,11 @@ public sealed class McpToolSession : IToolSession
         Dialect = Dialect.Draft202012.With([], allowUnknownKeywords: true)
     };
 
-    private readonly McpClient _client;
+    private readonly Func<IProgress<ToolProgress>?, CancellationToken, ValueTask<McpClient>> _connect;
     private readonly Dictionary<string, ModelContextProtocol.Protocol.Tool> _descriptors;
     private readonly bool _canonicalizePaths;
     private readonly IToolResultModelProjector _modelProjector;
-    private readonly Func<ValueTask>? _shutdown;
+    private readonly Func<ValueTask> _close;
 
     public McpToolSession(
         McpClient client,
@@ -46,12 +46,35 @@ public sealed class McpToolSession : IToolSession
         bool canonicalizePaths,
         IToolResultModelProjector modelProjector,
         Func<ValueTask>? shutdown = null)
+        : this((_, _) => ValueTask.FromResult(client), async () =>
+            {
+                await client.DisposeAsync();
+                // An in-process server has to be torn down with its client; a child process ends on
+                // its own when the transport closes, so it supplies nothing here.
+                if (shutdown is not null) await shutdown();
+            }, descriptors, serverId, namePrefix, canonicalizePaths, modelProjector)
+    {
+    }
+
+    /// <summary>
+    /// A session whose client is reached through <paramref name="connect"/> at the first call, so its
+    /// tools can be offered before the server runs. <paramref name="close"/> releases whatever
+    /// <paramref name="connect"/> obtained, if anything.
+    /// </summary>
+    public McpToolSession(
+        Func<IProgress<ToolProgress>?, CancellationToken, ValueTask<McpClient>> connect,
+        Func<ValueTask> close,
+        IReadOnlyList<ModelContextProtocol.Protocol.Tool> descriptors,
+        Guid serverId,
+        string namePrefix,
+        bool canonicalizePaths,
+        IToolResultModelProjector modelProjector)
     {
         ArgumentNullException.ThrowIfNull(descriptors);
-        _client = client;
+        _connect = connect;
+        _close = close;
         _canonicalizePaths = canonicalizePaths;
         _modelProjector = modelProjector;
-        _shutdown = shutdown;
         _descriptors = descriptors.ToDictionary(tool => tool.Name);
         Tools = descriptors.Select(tool =>
         {
@@ -82,6 +105,9 @@ public sealed class McpToolSession : IToolSession
     }
 
     public IReadOnlyList<AgentTool> Tools { get; }
+
+    /// <summary>The name prefix of a user-configured server's tools: its id, as names are unique only per server.</summary>
+    public static string ExternalPrefix(Guid serverId) => $"mcp_{serverId:N}__";
 
     // Provider function names are limited to 64 ASCII letters, digits, underscores and hyphens.
     // Keep the full server identity and hash names that need shortening or character repair;
@@ -273,10 +299,23 @@ public sealed class McpToolSession : IToolSession
         // request; without one the server is told not to report, so this stays null when
         // nobody is listening.
         var sink = progress is null ? null : new ProgressRelay(progress);
+        McpClient client;
+        try
+        {
+            client = await _connect(progress, cancellationToken);
+        }
+        // Nothing was sent, so nothing happened: this is the call's answer, not a broken transport
+        // with an unknown outcome, and the turn goes on without the server.
+        catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            var unavailable = new[] { ToolContent.OfText($"The tool did not run because its MCP server could not be started: {error.Message} "
+                + "Do not call this server's tools again in this turn.") };
+            return new ToolCallResult(unavailable, null, null, true, _modelProjector.Project(unavailable, null, true));
+        }
         ModelContextProtocol.Protocol.CallToolResult result;
         try
         {
-            result = await _client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
+            result = await client.CallToolAsync(tool.OriginalName, values, sink, cancellationToken: cancellationToken);
         }
         // The server answered with a JSON-RPC error, such as a Jenkins job that does not exist. The
         // transport worked and the outcome is known, so this is the call's result, not a failure of
@@ -353,11 +392,5 @@ public sealed class McpToolSession : IToolSession
             target.Report(new ToolProgress(value.Progress, value.Total, value.Message));
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await _client.DisposeAsync();
-        // An in-process server has to be torn down with its client; a child process ends on its own
-        // when the transport closes, so it supplies nothing here.
-        if (_shutdown is not null) await _shutdown();
-    }
+    public ValueTask DisposeAsync() => _close();
 }

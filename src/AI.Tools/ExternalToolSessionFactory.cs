@@ -1,97 +1,23 @@
 namespace AI.Infrastructure.Tools;
 
-using AI.Contracts.FileSystem;
-using Application.Settings;
 using Application.Tools;
 using Contracts.Settings;
 using Contracts.Tools;
-using ModelContextProtocol.Client;
-using System.Text.Json;
 
-/// <summary>Connects user-configured servers for both discovery and chat execution.</summary>
+/// <summary>
+/// Opens a private session on a user-configured server, started for it and stopped with it. Used by
+/// discovery, which may try a configuration that is not saved yet; chat runs go through the
+/// pool in <see cref="CompositeToolSessionFactory"/> instead.
+/// </summary>
 public sealed class ExternalToolSessionFactory(
-    IGlobalSecretStore secrets,
-    IFileSystem files,
-    IPath paths,
-    IToolResultModelProjector modelProjector,
-    IToolEnvironment toolEnvironment) : IExternalToolSessionFactory
+    IExternalMcpConnector connector,
+    IToolResultModelProjector modelProjector) : IExternalToolSessionFactory
 {
     public async Task<IToolSession> OpenAsync(
         McpServerSettings server, CancellationToken cancellationToken, string? credential = null)
     {
-        if (!server.Enabled || server.Policy == "Deny")
-            throw new InvalidOperationException("MCP server is disabled or denied; it was not started.");
-
-        IClientTransport transport;
-        switch (server.Transport)
-        {
-            case "Stdio":
-            {
-                if (string.IsNullOrWhiteSpace(server.Command))
-                    throw new ArgumentException("MCP command is required.");
-                var directory = string.IsNullOrWhiteSpace(server.WorkingDirectory) ? null : server.WorkingDirectory.Trim();
-                if (directory is not null && (!paths.IsFullyQualified(directory)
-                                              || !await files.DirectoryExistsAsync(directory, cancellationToken)))
-                    throw new ArgumentException("MCP working directory must be an existing absolute directory.");
-                var command = server.Command.Trim();
-                // ProcessStartInfo does not search WorkingDirectory for an unqualified executable.
-                // Prefer a file in the configured directory, then let the OS search PATH.
-                if (!paths.IsRooted(command) && directory is not null
-                    && await files.FileExistsAsync(Path.Combine(directory, command), cancellationToken))
-                    command = paths.GetFullPath(Path.Combine(directory, command));
-                var saved = await secrets.GetAsync("mcp-env", server.Id, cancellationToken);
-                var values = saved is null ? new Dictionary<string, string>()
-                    : JsonSerializer.Deserialize<Dictionary<string, string>>(saved) ?? [];
-                var environment = new Dictionary<string, string?>();
-                foreach (var variable in server.EnvironmentVariables)
-                {
-                    var value = variable.Value;
-                    if (variable.IsSecret && string.IsNullOrEmpty(value))
-                    {
-                        if (!values.TryGetValue(variable.Name, out value))
-                            throw new InvalidOperationException($"MCP environment variable '{variable.Name}' needs a saved or entered value.");
-                    }
-                    environment[variable.Name] = value ?? string.Empty;
-                }
-                transport = toolEnvironment.Launch(new ToolProcessLaunch(server.Name, command, server.Arguments.ToArray(),
-                    directory, environment, InheritEnvironment: null, ShutdownTimeout: TimeSpan.FromMilliseconds(500)));
-                break;
-            }
-            case "StreamableHttp":
-            {
-                if (!Uri.TryCreate(server.Url, UriKind.Absolute, out var endpoint)
-                    || endpoint.Scheme is not ("http" or "https"))
-                    throw new ArgumentException("MCP URL must be an absolute HTTP or HTTPS URL.");
-                credential = string.IsNullOrWhiteSpace(credential)
-                    ? await secrets.GetAsync("mcp", server.Id, cancellationToken) : credential;
-                transport = new HttpClientTransport(new HttpClientTransportOptions
-                {
-                    Name = server.Name, Endpoint = endpoint, TransportMode = HttpTransportMode.StreamableHttp,
-                    AdditionalHeaders = string.IsNullOrWhiteSpace(credential) ? null
-                        : new Dictionary<string, string> { ["Authorization"] = "Bearer " + credential }
-                });
-                break;
-            }
-            default:
-                throw new ArgumentException($"Unsupported external MCP transport: {server.Transport}.");
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(45));
-        // External stdio servers can take longer than the SDK's five-second discover probe to start.
-        // Falling back to initialize on that same connection fails once a modern server begins serving it.
-        var options = new McpClientOptions
-        {
-            DiscoverProbeTimeout = TimeSpan.FromSeconds(30),
-            ProtocolVersion = server.ModernProtocolOnly ? "2026-07-28" : null
-        };
-        var client = await McpClient.CreateAsync(transport, options, cancellationToken: timeout.Token);
-        try
-        {
-            var tools = await client.ListToolsAsync(cancellationToken: timeout.Token);
-            return new McpToolSession(client, tools.Select(tool => tool.ProtocolTool).ToArray(),
-                server.Id, $"mcp_{server.Id:N}__", canonicalizePaths: false, modelProjector);
-        }
-        catch { await client.DisposeAsync(); throw; }
+        var connection = await connector.ConnectAsync(server, credential, cancellationToken);
+        return new McpToolSession(connection.Client, connection.Tools,
+            server.Id, McpToolSession.ExternalPrefix(server.Id), canonicalizePaths: false, modelProjector);
     }
 }

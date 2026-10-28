@@ -17,8 +17,9 @@ public sealed class ToolEnvironmentTests
     public async Task AUserStdioServerIsLaunchedThroughTheEnvironment()
     {
         var environment = new RecordingEnvironment();
-        var factory = new ExternalToolSessionFactory(Mock.Of<IGlobalSecretStore>(), new SystemFileSystem(), new SystemPath(),
-            new ToolResultModelProjector(), environment);
+        var factory = new ExternalToolSessionFactory(
+            new ExternalMcpConnector(Mock.Of<IGlobalSecretStore>(), new SystemFileSystem(), new SystemPath(), environment),
+            new ToolResultModelProjector());
         var server = new McpServerSettings(Guid.NewGuid(), "Tools", "Stdio", true, "Ask", null, "tool-server",
             ["--flag"], null, [new McpEnvironmentVariableSettings("MODE", "fast", false, false)], false);
 

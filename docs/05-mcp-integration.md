@@ -40,6 +40,38 @@ Used for remote MCP servers. Legacy SSE is not used for new connections. For pro
 6. On a notification, re-run the list, recompute schema hashes, and re-evaluate policies.
 7. Properly close the session and transport.
 
+### Servers in chat runs
+
+A turn opens its tool session before its first model step, so how servers start decides how long
+the person waits for the first token. `CompositeToolSessionFactory` therefore:
+
+- **Opens all servers together.** The built-in, application and user-configured servers start in
+  parallel; a turn waits for the slowest one, not for their sum.
+- **Leaves out a server that fails.** A server that cannot start — a missing executable, an error, or
+  no answer within 45 seconds — is logged as `McpServerUnavailable`, reported in
+  `IToolSession.Failures`, and named to the model through the `run.unavailable-servers` instruction.
+  Its tools are missing for that turn; the turn itself goes on. A start that runs out of time fails
+  with a `TimeoutException` naming the server, never with a cancellation: the run dispatcher treats a
+  cancellation as Stop only when the turn's own token was cancelled, and any other one fails the run
+  with an error instead of pausing it silently.
+- **Keeps user-configured servers running between turns.** `ExternalMcpServerPool` leases a running
+  server to one session at a time and takes it back when the session closes. An idle server is
+  stopped after 15 minutes, at most two are kept per configuration, and servers are kept per user and
+  per configuration fingerprint (command, arguments, directory, environment and credential, saved
+  secrets included), so a changed configuration starts a new process and retires the old ones. A
+  start that the turn stops waiting for still finishes and is kept for the next turn.
+- **Starts a server only when it is needed.** The last `tools/list` answer of each user-configured
+  server is stored in `mcp-tools.json` beside `settings.json`, under the configuration's fingerprint.
+  A server with a stored list is offered from it without being started; the first call of one of its
+  tools leases the server from the pool, reporting "Starting the MCP server …" as progress while it
+  starts, and the list the server returns replaces the stored one for later turns. A server that
+  cannot start then fails only that call, as an error result the model reads: nothing was sent, so
+  nothing happened. A server without a stored list, or whose stored schemas no longer build, is
+  started when the session opens.
+
+Discovery from settings (`/api/mcp/tools/discover`) starts a private server for the configuration it
+was given, saved or not, and stops it afterwards; it does not use the pool.
+
 ## Tool identity
 
 A name is unique only within a single server. The internal key:
@@ -152,4 +184,4 @@ MCP servers are global and available to all projects. The first iteration implem
 - command, arguments, working directory, and environment variables for stdio;
 - write-only credential for Streamable HTTP.
 
-Connecting and calling third-party servers remains deferred. The built-in `Default tools` are available automatically; the Host manages their execution, and tool discovery and per-tool policies are available in project settings.
+Chat runs connect and call third-party servers as described in [Servers in chat runs](#servers-in-chat-runs). The built-in `Default tools` are available automatically; the Host manages their execution, and tool discovery and per-tool policies are available in project settings.

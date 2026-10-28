@@ -101,6 +101,32 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ACancellationThatIsNotAStopShouldFailTheRunInsteadOfPausingIt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OpenFailure = new TaskCanceledException("A server start timed out.");
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+
+        var failed = await fixture.WaitAsync(run => run.Status is ChatRunStatus.Failed or ChatRunStatus.Paused);
+        failed.Status.ShouldBe(ChatRunStatus.Failed);
+        failed.Error.ShouldNotBeNull().ShouldContain("cancelled by something other than Stop");
+    }
+
+    [Fact]
+    public async Task ServersThatCouldNotStartShouldBeNamedToTheModel()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.Failures = [new ToolServerFailure(Guid.NewGuid(), "Slow server", "It did not start within 45 seconds.")];
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello"));
+
+        var call = await fixture.NextCallAsync();
+        call.Request.ContextMessages.ShouldNotBeNull().ShouldContain(message =>
+            message.ForModel.Contains("Slow server (It did not start within 45 seconds.)", StringComparison.Ordinal));
+        call.Answer.SetResult("Done");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
     public async Task DirectoryGrantAddedDuringRunReopensToolSessionBeforeNextModelStep()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -3282,9 +3308,16 @@ public sealed partial class ChatExecutionTests
         public IReadOnlyList<ToolDirectoryGrant> Grants { get; private set; } = [];
         public IReadOnlySet<Guid> Servers { get; private set; } = new HashSet<Guid>();
         public ToolRunContext? Run { get; private set; }
+        /// <summary>Servers the session reports as left out because they could not start.</summary>
+        public IReadOnlyList<ToolServerFailure> Failures { get; set; } = [];
+
+        /// <summary>Set to make opening the session fail, as a server start that times out once did.</summary>
+        public Exception? OpenFailure { get; set; }
+
         public Task<IToolSession> OpenAsync(IReadOnlyList<ToolDirectoryGrant> directoryGrants, IReadOnlySet<Guid> servers,
             ToolRunContext run, CancellationToken cancellationToken)
         {
+            if (OpenFailure is { } failure) return Task.FromException<IToolSession>(failure);
             OpenCount++;
             Grants = directoryGrants;
             Servers = servers;

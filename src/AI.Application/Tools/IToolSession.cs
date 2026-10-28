@@ -75,9 +75,22 @@ public sealed record ToolRunContext(Guid ProjectId, Guid ChatId, Guid BranchId, 
 /// </summary>
 public sealed record ToolCallPosition(int Index, int BatchSize);
 
+/// <summary>
+/// A server that was asked for but could not be started. Its tools are missing from the session;
+/// the rest of the session works as usual.
+/// </summary>
+public sealed record ToolServerFailure(Guid ServerId, string ServerName, string Reason);
+
 public interface IToolSession : IAsyncDisposable
 {
     IReadOnlyList<AgentTool> Tools { get; }
+
+    /// <summary>
+    /// Servers left out of this session because they failed to start. One server that cannot
+    /// start costs its own tools, not the whole run.
+    /// </summary>
+    IReadOnlyList<ToolServerFailure> Failures => [];
+
     string ValidateArguments(AgentTool tool, string arguments);
     Task<ToolCallResult> CallAsync(
         AgentTool tool,
@@ -91,7 +104,9 @@ public interface IToolSessionFactory
     /// <summary>
     /// Connects to the MCP servers named in <paramref name="servers"/> and presents their tools as
     /// one set. Enablement is decided by the caller from settings, because a server that is off
-    /// must not be started at all — not started and then filtered out.
+    /// must not be started at all — not started and then filtered out. A server that fails to
+    /// start is reported in <see cref="IToolSession.Failures"/> rather than failing the call;
+    /// only the caller's own cancellation ends it.
     /// </summary>
     Task<IToolSession> OpenAsync(
         IReadOnlyList<ToolDirectoryGrant> directoryGrants,

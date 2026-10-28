@@ -97,8 +97,10 @@ messages on the branch, so that a short follow-up such as "go on" is read with t
 continues, the playbook the chat is following (found from its `run_skill` call within the last few
 turns, with the text taken from the skill catalog rather than from the call), whether that playbook
 lists the tool among its `allowed-tools`, the project's directory grants, the chat's own temporary
-directory, the tool's description and
-annotations (as unverified hints) and the exact arguments, all passed as data. A step of the
+directory, the tool calls the assistant made earlier in the turn (the last 20, arguments clipped,
+results left out, so that it can tell where a file in the temporary directory came from), the
+tool's description and annotations (as unverified hints) and the exact arguments, all passed as
+data. A step of the
 active playbook counts as asked for by the user; it never lifts the rules on secrets, paths outside
 the project and the chat's temporary directory, uploads, deletion or history rewrites. For a `process_run` call it also sees the
 command as the Host parsed it, with the guard's findings and the command rule that matched (see
@@ -180,11 +182,19 @@ or `Ask` does.
 asked about instead, with the reason on the card:
 
 - the program is not found, or the file is not the one PATH finds for its name (a `git.exe` in the
-  project), or it lies inside the project or the working directory;
+  project), or it lies inside the project, the working directory or the chat's temporary
+  directory;
 - an option makes the program run other commands: git's `-c`, `--config-env`, `--exec-path`,
   `--upload-pack`, `--receive-pack`, `--exec`, and `clone -u`;
-- the call gives no working directory, or a working directory or a path outside the project's
-  directory grants.
+- the call gives no working directory, or a working directory or a path outside both the project's
+  directory grants and the chat's temporary directory.
+
+A working directory or path in the chat's temporary directory is the chat's own space, as for the
+file tools below: the guard raises nothing about it, and a rule such as `dotnet build *` reaches a
+reproduction project built there. A program in it is a file the chat's tools wrote and may rewrite
+between calls, so no rule covers it. The findings passed to the risk check give the scope of the
+program, the working directory and every path (`project`, `scratch` or `outside`), and the card and
+warnings spell a path there as `<chat temp>/...`.
 
 The repository's own configuration is trusted: an alias or a hook defined in `.git/config` runs
 under a rule that allows the command which triggers it.

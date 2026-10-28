@@ -13,6 +13,7 @@ public sealed class CommandParserTests
     private static readonly string Project = TestPrograms.Project;
     private static readonly string LocalGit = TestPrograms.LocalGit;
     private static readonly IReadOnlyList<CommandGrant> Grants = TestPrograms.Grants;
+    private static readonly string[] ReproBuild = ["build", "src/Repro.csproj"];
 
     [Theory]
     [InlineData("git", new[] { "status", "--porcelain" }, "git status --porcelain")]
@@ -75,6 +76,45 @@ public sealed class CommandParserTests
         (await CheckAsync("git", ["diff", "origin/main", "--", "src/a.cs"])).BlocksAllow.ShouldBeFalse();
         (await CheckAsync("git", ["-C", "src", "log", "-1"])).BlocksAllow.ShouldBeFalse();
         (await CheckAsync("git", ["clone", "https://example.test/r.git"])).BlocksAllow.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ShouldTreatTheChatTemporaryDirectoryAsTheChatsOwn()
+    {
+        var scratch = Path.Combine(Root, "temp", "chat");
+        var repro = Path.Combine(scratch, "issue171h");
+
+        var build = CommandGuard.Check(await ParseAsync("dotnet", ["build", "Repro.csproj"], repro), Grants, Paths, scratch);
+
+        build.BlocksAllow.ShouldBeFalse();
+        build.Warnings.ShouldBeEmpty();
+        CommandGuard.Scope(repro, Grants, scratch, Paths).ShouldBe(PathScope.Scratch);
+        CommandGuard.Scope(Path.Combine(Project, "src"), Grants, scratch, Paths).ShouldBe(PathScope.Project);
+        CommandGuard.Scope(Path.Combine(Root, "temp", "other"), Grants, scratch, Paths).ShouldBe(PathScope.Outside);
+        CommandGuard.Show(Path.Combine(repro, "bin"), scratch, Paths).ShouldBe("<chat temp>/issue171h/bin");
+
+        // Without the temporary directory the same call is outside the project.
+        CommandGuard.Check(build.Command, Grants, Paths).BlocksAllow.ShouldBeTrue();
+
+        var subject = (await new ProcessRunRuleProfile(TestPrograms.Parser(), Paths).ReadAsync(
+            JsonSerializer.Serialize(new { executable = "dotnet", arguments = ReproBuild, workingDirectory = repro }),
+            new RuleContext(Grants, scratch), CancellationToken.None)).ShouldNotBeNull();
+        using var details = JsonSerializer.SerializeToDocument(subject.Details);
+        details.RootElement.GetProperty("workingDirectoryScope").GetString().ShouldBe("scratch");
+        details.RootElement.GetProperty("programScope").GetString().ShouldBe("outside");
+        details.RootElement.GetProperty("paths").EnumerateArray().ShouldHaveSingleItem()
+            .GetProperty("scope").GetString().ShouldBe("scratch");
+    }
+
+    [Fact]
+    public async Task ShouldNotLetARuleCoverAProgramInTheChatTemporaryDirectory()
+    {
+        var scratch = Path.GetDirectoryName(LocalGit)!;
+
+        var check = CommandGuard.Check(await ParseAsync(LocalGit, ["status"]), [], Paths, scratch);
+
+        check.BlocksAllow.ShouldBeTrue();
+        check.Warnings.ShouldContain($"It runs a program from the chat's temporary directory: <chat temp>/{Path.GetFileName(LocalGit)}.");
     }
 
     [Theory]

@@ -24,18 +24,28 @@ public sealed class ProcessRunRuleProfile(ICommandParser parser, IPath paths) : 
     {
         ArgumentNullException.ThrowIfNull(context);
         if (await parser.ParseAsync(arguments, cancellationToken) is not { } command) return null;
-        var check = CommandGuard.Check(command, context.Grants, paths);
+        var check = CommandGuard.Check(command, context.Grants, paths, context.ScratchRoot);
         return new RuleSubject(command.Display, check.Warnings, check.BlocksAllow, check.ExactOnly,
             CommandGuard.Options(check), command, Pin(arguments, command.ExecutablePath),
             new
             {
                 display = command.Display,
                 program = command.ExecutablePath,
+                // Where each place the command touches lies, worked out here: the scratch path is two
+                // long ids, and a model comparing them by eye took it for somewhere else.
+                programScope = command.ExecutablePath is { } program ? Scope(program, context) : null,
                 installed = command.OnPath,
                 interpreter = command.IsInterpreter,
-                destructive = command.IsDestructive
+                destructive = command.IsDestructive,
+                workingDirectory = command.WorkingDirectory,
+                workingDirectoryScope = command.WorkingDirectory is { } directory ? Scope(directory, context) : null,
+                paths = command.Paths.Distinct(StringComparer.Ordinal).Take(10)
+                    .Select(path => new { path, scope = Scope(path, context) }).ToArray()
             });
     }
+
+    private string Scope(string path, RuleContext context) =>
+        CommandGuard.Scope(path, context.Grants, context.ScratchRoot, paths).ToString().ToLowerInvariant();
 
     /// <summary>The program the rules were checked against is the one that starts.</summary>
     private static string? Pin(string arguments, string? executable)

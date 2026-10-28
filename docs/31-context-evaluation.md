@@ -124,6 +124,7 @@ The same project checks `chat-tool-risk-assess` with `AI_TOOL_RISK_EVAL=1`, usin
 connection settings. Run the executable with `-class '*ToolRiskEvaluationTests' -showLiveOutput`.
 It makes one real model call per case through the risk assessment executor, including its verdict
 parser. Cases cover ordinary project reads, shell scripts, edits, scratch files, builds and tests,
+a reproduction project built and run in the chat's temporary directory,
 as well as secrets, uploads, destructive commands, writes outside the project, opaque or remote
 scripts, persistent processes and explicit Ask rules. No evaluated tool call executes. These are
 skill decision checks, separate from a full Host and agent evaluation.

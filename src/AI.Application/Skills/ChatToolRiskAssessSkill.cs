@@ -107,6 +107,7 @@ public sealed class ChatToolRiskAssessSkill(
                     tool_is_allowed = Lists(active, toolName, Text(parameters, "tool_ref")),
                     instructions = Clip(SkillMarkdown.Body(active.Content), 8_000)
                 },
+                recent_tool_calls = RecentToolCalls(path) is { Length: > 0 } calls ? calls : null,
                 project_directories = project?.DirectoryGrants.Select(grant => new
                 {
                     path = grant.CanonicalRoot,
@@ -176,6 +177,42 @@ public sealed class ChatToolRiskAssessSkill(
             .Select(item => item.Content)
             .TakeLast(count)
             .ToArray();
+
+    /// <summary>How many of the turn's latest tool calls are passed on, and how much of each one's arguments.</summary>
+    private const int ToolCallCount = 20;
+
+    private const int ToolCallLength = 600;
+
+    /// <summary>
+    /// The tool calls the assistant made in this turn, oldest first, as the chat recorded them: what
+    /// a file in the scratch directory came from, or which project a build there builds. Their
+    /// results are left out, since a tool's output is where injected text would come from.
+    /// </summary>
+    private static object[] RecentToolCalls(List<ChatMessageView> path)
+    {
+        var start = 0;
+        for (var index = path.Count - 1; index >= 0; index--)
+        {
+            if (!path[index].StartsTurn) continue;
+            start = index + 1;
+            break;
+        }
+        var failed = path.Skip(start)
+            .Where(item => item is { Role: "Tool", ToolCallId: not null, ToolResultIsError: true })
+            .Select(item => item.ToolCallId!)
+            .ToHashSet(StringComparer.Ordinal);
+        return path.Skip(start)
+            .Where(item => item.Role == "Assistant")
+            .SelectMany(item => item.ToolCalls ?? [])
+            .TakeLast(ToolCallCount)
+            .Select(call => (object)new
+            {
+                tool = call.Name,
+                arguments = Clip(call.Arguments, ToolCallLength),
+                failed = failed.Contains(call.Id) ? true : (bool?)null
+            })
+            .ToArray();
+    }
 
     /// <summary>
     /// The playbook the assistant is following, found the way the chat itself finds it. Its id comes

@@ -60,7 +60,7 @@ public sealed class PathRuleProfile(IPath paths, string tool, IReadOnlyList<stri
             }
         }
         if (deletes) warnings.Add("It deletes for good what it names.");
-        var display = $"{tool} {string.Join(" → ", targets.Select(Show))}";
+        var display = $"{tool} {string.Join(" → ", targets.Select(target => Show(target, context)))}";
         var subject = new RuleSubject(display, warnings.Distinct(StringComparer.Ordinal).ToArray(), blocks, deletes,
             Options(targets), new PathCall(targets), null,
             new
@@ -95,7 +95,9 @@ public sealed class PathRuleProfile(IPath paths, string tool, IReadOnlyList<stri
         return options.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    private static string Show(PathTarget target) => target.Relative is { Count: > 0 } relative ? string.Join('/', relative) : target.Full;
+    private string Show(PathTarget target, RuleContext context) => target.Relative is { Count: > 0 } relative
+        ? string.Join('/', relative)
+        : CommandGuard.Show(target.Full, context.ScratchRoot, paths);
 
     private static bool Secret(string[] parts) =>
         parts.Any(SecretNames.Contains)

@@ -9,6 +9,15 @@ public sealed record ClientSettings
 {
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
+    /// <summary>
+    /// The themes this client built, in the order they were added, and which of them the page paints
+    /// with. A saved theme carries its resolved palette, so the page can apply it before the stylesheet
+    /// is read; null leaves the preset <see cref="Theme"/> in force.
+    /// </summary>
+    public IReadOnlyList<AI.Contracts.Themes.CustomTheme> CustomThemes { get; init; } = [];
+
+    public string? ActiveCustomThemeId { get; init; }
+
     public AccentColor Accent { get; init; } = AccentColor.Blue;
 
     public int CornerRoundnessPercent { get; init; } = 100;

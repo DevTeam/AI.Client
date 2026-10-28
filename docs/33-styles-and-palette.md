@@ -98,6 +98,12 @@ Settings → Appearance also offers themes a person builds. A theme is a few see
 - A generated palette must hold the ratios in `ThemePalette.TextTarget` (4.5:1) for text on the page and on a filled row, and say so in the studio when a background cannot carry them. A ratio this file promises for a pair a theme does not control is not the theme's to keep.
 - A new role added to a theme block needs a decision in `ThemeToken` in the same change, the same way a new token needs its row here.
 
+A theme is stored as `CustomTheme` in the same place as the other client preferences (`ai-client.settings`, field `customThemes`) and is listed in Settings → Appearance → Your themes. It keeps the seeds it was built from **and** the palette they produced, and that stored palette is what the page applies; the engine is not run again on load. Two consequences follow, and both are deliberate: an update to the engine never repaints a saved theme, and a theme written by a newer build still paints, because the page only reads colour values.
+
+- `CustomTheme.Family` is spelled `dark` or `light` because it is handed to `js/theme.js` as it stands, where it becomes `<html data-theme-family>`. A .NET-side `ThemeFamily` enum would depend on how the serializer spells it.
+- Every saved theme is built by `CustomTheme.Create`, which runs the seeds through `ThemePalette`; nothing writes a palette by hand. The studio (`Components/CustomThemeSettings.razor`) paints a candidate the person is still choosing under the same script entry as a saved one, and that candidate is never stored: the preview id is not a theme id.
+- Choosing a preset, deleting the theme in use and closing the studio all hand `null` to `applyCustomTheme`, which removes the inline `--color-*` properties. Without that removal the preset would be painted underneath a palette that is no longer the choice, because inline properties outrank the stylesheet.
+
 ## Choosing a colour
 
 | Need | Token |

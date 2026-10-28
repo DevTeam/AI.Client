@@ -111,6 +111,14 @@ public sealed class AppControlHintsRenderingTests
         var languages = new Mock<ITextCorrectionLanguages>();
         languages.Setup(value => value.Available).Returns(new KeyboardLayouts().All);
         languages.Setup(value => value.GetStateAsync()).Returns(new ValueTask<TextCorrectionState>(new TextCorrectionState([], true)));
+        // The appearance section now holds the theme studio, whose controls carry help of their own, so
+        // the theme service answers with a saved theme instead of an empty one.
+        var theme = new Mock<IThemeService>();
+        var saved = AI.Contracts.Themes.CustomTheme.Create("theme-1", "Mine", new AI.Contracts.Themes.CustomThemeSeeds("#2b2320"));
+        theme.Setup(value => value.GetCustomThemesAsync()).Returns(new ValueTask<IReadOnlyList<AI.Contracts.Themes.CustomTheme>>([saved]));
+        theme.Setup(value => value.GetActiveCustomThemeAsync()).Returns(new ValueTask<AI.Contracts.Themes.CustomTheme?>(saved));
+        theme.Setup(value => value.SetActiveCustomThemeAsync(It.IsAny<string?>())).Returns(ValueTask.CompletedTask);
+        theme.Setup(value => value.PreviewCustomThemeAsync(It.IsAny<AI.Contracts.Themes.CustomTheme>())).Returns(ValueTask.CompletedTask);
         return new ServiceCollection()
             .AddTransient<IAppNavigationTargets, AppNavigationTargets>()
             .AddTransient<IAppControlHints, AppControlHints>()
@@ -121,7 +129,7 @@ public sealed class AppControlHintsRenderingTests
             .AddTransient<IToolDefaultDecision, ToolDefaultDecision>()
             .AddSingleton(Mock.Of<ITextCorrectionPreparation>())
             .AddSingleton(Mock.Of<INotificationService>())
-            .AddSingleton(Mock.Of<IThemeService>())
+            .AddSingleton(theme.Object)
             .AddSingleton(Mock.Of<AI.Web.IClientMode>())
             .AddSingleton(Mock.Of<AI.Web.IHostConnection>())
             .AddSingleton(Mock.Of<ISettingsTransferCodec>())

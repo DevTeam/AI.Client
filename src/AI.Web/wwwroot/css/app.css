@@ -1609,6 +1609,16 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .image-test-result.is-failed > .app-icon { color: var(--color-danger); }
 .image-test-result.is-failed { color: var(--color-danger-text); }
 .settings-note { margin: -.3rem .15rem 0; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+/* The theme studio: the background swatch sits beside its value, the actions line up at the end of
+   their row, and a palette that cannot carry readable text says so under the dials on an inset row,
+   in the warning words rather than the danger ones: the theme is weak, not broken. */
+.settings-custom-theme-actions { flex-wrap: wrap; }
+.settings-custom-theme-actions > .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
+.settings-custom-theme-actions > .compact-action .app-icon { width: .85rem; height: .85rem; }
+.settings-custom-theme-shortfall { align-items: flex-start; gap: .5rem; min-height: 0; padding-block: .5rem; background: var(--color-bg-inset); color: var(--color-warning-text); font-size: var(--font-size-md); line-height: 1.4; overflow-wrap: anywhere; }
+.settings-custom-theme-shortfall > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; color: var(--color-warning); }
+.settings-field-control > input[type="color"] { flex: none; width: 2.6rem; min-height: 2.15rem; padding: .15rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; }
+.settings-field-control > output { color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; }
 .settings-form .settings-group > h3 { margin-top: .1rem; }
 
 /* MCP: Server and Tools are two pages of one server, switched like the theme pills. */

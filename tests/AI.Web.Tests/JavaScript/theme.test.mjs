@@ -162,3 +162,37 @@ test('an unknown preference still falls back to the operating system', () => {
     assert.equal(root.dataset.themePreference, 'system');
     assert.equal(root.dataset.theme, 'light');
 });
+
+test('an applied preset leaves no palette of a saved theme behind', () => {
+    const saved = settings({ activeCustomThemeId: 'theme-1', customThemes: [theme()] });
+    const { context, root, palette } = setUp(saved);
+    assert.equal(palette().size, 3);
+
+    // The service removes the palette and then applies the preset; either order must end with none.
+    context.aiClientTheme.applyCustomTheme(null, false);
+    context.aiClientTheme.apply('darkblue', false);
+
+    assert.equal(root.dataset.theme, 'darkblue');
+    assert.equal(palette().size, 0);
+});
+
+test('a preview replaces the saved palette without being saved', () => {
+    const saved = settings({ activeCustomThemeId: 'theme-1', customThemes: [theme()] });
+    const { context, root, palette, events } = setUp(saved);
+
+    context.aiClientTheme.applyCustomTheme({ id: 'preview', family: 'light', tokens: { '--color-bg': '#f7f2e8' } }, false);
+
+    assert.equal(root.dataset.theme, 'custom');
+    assert.equal(root.dataset.themeFamily, 'light');
+    assert.deepEqual([...palette()], [['--color-bg', '#f7f2e8']]);
+    assert.equal(events.at(-1).detail.family, 'light');
+});
+
+test('a stored palette that is not a custom property is ignored', () => {
+    const handEdited = { ...theme(), tokens: { '--color-bg': '#123456', '--corner-scale': '9', width: '1px' } };
+    const saved = settings({ activeCustomThemeId: 'theme-1', customThemes: [handEdited] });
+    const { palette } = setUp(saved);
+
+    // A hand-edited entry cannot reach geometry or a property the stylesheet owns.
+    assert.deepEqual([...palette()], [['--color-bg', '#123456']]);
+});

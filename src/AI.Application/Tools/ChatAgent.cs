@@ -78,7 +78,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var estimator = tokenEstimator.ForModel(request.Model);
         using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var transportScope = transport.BeginScope(transportActivity);
-        var deadline = new TurnDeadline(source, TimeSpan.FromHours(24));
+        var deadline = new TurnDeadline(source, MaxTurnDuration);
         var token = source.Token;
         Task Draft(string? content) => draft?.Invoke(content, token) ?? Task.CompletedTask;
         ContextPlan? lastPlan = null;
@@ -681,8 +681,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                     using var wake = joined.Register(timeout.Cancel);
                                     // A tool that is waiting on a person is not a tool that has gone quiet.
                                     // Both clocks are off while it waits: the silence timer, which would
-                                    // kill the question in under a minute, and the turn's own 24-hour limit, which
-                                    // must not be spent on time the person took to read it.
+                                    // kill the question in under a minute, and the turn's own limit, which must
+                                    // not be spent on time the person took to read it.
                                     var asking = AsksTheUser(tool);
                                     // Leave a short transport margin for execution tools to report their own timeout.
                                     var patience = asking
@@ -1213,7 +1213,16 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         tool.ServerId == AppMcpServer.Id && tool.OriginalName is AskUserTool or "app_navigate";
 
     /// <summary>
-    /// The turn's own 24-hour limit, which time spent waiting on a person does not count against.
+    /// The longest delay a timer accepts, and therefore the longest budget a turn can be given: a
+    /// deadline is there to stop a run that has gone wrong, not one the person deliberately left
+    /// working, and no constant answers that for a whole day of work differently from a whole month.
+    /// </summary>
+    private static readonly TimeSpan MaxTurnDuration = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
+    /// <summary>
+    /// The turn's own limit, set to <see cref="MaxTurnDuration"/>: effectively unlimited, so a turn
+    /// ends by the stop button, a shutdown or an error rather than by the clock. Time spent waiting
+    /// on a person does not count against it at all.
     /// </summary>
     /// <remarks>
     /// The ceiling exists to stop a run that has gone wrong, and a run stopped at a confirmation
@@ -1225,11 +1234,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     private sealed class TurnDeadline
     {
         private readonly CancellationTokenSource _source;
+        private readonly TimeSpan _budget;
         private long _expires;
 
         public TurnDeadline(CancellationTokenSource source, TimeSpan budget)
         {
             _source = source;
+            _budget = budget;
             _expires = Environment.TickCount64 + (long)budget.TotalMilliseconds;
             Reschedule();
         }
@@ -1254,7 +1265,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
 
         private void Reschedule()
         {
-            var left = TimeSpan.FromMilliseconds(Math.Max(0, _expires - Environment.TickCount64));
+            // Handing waiting time back can push the deadline past what the runtime accepts as a
+            // delay; a refused delay would end the turn with an exception instead of extending it,
+            // so the extension stops at the budget itself.
+            var left = TimeSpan.FromMilliseconds(Math.Clamp(_expires - Environment.TickCount64, 0, (long)_budget.TotalMilliseconds));
             try
             {
                 _source.CancelAfter(left);

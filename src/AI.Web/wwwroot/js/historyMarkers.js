@@ -378,7 +378,12 @@ export function attach(strip, scroller, scrollKey) {
     const onClick = event => {
         const marker = event.target.closest(".history-marker");
         if (!marker) return;
-        document.getElementById(marker.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const target = document.getElementById(marker.dataset.target);
+        if (!target) return;
+        // Only the feed moves: scrollIntoView would also scroll every clipping ancestor, the
+        // workspace shell included, and leave the whole layout shifted up.
+        const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        scroller.scrollTo({ top, behavior: "smooth" });
     };
 
     // The strip narrows with the chat's gutter, so the peak is fitted to its current width: the

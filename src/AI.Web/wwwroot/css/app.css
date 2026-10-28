@@ -580,7 +580,9 @@ body {
     grid-template-rows: minmax(0, 1fr);
     width: 100vw;
     height: 100vh;
-    overflow: hidden;
+    /* clip, not hidden: a hidden box is still a scroll container, and any scrollIntoView inside
+       (a timeline mark, a search hit) could scroll the whole shell up and leave it there. */
+    overflow: clip;
     background: var(--color-bg);
 }
 

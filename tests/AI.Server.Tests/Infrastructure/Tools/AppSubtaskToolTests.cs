@@ -277,16 +277,24 @@ public sealed class AppSubtaskToolTests
         await using var session = await fixture.OpenAsync();
         var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
         var reports = new List<ToolProgress>();
+        // The server sends progress as its own fire-and-forget message, and the client stops
+        // listening for a call's notifications once that call's response has arrived. A subtask
+        // answered as soon as it is asked therefore races its own reports and can lose all of
+        // them on a busy runner, so the answer is withheld until one report has actually reached
+        // the caller: that is the condition the assertion below is about, not the response order.
+        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.HoldAnswerUntil(reported.Task);
 
         await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second"),
-            new SynchronousProgress(value => { lock (reports) reports.Add(value); }),
+            new SynchronousProgress(value =>
+            {
+                lock (reports) reports.Add(value);
+                reported.TrySetResult();
+            }),
             TestContext.Current.CancellationToken);
 
         // The caller's live row is fed from these, so a subtask that reports nothing is
-        // indistinguishable from one that has hung. What is asserted is what the subtasks report
-        // while they run: progress travels as MCP notifications, and the client stops listening
-        // for a call's notifications once its response is in, so the last "2/2" report, sent just
-        // before that response, may never reach the caller.
+        // indistinguishable from one that has hung.
         lock (reports)
         {
             reports.ShouldNotBeEmpty();
@@ -579,6 +587,7 @@ public sealed class AppSubtaskToolTests
     private sealed class StubCompletion : IChatCompletionClient
     {
         private Func<string, string> _answer = _ => string.Empty;
+        private Task _gate = Task.CompletedTask;
         private bool _loop;
         private int _call;
         private int _streamRequests;
@@ -590,6 +599,9 @@ public sealed class AppSubtaskToolTests
 
         public void AnswerPerTask(Func<string, string> answer) => _answer = answer;
 
+        /// <summary>Withholds every answer until the gate completes, bounded so a broken gate fails a test.</summary>
+        public void HoldAnswerUntil(Task gate) => _gate = gate;
+
         public void LoopWithUnavailableTools() => _loop = true;
 
         public Task<ChatCompletionResponse> CompleteAsync(ChatCompletionRequest request, CancellationToken cancellationToken) =>
@@ -598,6 +610,7 @@ public sealed class AppSubtaskToolTests
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(
             ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            await _gate.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
             await Task.Yield();
             lock (Requests) Requests.Add(request);
             Interlocked.Increment(ref _streamRequests);

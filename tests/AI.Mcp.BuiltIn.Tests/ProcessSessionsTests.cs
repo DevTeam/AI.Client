@@ -14,10 +14,24 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
     private readonly string _root = Directory.CreateTempSubdirectory("ai-process-session-test-").FullName;
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        // Windows releases a killed process's hold on its working directory a little after the
+        // process is reported exited, so the delete is retried; a directory still held then is left
+        // in the temporary folder rather than failing a test that already passed.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+                return;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == 20) return;
+                await Task.Delay(500);
+            }
+        }
     }
 
     [Theory]

@@ -406,6 +406,33 @@
     --accent-swatch-purple: #9b4fcf;
     --accent-swatch-indigo: #6b58f5;
 }
+
+/* Theme swatches: what each preset's card in Settings → Appearance paints. A card shows a theme other
+   than the one in force, so it cannot read the theme blocks; these mirror each preset's --color-bg,
+   its card surface (--color-surface-raised; --color-surface for light, whose raised surface is the
+   page), --color-text and --color-border, and change together with them. */
+:root {
+    --theme-swatch-dark-bg: #171717;
+    --theme-swatch-dark-surface: #242424;
+    --theme-swatch-dark-text: #ececec;
+    --theme-swatch-dark-border: #383838;
+    --theme-swatch-darkblue-bg: #101720;
+    --theme-swatch-darkblue-surface: #1b2531;
+    --theme-swatch-darkblue-text: #e8edf4;
+    --theme-swatch-darkblue-border: #2b3847;
+    --theme-swatch-gray-bg: #212121;
+    --theme-swatch-gray-surface: #2c2c2c;
+    --theme-swatch-gray-text: #ececec;
+    --theme-swatch-gray-border: #3c3c3c;
+    --theme-swatch-light-bg: #ffffff;
+    --theme-swatch-light-surface: #fafafa;
+    --theme-swatch-light-text: #1f1f1f;
+    --theme-swatch-light-border: #e0e0e0;
+    --theme-swatch-lightgray-bg: #dedede;
+    --theme-swatch-lightgray-surface: #e6e6e6;
+    --theme-swatch-lightgray-text: #1f1f1f;
+    --theme-swatch-lightgray-border: #c0c0c0;
+}
 :root[data-accent="teal"] { --accent-swatch: var(--accent-swatch-teal); }
 :root[data-accent="green"] { --accent-swatch: var(--accent-swatch-green); }
 :root[data-accent="amber"] { --accent-swatch: var(--accent-swatch-amber); }
@@ -1609,14 +1636,80 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .image-test-result.is-failed > .app-icon { color: var(--color-danger); }
 .image-test-result.is-failed { color: var(--color-danger-text); }
 .settings-note { margin: -.3rem .15rem 0; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
-/* The theme studio: the background swatch sits beside its value, the actions line up at the end of
-   their row, and a palette that cannot carry readable text says so under the dials on an inset row,
-   in the warning words rather than the danger ones: the theme is weak, not broken. */
-.settings-custom-theme-actions { flex-wrap: wrap; }
-.settings-custom-theme-actions > .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
-.settings-custom-theme-actions > .compact-action .app-icon { width: .85rem; height: .85rem; }
+/* Settings → Appearance: every theme is a card that draws a miniature of itself, presets and saved
+   themes alike, in one radio group. A preset card reads its colours from the --theme-swatch-* tokens;
+   a saved theme's card gets the same --swatch-* properties from its stored palette (see the
+   exceptions in docs/33-styles-and-palette.md). The chip in every miniature is the live accent. */
+.theme-gallery-row { gap: .55rem; padding-bottom: .8rem; }
+.theme-gallery-row > .settings-row-label:not(:first-child) { margin-top: .4rem; }
+.theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr)); gap: .75rem .6rem; align-self: stretch; }
+.theme-card { position: relative; display: grid; gap: .4rem; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: var(--font-size-md); text-align: left; cursor: pointer; }
+.theme-card > input { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.theme-card[data-theme-swatch="dark"], .theme-card-half[data-theme-swatch="dark"] { --swatch-bg: var(--theme-swatch-dark-bg); --swatch-surface: var(--theme-swatch-dark-surface); --swatch-text: var(--theme-swatch-dark-text); --swatch-border: var(--theme-swatch-dark-border); }
+.theme-card[data-theme-swatch="darkblue"] { --swatch-bg: var(--theme-swatch-darkblue-bg); --swatch-surface: var(--theme-swatch-darkblue-surface); --swatch-text: var(--theme-swatch-darkblue-text); --swatch-border: var(--theme-swatch-darkblue-border); }
+.theme-card[data-theme-swatch="gray"] { --swatch-bg: var(--theme-swatch-gray-bg); --swatch-surface: var(--theme-swatch-gray-surface); --swatch-text: var(--theme-swatch-gray-text); --swatch-border: var(--theme-swatch-gray-border); }
+.theme-card[data-theme-swatch="light"] { --swatch-bg: var(--theme-swatch-light-bg); --swatch-surface: var(--theme-swatch-light-surface); --swatch-text: var(--theme-swatch-light-text); --swatch-border: var(--theme-swatch-light-border); }
+.theme-card[data-theme-swatch="lightgray"] { --swatch-bg: var(--theme-swatch-lightgray-bg); --swatch-surface: var(--theme-swatch-lightgray-surface); --swatch-text: var(--theme-swatch-lightgray-text); --swatch-border: var(--theme-swatch-lightgray-border); }
+.theme-card-preview, .theme-card-half { display: flex; gap: .3rem; padding: .35rem; box-sizing: border-box; background: var(--swatch-bg); }
+.theme-card-preview { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: var(--radius-md); box-shadow: 0 0 0 1px var(--color-border); transition: box-shadow var(--duration-fast) ease, transform var(--duration-base) var(--ease-emphasized); }
+/* System is both families: the dark miniature covers the lower-right half of the light one. */
+.theme-card-half { position: absolute; inset: 0; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.theme-card-rail { flex: 0 0 22%; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--swatch-text) 8%, var(--swatch-bg)); }
+.theme-card-panel { display: flex; flex: 1; flex-direction: column; gap: .25rem; min-width: 0; padding: .35rem; border: 1px solid var(--swatch-border); border-radius: var(--radius-xs); background: var(--swatch-surface); }
+.theme-card-line { width: 80%; height: .2rem; border-radius: 1px; background: color-mix(in srgb, var(--swatch-text) 80%, transparent); }
+.theme-card-line.is-short { width: 52%; background: color-mix(in srgb, var(--swatch-text) 40%, transparent); }
+.theme-card-chip { width: 36%; height: .35rem; margin-top: auto; border-radius: var(--radius-pill); background: var(--color-accent-strong); }
+.theme-card-name { overflow: hidden; padding-inline: .1rem; text-overflow: ellipsis; white-space: nowrap; transition: color var(--duration-fast) ease; }
+.theme-card:hover .theme-card-name { color: var(--color-text); }
+.theme-card:hover .theme-card-preview { box-shadow: var(--shadow-sm), 0 0 0 1px var(--color-border-stronger); transform: translateY(-1px); }
+.theme-card.selected .theme-card-preview { box-shadow: 0 0 0 2px var(--color-accent-strong), 0 0 0 5px color-mix(in srgb, var(--color-accent-strong) 20%, transparent); }
+.theme-card.selected .theme-card-preview::after { content: ""; position: absolute; top: .3rem; right: .3rem; z-index: 1; width: .5rem; height: .5rem; border-radius: 50%; background: var(--color-accent-strong); box-shadow: 0 0 0 2px var(--swatch-bg); }
+.theme-card.selected .theme-card-name { color: var(--color-text-strong); font-weight: 600; }
+.theme-card:has(> input:focus-visible) .theme-card-preview, .theme-card.is-new:focus-visible .theme-card-preview { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+.theme-card.is-new:focus-visible { outline: 0; }
+.theme-card.is-new .theme-card-preview { align-items: center; justify-content: center; border: 1px dashed var(--color-border-strong); background: transparent; box-shadow: none; color: var(--color-text-muted); }
+.theme-card.is-new .theme-card-preview .app-icon { width: 1.1rem; height: 1.1rem; }
+.theme-card.is-new:hover:not(:disabled) .theme-card-preview { border-color: var(--color-accent); background: var(--color-accent-bg); box-shadow: none; color: var(--color-accent); }
+.theme-card.is-new:disabled { cursor: default; opacity: .6; }
+/* The studio. Its head says what is being edited and how readable it is; the strip under it is the
+   palette the dials produce, deepest surface to strongest text; a palette that cannot carry readable
+   text says so under the dials in the warning words rather than the danger ones: the theme is weak,
+   not broken. */
+.theme-studio-head { gap: .75rem; padding-block: .65rem; }
+.theme-studio-head .settings-row-label { overflow: hidden; color: var(--color-text-strong); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.theme-studio-verdict { display: inline-flex; flex: none; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: var(--radius-pill); font-size: var(--font-size-sm); font-weight: 500; }
+.theme-studio-verdict .app-icon { width: .8rem; height: .8rem; }
+.theme-studio-verdict.is-met { background: color-mix(in srgb, var(--color-success) 14%, transparent); color: var(--color-success-text); }
+.theme-studio-verdict.is-met .app-icon { color: var(--color-success); }
+.theme-studio-verdict.is-short { background: color-mix(in srgb, var(--color-warning) 16%, transparent); color: var(--color-warning-text); }
+.theme-studio-verdict.is-short .app-icon { color: var(--color-warning); }
+.theme-studio-ratio { padding-left: .4rem; border-left: 1px solid color-mix(in srgb, currentColor 35%, transparent); font-variant-numeric: tabular-nums; }
+.theme-studio-palette { display: flex; height: 1.5rem; margin: 0 .8rem .6rem; overflow: hidden; border-radius: var(--radius-sm); box-shadow: 0 0 0 1px var(--color-border-subtle); }
+.theme-studio-palette > span { flex: 1; background: var(--swatch); transition: background-color var(--duration-fast) ease; }
+.settings-card > .theme-studio-palette + .settings-row { border-top: 1px solid var(--color-border-subtle); }
+.theme-starters { display: flex; flex: 1; flex-wrap: wrap; gap: .35rem; min-width: 0; }
+.theme-starter { display: inline-flex; align-items: center; gap: .4rem; padding: .2rem .6rem .2rem .25rem; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--color-surface); color: var(--color-text-secondary); font: inherit; font-size: var(--font-size-md); cursor: pointer; transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease, color var(--duration-fast) ease; }
+.theme-starter:hover { border-color: var(--color-border-stronger); color: var(--color-text); }
+.theme-starter.selected { border-color: var(--color-accent-strong); background: var(--color-accent-bg); color: var(--color-accent-text); }
+.theme-starter:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.theme-starter-swatch { flex: none; width: 1rem; height: 1rem; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 20%, transparent); }
+.settings-field-control > .theme-studio-hex { flex: 0 1 7rem; font-family: var(--font-mono); font-size: var(--font-size-md); }
+.theme-studio-hex[aria-invalid="true"] { border-color: var(--color-danger); }
+.settings-field-control > .theme-studio-family { flex: none; }
+.theme-studio-family .theme-option { min-width: 3.6rem; text-align: center; }
+.theme-studio-dial { gap: .55rem; }
+.theme-studio-dial-end { flex: none; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.settings-range.theme-studio-dial output { min-width: 1.9rem; text-align: right; }
+.settings-custom-theme-actions { flex-wrap: wrap; gap: .4rem; }
+.theme-studio-actions-end { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; margin-left: auto; }
+.settings-custom-theme-actions .compact-action { display: inline-flex; align-items: center; gap: .35rem; }
+.settings-custom-theme-actions .compact-action .app-icon { width: .85rem; height: .85rem; }
+.theme-studio-delete { border-color: transparent; background: transparent; color: var(--color-text-muted); }
+.theme-studio-delete:hover:not(:disabled) { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.theme-studio-delete.is-confirming { border-color: var(--color-danger-border); background: var(--color-danger-bg); color: var(--color-danger-text); }
 .settings-custom-theme-shortfall { align-items: flex-start; gap: .5rem; min-height: 0; padding-block: .5rem; background: var(--color-bg-inset); color: var(--color-warning-text); font-size: var(--font-size-md); line-height: 1.4; overflow-wrap: anywhere; }
 .settings-custom-theme-shortfall > .app-icon { flex: none; width: .95rem; height: .95rem; margin-top: .1rem; color: var(--color-warning); }
+@media (prefers-reduced-motion: reduce) { .theme-card:hover .theme-card-preview { transform: none; } }
 .settings-field-control > input[type="color"] { flex: none; width: 2.6rem; min-height: 2.15rem; padding: .15rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; }
 .settings-field-control > output { color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums; }
 .settings-form .settings-group > h3 { margin-top: .1rem; }

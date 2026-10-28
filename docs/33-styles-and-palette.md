@@ -25,7 +25,7 @@ These rules are binding for every contributor, human or model. A change that bre
 3. Status words use the `-text` status tokens; the bare `--color-danger`, `--color-warning`, `--color-success` are for icons, dots and bars.
 4. A selector or script that means "a light theme" covers both light themes (see [Themes](#themes)).
 5. A new token is added only when no existing role fits. It gets a role comment, it is defined for the dark base and the light family at once (and for darkblue, gray and lightgray when they differ), and it is added to the tables in this document in the same change.
-6. A change to `--color-bg` of a theme updates `chromeColors` in `js/theme.js` and `WindowBackgroundBrush` in `AI.Desktop/App.axaml`.
+6. A change to `--color-bg` of a theme updates `chromeColors` in `js/theme.js` and `WindowBackgroundBrush` in `AI.Desktop/App.axaml`; a change to its `--color-bg`, card surface, `--color-text` or `--color-border` updates its `--theme-swatch-*` tokens.
 
 ### Must not
 
@@ -47,6 +47,7 @@ Only these places may keep literal values:
 - The nudge of a blocked send (`.composer-setup-hint.is-nudged`): a short shake that is a gesture, not a state change, and is off under reduced motion.
 - Durations of indicators whose motion follows data: the context ring, animated counts, progress bars and the countdowns of timed prompts, guide steps and the automatic resume after a restart.
 - `em` font sizes inside markdown and code, and the `clamp()` headings of the host gate and hero.
+- The `--swatch*` properties Settings → Appearance writes inline on a saved theme's card, on the studio's palette strip and on its starter backgrounds (`Components/CustomThemeSettings.razor`). They show a theme other than the one in force, so no token can carry them; the values are a stored palette produced by the engine or a seed the engine is about to receive, and a stored value passes the colour parser before it reaches the attribute.
 - The `--color-*` properties `js/theme.js` writes inline from a saved user theme. The palette is produced by the engine in `src/AI.Contracts/Themes`, not written by hand, and it has to reach the page before the stylesheet is read so a user theme never flashes the preset underneath it. `--corner-scale` already works this way. The written set is bounded: a role outside `ThemeToken.All` is never applied, and the roles that say what something means (`--color-unread`, `--color-brand`, `--color-generating`, the accent, the diffs, the context layers) are refused on both sides — see [Themes](#themes).
 
 A new exception is added to this list in the same change, with its reason.
@@ -66,6 +67,7 @@ A new exception is added to this list in the same change, with its reason.
 | Corner radii | `--radius-2xs` (.2rem), `-xs` (.3rem), `-sm` (.4rem), `-md` (.5rem), `-lg` (.65rem), `-xl` (.85rem), `-2xl` (1rem), `-3xl` (1.5rem), `--radius-pill` | First `:root` block; all but the pill are multiplied by `--corner-scale` (Settings → Corner roundness). A circle stays `50%`. |
 | Palette | `--color-*` | Theme blocks, and a user theme's resolved palette (see [User themes](#user-themes)) |
 | Accent swatches | `--accent-swatch-*` | Accent block; also the colours the Settings picker paints and the hues of the context-window layers |
+| Theme swatches | `--theme-swatch-<preset>-bg`, `-surface`, `-text`, `-border` | Theme swatch block; the colours a preset's card in Settings → Appearance paints. They mirror the preset's theme block and change together with it |
 | Elevation | `--shadow-xs`, `-sm`, `-md`, `-lg`, `-xl`, `--shadow-drawer-start`, `--shadow-drawer-end` | Elevation block; scaled per theme by `--shadow-scale` |
 | Backdrops | `--color-scrim`, `--color-scrim-soft`, `--color-scrim-faint` | Elevation block; scaled per theme by `--scrim-scale` |
 | Stacking layers | `--z-*` | Stacking block |
@@ -98,7 +100,7 @@ Settings → Appearance also offers themes a person builds. A theme is a few see
 - A generated palette must hold the ratios in `ThemePalette.TextTarget` (4.5:1) for text on the page and on a filled row, and say so in the studio when a background cannot carry them. A ratio this file promises for a pair a theme does not control is not the theme's to keep.
 - A new role added to a theme block needs a decision in `ThemeToken` in the same change, the same way a new token needs its row here.
 
-A theme is stored as `CustomTheme` in the same place as the other client preferences (`ai-client.settings`, field `customThemes`) and is listed in Settings → Appearance → Your themes. It keeps the seeds it was built from **and** the palette they produced, and that stored palette is what the page applies; the engine is not run again on load. Two consequences follow, and both are deliberate: an update to the engine never repaints a saved theme, and a theme written by a newer build still paints, because the page only reads colour values.
+A theme is stored as `CustomTheme` in the same place as the other client preferences (`ai-client.settings`, field `customThemes`) and is listed in Settings → Appearance as a card beside the presets. Presets and saved themes are one radio group, so exactly one card is selected: while a saved theme paints the page no preset looks chosen, and clicking any preset leaves the saved theme. It keeps the seeds it was built from **and** the palette they produced, and that stored palette is what the page applies; the engine is not run again on load. Two consequences follow, and both are deliberate: an update to the engine never repaints a saved theme, and a theme written by a newer build still paints, because the page only reads colour values.
 
 - `CustomTheme.Family` is spelled `dark` or `light` because it is handed to `js/theme.js` as it stands, where it becomes `<html data-theme-family>`. A .NET-side `ThemeFamily` enum would depend on how the serializer spells it.
 - Every saved theme is built by `CustomTheme.Create`, which runs the seeds through `ThemePalette`; nothing writes a palette by hand. The studio (`Components/CustomThemeSettings.razor`) paints a candidate the person is still choosing under the same script entry as a saved one, and that candidate is never stored: the preview id is not a theme id.

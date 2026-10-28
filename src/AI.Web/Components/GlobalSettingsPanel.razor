@@ -69,44 +69,31 @@
                             </section>
                         }
                         <UpdatesPanel />
-                        <section class="settings-group" aria-labelledby="settings-appearance">
-                            <h3 id="settings-appearance">Appearance</h3>
-                            <div class="settings-card">
-                                <div @attributes="@(ControlHints.Attributes("settings.appearance.theme"))" class="settings-row is-stacked" role="radiogroup" aria-labelledby="settings-theme">
-                                    <span class="settings-row-label" id="settings-theme">Theme</span>
-                                    <span class="theme-options">
-                                        @foreach (var option in ThemeOptions)
-                                        {
-                                            <label class="theme-option @(_theme == option.Value ? "selected" : string.Empty)"><input type="radio" name="theme" value="@option.Value.ToString().ToLowerInvariant()" checked="@(_theme == option.Value)" @onchange="() => SetThemeAsync(option.Value)" /><span>@option.Label</span></label>
-                                        }
-                                    </span>
-                                </div>
-                                <div @attributes="@(ControlHints.Attributes("settings.appearance.accent"))" class="settings-row" role="radiogroup" aria-labelledby="settings-accent">
-                                    <span class="settings-row-label" id="settings-accent">Accent</span>
-                                    <span class="accent-options">
-                                        @foreach (var accent in Enum.GetValues<AccentColor>())
-                                        {
-                                            var name = accent.ToString();
-                                            <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
-                                        }
-                                    </span>
-                                </div>
-                                <div @attributes="@(ControlHints.Attributes("settings.appearance.corners"))" class="settings-row">
-                                    <span class="settings-row-label">Corners</span>
-                                    <span class="corner-roundness-control">
-                                        <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
-                                               aria-label="Corner roundness" aria-valuetext="@($"{_cornerRoundnessPercent}%")"
-                                               @oninput="SetCornerRoundnessAsync" />
-                                        <output>@_cornerRoundnessPercent%</output>
-                                    </span>
-                                </div>
-                                <label @attributes="@(ControlHints.Attributes("settings.appearance.animations"))" class="settings-row">
-                                    <span class="settings-row-label">Animations</span>
-                                    <input class="settings-switch" type="checkbox" role="switch" checked="@_animationsEnabled" @onchange="SetAnimationsAsync" />
-                                </label>
+                        <CustomThemeSettings>
+                            <div @attributes="@(ControlHints.Attributes("settings.appearance.accent"))" class="settings-row" role="radiogroup" aria-labelledby="settings-accent">
+                                <span class="settings-row-label" id="settings-accent">Accent</span>
+                                <span class="accent-options">
+                                    @foreach (var accent in Enum.GetValues<AccentColor>())
+                                    {
+                                        var name = accent.ToString();
+                                        <label class="accent-option @(_accent == accent ? "selected" : string.Empty)" style="--swatch: var(--accent-swatch-@name.ToLowerInvariant())" title="@name"><input type="radio" name="accent" aria-label="@name" checked="@(_accent == accent)" @onchange="() => SetAccentAsync(accent)" /></label>
+                                    }
+                                </span>
                             </div>
-                        </section>
-                        <CustomThemeSettings />
+                            <div @attributes="@(ControlHints.Attributes("settings.appearance.corners"))" class="settings-row">
+                                <span class="settings-row-label">Corners</span>
+                                <span class="corner-roundness-control">
+                                    <input type="range" min="0" max="200" step="25" value="@_cornerRoundnessPercent"
+                                           aria-label="Corner roundness" aria-valuetext="@($"{_cornerRoundnessPercent}%")"
+                                           @oninput="SetCornerRoundnessAsync" />
+                                    <output>@_cornerRoundnessPercent%</output>
+                                </span>
+                            </div>
+                            <label @attributes="@(ControlHints.Attributes("settings.appearance.animations"))" class="settings-row">
+                                <span class="settings-row-label">Animations</span>
+                                <input class="settings-switch" type="checkbox" role="switch" checked="@_animationsEnabled" @onchange="SetAnimationsAsync" />
+                            </label>
+                        </CustomThemeSettings>
                         <section class="settings-group" aria-labelledby="settings-sidebar">
                             <h3 id="settings-sidebar">Sidebar</h3>
                             <div class="settings-card">
@@ -653,7 +640,6 @@
     private readonly List<McpToolPolicyEditor> _toolPolicies = [];
     private Guid? _selectedConnectionId;
     private Guid? _selectedMcpServerId;
-    private ThemePreference _theme;
     private AccentColor _accent;
     private int _cornerRoundnessPercent = 100;
     private bool _notificationSoundEnabled = true;
@@ -706,7 +692,6 @@
     protected override async Task OnInitializedAsync()
     {
         HostConnection.Changed += OnHostConnectionChanged;
-        _theme = await Theme.GetAsync();
         _accent = await Theme.GetAccentAsync();
         _cornerRoundnessPercent = await Theme.GetCornerRoundnessAsync();
         var clientSettings = await ClientSettings.GetAsync();
@@ -837,16 +822,6 @@
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };
-
-    private static readonly (ThemePreference Value, string Label)[] ThemeOptions =
-        [(ThemePreference.System, "System"), (ThemePreference.Light, "Light"), (ThemePreference.Dark, "Dark"), (ThemePreference.DarkBlue, "Dark blue"), (ThemePreference.Gray, "Gray"), (ThemePreference.LightGray, "Light grey")];
-
-    /// <summary>Unlike the Host-side settings, a theme needs no save on close: it applies on click.</summary>
-    private async Task SetThemeAsync(ThemePreference preference)
-    {
-        _theme = preference;
-        await Theme.SetAsync(preference);
-    }
 
     private async Task SetAccentAsync(AccentColor accent)
     {

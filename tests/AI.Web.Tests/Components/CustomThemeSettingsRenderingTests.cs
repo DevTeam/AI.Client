@@ -92,7 +92,26 @@ public sealed class CustomThemeSettingsRenderingTests
             // Nothing saved yet: the form offers a starting point instead of an empty list of nothing.
             html.ShouldContain($"value=\"{CustomTheme.DefaultBackground}\"");
             html.ShouldContain("Add theme");
-            html.ShouldNotContain("checked");
+            // The preset in use is the one selected card; no saved theme claims the page.
+            html.ShouldContain("value=\"system\" checked");
+            html.Split("checked").Length.ShouldBe(3);
+        });
+    }
+
+    [Fact]
+    public async Task ShouldSelectOnlyTheSavedThemeWhileItPaintsThePage()
+    {
+        await using var services = Services(Theme());
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var html = (await renderer.RenderComponentAsync<CustomThemeSettings>(ParameterView.Empty)).ToHtmlString();
+
+            // Presets and saved themes are one group: a preset that still looked chosen could not be
+            // clicked to leave the saved theme, because a checked radio raises no change.
+            html.ShouldContain("value=\"theme-1\" checked");
+            html.ShouldNotContain("value=\"system\" checked");
+            html.ShouldContain("--swatch-bg: #2b2320");
         });
     }
 
@@ -100,6 +119,7 @@ public sealed class CustomThemeSettingsRenderingTests
     public async Task ShouldNotPreviewAThemeBeforeThePersonChangesAnything()
     {
         var theme = new Mock<IThemeService>(MockBehavior.Strict);
+        theme.Setup(value => value.GetAsync()).Returns(new ValueTask<ThemePreference>(ThemePreference.System));
         theme.Setup(value => value.GetCustomThemesAsync()).Returns(new ValueTask<IReadOnlyList<CustomTheme>>([]));
         theme.Setup(value => value.GetActiveCustomThemeAsync()).Returns(new ValueTask<CustomTheme?>((CustomTheme?)null));
         theme.Setup(value => value.PreviewCustomThemeAsync(It.IsAny<CustomTheme?>())).Returns(ValueTask.CompletedTask);

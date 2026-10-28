@@ -4,14 +4,16 @@
        while the tooltip explains them; only a filling window colours it on its own. The figures
        behind it are in the Context widget. *@
     @if (Context is not null) { <ContextRing Context="@Context" Size="50" Thickness="2.5" Gap="9" Class="composer-send-ring" /> }
-    <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send @(Blocked ? "is-blocked" : null)" type="button" disabled="@Disabled" aria-disabled="@(Blocked ? "true" : null)" aria-label="@GetAriaLabel()" aria-describedby="composer-send-tooltip" @onclick="OnClick">
+    @* While a turn runs and the draft holds nothing to send, the button stops the turn: one
+       primary action in the corner rather than a stop button beside a disabled send. *@
+    <button @attributes="@(ControlHints.Attributes("chat.send", GetActionLabel(), nativeTooltip: false))" class="composer-send @(Blocked && !StopsTurn ? "is-blocked" : null) @(StopsTurn ? "is-stop" : null)" type="button" disabled="@(Disabled && !StopsTurn)" aria-disabled="@(Blocked && !StopsTurn ? "true" : null)" aria-label="@GetAriaLabel()" aria-keyshortcuts="@(StopsTurn ? "Escape" : null)" aria-describedby="composer-send-tooltip" @onclick="StopsTurn ? OnStop : OnClick">
         @* Keyed by the icon, so a held modifier swaps it with a short entrance instead of a jump. *@
         <AppIcon @key="GetIcon()" Name="@GetIcon()" Class="@(Busy ? "tool-row-spinner" : "composer-send-icon")" />
     </button>
     @* The shared help stays on the button as data-app-hint, where the guide reads it; the panel
        keeps only what the current send mode adds: one row per action, its keys aligned on the
        right, the action the keys held now would take highlighted. While a turn is generating,
-       Esc stopping it is listed last; it is no way of sending, so it is never highlighted. *@
+       Esc stopping it is listed last, highlighted only while the button itself stops the turn. *@
     <span class="composer-send-tooltip" id="composer-send-tooltip" role="tooltip">
         @if (ActiveMode is SendMode.EditFork or SendMode.Replace)
         {
@@ -48,6 +50,16 @@
     [Parameter, EditorRequired]
     public EventCallback OnClick { get; set; }
 
+    /// <summary>
+    /// Whether the button stops the generating turn instead of sending: a turn is running and the
+    /// draft holds nothing to send.
+    /// </summary>
+    [Parameter]
+    public bool StopsTurn { get; set; }
+
+    [Parameter]
+    public EventCallback OnStop { get; set; }
+
     /// <summary>Whether the branch is generating a turn: Enter then adds to it and Esc stops it.</summary>
     [Parameter]
     public bool TurnInFlight { get; set; }
@@ -74,7 +86,7 @@
     }
 
     private RenderFragment Row(TooltipRow row) =>
-        @<span class="composer-send-tooltip-row @(row.Mode == ActiveMode ? "active" : null)" data-app-tooltip-hint>
+        @<span class="composer-send-tooltip-row @((StopsTurn ? row.Mode is null : row.Mode == ActiveMode) ? "active" : null)" data-app-tooltip-hint>
             <AppIcon Name="@row.Icon" Class="composer-send-tooltip-icon" />
             <span class="composer-send-tooltip-label">@row.Label</span>
             <span class="composer-send-tooltip-keys">
@@ -89,7 +101,7 @@
         ? $"{GetActionLabel()}, context {context.Percent}% full"
         : GetActionLabel();
 
-    private string GetActionLabel() => ActiveMode switch
+    private string GetActionLabel() => StopsTurn ? "Stop the turn" : ActiveMode switch
     {
         SendMode.EditFork => "Create edited branch",
         SendMode.Replace => "Replace branch now",
@@ -99,7 +111,7 @@
         _ => TurnInFlight ? "Add to the current turn" : "Send message"
     };
 
-    private string GetIcon() => Busy ? "spinner" : ActiveMode switch
+    private string GetIcon() => Busy ? "spinner" : StopsTurn ? "stop" : ActiveMode switch
     {
         // Every way of sending is the send arrow, varied; editing a branch keeps its own icons.
         SendMode.Queue => "send-queue",

@@ -101,6 +101,28 @@ public sealed class AppControlHintsRenderingTests
         });
     }
 
+    [Fact]
+    public async Task SendButtonShouldStopTheTurnWhileTheDraftIsEmpty()
+    {
+        await using var services = Services();
+        await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var stopping = (await renderer.RenderComponentAsync<ComposerSendButton>(ParameterView.FromDictionary(
+                new Dictionary<string, object?>
+                {
+                    [nameof(ComposerSendButton.ActiveMode)] = ComposerSendButton.SendMode.Send,
+                    [nameof(ComposerSendButton.TurnInFlight)] = true,
+                    [nameof(ComposerSendButton.StopsTurn)] = true,
+                    [nameof(ComposerSendButton.Disabled)] = true
+                }))).ToHtmlString();
+            stopping.ShouldContain("aria-label=\"Stop the turn\"");
+            stopping.ShouldContain("aria-keyshortcuts=\"Escape\"");
+            stopping.ShouldContain("is-stop");
+            stopping.ShouldNotContain("disabled");
+        });
+    }
+
     private static ServiceProvider Services()
     {
         var settings = new Mock<IGlobalSettingsApi>();

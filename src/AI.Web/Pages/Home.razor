@@ -872,8 +872,7 @@
                         </span>
                     }
                 </div>
-                @if (GetSelectedRun()?.Status == ChatRunStatus.Generating) { <button type="button" class="stop-button" title="Stop generation (Esc)" aria-label="Stop generation" aria-keyshortcuts="Escape" @onclick="StopGenerationAsync"><AppIcon Name="stop" /></button> }
-                <ComposerSendButton ActiveMode="@GetComposerSendMode()" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage() && GetSendSetupGap() == SendSetupGap.None)" Blocked="@(GetSendSetupGap() != SendSetupGap.None)" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
+                <ComposerSendButton StopsTurn="@ComposerButtonStopsTurn()" OnStop="StopGenerationAsync" ActiveMode="@GetComposerSendMode()" CanSchedule="@CanScheduleComposerText()" TurnInFlight="@IsTurnInFlight()" Disabled="@(!CanSendMessage() && GetSendSetupGap() == SendSetupGap.None)" Blocked="@(GetSendSetupGap() != SendSetupGap.None)" Busy="@_isSubmittingMessage" OnClick="SubmitFromSendButtonAsync" Context="@GetComposerContext()" />
             </div>
             @if (!string.IsNullOrEmpty(_chatError)) { <p class="error" role="alert">@_chatError</p> }
         </footer>
@@ -4124,6 +4123,9 @@ else if (_guideInvitation is { } guideInvitation)
     /// Whether the selected branch is generating a turn: Enter then adds to that turn, and Escape
     /// stops it. A stopped turn is not in flight; a message sent after it starts a new one.
     /// </summary>
+    private bool ComposerButtonStopsTurn() =>
+        IsTurnInFlight() && !_isSubmittingMessage && string.IsNullOrWhiteSpace(_chat.Message) && _draftResources.Count == 0;
+
     private bool IsTurnInFlight() => _selectedChat is not null && GetSelectedRun()?.Status == ChatRunStatus.Generating;
 
     // Mirrors chatComposer.js: Ctrl+Shift+Enter and Alt+Enter, once their own actions, send.
@@ -7646,7 +7648,7 @@ else if (_guideInvitation is { } guideInvitation)
         _replaceSourceId is not null ? "Edit the message to replace this branch..."
         : _isForking ? "Write the first message in the new branch..."
         : GetSelectedRun() is { PendingPrompt: not null } ? "Answer the question above..."
-        : IsTurnInFlight() ? "Add to the current turn, Esc to stop..."
+        : IsTurnInFlight() ? "Add to the current turn..."
         : _draftResources.Any(item => item.Kind == ChatResourceKind.Skill) ? "What should the skill do? (optional)"
         : GetSendSetupGap() is SendSetupGap.ModelAndProject or SendSetupGap.Model ? "Connect a model to start chatting..."
         : GetSendSetupGap() == SendSetupGap.Project ? "Create a project to start chatting..."

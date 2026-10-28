@@ -3632,23 +3632,6 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     animation: streaming-pulse 1s ease-in-out infinite alternate;
 }
 
-.stop-button {
-    display: inline-grid;
-    flex: none;
-    width: 2.5rem;
-    height: 2.5rem;
-    padding: 0;
-    place-items: center;
-    border-radius: 50%;
-    border-color: var(--color-border-stronger);
-    background: var(--color-fill-strong);
-}
-
-.stop-button .app-icon {
-    width: 1.15rem;
-    height: 1.15rem;
-}
-
 @keyframes streaming-pulse {
     to { opacity: 0.25; }
 }
@@ -4072,6 +4055,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
     background: var(--color-fill);
+    transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
 }
 
 .workspace-composer.resource-drop-active {
@@ -4119,6 +4103,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
+    box-sizing: border-box;
     max-width: 100%;
     padding: 0.22rem 0.25rem 0.22rem 0.6rem;
     border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border-subtle));
@@ -4418,9 +4403,11 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     color: var(--color-danger-text-strong);
 }
 
+/* Focus lifts the composer with a soft accent halo rather than outlining it: the field is where
+   the person types most of the time, so its focus state should be calm. */
 .workspace-composer:focus-within {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 1px var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
 
 /* The draft's "@" links as pills under the text (chatComposer.js): a copy of the text laid out
@@ -4547,6 +4534,14 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     justify-content: flex-end;
     gap: 0.6rem;
 }
+
+/* The footer's controls read as one toolbar: the same height, the same quiet hover fill, and text
+   that brightens rather than turning accent. Only the full-access mode keeps its warning colour. */
+.composer-files-button,
+.composer-approval-trigger,
+.composer-endpoint-trigger { min-height: 2rem; }
+.composer-footer :is(.composer-add-resource, .composer-files-button, .composer-approval-trigger:not(.is-full-access), .composer-endpoint-trigger:not(.is-missing)):hover:not(:disabled) { background: var(--color-fill-hover); }
+.composer-footer :is(.composer-add-resource, .composer-files-button, .composer-approval-trigger:not(.is-full-access), .composer-endpoint-trigger:not(.is-missing)):hover:not(:disabled) { color: var(--color-text); }
 
 .composer-resource-list,
 .message-resource-list {
@@ -4684,7 +4679,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .queue-resource-count { color: var(--color-text-muted); white-space: nowrap; }
 
 .composer-resource-menu-anchor { position: relative; display: inline-flex; }
-.composer-add-resource { width: 2rem; height: 2rem; }
+.composer-add-resource { width: 2rem; height: 2rem; border-radius: 50%; color: var(--color-text-secondary); }
 .composer-resource-menu-backdrop { position: fixed; inset: 0; z-index: var(--z-menu-backdrop); }
 .composer-resource-menu {
     position: absolute;
@@ -4852,11 +4847,15 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .composer-files-label { overflow: hidden; text-overflow: ellipsis; }
 /* The popover sits on the composer at the bottom of the window, so its row menus rise too. */
 .composer-files-popover .chat-menu { top: auto; bottom: calc(100% + 0.25rem); }
-/* A phone's composer row cannot hold every label: the folder chip keeps only its icon, and the
-   model name gives way next, cut with an ellipsis, so the row never spills past the composer. */
+/* A phone's composer row cannot hold every label: the folder chip and the approval chip keep only
+   their icons (the mode stays in the icon, its colour and the tooltip), and the model name gives way
+   next, cut with an ellipsis, so the row never spills past the composer. An empty field starts two
+   lines tall rather than four. */
 @media (max-width: 640px) {
     .composer-footer { gap: .35rem; }
     .composer-files-label { display: none; }
+    .workspace-composer .composer-approval-trigger > span:not(.branch-override-dot) { display: none; }
+    .workspace-composer textarea { min-height: 2.6rem; }
     .composer-endpoint,
     .composer-endpoint-trigger { min-width: 0; }
     .composer-endpoint-trigger { max-width: 100%; }
@@ -4901,11 +4900,18 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     max-width: 12rem;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.3rem 0.4rem;
+    padding: 0.3rem 0.55rem;
     border-color: transparent;
+    border-radius: var(--radius-2xl);
     background: transparent;
     color: var(--color-text-secondary);
     font-size: var(--font-size-md);
+}
+
+/* The model name has the same weight as the approval chip beside it, not the faint hint colour
+   every composer span otherwise takes. */
+.workspace-composer .composer-endpoint-trigger span {
+    color: inherit;
 }
 
 .composer-endpoint-trigger span {
@@ -4928,7 +4934,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 }
 
 /* No connection that can answer: the picker turns into the way to set one up. */
-.composer-endpoint-trigger.is-missing { border-radius: var(--radius-md); color: var(--color-warning-text); }
+.composer-endpoint-trigger.is-missing { color: var(--color-warning-text); }
 .composer-endpoint-trigger.is-missing .app-icon { color: var(--color-warning); }
 .composer-endpoint-trigger.is-missing:hover { background: color-mix(in srgb, var(--color-warning) 10%, transparent); color: var(--color-warning-text); }
 

@@ -1,29 +1,95 @@
-// Sets <html data-theme="dark|darkblue|gray|light|lightgray"> from the saved preference. Loaded as a plain
+// Sets <html data-theme="dark|darkblue|gray|light|lightgray|custom"> from the saved preference, Loaded as a plain
 // script in <head>, ahead of the stylesheet, so browser preferences apply before the first paint.
 // The entry is the one ClientSettingsService
 // writes: "ai-client.settings" = {"theme":"system|light|dark|darkBlue","accent":"blue|teal|...",
-// "cornerRoundnessPercent":100,...}. Desktop restores the entry from its profile before Blazor starts,
-// together with a copy of the page's other "ai-client.*" state (see restoreClientSettings).
+// "cornerRoundnessPercent":100,"activeCustomThemeId":"...","customThemes":[...],...}. Desktop restores
+// the entry from its profile before Blazor starts, together with a copy of the page's other
+// "ai-client.*" state (see restoreClientSettings).
 // data-theme-preference keeps the choice itself, for styles that care whether the theme was
 // picked or inherited; data-accent picks the accent palette in app.css.
+// data-theme-family="dark|light" says which way a theme ramps away from its background, so the
+// stylesheet's light-family rules can name the family instead of listing the preset names, and a
+// user's own light theme gets them too. A custom theme's colours are already resolved when it is
+// saved and are written as inline properties here, before the stylesheet is read: the seeded engine
+// lives on the .NET side (AI.Contracts/Themes/ThemePalette.cs), and this script only applies what it
+// produced, so a custom theme cannot flash the preset underneath it.
 (function () {
     const storageKey = "ai-client.settings";
     const systemLight = matchMedia("(prefers-color-scheme: light)");
     let preference = "system";
+    // The active custom theme, or null. Its palette was resolved when it was saved.
+    let custom = null;
 
     // The browser chrome colour cannot come from CSS: this script runs before the stylesheet,
-    // so these mirror --color-bg of each theme in app.css.
+    // so these mirror --color-bg of each theme in app.css. A custom theme carries its own.
     const chromeColors = { dark: "#171717", light: "#ffffff", darkblue: "#101720", gray: "#212121", lightgray: "#dedede" };
+
+    function resolvedTheme() {
+        if (custom) return "custom";
+        return preference === "system" ? (systemLight.matches ? "light" : "dark") : preference;
+    }
+
+    // Which way a theme ramps away from its background. A preset's family is fixed here; a custom
+    // theme carries the one its seeds resolved to.
+    function familyOf(theme) {
+        if (theme === "custom") return custom && custom.family === "light" ? "light" : "dark";
+        return theme === "light" || theme === "lightgray" ? "light" : "dark";
+    }
+
+    function chromeColor(theme) {
+        if (theme !== "custom") return chromeColors[theme];
+        const tokens = (custom && custom.tokens) || {};
+        return tokens["--color-bg"] || chromeColors[familyOf(theme)];
+    }
+
+    // The palette a custom theme carries, keyed by the CSS property names app.css uses. Only the
+    // roles a theme controls are applied: the accent, the brand and what a status or diff means keep
+    // coming from the stylesheet, so a custom theme cannot repaint them. This bounds the written
+    // properties even when a stored theme was hand-edited or written by another build.
+    const reservedRoles = new Set(["unread", "brand", "generating", "user-bubble", "user-bubble-border",
+        "user-bubble-inset", "diff-added-bg", "diff-removed-bg", "highlight-bg", "highlight-fg",
+        "accent", "accent-strong", "accent-text", "accent-bg", "accent-bg-hover", "accent-bg-active",
+        "accent-fill", "on-accent", "overlay-faint", "overlay-hover", "overlay-active", "overlay-sunken",
+        "border-translucent", "context-instructions", "context-tools", "context-history", "context-draft",
+        "context-reserve", "context-overhead"]);
+
+    function customProperties() {
+        if (!custom || !custom.tokens) return {};
+        const properties = {};
+        for (const [name, value] of Object.entries(custom.tokens)) {
+            if (!name.startsWith("--color-") || typeof value !== "string" || !value) continue;
+            if (reservedRoles.has(name.slice("--color-".length))) continue;
+            properties[name] = value;
+        }
+        return properties;
+    }
+
+    let appliedCustomProperties = [];
+    function applyCustomProperties(theme) {
+        const root = document.documentElement;
+        const wanted = theme === "custom" ? customProperties() : {};
+        for (const name of appliedCustomProperties) {
+            if (!(name in wanted)) root.style.removeProperty(name);
+        }
+        for (const [name, value] of Object.entries(wanted)) root.style.setProperty(name, value);
+        appliedCustomProperties = Object.keys(wanted);
+    }
 
     function render() {
         const root = document.documentElement;
-        const theme = preference === "system" ? (systemLight.matches ? "light" : "dark") : preference;
+        const theme = resolvedTheme();
+        const family = familyOf(theme);
         root.dataset.themePreference = preference;
-        if (root.dataset.theme === theme) return;
+        // The palette is rewritten even when the theme's name has not changed: two custom themes share
+        // the name "custom", and a person editing one sees its colours move while the name stands still.
+        applyCustomProperties(theme);
+        const unchanged = root.dataset.theme === theme && root.dataset.themeFamily === family;
         root.dataset.theme = theme;
-        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", chromeColors[theme]);
+        root.dataset.themeFamily = family;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", chromeColor(theme));
+        if (unchanged) return;
         // Mermaid (index.html) re-reads its palette from the tokens on this event.
-        document.dispatchEvent(new CustomEvent("ai-client-theme-change", { detail: { theme } }));
+        document.dispatchEvent(new CustomEvent("ai-client-theme-change", { detail: { theme, family } }));
     }
 
     // Inside the desktop app the window and its system titlebar follow the page through Avalonia's
@@ -46,6 +112,22 @@
         preference = preferences.includes(normalized) ? normalized : "system";
         render();
         if (notifyHost) tellHost();
+    }
+
+    // The theme the studio or a restored entry wants shown: null for a preset, or the saved theme
+    // itself. Its tokens are applied as they are, so the page never computes a palette in the browser.
+    function applyCustomTheme(theme, notifyHost = true) {
+        custom = theme && theme.tokens ? theme : null;
+        render();
+        if (notifyHost) tellHost();
+    }
+
+    // The entry names its active theme by id; the theme itself is one of the saved ones.
+    function activeCustomTheme(settings) {
+        const id = settings && settings.activeCustomThemeId;
+        const themes = (settings && settings.customThemes) || [];
+        if (!id || !Array.isArray(themes)) return null;
+        return themes.find(theme => theme && theme.id === id) || null;
     }
 
     // Must match AccentColor; anything else (an older or newer build's value) falls back to blue.
@@ -144,7 +226,8 @@
         applyCornerRoundness(restored?.cornerRoundnessPercent);
         applyOtherSounds(restored?.otherSoundsEnabled);
         applyAnimations(restored?.animationsEnabled);
-        apply(restored?.theme);
+        applyCustomTheme(activeCustomTheme(restored), false);
+        apply(restored?.theme, false);
         ready();
     }
 
@@ -154,6 +237,7 @@
     applyCornerRoundness(saved?.cornerRoundnessPercent);
     applyOtherSounds(saved?.otherSoundsEnabled);
     applyAnimations(saved?.animationsEnabled);
+    applyCustomTheme(activeCustomTheme(saved), false);
     apply(saved?.theme, false);
     systemLight.addEventListener("change", () => { if (preference === "system") render(); });
     // The bridge may not be injected yet while <head> runs. Wait for it before Blazor reads the
@@ -168,5 +252,5 @@
         }
     });
 
-    globalThis.aiClientTheme = { apply, applyAccent, applyCornerRoundness, saveClientSettings, restoreClientSettings };
+    globalThis.aiClientTheme = { apply, applyAccent, applyCornerRoundness, applyCustomTheme, saveClientSettings, restoreClientSettings };
 })();

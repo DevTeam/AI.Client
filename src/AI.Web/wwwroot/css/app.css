@@ -5,8 +5,9 @@
    Design tokens. Components use only the tokens defined at the top of this file: fonts, the type
    scale and corner radii here, the --color-* palette, elevation shadows, scrims, stacking layers
    and motion further down (see
-   docs/33-styles-and-palette.md). js/theme.js puts data-theme="dark|darkblue|gray|light|lightgray"
-   and data-accent on <html> before the first paint (the Settings drawer picks them). */
+   docs/33-styles-and-palette.md). js/theme.js puts data-theme="dark|darkblue|gray|light|lightgray|custom"
+   and data-accent on <html> before the first paint (the Settings drawer picks them), together with
+   data-theme-family="dark|light", which is what styles ask about instead of naming a theme. */
 :root {
     --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -117,9 +118,19 @@
    Accent and status colours belong to the accent the user picked: they are written once per family
    (dark, light) so that switching between themes of one family never recolours them. Non-blue
    accents derive every --color-accent-* token from one swatch further down. */
+/* The two families' native controls: scrollbars, form controls, the caret and the default colours of
+   an unstyled element all follow color-scheme, so it is set from the family rather than from a named
+   theme. A user's own theme carries the attribute too. */
+:root:is([data-theme-family="dark"], :not([data-theme-family])) {
+    color-scheme: dark;
+}
+
+:root[data-theme-family="light"] {
+    color-scheme: light;
+}
+
 :root,
 :root[data-theme="dark"] {
-    color-scheme: dark;
     /* Surfaces, from the deepest to the most raised. */
     --color-bg-sunken: #111111;
     --color-bg-inset: #151515;
@@ -285,9 +296,9 @@
 }
 
 /* The light family: everything light and light grey share. Light grey below only changes the
-   surfaces, so a selector that means "a light theme" names both. */
-:root:is([data-theme="light"], [data-theme="lightgray"]) {
-    color-scheme: light;
+   surfaces, so a selector that means "a light theme" names the family attribute js/theme.js sets,
+   which a user's own light theme carries too. */
+:root[data-theme-family="light"] {
     --color-bg-sunken: #f3f3f3;
     --color-bg-inset: #f6f6f6;
     --color-bg: #ffffff;
@@ -413,7 +424,7 @@
     --color-accent-fill: color-mix(in srgb, var(--accent-swatch) 75%, #000000);
 }
 
-:root:is([data-theme="light"], [data-theme="lightgray"])[data-accent]:not([data-accent="blue"]) {
+:root[data-theme-family="light"][data-accent]:not([data-accent="blue"]) {
     --color-accent: color-mix(in srgb, var(--accent-swatch) 82%, #000000);
     --color-accent-strong: var(--accent-swatch);
     --color-accent-text: color-mix(in srgb, var(--accent-swatch) 72%, #000000);

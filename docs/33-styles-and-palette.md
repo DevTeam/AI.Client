@@ -47,6 +47,7 @@ Only these places may keep literal values:
 - The nudge of a blocked send (`.composer-setup-hint.is-nudged`): a short shake that is a gesture, not a state change, and is off under reduced motion.
 - Durations of indicators whose motion follows data: the context ring, animated counts, progress bars and the countdowns of timed prompts, guide steps and the automatic resume after a restart.
 - `em` font sizes inside markdown and code, and the `clamp()` headings of the host gate and hero.
+- The `--color-*` properties `js/theme.js` writes inline from a saved user theme. The palette is produced by the engine in `src/AI.Contracts/Themes`, not written by hand, and it has to reach the page before the stylesheet is read so a user theme never flashes the preset underneath it. `--corner-scale` already works this way. The written set is bounded: a role outside `ThemeToken.All` is never applied, and the roles that say what something means (`--color-unread`, `--color-brand`, `--color-generating`, the accent, the diffs, the context layers) are refused on both sides — see [Themes](#themes).
 
 A new exception is added to this list in the same change, with its reason.
 
@@ -63,7 +64,7 @@ A new exception is added to this list in the same change, with its reason.
 | Fonts | `--font-sans`, `--font-mono` | First `:root` block |
 | Font sizes | `--font-size-2xs` (.65rem), `-xs` (.7rem), `-sm` (.75rem), `-md` (.8rem), `-base` (.85rem), `-lg` (.9rem), `-xl` (1rem), `-2xl` (1.15rem), `-3xl` (1.35rem); `--message-font-size` for message text | First `:root` block. Sizes in `em` (relative to the parent) and the hero's `clamp()` headings stay as written. |
 | Corner radii | `--radius-2xs` (.2rem), `-xs` (.3rem), `-sm` (.4rem), `-md` (.5rem), `-lg` (.65rem), `-xl` (.85rem), `-2xl` (1rem), `-3xl` (1.5rem), `--radius-pill` | First `:root` block; all but the pill are multiplied by `--corner-scale` (Settings → Corner roundness). A circle stays `50%`. |
-| Palette | `--color-*` | Theme blocks |
+| Palette | `--color-*` | Theme blocks, and a user theme's resolved palette (see [User themes](#user-themes)) |
 | Accent swatches | `--accent-swatch-*` | Accent block; also the colours the Settings picker paints and the hues of the context-window layers |
 | Elevation | `--shadow-xs`, `-sm`, `-md`, `-lg`, `-xl`, `--shadow-drawer-start`, `--shadow-drawer-end` | Elevation block; scaled per theme by `--shadow-scale` |
 | Backdrops | `--color-scrim`, `--color-scrim-soft`, `--color-scrim-faint` | Elevation block; scaled per theme by `--scrim-scale` |
@@ -81,13 +82,21 @@ dark (base) ─┬─ darkblue    surfaces, fills, text and borders shifted towa
                   └─ lightgray   surfaces, fills and borders pulled to grey, faint text a step darker
 ```
 
-A selector that means "a light theme" names both light themes: `:root:is([data-theme="light"], [data-theme="lightgray"])`. Script that needs the same answer reads the computed `color-scheme` of `<html>` instead of comparing theme names (see the Mermaid configuration in `index.html`).
+A selector that means "a light theme" names the family attribute js/theme.js puts on `<html>`, `:root[data-theme-family="light"]`, not the preset names. A user's own light theme carries the same attribute, so the light-family rules reach it too. Script that needs the same answer reads the computed `color-scheme` of `<html>` instead of comparing theme names (see the Mermaid configuration in `index.html`).
 
 Accent and status colours belong to the accent the user picked. They are written once per family, so switching between themes of one family never recolours them. Blue is hand-tuned in the theme blocks; every other accent derives all `--color-accent-*` tokens from its swatch, once for the dark family and once for the light family.
 
 `--color-unread` and `--color-brand` are the exceptions: they keep the blue accent's `-strong` value under every accent, so an unseen result and the startup screen look the same whatever accent the user picked.
 
 The browser chrome colour in `js/theme.js` and the window background in `AI.Desktop/App.axaml` mirror `--color-bg` of each theme and change together with it.
+
+### User themes
+
+Settings → Appearance also offers themes a person builds. A theme is a few seeds — a background colour, a family, a contrast level and a saturation level — and every colour role is derived from them by `ThemePalette` in `src/AI.Contracts/Themes`, in Oklch, solved against the contrast ratios the presets in this file carry. The resolved palette is stored with the theme, and `js/theme.js` writes it to `<html>` as inline `--color-*` properties before the stylesheet is read, under `data-theme="custom"` and the theme's own `data-theme-family`.
+
+- `ThemeToken.All` lists the roles a theme controls and `ThemeToken.Reserved` the roles it must keep, each with a reason; a test reads this file and fails on a `--color-*` token that is in neither list. A role a theme may not repaint is the accent it derives from, or a mark whose colour carries a meaning: `--color-unread`, `--color-brand`, `--color-generating`, the user bubble, the diff backgrounds, the search highlight and the context layers.
+- A generated palette must hold the ratios in `ThemePalette.TextTarget` (4.5:1) for text on the page and on a filled row, and say so in the studio when a background cannot carry them. A ratio this file promises for a pair a theme does not control is not the theme's to keep.
+- A new role added to a theme block needs a decision in `ThemeToken` in the same change, the same way a new token needs its row here.
 
 ## Choosing a colour
 

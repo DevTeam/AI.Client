@@ -3634,6 +3634,7 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 
 .stop-button {
     display: inline-grid;
+    flex: none;
     width: 2.5rem;
     height: 2.5rem;
     padding: 0;
@@ -4859,6 +4860,8 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     .composer-endpoint,
     .composer-endpoint-trigger { min-width: 0; }
     .composer-endpoint-trigger { max-width: 100%; }
+    .composer-approval,
+    .composer-approval-trigger { min-width: 0; }
     /* The chip sits mid-row, so its popover spans the composer row instead of starting at it. */
     .composer-footer { position: relative; }
     .composer-files-access { position: static; }
@@ -5201,9 +5204,11 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     z-index: var(--z-menu-raised);
 }
 
+/* The round buttons keep their size on a narrow composer row; the labelled chips give way instead. */
 .composer-send-wrapper {
     position: relative;
     display: inline-flex;
+    flex: none;
 }
 
 /* The hint waits a moment before it appears, so a pointer that only passes by to click Send

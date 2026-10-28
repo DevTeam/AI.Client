@@ -19,6 +19,13 @@ const applyBend = (marker, steps, maxScale) => {
 // How far the top/bottom fade reaches into the strip.
 const FadeSizePx = 24;
 
+// The strip's box spans almost the whole height of the chat, while the dashes only fill the ribbon
+// in its middle (justify-content: safe center), so most of the box is empty space. Hovering there
+// is not a hover of the dashes: it used to aim the bend and the preview at the nearest dash and
+// play a ratchet tick, far from anything the pointer was over. A couple of pixels of slack keep
+// the very edge of the first and last dash comfortable to aim at.
+const DashEdgeSlackPx = 2;
+
 // A few px of slack on the scroll-edge checks: scrollHeight/clientHeight can shift by a
 // sub-pixel between calls (font metrics settling, fractional zoom) and a 1px threshold made the
 // fade/arrows flicker in and out right at the boundary.
@@ -349,9 +356,9 @@ export function attach(strip, scroller, scrollKey) {
                 if (distance < nearestDistance) { nearestDistance = distance; nearestIndex = index; }
             }
             // Ratchet: a tick on each CROSS into a new marker, not on every pixel of movement.
-            // lastRatchetIndex starts as null so the cursor's first entry into the strip also
-            // ticks (see the reset in onMouseLeave below — without that, leaving and re-entering
-            // the same strip at the same mark would play nothing). window.aiClientPlayRatchetTick
+            // lastRatchetIndex starts as null so the cursor's first entry into the dashes also
+            // ticks (see the reset in onMouseLeave below — without that, leaving the dashes and
+            // re-entering at the same mark would play nothing). window.aiClientPlayRatchetTick
             // is defined by js/hoverSound.js (loaded as a plain script in index.html); the feature
             // gracefully no-ops when the page has not loaded the script yet, or when the browser
             // has blocked audio until a user gesture.
@@ -385,7 +392,27 @@ export function attach(strip, scroller, scrollKey) {
         if (dash > 0) bendMaxScale = Math.max(1, Math.min(BendMaxScale, (strip.clientWidth - forkShift) / dash));
     };
 
+    // Whether the pointer is actually over the dashes: between the top edge of the first one and
+    // the bottom edge of the last one. Measured in client coordinates from the live rects, so the
+    // strip's padding and its internal scroll are already accounted for.
+    const isOverDashes = clientY => {
+        const list = markers();
+        if (list.length === 0) return false;
+        const first = list[0].getBoundingClientRect();
+        const last = list[list.length - 1].getBoundingClientRect();
+        return clientY >= first.top - DashEdgeSlackPx && clientY <= last.bottom + DashEdgeSlackPx;
+    };
+
     const onMouseMove = event => {
+        if (!isOverDashes(event.clientY)) {
+            // The empty part of the strip counts as leaving it: no bend, no preview, no tick, and
+            // a fresh entry into the dashes ticks again.
+            if (hoverY === null) return;
+            hoverY = null;
+            lastRatchetIndex = null;
+            render();
+            return;
+        }
         if (hoverY === null) fitBend();
         hoverY = event.clientY - strip.getBoundingClientRect().top + strip.scrollTop;
         render();
@@ -393,7 +420,7 @@ export function attach(strip, scroller, scrollKey) {
 
     const onMouseLeave = () => {
         hoverY = null;
-        // Reset so the next entry into the strip plays its first tick, even when the cursor
+        // Reset so the next entry into the dashes plays its first tick, even when the cursor
         // comes back to the same marker it left from. With this null the render() in the
         // hover branch above ticks on the very first mousemove of any new hover (because
         // lastRatchetIndex is null !== nearestIndex); without it, a hover that never crosses

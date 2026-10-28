@@ -555,6 +555,12 @@ This replaces the 2026-10-23 default sandboxed command decision.
   rules, managed process continuation, resource limits and logging.
 - This development-stage rename has no compatibility aliases or settings migration.
 
+## The history strip is hovered only over its dashes (2026-10-28)
+
+- The strip's box (`top: --history-rail-top`, `bottom: 1.1rem`) is almost as tall as the chat, while its dashes sit in a ribbon in the middle (`justify-content: safe center`). A `mousemove` anywhere in that box used to be treated as a hover: the bend aimed at the nearest dash, the preview appeared and a ratchet tick played, so passing the cursor far above or below the dashes made a sound and showed a tooltip for a message the pointer was nowhere near.
+- `onMouseMove` in `historyMarkers.js` now checks the pointer against the ribbon first (`isOverDashes`, the live client rects of the outermost markers plus `DashEdgeSlackPx` of 2px). Outside it, the move counts as leaving the strip: `hoverY` and `lastRatchetIndex` are cleared, so there is no bend, no preview and no tick, and the next entry into the dashes ticks once. Measured from the outermost markers, the check also holds while the strip is scrolled internally.
+- The `:hover` styling of a single marker was never affected: it comes from CSS on the button itself.
+
 ## Picking a chat leaves the sidebar's shape alone (2026-10-22)
 
 This replaces the parts of the 2026-10-13 Chat files, 2026-10-14 sidebar and 2026-10-20 directory row decisions that place directories and `Chat files` in the sidebar.

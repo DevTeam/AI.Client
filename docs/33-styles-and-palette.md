@@ -104,6 +104,7 @@ A theme is stored as `CustomTheme` in the same place as the other client prefere
 
 - `CustomTheme.Family` is spelled `dark` or `light` because it is handed to `js/theme.js` as it stands, where it becomes `<html data-theme-family>`. A .NET-side `ThemeFamily` enum would depend on how the serializer spells it.
 - Every saved theme is built by `CustomTheme.Create`, which runs the seeds through `ThemePalette`; nothing writes a palette by hand. The studio (`Components/CustomThemeSettings.razor`) paints a candidate the person is still choosing under the same script entry as a saved one, and that candidate is never stored: the preview id is not a theme id.
+- A chat builds and changes themes through `app_theme` and the `settings-create-theme` and `settings-improve-theme` skills (see [17-app-tools.md](17-app-tools.md#app_theme)). It takes the same seeds and the window runs the same engine, so a theme from a chat and one from the studio are indistinguishable.
 - Choosing a preset, deleting the theme in use and closing the studio all hand `null` to `applyCustomTheme`, which removes the inline `--color-*` properties. Without that removal the preset would be painted underneath a palette that is no longer the choice, because inline properties outrank the stylesheet.
 
 ## Choosing a colour

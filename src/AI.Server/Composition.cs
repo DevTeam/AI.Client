@@ -150,7 +150,7 @@ internal sealed class Composition
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
                 AppGuideEndpoints, ScheduleEndpoints, AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool,
                 AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
-                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppScheduleTool, AppPlanTool,
+                AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppThemeTool, AppScheduleTool, AppPlanTool,
                 DefaultToolSessionFactory, DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)
             .Transient<AppToolSessionFactory>(Tag.Type)

@@ -357,7 +357,7 @@ public sealed partial class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "ask_user", "context_compact", "plan_update", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "app_theme", "ask_user", "context_compact", "plan_update", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");
@@ -1262,6 +1262,55 @@ public sealed partial class AppToolTests
         request.ShouldBe(new AppNavigation(fixture.ProjectId, chat.Id, null, fixture.ChatId, "Test", "Next",
             Target: "chat", RequestId: request.RequestId, ExpiresAt: request.ExpiresAt));
         await requests.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ThemeToolShouldHandTheRequestToTheWindowAndReturnWhatItReports()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var requests = fixture.Navigation.SubscribeAsync(stop.Token).GetAsyncEnumerator(stop.Token);
+
+        var previewing = AppFixture.CallAsync(session, "app_theme", new { operation = "Preview", background = "#1f2a1f", contrast = 60 });
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        var request = requests.Current;
+        // The Host only forwards: themes are kept by the window, which derives the palette itself.
+        request.Theme.ShouldBe(new AI.Contracts.Themes.AppThemeRequest("preview", Background: "#1f2a1f", Contrast: 60));
+        request.SourceChatId.ShouldBe(fixture.ChatId);
+        var clientId = Guid.NewGuid();
+        fixture.Navigation.Claim(request.RequestId, clientId).ShouldBeTrue();
+        var state = new AI.Contracts.Themes.AppThemeState("Showing the theme on the page without saving it.", "dark", "blue", null, [], null);
+        fixture.Navigation.Complete(request.RequestId, new AppNavigationDecision(clientId, "applied", Theme: state)).ShouldBeTrue();
+        var previewed = await previewing;
+
+        previewed.GetProperty("applied").GetBoolean().ShouldBeTrue();
+        previewed.GetProperty("effect").GetString().ShouldBe(state.Effect);
+        previewed.GetProperty("theme").GetProperty("preset").GetString().ShouldBe("dark");
+
+        // A request the window refuses comes back as an error that says why.
+        var saving = AppFixture.CallAsync(session, "app_theme", new { operation = "Save", accent = "violet" }, expectError: true);
+        (await requests.MoveNextAsync()).ShouldBeTrue();
+        fixture.Navigation.Claim(requests.Current.RequestId, clientId).ShouldBeTrue();
+        fixture.Navigation.Complete(requests.Current.RequestId, new AppNavigationDecision(clientId, "applied",
+            Theme: state with { Effect = "Nothing was changed.", Error = "Unknown accent 'violet'." })).ShouldBeTrue();
+        var refused = await saving;
+        refused.GetProperty("applied").GetBoolean().ShouldBeFalse();
+        refused.GetProperty("outcome").GetString().ShouldBe("refused");
+        refused.GetProperty("error").GetString().ShouldBe("Unknown accent 'violet'.");
+        await requests.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ThemeToolShouldNotReachAWindowFromABackgroundRun()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync(interactive: false);
+
+        var result = await AppFixture.CallAsync(session, "app_theme", new { operation = "Get" }, expectError: true);
+
+        result.GetProperty("applied").GetBoolean().ShouldBeFalse();
+        result.GetProperty("outcome").GetString().ShouldBe("unavailable");
     }
 
     [Fact]

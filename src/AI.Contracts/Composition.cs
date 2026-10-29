@@ -25,7 +25,7 @@ internal sealed class Composition
             .Bind<IToolPresentationAdapter>(Tag.Unique)
                 .To<FileToolPresentationAdapter, ProcessToolPresentationAdapter, WebToolPresentationAdapter, CSharpToolPresentationAdapter,
                 AppReadPresentationAdapter, AppWritePresentationAdapter, AppSubtaskPresentationAdapter, AppSkillPresentationAdapter, AskUserPresentationAdapter,
-                AppNavigatePresentationAdapter, AppPlanPresentationAdapter>()
+                AppNavigatePresentationAdapter, AppThemePresentationAdapter, AppPlanPresentationAdapter>()
             .Transient<ToolPresentations, ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver, ToolDefaultDecision, UnifiedDiff,
                 Chats.ChatTeamRosterCalculator, Schedules.ScheduleCalendar, Schedules.ScheduleDescriptions, SystemFileSystem, SystemPath, AtomicFileWriter,
                 GenericToolPresentationAdapter>();

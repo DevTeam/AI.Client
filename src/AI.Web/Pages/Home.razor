@@ -56,6 +56,7 @@
 @inject IChatWidgetLayout WidgetLayout
 @inject IDelayedBusyIndicatorFactory BusyIndicatorFactory
 @inject NavigationManager Navigation
+@inject AI.Web.Settings.IThemeChatRequests ThemeRequests
 @implements IAsyncDisposable
 
 <PageTitle>@ClientMetadata.ProductName</PageTitle>
@@ -2690,6 +2691,12 @@ else if (_guideInvitation is { } guideInvitation)
         var target = JsonSerializer.Deserialize<AI.Contracts.Navigation.AppNavigation>(json,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (target is null) return;
+        // A theme request shows nothing, so it leaves the project tree as it is.
+        if (target.Theme is not null)
+        {
+            await HandleGuideNavigationAsync(target);
+            return;
+        }
         // The guide and the navigation cue point at rows of the project's own chat list.
         UnfoldProjectTree();
         if (target.RequestId != Guid.Empty || target.Target is not null)

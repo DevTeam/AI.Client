@@ -23,7 +23,7 @@ The code is laid out as follows:
 
 The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispatcher owns the agent, the agent owns the tool session, the session owns these tools. Lazy resolution breaks the construction cycle.
 
-`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, `app_navigate` and `plan_update` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
+`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, `app_navigate`, `app_theme` and `plan_update` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
 
 `InProcess` is a full value of the domain enum `McpTransportKind`, not just a string in settings: saving a project-level policy binds the server to the project and records its transport. Both servers bundled with the Host appear in settings identically — name and transport are read-only; instead of a command line, the list of tool policies is shown, and they cannot be removed.
 
@@ -39,6 +39,7 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_projects` | `Create`, `Update`, `Delete` |
 | `app_security` | policies and grants for the project, chat, and globally; global settings; write credentials |
 | `app_navigate` | opens a project, chat or branch in the user's window; changes no data |
+| `app_theme` | `Get`, `Preview`, `Save`, `Activate`, `Discard` for the window's colour themes — see [app_theme](#app_theme) |
 | `app_resources` | create and retire project file/directory references; create and update named chat reviews; attach them with `app_runs Submit` |
 | `app_memory` | `Create`, `Update`, `Delete` long-term memory entries — see [25-memory-and-instructions.md](25-memory-and-instructions.md) |
 | `app_instructions` | replace the current project's instructions; kept apart so it still asks where other writes are allowed |
@@ -214,6 +215,12 @@ It is published after any `app_*` mutation is committed. A subscriber receives a
 On receiving the signal, the Web UI re-reads what it shows: the project list, the selected project's chats, and the open chat. The selection is preserved if the selected object still exists. Both frames go through the same channel, so only one loop writes to the response body.
 
 Changes made through the UI's own HTTP API do not publish a signal: the client that made them already knows.
+
+### app_theme
+
+Themes are kept by the client (`ai-client.settings`), not by the Host, so `app_theme` reaches them through the window. It sends an `AppNavigation` whose `Theme` is an `AppThemeRequest` on the same channel as `app_navigate`; one window claims it — the one showing the asking chat or holding focus answers first, others wait 400 ms — and completes it with an `AppThemeState`: the effect, the preset and accent, the saved themes with their seeds and the unsaved preview with its main colours and every measured contrast pair. A background run gets `unavailable` without asking a window.
+
+The window's side is `IThemeChatRequests` in `AI.Web/Settings`, built on `IThemeService` like the studio. A theme is four seeds (background, family, contrast, saturation) and the window derives the palette with `ThemePalette`, so a model can only ask for a theme the studio could produce. `Preview` paints without writing anything and continues the previous preview, so each step names only the seeds that change; `Save` stores it in place (`themeId`) or as a new theme and switches to it; `Activate` switches to a saved theme or a preset; `Save` and `Activate` take an accent; `Discard` repaints the saved theme. A preview never outlives the page. The tool defaults to `Allow` because a preview only paints the window; the playbooks `settings-create-theme` and `settings-improve-theme` save or switch only after the user agreed through `ask_user`. Deleting a theme is left to Settings.
 
 A third frame, `event: navigate`, carries an `AppNavigation` (`ProjectId`, optional `ChatId` and `BranchId`). `app_navigate` publishes it through `IAppNavigationSignal` after checking that the project, chat and branch exist; a background run (`Interactive` false) gets an error instead, so a window nobody is watching is not moved. Each listener keeps only the latest request. The Web re-reads the project list, and the chats when the project is already open, because the target may be newer than the pending `data-changed` frame; then it selects the target as a link would and pushes a history entry, so Back returns to where the user was. `project-create`, `chat-compact` and `chat-fork` call it for the project, chat or branch they create.
 

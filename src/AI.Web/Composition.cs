@@ -64,6 +64,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IUpdateClient>()
             .Root<IPublishedDownloadLinks>()
             .Root<IThemeService>()
+            .Root<IThemeChatRequests>()
             .Root<INotificationService>()
             .Root<IChatRunsApi>()
             .Root<IResourceApi>()
@@ -137,6 +138,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
                 DesktopBadgeNotificationService, HostConnection, SafeMarkdownRenderer, WorkspaceLayoutService,
                 WorkspaceUndoState, SenderLocations,
                 WorkspaceStateService, RunStateService, ClientSettingsService, ThemeService,
+                // Remembers the theme a chat is previewing between its requests.
+                ThemeChatRequests,
                 // Remembers the waits it saw since the open plan last changed.
                 ChatPlanClock>()
             .Transient<GitPickerState, DropAccessPlanner, ChatFeed, TurnLiveText, DirectoryPickerState,

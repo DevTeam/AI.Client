@@ -70,7 +70,7 @@ public sealed class AppNavigationSignal(IUserContext users) : IAppNavigationSign
                 && pending.ClientId == decision.ClientId
                 && pending.ExpiresAt > DateTimeOffset.UtcNow
                 && decision.Outcome is "applied" or "stopped" or "unavailable" or "expired"
-                && pending.Completion.TrySetResult(new(decision.Outcome, decision.Error, decision.Targets));
+                && pending.Completion.TrySetResult(new(decision.Outcome, decision.Error, decision.Targets, decision.Theme));
     }
 
     public void Navigate(AppNavigation target)

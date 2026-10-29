@@ -9,15 +9,21 @@ namespace AI.Contracts.Navigation;
 /// anyone looking elsewhere is offered the move instead of being taken away from what they read.
 /// </param>
 /// <param name="ProjectName">The target's names, for the words that tell the user what happened.</param>
+/// <param name="Theme">
+/// A request about the client's themes rather than a place to show. Themes are kept by the window, so
+/// <c>app_theme</c> travels on this channel too; the window answers it without moving anything.
+/// </param>
 public sealed record AppNavigation(Guid ProjectId, Guid? ChatId = null, Guid? BranchId = null,
     Guid? SourceChatId = null, string? ProjectName = null, string? ChatTitle = null,
     string? Target = null, string Action = "click", string? Comment = null,
     bool WaitForContinue = false, bool WaitForUser = false, string? Value = null,
     Guid RequestId = default, DateTimeOffset? ExpiresAt = null,
-    string? SkillId = null, string? ToolName = null)
+    string? SkillId = null, string? ToolName = null, AI.Contracts.Themes.AppThemeRequest? Theme = null)
 {
     public const int DefaultTimeoutSeconds = 15;
 }
 
-public sealed record AppNavigationResponse(string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null);
-public sealed record AppNavigationDecision(Guid ClientId, string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null);
+public sealed record AppNavigationResponse(string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null,
+    AI.Contracts.Themes.AppThemeState? Theme = null);
+public sealed record AppNavigationDecision(Guid ClientId, string Outcome, string? Error = null, IReadOnlyList<AppNavigationTarget>? Targets = null,
+    AI.Contracts.Themes.AppThemeState? Theme = null);

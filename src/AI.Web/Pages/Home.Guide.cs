@@ -191,9 +191,40 @@ public partial class Home
         return HandleGuideNavigationAsync(_offlineSteps[number - 1] with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(OfflineStepSeconds) });
     }
 
+    /// <summary>
+    /// Answers <c>app_theme</c>. Nothing moves on screen, so the request skips the guide's steps; one window
+    /// answers it, and the one showing the asking chat or holding focus gets the first chance, since its
+    /// page is the one the person is looking at.
+    /// </summary>
+    private async Task HandleThemeRequestAsync(AppNavigation target, AI.Contracts.Themes.AppThemeRequest request)
+    {
+        if (target.RequestId == Guid.Empty) return;
+        if (target.SourceChatId != _selectedChat?.Id && !_applicationFocused) await Task.Delay(ThemeClaimDelayMs);
+        if (!await GuideApi.ClaimAsync(target.RequestId, _guideClientId, CancellationToken.None)) return;
+        AppNavigationDecision decision;
+        try
+        {
+            var state = await ThemeRequests.HandleAsync(request);
+            decision = new AppNavigationDecision(_guideClientId, "applied", Theme: state);
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException)
+        {
+            decision = new AppNavigationDecision(_guideClientId, "unavailable", $"The window could not apply the theme: {error.Message}");
+        }
+        await GuideApi.CompleteAsync(target.RequestId, decision, CancellationToken.None);
+    }
+
+    /// <summary>How long a window that is not in front waits before it answers a theme request.</summary>
+    private const int ThemeClaimDelayMs = 400;
+
     private async Task HandleGuideNavigationAsync(AppNavigation target)
     {
         if (target.ExpiresAt <= DateTimeOffset.UtcNow) return;
+        if (target.Theme is { } theme)
+        {
+            await HandleThemeRequestAsync(target, theme);
+            return;
+        }
         // A fast first tool call can arrive over SSE before the start response identifies its chat.
         if (_guideStarting && target.RequestId != Guid.Empty && target.SourceChatId != _guideChatId)
         {

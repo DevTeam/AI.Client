@@ -22,6 +22,7 @@ internal sealed partial class MainWindow : Window
     private readonly ITaskbarBadge _taskbarBadge;
     private readonly IFileDropBridge _fileDrop;
     private readonly IWindowFrameTheme _frameTheme;
+    private readonly IWebViewSpellcheck _spellcheck;
     private readonly IDesktopUpdates _updates;
     private readonly DispatcherTimer _engineWatchdog;
     private bool _engineCreated;
@@ -33,7 +34,7 @@ internal sealed partial class MainWindow : Window
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
         IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings, IUiStateStore uiState,
-        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IWindowFrameTheme frameTheme, IDesktopUpdates updates)
+        ITaskbarBadge taskbarBadge, IFileDropBridge fileDrop, IWindowFrameTheme frameTheme, IWebViewSpellcheck spellcheck, IDesktopUpdates updates)
     {
         _start = start;
         _placements = placements;
@@ -43,6 +44,7 @@ internal sealed partial class MainWindow : Window
         _taskbarBadge = taskbarBadge;
         _fileDrop = fileDrop;
         _frameTheme = frameTheme;
+        _spellcheck = spellcheck;
         _updates = updates;
         _updates.ShutdownRequested += () => Dispatcher.UIThread.Post(Close);
         InitializeComponent();
@@ -184,6 +186,7 @@ internal sealed partial class MainWindow : Window
         {
             case WindowsWebView2EnvironmentRequestedEventArgs webView2:
                 webView2.UserDataFolder = profile;
+                _spellcheck.Configure(webView2);
                 break;
             case GtkWebViewEnvironmentRequestedEventArgs gtk:
                 gtk.BaseDataDirectory = Path.Combine(profile, "data");

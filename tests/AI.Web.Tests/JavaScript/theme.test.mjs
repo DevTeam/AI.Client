@@ -78,6 +78,18 @@ test('applies the saved custom theme and its palette before the first paint', ()
     ]);
 });
 
+test('paints the active theme with its own accent before the first paint', () => {
+    const saved = settings({ accent: 'blue', activeCustomThemeId: 'theme-1', customThemes: [{ ...theme(), accent: 'green' }] });
+    const { root } = setUp(saved);
+
+    assert.equal(root.dataset.accent, 'green');
+});
+
+test('keeps the presets accent for a preset and for a theme saved without one', () => {
+    assert.equal(setUp(settings({ accent: 'pink', customThemes: [{ ...theme(), accent: 'green' }] })).root.dataset.accent, 'pink');
+    assert.equal(setUp(settings({ accent: 'pink', activeCustomThemeId: 'theme-1', customThemes: [theme()] })).root.dataset.accent, 'pink');
+});
+
 test('never applies a role a theme may not repaint', () => {
     const saved = settings({ activeCustomThemeId: 'theme-1', customThemes: [theme()] });
     const { palette } = setUp(saved);

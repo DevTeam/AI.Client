@@ -7,7 +7,7 @@ namespace AI.Contracts.Themes;
 /// </summary>
 /// <param name="Effect">One sentence on what changed on the page, or why nothing did.</param>
 /// <param name="Preset">The preset preference, lowercase; it paints the page while no saved theme is active.</param>
-/// <param name="Accent">The accent colour, lowercase.</param>
+/// <param name="Accent">The accent on the page, lowercase: the active saved theme's own, or the presets' one.</param>
 /// <param name="ActiveThemeId">The saved theme painting the page, or null while a preset does.</param>
 /// <param name="Themes">Every saved theme.</param>
 /// <param name="Preview">The unsaved theme on the page, or null when the page shows what is saved.</param>
@@ -22,8 +22,11 @@ public sealed record AppThemeState(string Effect, string Preset, string Accent, 
     public static readonly IReadOnlyList<string> Accents = ["blue", "teal", "green", "amber", "orange", "pink", "purple", "indigo"];
 }
 
-/// <summary>A saved theme as the model sees it: its name and the seeds it was built from.</summary>
-public sealed record AppThemeSummary(string Id, string Name, AppThemeSeeds Seeds, bool Active);
+/// <summary>
+/// A saved theme as the model sees it: its name, the seeds it was built from and the accent it brings
+/// back when switched to (null: it follows the presets' accent).
+/// </summary>
+public sealed record AppThemeSummary(string Id, string Name, AppThemeSeeds Seeds, bool Active, string? Accent = null);
 
 /// <summary>
 /// An unsaved theme painted on the page. <see cref="BaseThemeId"/> is the saved theme it was derived

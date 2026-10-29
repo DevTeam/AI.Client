@@ -244,4 +244,75 @@ public sealed class CustomThemeServiceTests
         saved.Seeds.Family.ShouldNotBeNull();
         saved.Family.ShouldBe(saved.Seeds.Family == ThemeFamily.Light ? "light" : "dark");
     }
+
+    private static string? LastAccent(FakeJSRuntime js) =>
+        js.Calls.LastOrDefault(call => call.Identifier == "aiClientTheme.applyAccent").Argument as string;
+
+    [Fact]
+    public async Task ShouldBringBackEachThemesOwnAccentWhenSwitchingBetweenThem()
+    {
+        var (theme, js) = NewService();
+        var forest = await theme.SaveCustomThemeAsync(null, "Forest", new CustomThemeSeeds("#142019"));
+        await theme.SetAccentAsync(AccentColor.Green);
+        var plum = await theme.SaveCustomThemeAsync(null, "Plum", new CustomThemeSeeds("#231a29"));
+        await theme.SetAccentAsync(AccentColor.Purple);
+
+        await theme.SetActiveCustomThemeAsync(forest.Id);
+        LastAccent(js).ShouldBe("green");
+        (await theme.GetAccentAsync()).ShouldBe(AccentColor.Green);
+
+        await theme.SetActiveCustomThemeAsync(plum.Id);
+        LastAccent(js).ShouldBe("purple");
+        (await theme.GetAccentAsync()).ShouldBe(AccentColor.Purple);
+    }
+
+    [Fact]
+    public async Task ShouldKeepThePresetsAccentApartFromAThemesOwn()
+    {
+        var (theme, js) = NewService();
+        await theme.SetAccentAsync(AccentColor.Pink);
+        await theme.SaveCustomThemeAsync(null, "Forest", new CustomThemeSeeds("#142019"));
+        // A new theme starts with the accent on the page; changing it while the theme is in use is the theme's.
+        (await theme.GetAccentAsync()).ShouldBe(AccentColor.Pink);
+        await theme.SetAccentAsync(AccentColor.Green);
+
+        await theme.SetAsync(ThemePreference.Dark);
+
+        LastAccent(js).ShouldBe("pink");
+        (await theme.GetPresetAccentAsync()).ShouldBe(AccentColor.Pink);
+        (await theme.GetCustomThemesAsync()).Single().Accent.ShouldBe("green");
+    }
+
+    [Fact]
+    public async Task ShouldPreviewASavedThemeWithItsStoredAccentAndANewOneWithTheAccentOnThePage()
+    {
+        var (theme, js) = NewService();
+        var forest = await theme.SaveCustomThemeAsync(null, "Forest", new CustomThemeSeeds("#142019"));
+        var stale = forest;
+        await theme.SetAccentAsync(AccentColor.Green);
+        await theme.SetAsync(ThemePreference.Dark);
+
+        // The studio's copy predates the accent change; the stored accent wins.
+        await theme.PreviewCustomThemeAsync(stale);
+        LastAccent(js).ShouldBe("green");
+
+        await theme.PreviewCustomThemeAsync(CustomTheme.Create(CustomTheme.PreviewId, "New", new CustomThemeSeeds("#2b2320")));
+        LastAccent(js).ShouldBe("blue");
+    }
+
+    [Fact]
+    public async Task ShouldFollowThePresetsAccentForAThemeSavedBeforeThemesKeptOne()
+    {
+        var (theme, js) = NewService();
+        var old = await theme.SaveCustomThemeAsync(null, "Old", new CustomThemeSeeds("#142019"));
+        await theme.SetAsync(ThemePreference.Dark);
+        await theme.SetAccentAsync(AccentColor.Amber);
+        var settingsJson = js.Entries[StorageKey].Replace("\"accent\":\"blue\"", "\"accent\":null");
+        js.Entries[StorageKey] = settingsJson;
+        var (reloaded, reloadedJs) = (new ThemeService(new ClientSettingsService(js), js), js);
+
+        await reloaded.SetActiveCustomThemeAsync(old.Id);
+
+        LastAccent(reloadedJs).ShouldBe("amber");
+    }
 }

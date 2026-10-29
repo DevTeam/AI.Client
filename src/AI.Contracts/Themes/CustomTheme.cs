@@ -57,6 +57,14 @@ public sealed record CustomTheme
         new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// The accent the theme is shown with, lowercase as the page's <c>data-accent</c> spells it, or null
+    /// for one saved before themes kept their own: that theme follows the accent chosen for the presets.
+    /// The accent is not part of the palette (a theme may not repaint it), but a theme built around a
+    /// colour looks wrong with another, so switching to the theme brings its accent back.
+    /// </summary>
+    public string? Accent { get; init; }
+
+    /// <summary>
     /// Builds a theme by running <paramref name="seeds"/> through <see cref="ThemePalette"/>. Every
     /// stored theme is made here, so a stored palette is always one the engine produced and never a set
     /// of colours written by hand.

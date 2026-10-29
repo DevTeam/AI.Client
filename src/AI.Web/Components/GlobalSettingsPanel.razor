@@ -69,7 +69,7 @@
                             </section>
                         }
                         <UpdatesPanel />
-                        <CustomThemeSettings>
+                        <CustomThemeSettings Accent="_accent" ThemeChanged="RefreshAccentAsync">
                             <div @attributes="@(ControlHints.Attributes("settings.appearance.accent"))" class="settings-row" role="radiogroup" aria-labelledby="settings-accent">
                                 <span class="settings-row-label" id="settings-accent">Accent</span>
                                 <span class="accent-options">
@@ -822,6 +822,9 @@
         "Connections" => "OpenAI-compatible endpoints available to every project.",
         _ => "Global MCP servers available to every project."
     };
+
+    /// <summary>A saved theme brings its own accent, so the picker shows whatever came with the new theme.</summary>
+    private async Task RefreshAccentAsync() => _accent = await Theme.GetAccentAsync();
 
     private async Task SetAccentAsync(AccentColor accent)
     {

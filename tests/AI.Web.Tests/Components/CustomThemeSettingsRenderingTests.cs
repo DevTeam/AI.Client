@@ -120,6 +120,7 @@ public sealed class CustomThemeSettingsRenderingTests
     {
         var theme = new Mock<IThemeService>(MockBehavior.Strict);
         theme.Setup(value => value.GetAsync()).Returns(new ValueTask<ThemePreference>(ThemePreference.System));
+        theme.Setup(value => value.GetPresetAccentAsync()).Returns(new ValueTask<AccentColor>(AccentColor.Blue));
         theme.Setup(value => value.GetCustomThemesAsync()).Returns(new ValueTask<IReadOnlyList<CustomTheme>>([]));
         theme.Setup(value => value.GetActiveCustomThemeAsync()).Returns(new ValueTask<CustomTheme?>((CustomTheme?)null));
         theme.Setup(value => value.PreviewCustomThemeAsync(It.IsAny<CustomTheme?>())).Returns(ValueTask.CompletedTask);

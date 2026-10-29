@@ -15,7 +15,7 @@
     <div class="settings-card">
         <div class="settings-row is-stacked theme-gallery-row">
             <span class="settings-row-label" id="settings-theme">Theme</span>
-            <div @attributes="@(ControlHints.Attributes("settings.appearance.theme"))" class="theme-gallery" role="radiogroup" aria-labelledby="settings-theme">
+            <div @attributes="@(ControlHints.Attributes("settings.appearance.theme"))" class="theme-gallery" style="@AccentStyle(_presetAccent)" role="radiogroup" aria-labelledby="settings-theme">
                 @foreach (var preset in Presets)
                 {
                     var selected = _activeId is null && _preference == preset.Value;
@@ -37,7 +37,7 @@
                 @foreach (var saved in _themes)
                 {
                     var selected = saved.Id == _activeId;
-                    <label class="theme-card @(selected ? "selected" : null)" style="@SwatchStyle(saved.Tokens)" title="@saved.Name">
+                    <label class="theme-card @(selected ? "selected" : null)" style="@SwatchStyle(saved)" title="@saved.Name">
                         <input type="radio" name="theme" value="@saved.Id" checked="@selected" @onclick="() => ActivateAsync(saved.Id)" />
                         <span class="theme-card-preview" aria-hidden="true"><ThemeCardSketch /></span>
                         <span class="theme-card-name">@saved.Name</span>
@@ -175,6 +175,18 @@
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
+    /// <summary>
+    /// The accent the panel's picker shows. When it changes, the theme in use took it as its own, so the
+    /// cards are read again to show it.
+    /// </summary>
+    [Parameter] public AI.Web.Settings.AccentColor Accent { get; set; }
+
+    /// <summary>
+    /// Raised after the theme on the page changed, so the panel's accent picker can show the accent
+    /// that came with it.
+    /// </summary>
+    [Parameter] public EventCallback ThemeChanged { get; set; }
+
     private static readonly (AI.Web.Settings.ThemePreference Value, string Label, string Swatch)[] Presets =
     [
         (AI.Web.Settings.ThemePreference.System, "System", "light"),
@@ -213,6 +225,8 @@
     ];
 
     private AI.Web.Settings.ThemePreference _preference;
+    private AI.Web.Settings.AccentColor _presetAccent;
+    private AI.Web.Settings.AccentColor? _shownAccent;
     private IReadOnlyList<AI.Contracts.Themes.CustomTheme> _themes = [];
     private AI.Contracts.Themes.CustomThemeSeeds _seeds = new(AI.Contracts.Themes.CustomTheme.DefaultBackground);
     private AI.Contracts.Themes.CustomThemeSeeds _baseline = new(AI.Contracts.Themes.CustomTheme.DefaultBackground);
@@ -246,6 +260,8 @@
     protected override async Task OnInitializedAsync()
     {
         _preference = await Theme.GetAsync();
+        _presetAccent = await Theme.GetPresetAccentAsync();
+        _shownAccent = Accent;
         _themes = await Theme.GetCustomThemesAsync();
         var active = await Theme.GetActiveCustomThemeAsync();
         _active = active;
@@ -297,20 +313,38 @@
 
     private static string Ratio(double value) => AI.Contracts.Themes.ThemePalette.FormatRatio(value);
 
+    protected override async Task OnParametersSetAsync()
+    {
+        // The picker changed the accent of what paints the page: a saved theme in use keeps it as its own,
+        // a preset makes it the presets' one. Either way a card now shows another accent.
+        if (_shownAccent is null || _shownAccent == Accent) return;
+        _shownAccent = Accent;
+        _presetAccent = await Theme.GetPresetAccentAsync();
+        _themes = await Theme.GetCustomThemesAsync();
+        _active = await Theme.GetActiveCustomThemeAsync();
+    }
+
     /// <summary>
-    /// A saved theme's card is painted from its stored palette. The values go through the colour parser
-    /// first, because a stored theme may have been edited by hand and only a colour may reach the style.
+    /// A saved theme's card is painted from its stored palette and shows its own accent. The values go
+    /// through the colour parser first, because a stored theme may have been edited by hand and only a
+    /// colour may reach the style.
     /// </summary>
-    private static string SwatchStyle(IReadOnlyDictionary<string, string> tokens)
+    private string SwatchStyle(AI.Contracts.Themes.CustomTheme theme)
     {
         string Value(string role) =>
-            tokens.TryGetValue(AI.Contracts.Themes.CustomTheme.CssPrefix + role, out var value)
+            theme.Tokens.TryGetValue(AI.Contracts.Themes.CustomTheme.CssPrefix + role, out var value)
             && AI.Contracts.Themes.SrgbColor.TryParse(value, out var color)
                 ? color.ToHex()
                 : "transparent";
+        var accent = Enum.TryParse<AI.Web.Settings.AccentColor>(theme.Accent, true, out var own) && Enum.IsDefined(own) ? own : _presetAccent;
         return $"--swatch-bg: {Value(AI.Contracts.Themes.ThemeToken.Bg)}; --swatch-surface: {Value(AI.Contracts.Themes.ThemeToken.SurfaceRaised)}; "
-            + $"--swatch-text: {Value(AI.Contracts.Themes.ThemeToken.Text)}; --swatch-border: {Value(AI.Contracts.Themes.ThemeToken.Border)}";
+            + $"--swatch-text: {Value(AI.Contracts.Themes.ThemeToken.Text)}; --swatch-border: {Value(AI.Contracts.Themes.ThemeToken.Border)}; "
+            + AccentStyle(accent);
     }
+
+    /// <summary>The chip of a card: the presets share one accent, a saved theme shows its own.</summary>
+    private static string AccentStyle(AI.Web.Settings.AccentColor accent) =>
+        $"--swatch-accent: var(--accent-swatch-{accent.ToString().ToLowerInvariant()})";
 
     private void SetName(ChangeEventArgs args)
     {
@@ -383,6 +417,7 @@
             // The studio leaves the theme that was in use, unless the person is in the middle of
             // changing it: a preset click must not throw away unsaved dials.
             if (!IsDirty) Blank();
+            await ThemeChanged.InvokeAsync();
         }
         finally { _saving = false; }
     }
@@ -401,6 +436,7 @@
             var activated = (await Theme.GetCustomThemesAsync()).First(theme => theme.Id == id);
             _active = activated;
             Edit(activated);
+            await ThemeChanged.InvokeAsync();
         }
         catch (InvalidOperationException)
         {
@@ -428,6 +464,7 @@
             _activeId = saved.Id;
             Edit(saved);
             _status = "Saved and in use";
+            await ThemeChanged.InvokeAsync();
         }
         catch (InvalidOperationException error)
         {
@@ -473,6 +510,7 @@
             _activeId = _active?.Id;
             await StartNewAsync();
             _status = "Removed. The page is back to the selected theme";
+            await ThemeChanged.InvokeAsync();
         }
         catch (InvalidOperationException error)
         {

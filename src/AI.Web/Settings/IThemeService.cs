@@ -9,9 +9,16 @@ public interface IThemeService
     /// <summary>Saves the preference and repaints the page with it right away.</summary>
     ValueTask SetAsync(ThemePreference preference);
 
+    /// <summary>The accent on the page: the active saved theme's own, or the one the presets share.</summary>
     ValueTask<AccentColor> GetAccentAsync();
 
-    /// <summary>Saves the accent and recolours the page with it right away.</summary>
+    /// <summary>The accent the presets share, whichever theme paints the page now.</summary>
+    ValueTask<AccentColor> GetPresetAccentAsync();
+
+    /// <summary>
+    /// Saves the accent as the active saved theme's own, or as the presets' one while a preset paints
+    /// the page, and recolours the page with it right away.
+    /// </summary>
     ValueTask SetAccentAsync(AccentColor accent);
 
     ValueTask<int> GetCornerRoundnessAsync();

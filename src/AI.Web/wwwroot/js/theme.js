@@ -130,6 +130,13 @@
         return themes.find(theme => theme && theme.id === id) || null;
     }
 
+    // The accent that goes with what paints the page: a saved theme keeps its own, the presets share
+    // the entry's. A theme saved before themes kept an accent has none and follows the presets'.
+    // ThemeService tells the page the same answer whenever it switches themes.
+    function accentOf(settings) {
+        return activeCustomTheme(settings)?.accent || settings?.accent;
+    }
+
     // Must match AccentColor; anything else (an older or newer build's value) falls back to blue.
     const accents = ["blue", "teal", "green", "amber", "orange", "pink", "purple", "indigo"];
     function applyAccent(value) {
@@ -222,7 +229,7 @@
         }
         let restored;
         try { restored = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { restored = null; }
-        applyAccent(restored?.accent);
+        applyAccent(accentOf(restored));
         applyCornerRoundness(restored?.cornerRoundnessPercent);
         applyOtherSounds(restored?.otherSoundsEnabled);
         applyAnimations(restored?.animationsEnabled);
@@ -233,7 +240,7 @@
 
     let saved;
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { saved = null; }
-    applyAccent(saved?.accent);
+    applyAccent(accentOf(saved));
     applyCornerRoundness(saved?.cornerRoundnessPercent);
     applyOtherSounds(saved?.otherSoundsEnabled);
     applyAnimations(saved?.animationsEnabled);

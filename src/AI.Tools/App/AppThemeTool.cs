@@ -47,7 +47,7 @@ public sealed class AppThemeTool(IAppNavigationSignal navigation) : IAppTool
                               + "overwrites that saved theme (pass the preview's baseThemeId to improve an existing theme), without it a "
                               + "new theme is added. Activate switches to a saved theme (themeId) or a preset (system, light, dark, darkblue, "
                               + "gray, lightgray). Save and Activate take an optional accent (blue, teal, green, amber, orange, pink, purple, "
-                              + "indigo); accents and status colours are not part of a theme. Discard drops the preview. "
+                              + "indigo); a saved theme keeps its own accent and brings it back when switched to, while the presets share one. Status colours are not part of a theme. Discard drops the preview. "
                               + "Save and Activate change the person's settings: do them only after the person agreed."
             });
 

@@ -177,7 +177,7 @@ public sealed class ThemeChatRequests(IThemeService theme) : IThemeChatRequests
             (await theme.GetAsync()).ToString().ToLowerInvariant(),
             (await theme.GetAccentAsync()).ToString().ToLowerInvariant(),
             active?.Id,
-            [.. themes.Select(saved => new AppThemeSummary(saved.Id, saved.Name, AppThemeSeeds.From(saved.Seeds), saved.Id == active?.Id))],
+            [.. themes.Select(saved => new AppThemeSummary(saved.Id, saved.Name, AppThemeSeeds.From(saved.Seeds), saved.Id == active?.Id, saved.Accent))],
             _preview is { } preview ? Describe(preview) : null);
     }
 

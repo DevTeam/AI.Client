@@ -1641,7 +1641,8 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 /* Settings → Appearance: every theme is a card that draws a miniature of itself, presets and saved
    themes alike, in one radio group. A preset card reads its colours from the --theme-swatch-* tokens;
    a saved theme's card gets the same --swatch-* properties from its stored palette (see the
-   exceptions in docs/33-styles-and-palette.md). The chip in every miniature is the live accent. */
+   exceptions in docs/33-styles-and-palette.md). The chip in a miniature is the accent that comes with
+   that theme: a saved theme keeps its own, the presets share one (--swatch-accent names its swatch). */
 .theme-gallery-row { gap: .55rem; padding-bottom: .8rem; }
 .theme-gallery-row > .settings-row-label:not(:first-child) { margin-top: .4rem; }
 .theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr)); gap: .75rem .6rem; align-self: stretch; }
@@ -1660,7 +1661,7 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .theme-card-panel { display: flex; flex: 1; flex-direction: column; gap: .25rem; min-width: 0; padding: .35rem; border: 1px solid var(--swatch-border); border-radius: var(--radius-xs); background: var(--swatch-surface); }
 .theme-card-line { width: 80%; height: .2rem; border-radius: 1px; background: color-mix(in srgb, var(--swatch-text) 80%, transparent); }
 .theme-card-line.is-short { width: 52%; background: color-mix(in srgb, var(--swatch-text) 40%, transparent); }
-.theme-card-chip { width: 36%; height: .35rem; margin-top: auto; border-radius: var(--radius-pill); background: var(--color-accent-strong); }
+.theme-card-chip { width: 36%; height: .35rem; margin-top: auto; border-radius: var(--radius-pill); background: var(--swatch-accent, var(--color-accent-strong)); }
 .theme-card-name { overflow: hidden; padding-inline: .1rem; text-overflow: ellipsis; white-space: nowrap; transition: color var(--duration-fast) ease; }
 .theme-card:hover .theme-card-name { color: var(--color-text); }
 .theme-card:hover .theme-card-preview { box-shadow: var(--shadow-sm), 0 0 0 1px var(--color-border-stronger); transform: translateY(-1px); }

@@ -1,0 +1,50 @@
+{
+  "id": "team-member-subtask-capability",
+  "description": "Explicit capability probe: Backend delegates a shipping policy to a bounded subtask and consumes the completed artifact.",
+  "tags": [
+    "execution-capability",
+    "team",
+    "edit",
+    "slow"
+  ],
+  "turns": [
+    "Implement the small fixture in {workspace}/README.md. For this capability check I explicitly choose a shared-directory team with the roles Backend and Client, even if doing it directly would be cheaper; do not ask again about that choice. Backend must delegate the shipping policy and backend/test_shipping.py to one bounded subtask, then integrate its returned artifacts with the discount and receipt service. Client implements the renderer. Keep these role names and owned paths, inherit the current model and tool permissions, and verify the combined result with check.py."
+  ],
+  "timeoutSeconds": 1200,
+  "checks": [
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__app_runs\\s.*\"mode\"\\s*:\\s*\"Fork\""
+    },
+    {
+      "type": "teammateTranscriptMatches",
+      "name": "Backend shipping subtask completed",
+      "pattern": "(?s)^ROLE Backend[^\\n]*\\nCALL \\S*__spawn_subtask\\s(?=[^\\n]*shipping).*?RESULT.*?\"completed\"\\s*:\\s*true"
+    },
+    {
+      "type": "fileExists",
+      "path": "backend/test_shipping.py"
+    },
+    {
+      "type": "command",
+      "name": "delegated shipping policy is integrated",
+      "executable": "python",
+      "arguments": [
+        "-B",
+        "check.py"
+      ],
+      "outputPattern": "TEAM_SUBTASK_OK"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "backend",
+        "client"
+      ]
+    },
+    {
+      "type": "maxPrompts",
+      "value": 0
+    }
+  ]
+}

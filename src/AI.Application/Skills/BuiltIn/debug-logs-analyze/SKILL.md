@@ -6,8 +6,15 @@ aliases: ["logs"]
 kind: playbook
 description: Analyze application or system logs over a bounded time window, including rolled and compressed files, against the host's actual current time; report the causal chain, gaps and whether the verbosity and retention were enough, and propose a targeted increase; changes nothing.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"The failure, error text or behavior to explain"},"since":{"type":"string","description":"Start of the time window, absolute or relative (\"last hour\")"},"until":{"type":"string","description":"End of the time window"},"timeZone":{"type":"string","description":"The time zone the user means, when it differs from the host"},"correlationId":{"type":"string","description":"A request, trace, operation or user-visible error id to follow"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Log files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","trigger_wait","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For decompressed copies, extracts and intermediate counts, use the `purpose: "chatTemporary"`
 root from `list_allowed_directories` when available. Never decompress, rename or rewrite a log

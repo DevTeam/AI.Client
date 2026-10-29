@@ -5,8 +5,15 @@ icon: flask
 kind: playbook
 description: Run focused and final test suites with concise output and bounded timeouts, then report verified totals and failure causes; changes nothing unless the user asks for a fix.
 parameters: {"type":"object","properties":{"filter":{"type":"string","description":"Test project, file, class or name pattern, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
 `list_allowed_directories` for task-only logs or reports when available. Keep the console

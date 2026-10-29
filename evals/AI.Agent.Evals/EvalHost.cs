@@ -113,9 +113,12 @@ public sealed class EvalHost : IAsyncDisposable
             new SubmitChatMessageRequest(Guid.CreateVersion7(), Guid.CreateVersion7(), content, BranchId: chatId), token);
 
     public async Task<ChatRunSnapshot?> GetRunAsync(Guid chatId, CancellationToken token)
+        => (await GetRunsAsync(chatId, token)).FirstOrDefault(run => run.BranchId == chatId);
+
+    public async Task<IReadOnlyList<ChatRunSnapshot>> GetRunsAsync(Guid chatId, CancellationToken token)
     {
         var runs = await _http.GetFromJsonAsync<ChatRunSnapshot[]>(new Uri("api/runs", UriKind.Relative), Web, token) ?? [];
-        return runs.FirstOrDefault(run => run.ChatId == chatId && run.BranchId == chatId);
+        return runs.Where(run => run.ChatId == chatId).ToArray();
     }
 
     public Task<bool> DecideAsync(ChatRunSnapshot run, ToolApprovalDecision decision, CancellationToken token) =>

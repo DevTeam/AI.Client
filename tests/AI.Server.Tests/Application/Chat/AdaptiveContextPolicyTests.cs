@@ -90,7 +90,8 @@ public sealed class AdaptiveContextPolicyTests
 
     [Theory]
     [InlineData(262_144, SkillCatalogForm.Full)]
-    [InlineData(131_072, SkillCatalogForm.Full)]
+    [InlineData(196_608, SkillCatalogForm.Full)]
+    [InlineData(131_072, SkillCatalogForm.Brief)]
     [InlineData(65_536, SkillCatalogForm.Brief)]
     [InlineData(49_152, SkillCatalogForm.Ids)]
     [InlineData(32_768, SkillCatalogForm.Families)]

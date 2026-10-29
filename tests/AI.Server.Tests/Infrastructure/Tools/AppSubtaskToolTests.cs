@@ -102,6 +102,32 @@ public sealed class AppSubtaskToolTests
     }
 
     [Fact]
+    public async Task ShouldLetATeammateDelegateAtTheDefaultDepthUsingItsBranchConnection()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer("done");
+        var token = TestContext.Current.CancellationToken;
+        var chat = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, token)).ShouldNotBeNull();
+        var charterId = Guid.NewGuid();
+        chat = (await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(charterId, null, "User", "Team charter", chat.Revision, BranchId: fixture.ChatId), token)).ShouldNotBeNull();
+        var branchId = Guid.NewGuid();
+        (await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
+            new(Guid.NewGuid(), charterId, "User", "Backend assignment", chat.Revision,
+                BranchId: branchId, ParentBranchId: fixture.ChatId, BranchMember: new("Ada", "Backend"),
+                BranchSettings: new(ConnectionId: fixture.CheapConnectionId)), token)).ShouldNotBeNull();
+        await using var session = await fixture.OpenAsync(branchId: branchId);
+        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
+
+        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("Investigate one backend policy"), null, token);
+
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        var request = fixture.Completion.Requests.ShouldHaveSingleItem();
+        request.Model.ShouldBe("small");
+        string.Join("\n", request.ContextMessages!.Select(message => message.Content)).ShouldContain("Do not delegate");
+    }
+
+    [Fact]
     public async Task ShouldRefuseDelegationFromASubtaskAtTheDepthLimit()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
@@ -553,8 +579,8 @@ public sealed class AppSubtaskToolTests
                 CancellationToken.None);
         }
 
-        public Task<IToolSession> OpenAsync(bool interactive = true, int subtaskDepth = 0) => Sessions.OpenAsync([],
-            new ToolRunContext(ProjectId, ChatId, ChatId, interactive, IsSubtask: subtaskDepth > 0, SubtaskDepth: subtaskDepth),
+        public Task<IToolSession> OpenAsync(bool interactive = true, int subtaskDepth = 0, Guid? branchId = null) => Sessions.OpenAsync([],
+            new ToolRunContext(ProjectId, ChatId, branchId ?? ChatId, interactive, IsSubtask: subtaskDepth > 0, SubtaskDepth: subtaskDepth),
             TestContext.Current.CancellationToken);
 
         public async Task SetMaxSubtaskDepthAsync(int depth)

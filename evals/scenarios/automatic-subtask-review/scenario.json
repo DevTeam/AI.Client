@@ -1,0 +1,67 @@
+{
+  "id": "automatic-subtask-review",
+  "description": "Bounded independent review questions consult the shared execution policy, preserve read-only scope and return source-backed verdicts; either direct work or completed subtasks are valid.",
+  "tags": [
+    "execution",
+    "review",
+    "slow"
+  ],
+  "turns": [
+    "Review three independent correctness questions in {workspace}. (1) In src/AI.Application/Skills/SkillGuide.cs and SkillRunner.cs, determine what becomes the active playbook after another working playbook or an executor runs, including failed calls. (2) In src/AI.Application/Tools/ChatAgent.cs, review the scheduling of eligible read-only tool batches and determine whether a read after a mutating tool can run before that mutation; follow only the directly needed policy helper. (3) In src/AI.Contracts/Chats/ChatDetails.cs, ChatBranchView.cs and ChatMessageView.cs, determine how sender identity distinguishes a main team lead, a teammate and another chat, and whether missing optional metadata has a defined fallback; follow only one direct producer or consumer if necessary. Treat each question independently and combine their verdicts in one report. For each question inspect at most eight relevant files, give one supported finding or a no-supported-defect verdict, and cite source paths and verified lines. Stop once the question is answered; do not audit the whole subsystem or every public caller. Keep each area report under 200 words. Do not change files, run code or start services."
+  ],
+  "timeoutSeconds": 600,
+  "checks": [
+    {
+      "type": "noWorkspaceChanges"
+    },
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__app_read\\s.*\"query\"\\s*:\\s*\"chat-execution-select\"",
+      "name": "execution policy was consulted"
+    },
+    {
+      "type": "callsNotMatch",
+      "pattern": "^\\S*__app_runs\\s.*\"mode\"\\s*:\\s*\"Fork\""
+    },
+    {
+      "type": "maxPrompts",
+      "value": 0
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "(?i)skill|playbook"
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "(?i)tool|approv"
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "(?i)branch|team"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "any delegated review produced a completed result for a requested area",
+      "pattern": "(?s)\\A(?!.*CALL \\S*__spawn_subtask\\s)|CALL \\S*__spawn_subtask\\s(?=[^\\n]*(?:AI\\.Application[^\\n]*(?:Skills|Tools)|AI\\.Contracts[^\\n]*Chats)).*?RESULT.*?\"completed\"\\s*:\\s*true"
+    },
+    {
+      "type": "answerMatches",
+      "name": "AI.Application/Skills has source evidence",
+      "pattern": "src[/\\\\]AI\\.Application[/\\\\]Skills[/\\\\]"
+    },
+    {
+      "type": "answerMatches",
+      "name": "AI.Application/Tools has source evidence",
+      "pattern": "src[/\\\\]AI\\.Application[/\\\\]Tools[/\\\\]"
+    },
+    {
+      "type": "answerMatches",
+      "name": "AI.Contracts/Chats has source evidence",
+      "pattern": "src[/\\\\]AI\\.Contracts[/\\\\]Chats[/\\\\]"
+    }
+  ],
+  "repository": {
+    "path": ".",
+    "commit": "5adbf942a10432211f32bed079726235cf3dbaa8"
+  }
+}

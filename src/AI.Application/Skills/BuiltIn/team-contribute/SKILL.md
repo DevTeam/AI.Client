@@ -5,8 +5,15 @@ icon: users
 kind: playbook
 description: Work as a teammate in a branch: do the assigned part and report to its parent lead branch.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run"]
+tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence over this playbook. Report in the language of the charter.
 This branch is one teammate of a team assembled by team-assemble. The "Team charter" message and
@@ -31,8 +38,15 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    page only through new messages; do not repeatedly reread the charter or older decisions. Apply
    new `Decision` messages and remember the newest id even if the page contained no decision. If
    there is no new decision, continue the existing assignment.
-3. Do the work. Start each skill your brief names with `run_skill` in this turn and follow its
-   steps; with none named, follow the project's conventions and its checks. Change only your owned
+3. Do the work. Read each working playbook your brief names with `app_read` resource=Skills,
+   query=its exact skill id, unless its instructions are already in context, and follow its steps.
+   Keep team-contribute as the active role: `run_skill` for another playbook would replace it.
+   Read further working playbooks the same way even when their instructions say to run them;
+   use `run_skill` for an executor or an intentional transition to team-assemble/team-coordinate.
+   After an executor call, reactivate team-contribute with `run_skill` and continue the current
+   step; do not restart completed work or reload working instructions already in context.
+   Discover any missing tools named by a working playbook with `tool_search`; discovery does not
+   grant permission. With none named, follow the project's conventions and its checks. Change only your owned
    paths. A change anywhere else, or to a contract, is a question to the lead. Read the charter's
    workspace mode before touching files. In worktree mode, verify the assigned absolute worktree
    path and Git branch against `git worktree list --porcelain`, and verify that the charter's base
@@ -46,13 +60,15 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    plan when a contract, new decision, failed check or unexpected result changes the facts. Give
    uncertain contracts, security-sensitive changes and integration enough analysis to be correct;
    concise communication is not a reason to skip verification.
-   Make the first change early, except when you must start a worktree subteam from your clean HEAD:
+   For an assignment that authorizes edits, make the first change early, except when you must
+   start a worktree subteam from your clean HEAD:
    create those child worktrees before editing your integration checkout. Otherwise, as soon as
    the contracts and one example of the project's style
    are known, write the smallest real part of the deliverable in your owned paths — the files,
    types and signatures the contracts fix — and grow it from there. Reading on without changing
-   anything is not progress: when a few more reads still leave you unable to start, ask the lead
-   or report a blocker instead.
+   anything is not progress for an editing assignment: when a few more reads still leave you
+   unable to start, ask the lead or report a blocker instead. For review, planning or research,
+   produce concrete findings with evidence early; do not edit files or implement the plan.
    When the charter's contracts, a reference you were pointed to and another teammate's work
    disagree, do not settle it yourself and do not stop for it: send a question at once with the
    exact case and both readings, then carry on by the charter's contract, which holds until the
@@ -68,7 +84,17 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    it. Read-only Git (status, diff, log) is fine in either mode.
    A question another skill would put to the user goes to the lead first; use `ask_user` only for
    a decision the charter leaves to the user, and say in it that you are asking as <role>.
-   If the brief assigns you a subteam, run `team-assemble` from this branch for a decomposition
+   Apply chat-execution-select before detailed exploration of independent parts of your assignment.
+   Use `spawn_subtask` when bounded independent work justifies its briefing and integration cost;
+   do not wait for the brief to request delegation or ask the lead to approve the execution method.
+   Give every worker the
+   charter's contracts, your owned paths, workspace mode, exact assigned worktree and Git rules;
+   partition write targets between yourself and workers. Keep coordination with other teammates
+   through the lead. Integrate workers' results and evidence into your own deliverable, resolve
+   or report their open items, and send the lead one combined report. Being a teammate does not
+   make this branch a subtask; the configured depth limit still governs delegation by a subtask.
+   If the brief assigns you a subteam, or your assignment needs continuing coordination rather
+   than bounded subtasks, run `team-assemble` from this branch for a decomposition
    strictly inside your owned paths. You remain this branch's member of the parent team and the
    lead of your direct children. In shared-directory mode, do not change the shared Git state.
    In worktree mode, the parent-assigned worktree is your integration checkout: start children

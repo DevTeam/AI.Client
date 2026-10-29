@@ -6,8 +6,15 @@ aliases: ["dump"]
 kind: playbook
 description: Analyze a crash, hang or memory dump (Windows minidump, .NET dump, Linux core file, Java heap or thread dump) with installed debuggers to find the faulting thread, deadlock or leak; capturing a new dump of a live process needs explicit confirmation; changes nothing else.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"Crash, hang, high memory or high CPU, as observed"},"version":{"type":"string","description":"The build or version of the program that was dumped"},"processId":{"type":"integer","description":"A live process to capture, only when the user asks for a capture"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Dump files, symbol or binary directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For debugger output, extracted reports and a requested new dump, use the `purpose: "chatTemporary"`
 root from `list_allowed_directories` when available. Remove task-created scratch files when

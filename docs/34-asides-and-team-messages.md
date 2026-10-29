@@ -125,9 +125,11 @@ also coordinate a subteam of its own direct children. The protocol lives in skil
   plan), decomposes it into parts with owned paths and contracts (a contract one part implements and
   another tests carries its edge cases as input → output examples), and decides whether a team pays
   off — at least two parts that run at once, disjoint owned paths, contracts fixable up front, each
-  part substantial. If not, it says so and recommends one branch or `spawn_subtask`. Otherwise it
-  proposes 2–4 teammates and suitable enabled connections from their saved capability, task fit,
-  context, image and price information. The person confirms a top-level team; a subteam lead
+  part substantial. If not, it continues directly or uses `spawn_subtask` for bounded results. Otherwise it
+  starts 2–4 teammates in the shared directory with inherited settings without a confirmation
+  solely for the execution method. A different model or worktree setup needs an explicit choice
+  unless already authorized; model recommendations use saved capability, task fit, context,
+  image and price information. A subteam lead
   takes its proposal to the parent lead. It writes the "Team charter"
   into its branch as an aside and forks one "Name · Role" branch per teammate. Initial branch
   settings in a Fork are saved with the branch before its first model call. A subteam can only
@@ -142,7 +144,9 @@ also coordinate a subteam of its own direct children. The protocol lives in skil
   instead of reading on: a teammate that started with read-only tools once spent three hours and
   some 150 reads without writing a file. A conflict between the charter's contract, a reference
   and another teammate's work goes to the lead as a `question` at once, and the teammate carries on
-  by the charter's contract until the lead decides. If its assignment warrants a subteam, it
+  by the charter's contract until the lead decides. It may use `spawn_subtask` autonomously within
+  its assigned scope, passing down contracts, owned paths, the exact workspace and Git restrictions.
+  It integrates workers' results and verification evidence into one report to the lead. If its assignment warrants a subteam, it
   coordinates those children and sends one integrated result to its own lead.
 
 Every teammate branch starts from the charter, so it inherits the whole analysis without copying it.
@@ -163,24 +167,36 @@ submitted from the coordinating branch's run, so each brief shows that branch as
 
 `team` is a skill domain for these playbooks.
 
-### Being offered
+### Automatic execution choice
 
-Users rarely ask for a team by name, so `team-assemble` is reached in four ways:
+`chat-execution-select` is the shared policy for direct work, bounded subtasks and coordinating
+teams. Working skills and team roles read its document once through `app_read` resource=Skills,
+query=chat-execution-select when substantial work may have independent parts. Reading it does not
+replace their active skill. Small tasks skip this lookup. No new settings or UI are involved.
+Explicit user choices, existing grants, tool approvals and read-only limits remain authoritative.
+Callers delegate only when briefing and integration are likely to cost less than the time saved;
+they accept successful local verification with evidence and check the combined result.
 
-- **The router.** `skill-route` puts it first for a large request spanning several independent areas
-  that could proceed at the same time (an API with its UI and tests, several modules or services,
-  separately researched options) or one that mentions a team, roles or parallel work — never for a
-  change in one area, a bug, a question or a continuation. A doubtful choice costs one analysis:
-  the playbook decides whether a team pays off and falls back to one branch.
+Users need not ask for a team by name. `team-assemble` is reached in four ways:
+
+- **The router.** `skill-route` puts it first for substantial independent areas needing continuing
+  coordination (an API and its UI, or independent repairs across several services), or an explicit
+  team request. Bounded comparisons and lookups normally stay with a working skill and subtasks.
+  A broad bug can benefit too; small edits and localized bugs stay direct. A continuing task keeps
+  its working skill, which reassesses execution after investigation. Team roles stay active when
+  their members use subtasks. When no working skill covers substantial independent work, the router
+  can select chat-execution-select itself without replacing the requested outcome.
 - **Its description** names those signals, for the catalog the model reads.
 - **`/team`** invokes it directly.
-- **Planning skills** (`code-plan`, `code-feature-implement`, `qa-plan`) offer it in one sentence
-  when their plan splits into parallel parts on disjoint files; they never start a team themselves.
+- **Working skills** start useful subtasks or a team after investigation, without a separate
+  execution-method question. Planning skills (`code-plan`, `qa-plan`) may parallelize their own
+  read-only investigation, but do not start implementation or test execution from a plan request.
 
 `evals/AI.Routing.Evals` measures the router on messages that should and should not reach it (see
 [Context request budgets and quality evaluation](31-context-evaluation.md#opt-in-model-quality-evaluation)).
 
-The team can choose separate Git worktrees when every teammate can finish its edits from the same
+The default team uses the shared directory and inherits branch settings. When requested, the team
+can choose separate Git worktrees when every teammate can finish its edits from the same
 committed base and the repository, clean integration checkout,
 directory grants and ignored worktree paths allow them, or when the user grants a suitable
 destination directory. `team-assemble` includes that choice in
@@ -188,7 +204,19 @@ the team proposal. Each teammate then edits only its assigned worktree and commi
 paths on its local branch. The lead verifies and cherry-picks those commits, checks the integrated
 result, and removes clean worktrees while retaining branches for recovery. `git-manage-worktree`
 creates and removes the worktrees; it never pushes or deletes branches. If worktrees are not
-usable, the team offers the shared directory.
+usable, the team uses the shared directory unless that would contradict an already chosen mode.
+
+A team role stays active while using working playbooks: teammates and coordinators read their
+documents with `app_read` resource=Skills and an exact id query, then discover any missing tools.
+Calling `run_skill` for a different playbook would make that helper the active task. Assembly
+explicitly transitions to team-coordinate once the branches have started; role transitions and
+executors still use `run_skill`; after an executor, the caller reactivates its team role and
+continues the current step.
+
+A teammate branch may launch bounded subtasks without requesting a subteam or permission solely
+to delegate. Each worker stays within that teammate's assignment; the teammate remains accountable
+for the result and the lead does not duplicate its workers. Subtask nesting limits govern a
+subtask delegating again, not a team branch calling `spawn_subtask` for the first time.
 
 The coordination protocol lives in the three team playbooks. Where a general skill would
 conflict, the team playbook overrides it: in shared-directory mode a teammate never changes the

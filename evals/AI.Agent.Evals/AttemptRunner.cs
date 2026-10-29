@@ -107,7 +107,7 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         // result the model asked for, not a tool that failed; counting them together hides both.
         var nonZeroExits = failedResults.Count(message => ToolResults.IsNonZeroExit(message.Content));
         var toolErrors = failedResults.Length - nonZeroExits;
-        var answer = FinalAnswer(messages);
+        var answer = chat is null ? null : FinalAnswer(chat);
         IReadOnlyList<CheckResult> checks = [];
         if (outcome != "error")
         {
@@ -117,7 +117,8 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
                 checks = await Checks.RunAsync(scenario.Checks ?? [], before, after, changes,
                     new AttemptFacts(answer, calls.Length, toolErrors, prompts, scenario.Directory,
                         calls.Select(call => $"{call.Name} {call.Arguments}").ToArray(), finalProject?.DirectoryGrants,
-                        Transcript(messages)), token);
+                        Transcript(messages),
+                        chat is null ? [] : TeammateTranscript(chat)), token);
             }
             catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException)
             {
@@ -159,10 +160,12 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
         var answeredPrompts = new HashSet<Guid>();
         var seen = "";
         var current = run;
+        IReadOnlyList<ChatRunSnapshot> runs = [run];
         // Right after a submit the snapshot can still show how the previous turn ended, or Idle before
         // the dispatcher picks the message up; the turn ends only once its own run has moved.
         var started = false;
         var idlePolls = 0;
+        var settledPolls = 0;
         while (true)
         {
             var state = $"{current.Status}|{current.PendingApproval?.Id}|{current.PendingPrompt?.Id}|{string.Join(',', current.ActiveTools?.Select(tool => tool.Name) ?? [])}|{current.Wait?.Attempt}|{current.Error}";
@@ -179,35 +182,46 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
             }
 
             started |= current.Status is ChatRunStatus.Generating or ChatRunStatus.Paused || current.Revision > run.Revision;
-            if (current.PendingApproval is { } approval && answeredApprovals.Add(approval.Id))
+            settledPolls = AllBranchesSettled(runs) ? settledPolls + 1 : 0;
+            var approvalRun = runs.FirstOrDefault(item => item.PendingApproval is { } pending && !answeredApprovals.Contains(pending.Id));
+            var promptRun = runs.FirstOrDefault(item => item.PendingPrompt is { } pending && !answeredPrompts.Contains(pending.Id));
+            if (approvalRun?.PendingApproval is { } approval && answeredApprovals.Add(approval.Id))
             {
                 // A scenario names a tool as its server does (process_run) or as the model sees it (mcp_built_in__process_run).
                 var deny = scenario.DenyTools?.Any(name => string.Equals(approval.Name, name, StringComparison.OrdinalIgnoreCase)
                     || approval.Name.EndsWith("__" + name, StringComparison.OrdinalIgnoreCase)) == true;
                 approvals++;
                 if (deny) denied++;
-                trace.Write(new { kind = "approval", tool = approval.Name, arguments = approval.Arguments, decision = deny ? "deny" : "allow" });
-                await host.DecideAsync(current, new ToolApprovalDecision(approval.Id, deny ? ToolApprovalAction.Deny : ToolApprovalAction.Allow), token);
+                trace.Write(new { kind = "approval", branchId = approvalRun.BranchId, tool = approval.Name, arguments = approval.Arguments, decision = deny ? "deny" : "allow" });
+                await host.DecideAsync(approvalRun, new ToolApprovalDecision(approval.Id, deny ? ToolApprovalAction.Deny : ToolApprovalAction.Allow), token);
             }
-            else if (current.PendingPrompt is { } prompt && answeredPrompts.Add(prompt.Id))
+            else if (promptRun?.PendingPrompt is { } prompt && answeredPrompts.Add(prompt.Id))
             {
                 prompts++;
                 var response = Answer(prompt, scenario.Prompts ?? []);
-                trace.Write(new { kind = "prompt", questions = prompt.Questions, response });
-                await host.AnswerAsync(current, response, token);
+                trace.Write(new { kind = "prompt", branchId = promptRun.BranchId, questions = prompt.Questions, response });
+                await host.AnswerAsync(promptRun, response, token);
             }
             // A failed or interrupted run keeps its message queued for a retry, which only a person starts.
             else if ((started || ++idlePolls > 60) && (current.Status is ChatRunStatus.Failed or ChatRunStatus.Interrupted
-                     || current.Status is ChatRunStatus.Completed or ChatRunStatus.Idle && current.Queue.Count == 0))
+                     || current.Status is ChatRunStatus.Completed or ChatRunStatus.Idle && current.Queue.Count == 0)
+                     && settledPolls >= 2)
             {
                 return new Ended(current.Status == ChatRunStatus.Idle ? ChatRunStatus.Completed : current.Status,
                     current.Error, approvals, denied, prompts);
             }
 
             await Task.Delay(Poll, token);
-            current = await host.GetRunAsync(current.ChatId, token) ?? current with { Status = ChatRunStatus.Idle, Queue = [] };
+            runs = await host.GetRunsAsync(current.ChatId, token);
+            current = runs.FirstOrDefault(item => item.BranchId == run.BranchId)
+                ?? current with { Status = ChatRunStatus.Idle, Queue = [] };
         }
     }
+
+    public static bool AllBranchesSettled(IReadOnlyList<ChatRunSnapshot> runs) =>
+        runs.All(run => run.Status is ChatRunStatus.Failed or ChatRunStatus.Interrupted
+            || run.Status is ChatRunStatus.Idle or ChatRunStatus.Completed
+            && run.Queue.Count == 0 && run.PendingApproval is null && run.PendingPrompt is null);
 
     /// <summary>The simulated user's answer: a matching rule per question, else the recommended option, else the model's call.</summary>
     public static UserPromptResponse Answer(UserPrompt prompt, IReadOnlyList<PromptRule> rules)
@@ -258,11 +272,32 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
             }).ToArray();
     }
 
-    // The answer a person reads at the end: the last assistant message with text on the main branch.
-    private static string? FinalAnswer(IReadOnlyList<ChatMessageView> messages)
+    /// <summary>Only a teammate's own calls and results, signed by role and excluding inherited history.</summary>
+    public static IReadOnlyList<string> TeammateTranscript(ChatDetails chat)
     {
+        var byId = chat.Messages.ToDictionary(message => message.Id);
+        var entries = new List<string>();
+        foreach (var branch in chat.Branches ?? [])
+        {
+            if (branch.Member is null || branch.RootMessageId is null) continue;
+            var messages = new List<ChatMessageView>();
+            for (var id = branch.HeadMessageId; id is { } current && current != branch.RootMessageId
+                 && byId.TryGetValue(current, out var message); id = message.ParentId)
+                messages.Add(message);
+            messages.Reverse();
+            entries.AddRange(Transcript(messages).Select(entry => $"ROLE {branch.Member.Role}\n{entry}"));
+        }
+        return entries;
+    }
+
+    // The answer a person reads at the end: the last assistant message with text on the main branch.
+    public static string? FinalAnswer(ChatDetails chat)
+    {
+        var messages = chat.Messages;
         var byId = messages.ToDictionary(message => message.Id);
-        var head = messages.LastOrDefault(message => Role(message, "Assistant") && message.Sender is null);
+        var main = chat.Branches?.SingleOrDefault(branch => branch.Id == chat.Id);
+        var head = main is null ? messages.LastOrDefault(message => Role(message, "Assistant") && message.Sender is null)
+            : main.HeadMessageId is { } id && byId.TryGetValue(id, out var found) ? found : null;
         for (var message = head; message is not null; message = message.ParentId is { } parent && byId.TryGetValue(parent, out var next) ? next : null)
             if (Role(message, "Assistant") && !string.IsNullOrWhiteSpace(message.Content)) return message.Content;
         return null;

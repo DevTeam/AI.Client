@@ -5,8 +5,15 @@ icon: qa-e2e-create
 kind: playbook
 description: Add deterministic end-to-end tests for complete user journeys using the existing framework and isolated fixtures, then execute and report them.
 parameters: {"type":"object","properties":{"scenarios":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The user journeys to automate"},"environment":{"type":"string","description":"The configured test target"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file","app_read","spawn_subtask"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For verbose test output, use the `purpose: "chatTemporary"` root from
 `list_allowed_directories` for task-only logs or reports when available. Keep the console

@@ -5,13 +5,27 @@ icon: workflow
 kind: playbook
 description: Lead a team from its coordinating branch: answer teammates, record decisions, unblock, track status, integrate.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","process_wait","process_stop","run_skill"]
+tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","process_wait","process_stop","run_skill","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence over this playbook, and the user's messages in this branch
 come first. Ask questions and report results in the user's language. This is the coordinating branch of a
 team assembled by team-assemble; its "Team charter" message names the teammates, their branches,
 owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md).
+Keep team-coordinate active while using helper playbooks: read them with `app_read` resource=Skills,
+query=their exact id, and follow them with the concrete inputs stated below, rather than calling
+`run_skill` for a helper that would replace this role. Discover a missing helper tool with
+`tool_search`; its ordinary approvals still apply. Use `run_skill` for executors or intentional
+role transitions.
+After an executor call, reactivate team-coordinate with `run_skill` and continue the current step
+without replaying completed coordination or reloading helper instructions already in context.
 
 1. Take `projectId` and `chatId` from output.context. This branch is your context: the charter and
    every message a teammate sent you are already in it, so never read this branch with
@@ -23,7 +37,11 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    status table — never by a paraphrase of its role.
    A teammate's report is its result: take it as stated. Do not read a teammate's branch to learn
    what it did, to confirm a report, or to see whether it is still working.
-   A member may also lead a subteam. Its child branches report to that member, not directly to
+   A teammate may use bounded subtasks within its assignment under chat-execution-select; it
+   owns their integration and reports their checks and open items as one deliverable. Do not
+   duplicate those assignments or require approval solely for that execution method. You may
+   use subtasks for independent work inside the lead's own scope, without editing active members'
+   owned paths. A member may also lead a subteam. Its child branches report to that member, not directly to
    this branch; use its single integrated report as this team's deliverable. Do not mark that member
    done while its subteam has unfinished work.
 2. Handle every teammate message since your last answer, by intent:
@@ -40,8 +58,10 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
      one teammate's failure.
    - `decision` proposed by a teammate: accept or reject it as a decision.
    - `status`: nothing to send. Note it for the status table.
-   - `done`: check the deliverable itself against its definition of done — the files it names
-     and the checks the charter names, run once. In worktree mode inspect it in the teammate's
+   - `done`: check the deliverable itself against its definition of done using the files and
+     verification evidence it names. Accept successful local checks, including those integrated
+     from its subtasks; rerun them only for missing evidence, contradictions or changes that
+     invalidate them. Run combined contract and integration checks once. In worktree mode inspect it in the teammate's
      assigned worktree and verify the reported commits, clean status and owned paths against the
      charter's base; do not inspect the lead's checkout as a substitute. Defer checks that need
      another teammate's changes until after integration. Short of the definition,
@@ -57,7 +77,7 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    unrelated decisions must not be described as answers.
    If a later phase needs a different model or tool permission, inspect the affected branch's
    `effectiveBranchSettings` with `app_read` resource=Chat and the enabled Connections in
-   resource=Settings. Use `chat-branch-configure` through `run_skill` with the affected branch
+   resource=Settings. Follow `chat-branch-configure` with the affected branch
    title or id for a supported change to the narrowest branch. Explain which child branches
    inherit it; never invent capability, speed or price from a model name. Ask the person before
    loosening tool approvals or policies unless their exact branch-scoped choice is already stated.
@@ -71,12 +91,12 @@ owned paths, deliverables and the protocol (docs/34-asides-and-team-messages.md)
    check that the parts fit (build, tests, contract boundaries). In worktree mode, verify the
    lead's integration checkout is clean, each reported commit belongs to its assigned branch and
    changes only owned paths, and there are no uncommitted teammate changes. Integrate the exact
-   commits in dependency order with `git-cherry-pick` through `run_skill`, passing the exact
+   commits in dependency order following `git-cherry-pick`, using the exact
    absolute integration checkout as `repositoryPath`; the user's worktree
    choice authorized this local integration, not a push. Stop at conflicts or an unexpected diff,
    preserve every worktree and branch, and report the paused state. After successful integration,
    check that the parts fit together (build, tests, contract boundaries) in the integration
-   checkout. Remove only clean, integrated team worktrees with `git-manage-worktree`
+   checkout. Follow `git-manage-worktree` to remove only clean, integrated team worktrees
    (`action=remove`); retain their branches for recovery. For tests, start with filters for the
    affected modules; run a full suite only as a final relevant check.
    Use the runner's supported quiet/minimal output while preserving failures and counts, and set

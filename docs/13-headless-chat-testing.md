@@ -64,7 +64,28 @@ mention tools that were never called. A later successful version probe must not 
 failed original command.
 
 Deterministic runner checks live in `evals/AI.Agent.Evals.Tests`, outside normal CI. They verify
-picker answers, dismissal and that grant/transcript verdicts require real evidence.
+picker answers, dismissal, branch completion and that grant/transcript verdicts require real evidence.
+
+### Automatic execution evaluations
+
+Run `--filter tag:execution --parallel 1` to check a small direct edit, independent reviews of
+three bounded questions in a fixed repository export, and a coordinated server/client
+implementation. These requests do not select an execution method. Review checks require the
+execution policy to be consulted, source evidence for each question and completed results if
+subtasks are used; they allow direct work when delegation would cost more. A teammate may reasonably
+implement small policy modules directly; this is not a delegation failure.
+
+Run `--filter tag:execution-capability --parallel 1` separately to verify delegation from a
+teammate: its prompt explicitly selects a Backend/Client team and tells Backend to delegate a
+shipping module, then consume its artifact. This tests capability rather than automatic choice.
+`teammateTranscriptMatches` requires the correct role, its own call after the fork and the actual
+completed result; a lead's inherited call, a Client call or an unsuccessful attempt cannot pass.
+The executable check verifies that the receipt service consumes the delegated shipping module.
+
+The runner waits for every branch and answers prompts in teammate branches too; the lead's first
+assembly reply is not completion of the attempt. Long scenarios are tagged `slow` and have
+explicit time limits. These checks demonstrate execution and correctness, not a speedup; compare
+repeated runs against a baseline before claiming time or cost savings.
 
 ## One attempt
 
@@ -78,7 +99,9 @@ picker answers, dismissal and that grant/transcript verdicts require real eviden
    `FullAccess`, so tool policies still apply but safe calls need no card.
 5. Each turn is submitted, and `/api/runs` is polled. A pending approval is allowed unless the scenario
    denies the tool; an `ask_user` prompt is answered by the scenario's rules, else by the recommended
-   option, else dismissed (the model decides). A turn ends when its run completes, fails or is interrupted.
+   option, else dismissed (the model decides). All branches of this chat are driven, including
+   their approvals and prompts. A turn ends when the main run and its teammate runs have settled
+   with no pending commands; a failed run may retain its retry message.
 6. After the last turn, or the timeout (the run is then stopped), the chat, its usage and the Host's data
    are saved, the hidden files are written into the workspace, and the checks run against the workspace
    and the final answer.

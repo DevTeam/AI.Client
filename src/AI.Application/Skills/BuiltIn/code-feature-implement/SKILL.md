@@ -5,8 +5,15 @@ icon: code
 kind: playbook
 description: Implement a feature or code change end to end: explore, plan, edit files, run the build and tests, remove leftovers and summarize the change; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What to build or change, in the user's words"},"scope":{"type":"string","description":"Files, modules or limits the user named"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill","app_read","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
 from `list_allowed_directories` when available. Preserve command exit codes, inspect only
@@ -22,7 +29,7 @@ steps where they differ: their build, test and style rules are the ones to follo
    are the user's work: never revert, reformat or delete them, and keep them out of the summary.
 2. Explore. Locate the code with `grep_files` and `search_files` before reading; read the files
    the change touches, their callers, their tests and one similar existing feature whose patterns
-   you will copy. For a broad search in an unfamiliar codebase, hand it to `spawn_subtask`.
+   you will copy. Use the shared execution policy when a broad search can be split independently.
 3. Clarify only what is genuinely the user's decision and costly to guess (behaviour, public API,
    data format): one `ask_user` call, the recommended option first. Take the conventional choice
    for everything else and name it in the summary. A dismissed question takes the recommended
@@ -30,8 +37,9 @@ steps where they differ: their build, test and style rules are the ones to follo
 4. Plan. When the change spans more than three files, write a short numbered plan (file and what
    changes) in your text before the first edit. Stay inside `goal` and `scope`: no unrelated
    refactoring, renames, formatting or dependency upgrades, and ask before adding a dependency.
-   When the plan splits into substantial parts on disjoint files that could proceed at the same
-   time, offer team-assemble in one sentence before implementing; do not start a team yourself.
+   Apply the shared execution policy to independent parts; start useful subtasks or team-assemble
+   without asking the person to choose the execution method. In a teammate branch, keep the
+   charter's ownership and reporting protocol while doing the assigned work.
 5. Implement with `edit_file` for changes and `write_file` for new files. Match the surrounding
    code's naming, idiom and comment density. Add or update tests for the new behaviour where the
    project has tests.
@@ -50,7 +58,8 @@ steps where they differ: their build, test and style rules are the ones to follo
    remove debug prints, commented-out code and temporary TODOs you added. New source and test files
    stay. Never run `git add`, `commit`, `stash`, `reset`, `checkout`, `clean` or `push`; committing
    is the `git-commit` skill, and only on the user's request. Without git, list every file you
-   touched instead.
+   touched instead. In a team assignment, follow the role protocol for explicitly authorized
+   local worktree commits; shared-directory teammates still never change the shared Git state.
 8. Lead the final answer, in the user's language, with the result and why it matters in one or two
    sentences. Follow with only the material implementation choices, a compact verification result
    and anything the user must act on or could not verify. Group related changed files behind links

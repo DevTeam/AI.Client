@@ -4,10 +4,17 @@ name: Team assemble
 icon: users
 kind: playbook
 aliases: ["team"]
-description: Assemble a team or subteam for substantial parallel work, match enabled models to roles, offer separate Git worktrees when usable, and start a branch per teammate after the user's choice.
+description: Start a team for substantial independent work, inheriting its workspace and branch settings; ask only for unresolved setup choices.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The task"}},"additionalProperties":false}
-tools: ["app_read","app_runs","app_navigate","ask_user","list_allowed_directories","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill"]
+tools: ["app_read","app_runs","app_navigate","ask_user","list_allowed_directories","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence over this playbook. Ask questions and report results in
 the user's language; write the charter and the briefs in that language too. This branch becomes
@@ -42,9 +49,9 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    - their owned paths do not overlap, and shared files have one owner;
    - the contracts between them can be fixed now;
    - each part is substantial work, not a lookup.
-   If one fails, do not assemble a team. Say which condition failed and recommend working in this
-   branch, or `spawn_subtask` for independent parts whose results only need collecting: lookups,
-   or ranges of one large output, each written to its own file and joined afterwards.
+   Also apply chat-execution-select: use a team when continuing coordination justifies persistent
+   branches. If it does not pay off, continue the task directly or use `spawn_subtask` for bounded
+   independent results. Do not stop at recommending another execution method.
    If the person asked for a team regardless, put both options to them with `ask_user` first;
    for a subteam, send the tradeoff to its parent lead instead.
 5. Choose 2 to 4 teammates, or the size and roles the user asked for. Typical
@@ -76,8 +83,11 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    When the endpoint is known to accept Chat Completions `reasoning_effort`, propose an initial
    branch override per role only if it has a clear task-specific benefit; otherwise inherit the
    connection or parent setting. State the proposed effort in the team proposal and charter.
-6. For a team editing files in a Git repository, check whether separate Git worktrees are usable
-   before asking the user. Offer
+6. By default, use the existing shared directory and inherit this branch's connection, reasoning
+   effort, approval mode and tool policies. No additional choice is needed to start that team.
+   Check separate Git worktrees only when requested by the user, already selected for this task,
+   or required by the parent charter. A new worktree choice requires the concrete proposal in
+   step 7; do not create worktrees or authorize commits merely because a team is useful. Offer
    them only when every teammate can finish its assigned edits from the same committed base;
    a nested team must use the parent charter's workspace mode and cannot offer another one;
    a later teammate phase that needs another teammate's new files uses the shared directory in a
@@ -102,10 +112,13 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    stay within the parent's owned paths, and each gets a distinct Git branch and granted worktree
    destination. If the lead worktree is dirty or children need its uncommitted files, ask the
    parent lead to revise the phase; do not silently switch the subteam to shared-directory mode.
-7. For a top-level team, show the proposed team with `ask_user`, labelled "Team": the plan in one
-   line per phase and one line per teammate, including its proposed connection and reasoning effort
-   or their inheritance, and
-   any proposed subteam.
+7. For a top-level team using the default shared directory and inherited settings, briefly state
+   the assignments and start it without `ask_user`. The authorized task covers this execution
+   method; do not ask the person to approve parallelism or team membership again.
+   Ask only for an unresolved decision: a new worktree setup, a model override not already chosen,
+   a change of scope, or a permission change. Show that concrete proposal with `ask_user`, labelled
+   "Team": the plan in one line per phase and one line per teammate, including its proposed
+   connection and reasoning effort or their inheritance, and any proposed subteam.
    Name this lead branch's effective connection and explain that descendants inherit later changes
    to it unless they override the field. Do not change the parent team's connection to optimize
    one role. When step 6 found independent assignments, a clean Git checkout and usable
@@ -115,9 +128,11 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    integration, clean worktrees are removed afterward while their branches remain, and no branch
    is pushed. Show the proposed base, Git branch names and worktree paths when already known. If
    no granted destination exists, say that choosing worktrees also needs an existing
-   destination directory and a project grant. Otherwise keep "Start the team (Recommended)",
-   "Adjust the team" and "Work without a team". Set `allowOther` on. Adjust and repeat on an answer;
-   stop on "Work without a team", dismissed, expired or interrupted. This single answer authorizes
+   destination directory and a project grant. Otherwise offer only choices relevant to the unresolved
+   decision. Set `allowOther` on. Adjust and repeat on an answer.
+   On "Work without a team", continue the authorized task directly or with allowed subtasks.
+   A dismissed, expired or interrupted setup choice leaves that setup unresolved; continue only
+   work that does not depend on it. This single affirmative answer authorizes
    the selected team mode and the shown per-role connections; never switch modes or models silently
    after a failure. If a proposed approval mode or tool policy would loosen access, obtain the
    person's explicit choice of that exact branch scope and effect on descendants before applying
@@ -181,7 +196,8 @@ sender, `intent` says what it is, and mode Aside adds information without starti
    End each brief with a compact handoff: "Current decision", "First step", and "Open dependency"
    (use "none" when there is no dependency). These are facts and actions, not a request for the
    teammate to explain its private reasoning.
-11. If this is a subteam, first send its parent lead one `Status` Aside with the approved members,
+11. Run `team-coordinate` with `run_skill` to make coordination this branch's active role.
+   If this is a subteam, first send its parent lead one `Status` Aside with the approved members,
    assigned paths, models and expected deliverable. Later questions and the integrated `Done`
    follow the parent-team protocol; do not make the parent inspect child branches. Then answer
    with the team as a table (identity, deliverable) and one line on how it works: the
@@ -209,8 +225,9 @@ Protocol to put in the charter:
 - The charter's workspace mode applies to every teammate. In worktree mode, file operations and
   commands use that teammate's assigned worktree; local commits are reported to the lead, who
   integrates them. In shared-directory mode, nobody changes the shared Git state except the lead.
-- A teammate starts changing its owned paths early and grows the result; reading without changing
-  anything is not progress.
+- A teammate assigned edits starts changing its owned paths early and grows the result. A
+  read-only teammate produces findings or analysis with evidence instead; it never edits merely
+  to demonstrate progress.
 - A conflict between a contract, a reference and another teammate's work is a question to the lead
   as soon as it is found; until the lead decides, the charter's contract holds.
 - Before each major step a teammate reads this lead branch since the charter for new decisions.

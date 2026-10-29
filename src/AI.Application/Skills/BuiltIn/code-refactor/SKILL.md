@@ -5,8 +5,15 @@ icon: code-refactor
 kind: playbook
 description: Refactor selected code to improve its structure while preserving behavior and public contracts, then verify the changes; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The structural improvement to make"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence over this playbook. Follow AGENTS.md, CLAUDE.md,
 CONTRIBUTING and the repository's build, test and style conventions. Ask questions and report

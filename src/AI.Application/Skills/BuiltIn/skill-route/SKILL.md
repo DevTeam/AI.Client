@@ -34,13 +34,20 @@ Choose:
   directories, tool permissions, MCP servers, skills and recurring chats. If the user asks to
   create a new project and set it up, run project-create first so setup continues in that
   project's first chat.
-  Team work: choose team-assemble first when the message asks for a large piece of work spanning
-  several independent areas that could proceed at the same time — for example an API, its UI and
-  its tests; several modules or services; a comparison of several options researched separately —
-  or when it mentions a team, roles, teammates or parallel work. team-assemble itself decides
-  whether a team pays off and falls back to one branch, so a doubtful large request may go to it;
-  a change in one area, a single file, a bug, a question or a continuation of the active skill
-  never does. In a branch whose active skill is team-contribute or team-coordinate, keep it active.
+  Execution method: honor an explicit choice to work alone or avoid subtasks. For a continuation,
+  return the active skill alone BEFORE considering team signals below, even when the follow-up
+  adds independent areas: the working skill can change execution method after investigation.
+  Execution method for a new task: route to the skill that does the actual task; chat-execution-select is its
+  shared policy. When no working skill fits substantial independently executable work, choose
+  chat-execution-select to apply that policy and continue the requested task. Choose team-assemble first for substantial independent
+  areas that need continuing coordination and fixed contracts — for example an API and its UI,
+  or independent repairs across several services — or an explicit request for a team. A bounded
+  comparison, independent lookups or sections of one output normally use spawn_subtask from the
+  working skill. Mentioning parallel work alone does not require a team. Small edits, localized
+  bugs and explanations stay with their working skill; a broad bug is not excluded just because
+  it is a bug. A continuing task keeps its active skill and can reassess execution after research.
+  In a branch following team-contribute or team-coordinate, keep that role active, including when
+  a teammate wants to use subtasks. A request to plan or review never authorizes implementation.
   An explicit request to create or remove a Git worktree outside an active team uses
   git-manage-worktree. Do not route ordinary code changes to it merely because the repository
   already contains worktrees; team-assemble owns the team workspace choice.
@@ -101,7 +108,9 @@ Choose:
   publication or product implementation. These are hints only: choose a named skill only when it is
   present in the input catalog.
 - `tools`: up to eight tool names the work will most likely need in its first steps, including the
-  ones the chosen skills work with.
+  ones the chosen skills work with. For multiple independent work areas include app_read and
+  spawn_subtask when offered, so the working skill can read its execution policy and delegate
+  before reading every area's implementation itself.
 
 Use only ids and names from the input; never invent one. Return only one JSON object, with no
 Markdown and no explanation: {"skills":["..."],"tools":["..."]}

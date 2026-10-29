@@ -308,7 +308,7 @@ public class BuiltInSkillCatalogTests
             skill.AllowedTools.ShouldNotBeNull().ShouldNotBeEmpty(skill.Id);
             // Every tool a playbook names in its steps is one it declares.
             foreach (var tool in new[] { "app_projects", "app_security", "app_chats", "app_runs", "app_memory",
-                         "app_skills", "app_instructions", "app_navigate", "ask_user", "context_compact" })
+                         "app_skills", "app_instructions", "app_navigate", "ask_user", "context_compact", "spawn_subtask", "run_skill" })
                 if (SkillMarkdown.Body(skill.Content).Contains($"`{tool}`", StringComparison.Ordinal))
                     skill.AllowedTools.ShouldContain(tool, skill.Id);
         }

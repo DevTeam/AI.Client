@@ -11,7 +11,7 @@ using AI.Contracts.Projects;
 /// <param name="Calls">Every tool call of the attempt as "name arguments".</param>
 public sealed record AttemptFacts(string? Answer, int ToolCalls, int ToolErrors, int Prompts, string ScenarioDirectory,
     IReadOnlyList<string>? Calls = null, IReadOnlyList<DirectoryGrantSettings>? ProjectGrants = null,
-    IReadOnlyList<string>? ToolTranscript = null);
+    IReadOnlyList<string>? ToolTranscript = null, IReadOnlyList<string>? TeammateTranscript = null);
 
 public static class Checks
 {
@@ -105,6 +105,8 @@ public static class Checks
                     : new CheckResult(name, matching.Length == 0, matching.Length == 0 ? null
                         : string.Join("; ", matching.Take(3).Select(call => call.Length > 200 ? call[..200] + "…" : call)));
             }
+            case CheckType.TeammateTranscriptMatches:
+                return new CheckResult(name, facts.TeammateTranscript?.Any(entry => Match(entry, check)) == true);
             case CheckType.MinPrompts:
                 return new CheckResult(name, prompts >= check.Value, $"{prompts} questions");
             case CheckType.MaxPrompts:

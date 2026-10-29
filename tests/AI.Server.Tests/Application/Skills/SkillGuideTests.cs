@@ -52,6 +52,23 @@ public class SkillGuideTests
         ], token)).ShouldNotBeNull().Id.ShouldBe("code-tests-run");
     }
 
+    [Theory]
+    [InlineData("team-contribute")]
+    [InlineData("team-coordinate")]
+    public async Task ShouldKeepTheTeamRoleWhenAWorkingPlaybookIsReadAsAReference(string role)
+    {
+        var active = await _guide.ActivePlaybookAsync(ProjectId,
+        [
+            User("Continue the team assignment"), RunSkill("role", role), Result("role", "Completed"),
+            new("assistant", string.Empty,
+                [new ChatToolCall("reference", "mcp_app__app_read", "{\"resource\":\"Skills\",\"query\":\"code-feature-implement\"}")]),
+            new("tool", new BuiltInSkillCatalog().GetById("code-feature-implement")!.Content, ToolCallId: "reference"),
+            User("Also investigate the independent cache policy")
+        ], TestContext.Current.CancellationToken);
+
+        active.ShouldNotBeNull().Id.ShouldBe(role);
+    }
+
     [Fact]
     public async Task ShouldForgetAPlaybookSeveralTurnsBackAndOneThatIsNotAPlaybook()
     {

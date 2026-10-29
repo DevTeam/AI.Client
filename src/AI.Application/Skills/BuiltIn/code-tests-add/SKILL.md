@@ -5,8 +5,15 @@ icon: code-tests-add
 kind: playbook
 description: Add tests for selected behavior, uncovered edge cases or regressions using the project's existing test framework, then run them; never commits.
 parameters: {"type":"object","properties":{"behavior":{"type":"string","description":"The behavior or regression to cover"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
 from `list_allowed_directories` when available. Preserve command exit codes, inspect only

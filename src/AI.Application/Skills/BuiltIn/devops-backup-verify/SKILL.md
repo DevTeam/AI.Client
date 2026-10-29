@@ -5,8 +5,15 @@ icon: devops-backup-verify
 kind: playbook
 description: Check backup freshness, integrity and restoration of selected data in an explicitly isolated test destination, report recoverability; never overwrites live data.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The source environment"},"service":{"type":"string","description":"The data service or backup set"},"backup":{"type":"string","description":"The backup version or identifier"},"destination":{"type":"string","description":"The explicitly isolated restoration destination"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","cs_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence. Follow repository instructions, deployment runbooks
 and the existing toolchain. Use ordinary permission-checked tools; this playbook grants no access.

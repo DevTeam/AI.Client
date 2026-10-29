@@ -5,8 +5,15 @@ icon: qa-release-assess
 kind: playbook
 description: Assess a selected release against agreed quality gates, test evidence, open defects and residual risks, reporting readiness or insufficient evidence; never publishes.
 parameters: {"type":"object","properties":{"release":{"type":"string","description":"The exact release/build/source revision"},"criteria":{"type":"string","description":"The approved release quality gates"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence. Follow project instructions, test conventions and
 runbooks. Use ordinary permission-checked tools; this skill grants no access. Use `process_run`

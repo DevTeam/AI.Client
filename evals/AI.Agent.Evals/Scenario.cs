@@ -147,6 +147,8 @@ public enum CheckType
     MaxToolErrors,
     /// <summary>Some tool call, as "name arguments", matches <see cref="Check.Pattern"/>.</summary>
     CallsMatch,
+    /// <summary>A teammate role, its tool call and actual result match Pattern.</summary>
+    TeammateTranscriptMatches,
     /// <summary>No tool call matches <see cref="Check.Pattern"/> — "do not run the tests" kept.</summary>
     CallsNotMatch,
     /// <summary>The model asked the person (<c>ask_user</c>) at least <see cref="Check.Value"/> times.</summary>

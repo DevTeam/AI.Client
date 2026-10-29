@@ -6,8 +6,15 @@ aliases: ["stacktrace"]
 kind: playbook
 description: Analyze a stack trace or exception report from any runtime, map its frames to the source at the revision that actually ran, and explain the failing path and root cause with a suggested fix; changes nothing.
 parameters: {"type":"object","properties":{"stacktrace":{"type":"string","description":"The stack trace or exception text as pasted"},"version":{"type":"string","description":"The build, version or commit that produced it"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files holding the trace, or the source directories, explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 The user's instructions take precedence. Follow repository instructions and the existing
 toolchain. Use ordinary permission-checked tools; this playbook grants no access. Use `process_run`

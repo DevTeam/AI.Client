@@ -5,8 +5,15 @@ icon: devops-incident-diagnose
 kind: playbook
 description: Investigate an operational incident using logs, metrics, configuration and recent changes, report supported causes and a concrete recovery plan; changes nothing.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The affected environment"},"service":{"type":"string","description":"The affected service"},"symptom":{"type":"string","description":"The symptom, alert or observed failure"},"since":{"type":"string","description":"The incident time window"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user","app_read","spawn_subtask","run_skill","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For large diagnostic logs or traces, use the `purpose: "chatTemporary"` root from
 `list_allowed_directories` for task-only files when available. Redact sensitive data,

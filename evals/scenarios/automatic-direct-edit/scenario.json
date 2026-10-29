@@ -1,0 +1,33 @@
+{
+  "id": "automatic-direct-edit",
+  "description": "A one-line documentation correction should stay direct without execution-method prompts.",
+  "tags": [
+    "execution",
+    "edit"
+  ],
+  "turns": [
+    "In {workspace}/README.md change the documented default retry count from 2 to 3. Only this sentence needs changing."
+  ],
+  "timeoutSeconds": 240,
+  "checks": [
+    {
+      "type": "fileContains",
+      "path": "README.md",
+      "pattern": "Default retry count: 3"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "README.md"
+      ]
+    },
+    {
+      "type": "callsNotMatch",
+      "pattern": "^\\S*__spawn_subtask\\s|^\\S*__app_runs\\s.*\"mode\"\\s*:\\s*\"Fork\""
+    },
+    {
+      "type": "maxPrompts",
+      "value": 0
+    }
+  ]
+}

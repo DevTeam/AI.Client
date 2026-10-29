@@ -1,0 +1,42 @@
+{
+  "id": "automatic-team-implementation",
+  "description": "A coordinated server/client implementation starts automatically; each member chooses direct work or bounded subtasks within its scope.",
+  "tags": [
+    "execution",
+    "team",
+    "edit",
+    "slow"
+  ],
+  "turns": [
+    "Implement the order receipt system described in {workspace}/README.md end to end: the backend policies and service, the terminal client and demo, and their tests. The backend has three independent policy modules; the client consumes the shared receipt contract. Coordinate the server and client areas through integration and resolve their contract questions. Use the existing shared workspace. Keep one Backend owner responsible for all server modules and their focused tests, and one Client owner responsible for the client and its focused tests."
+  ],
+  "timeoutSeconds": 1800,
+  "checks": [
+    {
+      "type": "callsMatch",
+      "pattern": "^\\S*__app_runs\\s.*\"mode\"\\s*:\\s*\"Fork\""
+    },
+    {
+      "type": "command",
+      "name": "receipt contract and boundary behavior",
+      "executable": "python",
+      "arguments": [
+        "-B",
+        "{scenario}/check_receipt.py"
+      ],
+      "outputPattern": "RECEIPT_OK"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "server",
+        "client",
+        "tests"
+      ]
+    },
+    {
+      "type": "maxPrompts",
+      "value": 0
+    }
+  ]
+}

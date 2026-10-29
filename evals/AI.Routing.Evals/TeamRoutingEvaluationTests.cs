@@ -1,5 +1,6 @@
 namespace AI.Application.Tests.Skills;
 
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -33,9 +34,15 @@ public sealed class TeamRoutingEvaluationTests(ITestOutputHelper output)
         ("Add a CSV export of orders: a REST endpoint, a download button in the web UI, and tests for both.", true),
         ("Сделай уведомления: сервис на бэкенде, раздел в настройках UI, миграцию базы и тесты.", true),
         ("Implement multi-tenant support across the API, the background workers and the admin UI.", true),
-        ("Research Serilog, NLog and Microsoft.Extensions.Logging separately for our needs and recommend one.", true),
+        ("Research Serilog, NLog and Microsoft.Extensions.Logging separately for our needs and recommend one.", false),
         ("Let's do this as a team with roles: rework the auth module and update its documentation.", true),
         ("Распараллель работу: один делает клиент, другой сервер, третий пишет тесты для синхронизации заметок.", true),
+        ("Repair independent synchronization defects in the upload service and the web editor; agree on their shared retry contract and coordinate both fixes through integration.", true),
+        ("Почини независимые ошибки в сервисе оплаты и интерфейсе возвратов, согласуй общий контракт статусов и проверь их совместную работу.", true),
+        ("Compare the supported file formats of three libraries and return a short table.", false),
+        ("Распараллель независимую проверку трёх модулей и собери найденные ошибки в один отчёт.", false),
+        ("Rename OldClock to SystemClock consistently across the solution without changing its behavior.", false),
+        ("Implement the API and its UI yourself, sequentially, without a team or subtasks.", false),
         ("Fix the null reference in OrderService.Calculate.", false),
         ("Rename the variable count to total in Program.cs.", false),
         ("What does ChatRunDispatcher do?", false),
@@ -65,18 +72,42 @@ public sealed class TeamRoutingEvaluationTests(ITestOutputHelper output)
 
         var reports = new List<object>();
         var errors = new List<string>();
-        foreach (var (message, team) in Cases)
+        var cases = Cases.Select(item => (item.Message, item.Team, Active: (string?)null)).Concat(
+        [
+            ("Also add the API, worker and settings page to this feature; agree their contracts and implement everything.", false, "code-feature-implement"),
+            ("Within my assigned backend paths, investigate the parser and cache independently, then implement my service.", false, "team-contribute"),
+            ("Use subtasks to review independent contract boundaries in my assignment and return one integrated result to the lead.", false, "team-contribute"),
+            ("Research two independent integration questions while the teammates work in their own paths.", false, "team-coordinate"),
+            ("Extend the plan to cover the API, UI and background service; do not implement it yet.", false, "code-plan")
+        ]).ToArray();
+        foreach (var (message, team, active) in cases)
         {
-            var route = await routing.RouteAsync(run, [new ChatCompletionMessage("user", message)], [],
+            IReadOnlyList<ChatCompletionMessage> context = active is null
+                ? [new("user", message)]
+                : [new("user", "Continue the assigned task."),
+                    new("assistant", string.Empty,
+                        [new("skill", "mcp_app__run_skill", JsonSerializer.Serialize(new { skillId = active, parameters = new { } }))]),
+                    new("tool", "{\"status\":\"Completed\"}", ToolCallId: "skill"),
+                    new("assistant", "Continuing the current assignment."), new("user", message)];
+            var clock = Stopwatch.StartNew();
+            var route = await routing.RouteAsync(run, context, [],
                 TestContext.Current.CancellationToken);
             var skills = route?.Skills.Select(skill => skill.Id).ToArray() ?? [];
             var first = skills.FirstOrDefault() == Team;
-            reports.Add(new { message, expectedTeam = team, skills });
+            reports.Add(new { message, active, expectedTeam = team, routed = route is not null,
+                durationMs = clock.ElapsedMilliseconds, skills });
+            if (route is null)
+            {
+                errors.Add($"Routing did not complete in {clock.ElapsedMilliseconds} ms: \"{message}\".");
+                continue;
+            }
             if (first != team)
                 errors.Add($"{(team ? "missed" : "unwanted")} team: \"{message}\" -> [{string.Join(", ", skills)}]");
+            if (active is not null && (skills.Length != 1 || skills[0] != active))
+                errors.Add($"Lost active skill {active}: \"{message}\" -> [{string.Join(", ", skills)}]");
         }
 
-        var expected = Cases.Count(item => item.Team);
+        var expected = cases.Count(item => item.Item2);
         var offered = reports.Count - errors.Count;
         output.WriteLine(JsonSerializer.Serialize(new { model, cases = reports.Count, expected, correct = offered, reports },
             ReportOptions));

@@ -161,12 +161,12 @@ Paths, each a block of 2–3 steps:
   (Enter during a running turn adds the message to it: the turn reads it at its next step).
 - Following: widgets.chat-team from a teammate's branch (open it with a branch step) — the same
   task and roster, "this branch" on the open one, and who waits for the lead.
-- Starting a team: explain beside chat.composer that a large task spanning several independent
-  areas, or /team, runs the team skill, which first decides whether a team pays off and asks
-  before creating branches. For a suitable Git project with a clean checkout, that question can
-  offer separate worktrees for teammate files; chat branches still carry the conversation. When
-  saved connection details support it, the proposal can match an enabled model to each role, and
-  a teammate whose own assignment splits into parallel work can lead a subteam. Branch settings
+- Starting a team: explain beside chat.composer that skills choose direct work, bounded subtasks
+  or a coordinating team after brief research. A useful team starts in the shared directory with
+  inherited settings without asking the person to choose the execution method; /team also invokes
+  assembly directly. A requested separate-worktree setup or a different model can need a concrete
+  choice; chat branches still carry the conversation. A teammate may use bounded subtasks within
+  its assignment and report one integrated result, or propose a subteam for ongoing coordination. Branch settings
   inherit from the coordinating branch unless that role has an initial override. Link
   it as [Team assemble](aiclient://navigate/settings.skills?skillId=team-assemble).
 Explain with the discovered help only; do not invent costs, limits or how well a team performs.

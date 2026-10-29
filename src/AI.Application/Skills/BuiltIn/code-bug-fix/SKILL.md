@@ -5,8 +5,15 @@ icon: bug
 kind: playbook
 description: Find and fix the root cause of a bug, error or failing test: reproduce it, add a test that fails, fix, rerun the tests, remove leftovers and summarize; never commits.
 parameters: {"type":"object","properties":{"problem":{"type":"string","description":"The symptom, error text or failing test, in the user's words"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill","app_read","tool_search"]
 ---
+
+Before exploring multiple independent areas, read the full shared execution policy with
+`app_read` resource=Skills, query=chat-execution-select, unless its body is already loaded;
+a catalog description does not count. If app_read is not offered, discover it once with
+`tool_search` before falling back to direct work. Apply the policy after brief research and
+when dependencies change; keep this skill and its task active. For a small task in one area,
+work directly without this lookup.
 
 For verbose diagnostics or intermediate files, use the `purpose: "chatTemporary"` root
 from `list_allowed_directories` when available. Preserve command exit codes, inspect only

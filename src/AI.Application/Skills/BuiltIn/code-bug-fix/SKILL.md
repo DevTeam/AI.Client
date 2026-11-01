@@ -5,7 +5,7 @@ icon: bug
 kind: playbook
 description: Find and fix the root cause of a bug, error or failing test: reproduce it, add a test that fails, fix, rerun the tests, remove leftovers and summarize; never commits.
 parameters: {"type":"object","properties":{"problem":{"type":"string","description":"The symptom, error text or failing test, in the user's words"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill","app_read","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","subtask_wait","subtask_stop","run_skill","app_read","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

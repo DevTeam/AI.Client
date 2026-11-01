@@ -6,7 +6,7 @@ aliases: ["stacktrace"]
 kind: playbook
 description: Analyze a stack trace or exception report from any runtime, map its frames to the source at the revision that actually ran, and explain the failing path and root cause with a suggested fix; changes nothing.
 parameters: {"type":"object","properties":{"stacktrace":{"type":"string","description":"The stack trace or exception text as pasted"},"version":{"type":"string","description":"The build, version or commit that produced it"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files holding the trace, or the source directories, explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

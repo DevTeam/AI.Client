@@ -5,7 +5,7 @@ icon: flask
 kind: playbook
 description: Run focused and final test suites with concise output and bounded timeouts, then report verified totals and failure causes; changes nothing unless the user asks for a fix.
 parameters: {"type":"object","properties":{"filter":{"type":"string","description":"Test project, file, class or name pattern, if the user named one"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","list_allowed_directories","process_run","process_wait","process_stop","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

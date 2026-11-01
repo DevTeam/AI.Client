@@ -6,7 +6,7 @@ aliases: ["dump"]
 kind: playbook
 description: Analyze a crash, hang or memory dump (Windows minidump, .NET dump, Linux core file, Java heap or thread dump) with installed debuggers to find the faulting thread, deadlock or leak; capturing a new dump of a live process needs explicit confirmation; changes nothing else.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"Crash, hang, high memory or high CPU, as observed"},"version":{"type":"string","description":"The build or version of the program that was dumped"},"processId":{"type":"integer","description":"A live process to capture, only when the user asks for a capture"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Dump files, symbol or binary directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

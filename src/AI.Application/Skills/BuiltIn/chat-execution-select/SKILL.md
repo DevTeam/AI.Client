@@ -5,7 +5,7 @@ icon: workflow
 kind: playbook
 description: Choose direct work, subtasks or a team within the current task, including a teammate's assignment.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","spawn_subtask","run_skill","tool_search"]
+tools: ["app_read","spawn_subtask","subtask_wait","subtask_stop","run_skill","tool_search"]
 ---
 
 This is the shared execution policy for working skills and team roles. Apply it to the task
@@ -23,7 +23,7 @@ that is likely to finish the authorized work sooner after briefing, verification
 - **Subtasks:** independent bounded assignments whose answers or artifacts can be collected:
   investigate separate hypotheses, compare options, review independent modules, translate sections,
   or implement disjoint pieces against a fixed contract. Use `spawn_subtask` without asking the
-  person to choose an execution method. Batch independent assignments in one call; keep a small
+  person to choose an execution method. Launch each assignment in its own nonblocking call; keep a small
   number of useful workers rather than filling every slot. A failed hypothesis is evidence,
   not a reason to duplicate another worker's investigation.
   Start independent investigations before reading all their implementations yourself: give
@@ -35,8 +35,8 @@ that is likely to finish the authorized work sooner after briefing, verification
   permits only planning or read-only assignments, never implementation of the proposed result.
 
 Before delegation, give each worker its goal, essential context, inputs, deliverable, acceptance
-criteria, absolute workspace path, owned write targets and restrictions. Put shared rules in
-`sharedInstructions`. Every simultaneous writer, including the caller, has disjoint targets;
+criteria, absolute workspace path, owned write targets and restrictions in its `task` text.
+Every simultaneous writer, including the caller, has disjoint targets;
 shared files have one owner. Do not read another writer's unfinished output as a stable input.
 Fix contracts first or keep dependent work sequential. Subtasks cannot obtain an interactive
 approval: do the approval-bound part in the calling branch, use an already allowed alternative,
@@ -50,10 +50,18 @@ again, not merely because its caller belongs to a team. Respect a depth refusal;
 directly or report what remains. A subteam is a separate coordination decision handled by
 `team-assemble` and the parent lead, not a prerequisite for using subtasks.
 
+Keep each returned `taskId` and continue your independent work while workers run. Collect with
+`subtask_wait`: `mode=any` returns when one selected task finishes, `mode=all` waits for all;
+`waitTimeoutMs=0` takes a snapshot. Consume terminal results and wait on the remaining handles.
+A timeout, interrupted wait or new user message does not stop work: reuse the handle instead of
+launching duplicates. Use `subtask_stop` only for owned work that is no longer needed and inspect
+its partial result. Handles and replayable results last until the parent run ends; Stop of the
+parent cancels and drains its children. This also applies to a teammate's assignment.
+
 The caller owns integration and one combined result. Accept successful worker checks with their
 evidence; inspect failures, missing evidence and contradictions, and run checks across the combined
 result. Do not repeat the same local checks or reassign work already in progress without a reason.
-Finish or account for every delegated assignment before reporting completion. A teammate sends
+Collect every delegated result, including stopped or failed work, before reporting completion. A teammate sends
 one integrated report to its lead, including checks and unresolved items, not raw worker transcripts.
 Reassess when dependencies or conflicts remove the expected benefit; preserve finished work and
 avoid creating a second set of workers for the same assignment.

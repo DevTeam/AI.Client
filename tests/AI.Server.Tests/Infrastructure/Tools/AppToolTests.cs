@@ -357,7 +357,7 @@ public sealed partial class AppToolTests
 
         // The server decides its own listing order, so the set is what matters, not the sequence.
         session.Tools.Select(tool => tool.OriginalName).Order(StringComparer.Ordinal).ShouldBe(
-            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "app_theme", "ask_user", "context_compact", "plan_update", "run_skill", "skill_search", "spawn_subtask", "tool_search"]);
+            ["app_chats", "app_instructions", "app_memory", "app_navigate", "app_projects", "app_read", "app_resources", "app_runs", "app_schedule", "app_security", "app_skills", "app_theme", "ask_user", "context_compact", "plan_update", "run_skill", "skill_search", "spawn_subtask", "subtask_stop", "subtask_wait", "tool_search"]);
         session.Tools.ShouldAllBe(tool => tool.ServerId == AppMcpServer.Id);
         session.Tools.ShouldAllBe(tool => tool.ModelDefinition.Name.StartsWith("mcp_app__", StringComparison.Ordinal));
         var search = session.Tools.Single(tool => tool.OriginalName == "tool_search");

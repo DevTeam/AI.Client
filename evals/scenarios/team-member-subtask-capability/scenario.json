@@ -19,7 +19,7 @@
     {
       "type": "teammateTranscriptMatches",
       "name": "Backend shipping subtask completed",
-      "pattern": "(?s)^ROLE Backend[^\\n]*\\nCALL \\S*__spawn_subtask\\s(?=[^\\n]*shipping).*?RESULT.*?\"completed\"\\s*:\\s*true"
+      "pattern": "(?s)^ROLE Backend\\n.*?CALL \\S*__spawn_subtask\\s(?=[^\\n]*shipping)[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"(?<task>[^\"]+)\".*?\\nCALL \\S*__subtask_wait\\s[^\\n]*?\"\\k<task>\"[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"\\k<task>\"(?:(?!\"taskId\").)*?\"status\"\\s*:\\s*\"completed\"(?:(?!\"taskId\").)*?\"completed\"\\s*:\\s*true"
     },
     {
       "type": "fileExists",

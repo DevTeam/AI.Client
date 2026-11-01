@@ -5,7 +5,7 @@ icon: users
 kind: playbook
 description: Work as a teammate in a branch: do the assigned part and report to its parent lead branch.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run","spawn_subtask","tool_search"]
+tools: ["app_read","app_runs","ask_user","run_skill","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","process_run","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with
@@ -90,7 +90,10 @@ part that is yours. Team messages are described in docs/34-asides-and-team-messa
    Give every worker the
    charter's contracts, your owned paths, workspace mode, exact assigned worktree and Git rules;
    partition write targets between yourself and workers. Keep coordination with other teammates
-   through the lead. Integrate workers' results and evidence into your own deliverable, resolve
+   through the lead. Keep each returned taskId, continue your disjoint work, and collect every
+   result with `subtask_wait` before the final/Done report to the lead. A cancelled wait leaves workers
+   alive; reuse their handles or use `subtask_stop` for work no longer needed.
+   Integrate workers' results and evidence into your own deliverable, resolve
    or report their open items, and send the lead one combined report. Being a teammate does not
    make this branch a subtask; the configured depth limit still governs delegation by a subtask.
    If the brief assigns you a subteam, or your assignment needs continuing coordination rather

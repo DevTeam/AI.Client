@@ -5,7 +5,7 @@ icon: code
 kind: playbook
 description: Implement a feature or code change end to end: explore, plan, edit files, run the build and tests, remove leftovers and summarize the change; never commits.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What to build or change, in the user's words"},"scope":{"type":"string","description":"Files, modules or limits the user named"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","run_skill","app_read","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","write_file","edit_file","create_directory","move_file","delete_file","list_allowed_directories","process_run","process_wait","process_stop","ask_user","spawn_subtask","subtask_wait","subtask_stop","run_skill","app_read","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

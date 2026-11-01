@@ -2,13 +2,13 @@
 
 Status: Proposal
 
-`spawn_subtask` (see [application management tools](17-app-tools.md#spawn_subtask)) starts every task from an empty conversation: the subtask receives `sharedInstructions`, the task text and its acceptance criteria, and nothing of the parent's history. This document plans three changes that let delegated work reuse what the parent already paid for — the provider's prompt cache — and, where it pays off, the parent's whole context.
+`spawn_subtask` (see [application management tools](17-app-tools.md#spawn_subtask)) starts every task from an empty conversation: the subtask receives the task text (including essential shared rules) and its acceptance criteria, and nothing of the parent's history. This document plans three changes that let delegated work reuse what the parent already paid for — the provider's prompt cache — and, where it pays off, the parent's whole context.
 
 ## Why the cache misses today
 
 A provider caches a byte-exact prefix in the order tools → system → messages. A subtask differs from its parent in the first two blocks even when it runs on the same model:
 
-- **Tools.** Every App tool except `spawn_subtask` is filtered out of a subtask's list (`ChatAgent`, added by "Optimize general subtask execution" for focus and per-step tool tokens), and `AdaptiveContextPolicy` selects tools per request.
+- **Tools.** Every App tool except `spawn_subtask`, `subtask_wait` and `subtask_stop` is filtered out of a subtask's list (`ChatAgent`, added by "Optimize general subtask execution" for focus and per-step tool tokens), and `AdaptiveContextPolicy` selects tools per request.
 - **System.** Run instructions are composed into the leading system message: `run.subtask`, `run.context` with the subtask's own `branchId`, and standing instructions built with `appToolsAvailable: false`.
 
 So the first differing token is near the very start, and nothing after it is reused.
@@ -41,7 +41,7 @@ Done when a subtask's `spawn_subtask` call returns the refusal at depth 1, neste
 
 ### Parameter
 
-`spawn_subtask` gets `context: "auto" | "inherit" | "fresh"` (default `auto`), per call and optionally per task.
+`spawn_subtask` gets `context: "auto" | "inherit" | "fresh"` (default `auto`) for its single task.
 
 - `inherit` — the caller wants the subtask to start from its own context.
 - `fresh` — today's behaviour.
@@ -55,7 +55,7 @@ Changing the schema changes the tool hash, to which saved permissions are tied, 
 
 1. **Same connection.** The task resolves to the parent's connection: no `connectionId` that names another one, and either no connection is marked for subtasks or the parent's connection is one of the marked ones (then it is pinned instead of taking a round-robin turn). Base URL, model, key and reasoning effort must be equal; a changed effort invalidates the message cache with some providers.
 2. **Room.** The parent's last request plus a working reserve fits the context window: prefix ≤ 50% of the window, reserve `max(30k, 25% of the window)`.
-3. **Narrow fan-out.** At most `MaxInheritedTasks` tasks in the call (default 4). Every step of every forked task reads the whole prefix from cache, roughly N × steps × 0.1 × prefix in full-price tokens; a wide fan-out of independent parts is cheaper fresh.
+3. **Narrow fan-out.** At most `MaxInheritedTasks` active inherited tasks in the parent run (default 4). Every step of every forked task reads the whole prefix from cache, roughly N × steps × 0.1 × prefix in full-price tokens; a wide fan-out of independent parts is cheaper fresh.
 
 The outcome reports the mode actually used and, for a fallback, why: `context: "inherited"` or `context: "fresh (parent context too full)"`, so the caller and evaluations can see it.
 

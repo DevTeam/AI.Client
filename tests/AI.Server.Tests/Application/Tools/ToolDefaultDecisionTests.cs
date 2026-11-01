@@ -34,6 +34,8 @@ public sealed class ToolDefaultDecisionTests
     // A theme only paints the window; Save and Activate are agreed with the person by the playbook.
     [InlineData("app_theme")]
     [InlineData("plan_update")]
+    [InlineData("subtask_wait")]
+    [InlineData("subtask_stop")]
     public void AppReadAndNavigationToolsRunWithoutApproval(string name) =>
         _defaults.GetDecision(AppMcpServer.Id, name).ShouldBe("Allow");
 

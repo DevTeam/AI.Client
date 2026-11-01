@@ -1,0 +1,52 @@
+{
+  "id": "asynchronous-subtasks",
+  "description": "Two single launches, independent parent work and collection of the original handles through the real Host and model.",
+  "tags": [
+    "execution-capability",
+    "subtasks"
+  ],
+  "turns": [
+    "Exercise asynchronous subtasks in {workspace}. Use two separate spawn_subtask calls: one worker computes 17 * 19 and one computes 23 * 29. Each worker must answer directly with its integer, use no tools, spawn no children and change no files. Keep the two returned taskIds. While they work, before your first subtask_wait, create parent-note.txt yourself containing PARENT_READY (a trailing newline is fine). Then collect their results using subtask_wait, retaining handles across timeouts; use any first and wait on remaining handles if needed. Return the sum of their two answers. This is an explicit capability probe; do not create a team or ask me to choose execution details. Do not change other files."
+  ],
+  "timeoutSeconds": 600,
+  "checks": [
+    {
+      "type": "toolTranscriptMatches",
+      "name": "launches precede independent parent work and collection",
+      "pattern": "(?s)CALL \\S*__spawn_subtask\\s[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"(?<first>[^\"]+)\".*?CALL \\S*__spawn_subtask\\s[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"(?<second>[^\"]+)\".*?CALL \\S*__(?:write_file|process_run|process_run_sandboxed|cs_run)\\s[^\\n]*parent-note.*?CALL \\S*__subtask_wait\\s(?=[^\\n]*\"\\k<first>\")(?=[^\\n]*\"\\k<second>\")"
+    },
+    {
+      "type": "maxMatchingCalls",
+      "pattern": "^\\S*__spawn_subtask\\s",
+      "value": 2
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "both original handles have completed results",
+      "pattern": "(?s)CALL \\S*__spawn_subtask\\s[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"(?<first>[^\"]+)\".*?CALL \\S*__spawn_subtask\\s[^\\n]*\\nRESULT[^\\n]*?\"taskId\"\\s*:\\s*\"(?<second>[^\"]+)\"(?=.*?CALL \\S*__subtask_wait\\s.*?RESULT[^\\n]*?\"taskId\"\\s*:\\s*\"\\k<first>\"(?:(?!\"taskId\").)*?\"status\"\\s*:\\s*\"completed\")(?=.*?CALL \\S*__subtask_wait\\s.*?RESULT[^\\n]*?\"taskId\"\\s*:\\s*\"\\k<second>\"(?:(?!\"taskId\").)*?\"status\"\\s*:\\s*\"completed\")"
+    },
+    {
+      "type": "fileContains",
+      "path": "parent-note.txt",
+      "pattern": "\\APARENT_READY\\s*\\z"
+    },
+    {
+      "type": "onlyChanged",
+      "paths": [
+        "parent-note.txt"
+      ]
+    },
+    {
+      "type": "answerMatches",
+      "pattern": "\\b990\\b"
+    },
+    {
+      "type": "maxToolErrors",
+      "value": 0
+    },
+    {
+      "type": "maxPrompts",
+      "value": 0
+    }
+  ]
+}

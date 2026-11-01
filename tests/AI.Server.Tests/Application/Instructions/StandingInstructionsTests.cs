@@ -89,9 +89,9 @@ public sealed class StandingInstructionsTests : IDisposable
         preview.Layers[0].Content.ShouldContain("end each at a natural boundary of the material");
         preview.Layers[0].Content.ShouldContain("without retelling its input");
         preview.Layers[0].Content.ShouldContain("stop checking once they pass");
-        preview.Layers[0].Content.ShouldContain("Put all parallel parts in one call");
+        preview.Layers[0].Content.ShouldContain("separate nonblocking spawn_subtask call");
         preview.Layers[0].Content.ShouldContain("disjoint write targets");
-        preview.Layers[0].Content.ShouldContain("sharedInstructions once");
+        preview.Layers[0].Content.ShouldNotContain("sharedInstructions");
         preview.Layers[0].Content.ShouldContain("explicit acceptanceCriteria");
         preview.Layers[0].Content.ShouldContain("must ask the user first");
         preview.Layers[0].Content.ShouldContain("no already-allowed equivalent");

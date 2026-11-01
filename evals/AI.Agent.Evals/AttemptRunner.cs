@@ -285,7 +285,8 @@ public sealed class AttemptRunner(string hostAssembly, EvalModel model, Workspac
                  && byId.TryGetValue(current, out var message); id = message.ParentId)
                 messages.Add(message);
             messages.Reverse();
-            entries.AddRange(Transcript(messages).Select(entry => $"ROLE {branch.Member.Role}\n{entry}"));
+            var transcript = Transcript(messages);
+            if (transcript.Count > 0) entries.Add($"ROLE {branch.Member.Role}\n{string.Join('\n', transcript)}");
         }
         return entries;
     }

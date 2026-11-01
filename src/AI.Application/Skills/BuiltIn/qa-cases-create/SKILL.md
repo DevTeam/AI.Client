@@ -5,7 +5,7 @@ icon: qa-cases-create
 kind: playbook
 description: Draft traceable test cases with prerequisites, data, steps and expected outcomes, covering meaningful normal, boundary and error behavior; changes nothing.
 parameters: {"type":"object","properties":{"requirements":{"type":"string","description":"The behavior or acceptance criteria to cover"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

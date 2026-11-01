@@ -5,7 +5,7 @@ icon: devops-observability-configure
 kind: playbook
 description: Configure service logs, metrics, tracing, health checks and actionable alerts, validate their behavior and apply remote settings only when specifically authorized.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The target environment, if live settings are requested"},"service":{"type":"string","description":"The service to instrument"},"goal":{"type":"string","description":"The desired signals, dashboards or alerts"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

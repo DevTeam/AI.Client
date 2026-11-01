@@ -6,7 +6,7 @@ aliases: ["log-level"]
 kind: playbook
 description: Review the effective log levels, sinks and rolling/retention policy and, after confirmation, raise or restore verbosity for specific categories and adjust retention for a diagnosis, recording how to revert; never restarts a process it did not start.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"What the logs must show, or the proposal from a log analysis"},"categories":{"type":"array","items":{"type":"string"},"maxItems":50,"description":"Logger categories, namespaces or modules to change"},"level":{"type":"string","description":"The requested level, when the user named one"},"duration":{"type":"string","description":"How long the raised level should stay"},"restore":{"type":"boolean","description":"Restore the levels recorded before an earlier raise"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Logging configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","edit_file","process_run","trigger_wait","ask_user","app_read","spawn_subtask","run_skill","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","edit_file","process_run","trigger_wait","ask_user","app_read","spawn_subtask","subtask_wait","subtask_stop","run_skill","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

@@ -5,18 +5,11 @@ using AI.Application.Chats;
 using AI.Application.Projects;
 using AI.Application.Settings;
 using AI.Application.Tools;
-using AI.Application.Workspace;
 using AI.Contracts.Chats;
 using AI.Contracts.Projects;
 using AI.Contracts.Settings;
 using AI.Contracts.Tools;
-using AI.Infrastructure.Projects;
-using AI.Infrastructure.Chat;
-using AI.Infrastructure.Settings;
-using AI.Infrastructure.Storage;
 using AI.Infrastructure.Tests.Storage;
-using AI.Infrastructure.Tools;
-using AI.Infrastructure.Workspace;
 using AI.Mcp.App;
 using AI.Server.Hosting;
 using Moq;
@@ -25,495 +18,233 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Xunit;
 
-/// <summary>
-/// Drives the subtask tool over a real MCP session, because the split it exists for — answer to the
-/// model, transcript to the user — only holds if the protocol layer carries it that way.
-/// </summary>
+/// <summary>Real MCP calls exercise asynchronous launch and run-owned collection, with a controlled model.</summary>
 [Trait("Category", "Integration")]
 public sealed class AppSubtaskToolTests
 {
-    private static readonly string[] CompleteOutput = ["Output is complete."];
+    private const string Evidence = "Result verified.\n<subtask_evidence>{\"checks\":[{\"name\":\"focused check\",\"status\":\"Passed\",\"details\":\"exit code 0\"}],\"unresolved\":[]}</subtask_evidence>";
+
+    private static Task<ToolCallResult> CallAsync(IToolSession session, string name, object arguments,
+        CancellationToken token, IProgress<ToolProgress>? progress = null) =>
+        session.CallAsync(session.Tools.Single(tool => tool.OriginalName == name), JsonSerializer.Serialize(arguments), progress, token);
+
+    private static async Task<string> SpawnAsync(IToolSession session, string task, Guid? connectionId = null,
+        string[]? acceptanceCriteria = null)
+    {
+        var result = await CallAsync(session, "spawn_subtask", new { task, connectionId, acceptanceCriteria }, TestContext.Current.CancellationToken);
+        result.IsError.ShouldBeFalse(result.ModelContent);
+        return result.StructuredContent!.Value.GetProperty("taskId").GetString()!;
+    }
+
+    private static Task<ToolCallResult> WaitAsync(IToolSession session, params string[] ids) =>
+        CallAsync(session, "subtask_wait", new { taskIds = ids, mode = "all", waitTimeoutMs = 10000 }, TestContext.Current.CancellationToken);
+
+    private static JsonElement Outcome(ToolCallResult result, int index = 0) =>
+        result.StructuredContent!.Value.GetProperty("tasks")[index].GetProperty("result");
 
     [Fact]
-    public async Task ShouldReturnOnlyTheAnswerToTheModelAndTheTranscriptToTheHost()
+    public async Task LaunchReturnsBeforeCompletionAndCollectionKeepsTheTranscriptOutOfModelContext()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("""
-            the subtask's conclusion
-            <subtask_evidence>{"checks":[{"name":"focused check","status":"Passed","details":"exit code 0"}],"unresolved":[]}</subtask_evidence>
-            """);
+        fixture.Completion.Answer(Evidence);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.HoldAnswerUntil(gate.Task);
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("summarise the thing"), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
-        var outcome = result.StructuredContent!.Value.GetProperty("results")[0];
-        outcome.GetProperty("answer").GetString().ShouldBe("the subtask's conclusion");
-        outcome.GetProperty("completed").GetBoolean().ShouldBeTrue();
-        outcome.GetProperty("checks")[0].GetProperty("name").GetString().ShouldBe("focused check");
-        outcome.GetProperty("checks")[0].GetProperty("status").GetString().ShouldBe("Passed");
-        outcome.GetProperty("unresolved").GetArrayLength().ShouldBe(0);
-        outcome.GetProperty("artifacts").GetArrayLength().ShouldBe(0);
-        // Passed evidence is the caller's cue to integrate rather than re-verify.
-        result.StructuredContent!.Value.GetProperty("next").GetString()!.ShouldContain("at most one cross-result check");
-
-        // The transcript rides in _meta, which the model-facing projection excludes by contract.
+        var id = await SpawnAsync(session, "Inspect one module");
+        await fixture.Completion.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var snapshot = await CallAsync(session, "subtask_wait", new { taskIds = new[] { id }, waitTimeoutMs = 0 }, TestContext.Current.CancellationToken);
+        snapshot.StructuredContent!.Value.GetProperty("tasks")[0].GetProperty("status").GetString().ShouldBe("running");
+        gate.SetResult();
+        var result = await WaitAsync(session, id);
+        Outcome(result).GetProperty("completed").GetBoolean().ShouldBeTrue();
+        Outcome(result).GetProperty("checks")[0].GetProperty("status").GetString().ShouldBe("Passed");
         result.Meta.ShouldNotBeNull();
         result.Meta!.Value.GetProperty("transcript").GetArrayLength().ShouldBeGreaterThan(0);
-        result.ModelContent.ShouldContain("the subtask's conclusion");
         result.ModelContent.ShouldNotContain("transcript");
+        var replay = await WaitAsync(session, id);
+        Outcome(replay).GetProperty("answer").GetString().ShouldBe("Result verified.");
+        fixture.Completion.StreamRequests.ShouldBe(1);
     }
 
     [Fact]
-    public async Task ShouldUseAFocusedPromptWithoutTheApplicationCatalog()
+    public async Task MultipleSingleLaunchesRunTogetherAndUseTheMarkedPoolInOrder()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        await fixture.MarkForSubtasksAsync(fixture.DefaultConnectionId, fixture.CheapConnectionId);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.HoldAnswerUntil(gate.Task);
+        fixture.Completion.Answer(Evidence);
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        await session.CallAsync(tool, SubtaskFixture.Arguments("do the focused work"), null,
-            TestContext.Current.CancellationToken);
-
-        var prompt = string.Join("\n", fixture.Completion.Requests.ShouldHaveSingleItem().ContextMessages!
-            .Select(message => message.Content));
-        prompt.ShouldContain("focused background worker");
-        prompt.ShouldNotContain("Application tools (named here without their server prefix)");
-        prompt.ShouldNotContain("Skills: use a matching skill");
+        var first = await SpawnAsync(session, "First module");
+        var second = await SpawnAsync(session, "Second module");
+        first.ShouldNotBe(second);
+        gate.SetResult();
+        var result = await WaitAsync(session, first, second);
+        Outcome(result, 0).GetProperty("connection").GetString().ShouldBe("Test");
+        Outcome(result, 1).GetProperty("connection").GetString().ShouldBe("Cheap");
+        fixture.Completion.StreamRequests.ShouldBe(2);
     }
 
     [Fact]
-    public async Task ShouldShareTheChatsPromptCacheKeyAndForbidFurtherDelegation()
+    public async Task CancelledWaitLeavesWorkAliveAndStopCancelsOnlyTheNamedTask()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.HoldAnswerUntil(gate.Task);
+        fixture.Completion.Answer(Evidence);
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        await session.CallAsync(tool, SubtaskFixture.Arguments("do the focused work"), null,
-            TestContext.Current.CancellationToken);
-
-        var request = fixture.Completion.Requests.ShouldHaveSingleItem();
-        // The parent's turn runs under the same key, so the provider can route both to one cache.
-        request.PromptCacheKey.ShouldBe($"chat-{fixture.ChatId:N}");
-        string.Join("\n", request.ContextMessages!.Select(message => message.Content)).ShouldContain("Do not delegate");
+        var first = await SpawnAsync(session, "First");
+        var second = await SpawnAsync(session, "Second");
+        using var waitCancellation = new CancellationTokenSource();
+        var waiting = CallAsync(session, "subtask_wait", new { taskIds = new[] { first, second } }, waitCancellation.Token);
+        await waitCancellation.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => waiting);
+        var stopped = await CallAsync(session, "subtask_stop", new { taskIds = new[] { first } }, TestContext.Current.CancellationToken);
+        stopped.StructuredContent!.Value.GetProperty("tasks")[0].GetProperty("status").GetString().ShouldBe("cancelled");
+        gate.SetResult();
+        Outcome(await WaitAsync(session, second)).GetProperty("completed").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
-    public async Task ShouldLetATeammateDelegateAtTheDefaultDepthUsingItsBranchConnection()
+    public async Task OtherBranchesCannotReadOrStopAnOwnedHandle()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        fixture.Completion.Answer(Evidence);
+        await using var owner = await fixture.OpenAsync();
+        var id = await SpawnAsync(owner, "One owned task");
+        await using var stranger = await fixture.OpenAsync(branchId: Guid.NewGuid());
+        foreach (var tool in new[] { "subtask_wait", "subtask_stop" })
+        {
+            var rejected = await CallAsync(stranger, tool, tool == "subtask_wait" ? (object)new { taskIds = new[] { id }, waitTimeoutMs = 0 } : new { taskIds = new[] { id } }, TestContext.Current.CancellationToken);
+            rejected.IsError.ShouldBeTrue();
+        }
+        Outcome(await WaitAsync(owner, id)).GetProperty("completed").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task FailedWorkDoesNotCancelItsSibling()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.AnswerPerTask(task => task.StartsWith("Fail", StringComparison.Ordinal)
+            ? throw new InvalidOperationException("Controlled model failure.") : Evidence);
+        await using var session = await fixture.OpenAsync();
+        var failed = await SpawnAsync(session, "Fail this task");
+        var healthy = await SpawnAsync(session, "Complete this task");
+        var result = await WaitAsync(session, failed, healthy);
+        result.StructuredContent!.Value.GetProperty("tasks")[0].GetProperty("status").GetString().ShouldBe("failed");
+        Outcome(result, 0).GetProperty("error").GetString().ShouldBe("Controlled model failure.");
+        Outcome(result, 1).GetProperty("completed").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ShouldLetATeammateDelegateAtDefaultDepthUsingItsBranchConnection()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        fixture.Completion.Answer(Evidence);
         var token = TestContext.Current.CancellationToken;
         var chat = (await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, token)).ShouldNotBeNull();
-        var charterId = Guid.NewGuid();
+        var charter = Guid.NewGuid();
         chat = (await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
-            new(charterId, null, "User", "Team charter", chat.Revision, BranchId: fixture.ChatId), token)).ShouldNotBeNull();
-        var branchId = Guid.NewGuid();
+            new(charter, null, "User", "Team charter", chat.Revision, BranchId: fixture.ChatId), token)).ShouldNotBeNull();
+        var branch = Guid.NewGuid();
         (await fixture.Chats.AppendMessageAsync(fixture.ProjectId, fixture.ChatId,
-            new(Guid.NewGuid(), charterId, "User", "Backend assignment", chat.Revision,
-                BranchId: branchId, ParentBranchId: fixture.ChatId, BranchMember: new("Ada", "Backend"),
+            new(Guid.NewGuid(), charter, "User", "Backend assignment", chat.Revision, BranchId: branch,
+                ParentBranchId: fixture.ChatId, BranchMember: new("Ada", "Backend"),
                 BranchSettings: new(ConnectionId: fixture.CheapConnectionId)), token)).ShouldNotBeNull();
-        await using var session = await fixture.OpenAsync(branchId: branchId);
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("Investigate one backend policy"), null, token);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
+        await using var session = await fixture.OpenAsync(branchId: branch);
+        var id = await SpawnAsync(session, "One backend policy");
+        Outcome(await WaitAsync(session, id)).GetProperty("connection").GetString().ShouldBe("Cheap");
         var request = fixture.Completion.Requests.ShouldHaveSingleItem();
         request.Model.ShouldBe("small");
         string.Join("\n", request.ContextMessages!.Select(message => message.Content)).ShouldContain("Do not delegate");
     }
 
     [Fact]
-    public async Task ShouldRefuseDelegationFromASubtaskAtTheDepthLimit()
+    public async Task DepthLimitRefusesLaunchWithoutStartingWork()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
         await using var session = await fixture.OpenAsync(interactive: false, subtaskDepth: 1);
-        // Still offered, so a subtask's tool list stays the parent's; the call is what refuses.
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("nested work"), null,
-            TestContext.Current.CancellationToken);
-
+        var result = await CallAsync(session, "spawn_subtask", new { task = "Nested" }, TestContext.Current.CancellationToken);
         result.IsError.ShouldBeTrue();
-        result.StructuredContent!.Value.GetProperty("error").GetString().ShouldNotBeNull()
-            .ShouldContain("not available from a subtask");
         fixture.Completion.Requests.ShouldBeEmpty();
     }
 
     [Fact]
-    public async Task ShouldAllowNestedDelegationWithinARaisedDepthLimit()
+    public async Task RaisedDepthAllowsAnotherLevelAndKeepsTheStepBudget()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
         await fixture.SetMaxSubtaskDepthAsync(2);
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync(interactive: false, subtaskDepth: 1);
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("nested work"), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
-        // The nested run is at depth 2, the limit, so it is told not to go further.
-        string.Join("\n", fixture.Completion.Requests.ShouldHaveSingleItem().ContextMessages!
-            .Select(message => message.Content)).ShouldContain("Do not delegate");
-    }
-
-    [Fact]
-    public async Task ShouldForceAResultAfterTheSubtaskModelStepBudget()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
         fixture.Completion.LoopWithUnavailableTools();
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("do not explore forever"), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
+        await using var session = await fixture.OpenAsync(interactive: false, subtaskDepth: 1);
+        var id = await SpawnAsync(session, "Nested bounded work");
+        var result = await WaitAsync(session, id);
+        Outcome(result).GetProperty("answer").GetString().ShouldNotBeNull().ShouldContain("step budget");
         fixture.Completion.StreamRequests.ShouldBe(40);
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("answer").GetString()!
-            .ShouldContain("step budget");
     }
 
-    [Fact]
-    public async Task ShouldRunSeveralTasksInOneCall()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingOrDisabledConnectionsFailBeforeLaunch(bool disabled)
     {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        await using var fixture = await SubtaskFixture.CreateAsync(withConnection: disabled);
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second", "third"), null,
-            TestContext.Current.CancellationToken);
-
-        var outcomes = result.StructuredContent!.Value.GetProperty("results");
-        outcomes.GetArrayLength().ShouldBe(3);
-        outcomes.EnumerateArray().Select(item => item.GetProperty("task").GetString())
-            .ShouldBe(["first", "second", "third"], ignoreOrder: true);
-        // Without evidence envelopes no task has passed checks, so each one is named for a look.
-        result.StructuredContent!.Value.GetProperty("next").GetString()!.ShouldStartWith("Tasks 1, 2, 3 ");
-    }
-
-    [Fact]
-    public async Task ShouldQueueMoreTasksThanItRunsAtOnce()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool,
-            SubtaskFixture.Arguments(Enumerable.Range(1, 33).Select(index => $"task-{index}").ToArray()), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
-        result.StructuredContent!.Value.GetProperty("results").GetArrayLength().ShouldBe(33);
-    }
-
-    [Fact]
-    public async Task ShouldApplySharedInstructionsWithoutRepeatingThemInEveryTask()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-        var arguments = JsonSerializer.Serialize(new
-        {
-            sharedInstructions = "Preserve code blocks.",
-            tasks = new[]
-            {
-                new { task = "first part", acceptanceCriteria = CompleteOutput },
-                new { task = "second part", acceptanceCriteria = CompleteOutput }
-            }
-        });
-
-        var result = await session.CallAsync(tool, arguments, null, TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse(result.ModelContent);
-        lock (fixture.Completion.Requests)
-            fixture.Completion.Requests.ShouldAllBe(request =>
-                request.Message.StartsWith("Preserve code blocks." + Environment.NewLine + Environment.NewLine, StringComparison.Ordinal)
-                && request.Message.Contains("Acceptance criteria:", StringComparison.Ordinal)
-                && request.Message.Contains("Output is complete.", StringComparison.Ordinal)
-                && request.Message.Contains("<subtask_evidence>", StringComparison.Ordinal));
-        result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
-            .Select(item => item.GetProperty("task").GetString()).ShouldBe(["first part", "second part"], ignoreOrder: true);
-        tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
-            .GetProperty("maxItems").GetInt32().ShouldBe(256);
-        tool.ModelDefinition.InputSchema.GetProperty("properties").GetProperty("tasks")
-            .GetProperty("items").GetProperty("properties").GetProperty("acceptanceCriteria")
-            .GetProperty("maxItems").GetInt32().ShouldBe(32);
-    }
-
-    [Fact]
-    public async Task ShouldRefuseMoreThanTheQueueLimit()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var error = await Should.ThrowAsync<ArgumentException>(() => session.CallAsync(tool,
-            SubtaskFixture.Arguments(Enumerable.Range(1, 257).Select(index => $"task-{index}").ToArray()), null,
-            TestContext.Current.CancellationToken));
-        error.Message.ShouldContain("at most 256 items");
-    }
-
-    [Fact]
-    public async Task ShouldReportAFailedSubtaskWithoutLosingItsSiblings()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        // An empty reply is what the agent treats as a broken turn, so one task fails on purpose.
-        fixture.Completion.AnswerPerTask(task => task.StartsWith("broken", StringComparison.Ordinal) ? string.Empty : "fine");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("broken", "healthy"), null,
-            TestContext.Current.CancellationToken);
-
-        var outcomes = result.StructuredContent!.Value.GetProperty("results").EnumerateArray().ToArray();
-        outcomes.Single(item => item.GetProperty("task").GetString() == "broken")
-            .GetProperty("error").GetString().ShouldNotBeNull();
-        outcomes.Single(item => item.GetProperty("task").GetString() == "healthy")
-            .GetProperty("answer").GetString().ShouldBe("fine");
-    }
-
-    [Fact]
-    public async Task ShouldRefuseWhenTheCallingChatHasNoConnection()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync(withConnection: false);
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
-
+        var result = await CallAsync(session, "spawn_subtask", new { task = "One", connectionId = disabled ? fixture.OffConnectionId : Guid.NewGuid() }, TestContext.Current.CancellationToken);
         result.IsError.ShouldBeTrue();
-        result.StructuredContent!.Value.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("connection");
+        fixture.Completion.Requests.ShouldBeEmpty();
     }
 
     [Fact]
-    public async Task ShouldReportWhatEachSubtaskIsDoingWhileItRuns()
+    public async Task ExplicitConnectionWinsAndCriteriaRemainInTheWorkerPrompt()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        await fixture.MarkForSubtasksAsync(fixture.DefaultConnectionId);
+        fixture.Completion.Answer(Evidence);
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-        var reports = new List<ToolProgress>();
-        // The server sends progress as its own fire-and-forget message, and the client stops
-        // listening for a call's notifications once that call's response has arrived. A subtask
-        // answered as soon as it is asked therefore races its own reports and can lose all of
-        // them on a busy runner, so the answer is withheld until one report has actually reached
-        // the caller: that is the condition the assertion below is about, not the response order.
+        var id = await SpawnAsync(session, "Preserve source blocks; translate section A", fixture.CheapConnectionId, ["Output is complete."]);
+        var result = await WaitAsync(session, id);
+        Outcome(result).GetProperty("connection").GetString().ShouldBe("Cheap");
+        var prompt = fixture.Completion.Requests.ShouldHaveSingleItem().Message;
+        prompt.ShouldContain("Acceptance criteria:");
+        prompt.ShouldContain("Output is complete.");
+        prompt.ShouldContain("<subtask_evidence>");
+        var schema = session.Tools.Single(tool => tool.OriginalName == "spawn_subtask").ModelDefinition.InputSchema.GetProperty("properties");
+        schema.TryGetProperty("tasks", out _).ShouldBeFalse();
+        schema.TryGetProperty("sharedInstructions", out _).ShouldBeFalse();
+        schema.TryGetProperty("projectId", out _).ShouldBeFalse();
+        schema.GetProperty("acceptanceCriteria").GetProperty("maxItems").GetInt32().ShouldBe(32);
+    }
+
+    [Fact]
+    public async Task WaitForwardsProgressAndMalformedEvidenceRemainsUnresolved()
+    {
+        await using var fixture = await SubtaskFixture.CreateAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Completion.HoldAnswerUntil(gate.Task);
+        fixture.Completion.Answer("Unverified answer");
+        await using var session = await fixture.OpenAsync();
+        var id = await SpawnAsync(session, "Inspect");
         var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Completion.HoldAnswerUntil(reported.Task);
-
-        await session.CallAsync(tool, SubtaskFixture.Arguments("first", "second"),
-            new SynchronousProgress(value =>
+        var result = await CallAsync(session, "subtask_wait", new { taskIds = new[] { id }, mode = "all", waitTimeoutMs = 10000 },
+            TestContext.Current.CancellationToken, new SynchronousProgress(value =>
             {
-                lock (reports) reports.Add(value);
+                value.Total.ShouldBe(1);
                 reported.TrySetResult();
-            }),
-            TestContext.Current.CancellationToken);
-
-        // The caller's live row is fed from these, so a subtask that reports nothing is
-        // indistinguishable from one that has hung.
-        lock (reports)
-        {
-            reports.ShouldNotBeEmpty();
-            reports.Select(value => value.Message).OfType<string>()
-                .ShouldContain(message => message.Contains("1:", StringComparison.Ordinal));
-            reports.ShouldAllBe(value => value.Total == 2);
-        }
+                gate.TrySetResult();
+            }));
+        await reported.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Outcome(result).GetProperty("unresolved").GetArrayLength().ShouldBeGreaterThan(0);
+        result.Meta!.Value.GetProperty("transcript").GetRawText().ShouldNotContain("\\\"isError\\\"");
     }
 
     [Fact]
-    public async Task ShouldRecordToolResultsAsDescribedRatherThanRawProtocolJson()
+    public async Task NoAdditionalChatIsPersisted()
     {
         await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("do something"), null,
-            TestContext.Current.CancellationToken);
-
-        // Storing the protocol's own JSON verbatim nests escaped JSON inside escaped JSON, which is
-        // complete and unreadable; the transcript exists to be read.
-        var transcript = result.Meta!.Value.GetProperty("transcript").GetRawText();
-        transcript.ShouldNotContain("\\\"isError\\\"");
-    }
-
-    [Fact]
-    public async Task ShouldInheritTheCallingChatsConnectionByDefault()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
-
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Test");
-    }
-
-    [Fact]
-    public async Task ShouldUseTheCurrentChatsNonDefaultConnectionWhenNoneIsMarkedForSubtasks()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        await fixture.SetChatConnectionAsync(fixture.CheapConnectionId);
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse();
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
-    }
-
-    [Fact]
-    public async Task ShouldAnswerThroughTheConnectionItWasGiven()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        // Handing mechanical work to a cheaper model is the point of naming one.
-        var result = await session.CallAsync(tool, fixture.ArgumentsOn(fixture.CheapConnectionId, "anything"), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse();
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
-    }
-
-    [Fact]
-    public async Task ShouldSendUnaddressedWorkToTheConnectionMarkedForSubtasks()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        await fixture.MarkForSubtasksAsync(fixture.CheapConnectionId);
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        // The mark exists so that delegated work need not cost what the conversation costs: nothing
-        // named a connection here, and the chat's own is the expensive one.
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("anything"), null, TestContext.Current.CancellationToken);
-
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Cheap");
-    }
-
-    [Fact]
-    public async Task ShouldDealUnaddressedWorkOutOverEveryMarkedConnection()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        await fixture.MarkForSubtasksAsync(fixture.DefaultConnectionId, fixture.CheapConnectionId);
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        // Marking several is how a fan-out stops queueing behind one provider: nothing here named a
-        // connection, so the tasks are dealt out over the marked ones in turn.
-        var result = await session.CallAsync(tool, SubtaskFixture.Arguments("one", "two", "three"), null,
-            TestContext.Current.CancellationToken);
-
-        var used = result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
-            .Select(item => item.GetProperty("connection").GetString()).ToArray();
-        used.ShouldBe(["Test", "Cheap", "Test"]);
-    }
-
-    [Fact]
-    public async Task ShouldStillObeyANamedConnectionOverTheMark()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        await fixture.MarkForSubtasksAsync(fixture.CheapConnectionId);
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        // The mark is a fallback, not a wall: checking every connection has to stay possible.
-        var result = await session.CallAsync(tool, fixture.ArgumentsOn(fixture.DefaultConnectionId, "anything"), null,
-            TestContext.Current.CancellationToken);
-
-        result.StructuredContent!.Value.GetProperty("results")[0].GetProperty("connection").GetString().ShouldBe("Test");
-    }
-
-    [Fact]
-    public async Task ShouldLetEachTaskNameItsOwnConnection()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        // Checking a set of connections is the case this exists for: separate calls would run one
-        // after another, while the tasks of one call run together.
-        var result = await session.CallAsync(tool, fixture.ArgumentsPerTask(
-            ("first", fixture.DefaultConnectionId), ("second", fixture.CheapConnectionId)), null,
-            TestContext.Current.CancellationToken);
-
-        result.IsError.ShouldBeFalse();
-        result.StructuredContent!.Value.GetProperty("results").EnumerateArray()
-            .Select(item => item.GetProperty("connection").GetString())
-            .ShouldBe(["Test", "Cheap"], ignoreOrder: true);
-    }
-
-    [Fact]
-    public async Task ShouldRejectTheWholeCallBeforeRunningAnythingWhenOneTasksConnectionIsBad()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        var result = await session.CallAsync(tool, fixture.ArgumentsPerTask(
-            ("fine", fixture.DefaultConnectionId), ("doomed", fixture.OffConnectionId)), null,
-            TestContext.Current.CancellationToken);
-
-        // Spending a minute on the healthy tasks before failing on the last one's endpoint would be
-        // the worst of both: every connection is resolved before any work starts.
-        result.IsError.ShouldBeTrue();
-        result.StructuredContent!.Value.GetProperty("results").GetArrayLength().ShouldBe(0);
-    }
-
-    [Fact]
-    public async Task ShouldRefuseAConnectionThatIsUnknownOrSwitchedOff()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
-        await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        foreach (var rejected in new[] { Guid.NewGuid(), fixture.OffConnectionId })
-        {
-            var result = await session.CallAsync(tool, fixture.ArgumentsOn(rejected, "anything"), null,
-                TestContext.Current.CancellationToken);
-
-            // A subtask picks among the connections the user configured; it does not describe one.
-            result.IsError.ShouldBeTrue();
-            result.StructuredContent!.Value.GetProperty("error").GetString()
-                .ShouldNotBeNull().ShouldContain("enabled connection");
-        }
-    }
-
-    [Fact]
-    public async Task ShouldLeaveNothingBehindOnDisk()
-    {
-        await using var fixture = await SubtaskFixture.CreateAsync();
-        fixture.Completion.Answer("done");
+        fixture.Completion.Answer(Evidence);
         var before = fixture.FileCount;
         await using var session = await fixture.OpenAsync();
-        var tool = session.Tools.Single(item => item.OriginalName == "spawn_subtask");
-
-        await session.CallAsync(tool, SubtaskFixture.Arguments("do something"), null, TestContext.Current.CancellationToken);
-
-        // The whole point of a subtask is that it is not a chat: no manifest, no message nodes, no
-        // run state — nothing to find afterwards and nothing to clean up.
+        await WaitAsync(session, await SpawnAsync(session, "Inspect"));
         fixture.FileCount.ShouldBe(before);
         (await fixture.Chats.ListAsync(fixture.ProjectId, CancellationToken.None)).Count.ShouldBe(1);
     }
@@ -579,9 +310,23 @@ public sealed class AppSubtaskToolTests
                 CancellationToken.None);
         }
 
-        public Task<IToolSession> OpenAsync(bool interactive = true, int subtaskDepth = 0, Guid? branchId = null) => Sessions.OpenAsync([],
-            new ToolRunContext(ProjectId, ChatId, branchId ?? ChatId, interactive, IsSubtask: subtaskDepth > 0, SubtaskDepth: subtaskDepth),
-            TestContext.Current.CancellationToken);
+        public async Task<IToolSession> OpenAsync(bool interactive = true, int subtaskDepth = 0, Guid? branchId = null)
+        {
+            var run = new ToolRunContext(ProjectId, ChatId, branchId ?? ChatId, interactive,
+                IsSubtask: subtaskDepth > 0, SubtaskDepth: subtaskDepth);
+            var scope = _composition.Subtasks.Begin(run, TestContext.Current.CancellationToken);
+            try { return new OwnedSession(await Sessions.OpenAsync([], run, TestContext.Current.CancellationToken), scope); }
+            catch { await scope.DisposeAsync(); throw; }
+        }
+
+        private sealed class OwnedSession(IToolSession inner, IAsyncDisposable scope) : IToolSession
+        {
+            public IReadOnlyList<AgentTool> Tools => inner.Tools;
+            public string ValidateArguments(AgentTool tool, string arguments) => inner.ValidateArguments(tool, arguments);
+            public Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken token) =>
+                inner.CallAsync(tool, arguments, progress, token);
+            public async ValueTask DisposeAsync() { await scope.DisposeAsync(); await inner.DisposeAsync(); }
+        }
 
         public async Task SetMaxSubtaskDepthAsync(int depth)
         {
@@ -590,26 +335,10 @@ public sealed class AppSubtaskToolTests
                 CancellationToken.None);
         }
 
-        /// <summary>Without ids, which the tool reads as the calling run's own project and chat.</summary>
-        public static string Arguments(params string[] tasks) =>
-            JsonSerializer.Serialize(new { tasks = tasks.Select(task => new { task }) });
-
-        public string ArgumentsOn(Guid connectionId, params string[] tasks) =>
-            JsonSerializer.Serialize(new { projectId = ProjectId, chatId = ChatId, tasks = tasks.Select(task => new { task }), connectionId });
-
-        /// <summary>One connection per task, which is what lets a set of them be exercised at once.</summary>
-        public string ArgumentsPerTask(params (string Task, Guid Connection)[] tasks) =>
-            JsonSerializer.Serialize(new
-            {
-                projectId = ProjectId,
-                chatId = ChatId,
-                tasks = tasks.Select(item => new { task = item.Task, connectionId = item.Connection }),
-            });
-
         public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }
 
-    /// <summary>Answers immediately, so a subtask completes within the call that started it.</summary>
+    /// <summary>A controllable model for launch, completion and cancellation races.</summary>
     private sealed class StubCompletion : IChatCompletionClient
     {
         private Func<string, string> _answer = _ => string.Empty;
@@ -619,6 +348,7 @@ public sealed class AppSubtaskToolTests
         private int _streamRequests;
 
         public List<ChatCompletionRequest> Requests { get; } = [];
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int StreamRequests => Volatile.Read(ref _streamRequests);
 
         public void Answer(string text) => _answer = _ => text;
@@ -636,9 +366,10 @@ public sealed class AppSubtaskToolTests
         public async IAsyncEnumerable<ChatCompletionChunk> StreamAsync(
             ChatCompletionRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            lock (Requests) Requests.Add(request);
+            Started.TrySetResult();
             await _gate.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
             await Task.Yield();
-            lock (Requests) Requests.Add(request);
             Interlocked.Increment(ref _streamRequests);
             if (_loop)
             {

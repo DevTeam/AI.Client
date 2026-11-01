@@ -12,7 +12,7 @@ using Xunit;
 public sealed class ToolDefinitionSelectorTests
 {
     private static readonly string[] RequiredAppTools =
-        ["ask_user", "tool_search", "context_compact", "app_read", "app_navigate", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask"];
+        ["ask_user", "tool_search", "context_compact", "app_read", "app_navigate", "app_projects", "app_security", "skill_search", "run_skill", "spawn_subtask", "subtask_wait", "subtask_stop"];
     private readonly ContextTokenEstimator _estimator = new();
 
     [Fact]
@@ -55,16 +55,20 @@ public sealed class ToolDefinitionSelectorTests
     {
         var subtask = Tool("spawn_subtask", "Delegate independent work in parallel " + new string('s', 2_000),
             ToolRef.AppPrefix + "spawn_subtask");
+        var wait = Tool("subtask_wait", new string('w', 2_000), ToolRef.AppPrefix + "subtask_wait");
+        var stop = Tool("subtask_stop", new string('s', 2_000), ToolRef.AppPrefix + "subtask_stop");
         var ordinary = Enumerable.Range(0, 30).Select(index =>
             Tool($"ordinary_{index}", "generic operation " + new string('x', 2_000), ToolRef.BuiltInPrefix + $"ordinary_{index}"));
 
         var connection = new ConnectionSettings(Guid.NewGuid(), "Test", "https://example.invalid", "model", true, true, false,
             ContextWindowTokens: 32_768, ReservedOutputTokens: 4_096);
         var selection = Selector().Choose(connection,
-            "Translate the document", [], [.. ordinary, subtask]);
+            "Translate the document", [], [.. ordinary, subtask, wait, stop]);
 
         selection.AvailableTokens.ShouldBeGreaterThan(selection.BudgetTokens);
         selection.Tools.ShouldContain(subtask);
+        selection.Tools.ShouldContain(wait);
+        selection.Tools.ShouldContain(stop);
         selection.SelectedTokens.ShouldBeLessThanOrEqualTo(selection.BudgetTokens);
     }
 

@@ -2953,6 +2953,7 @@ public sealed partial class ChatExecutionTests
             Workspace = workspace ?? new WorkspaceChangeTracker(new LineDiff(), Mock.Of<IWorkspaceUndoService>(),
                 FileSystem, FileSystem.Path);
             _composition = NewComposition();
+            Tools.Subtasks = _composition.Subtasks;
         }
 
         /// <summary>
@@ -3247,6 +3248,18 @@ public sealed partial class ChatExecutionTests
         public bool OfferExternalReads { get; set; }
         public bool OfferTrigger { get; set; }
         public bool OfferProcessWait { get; set; }
+        public bool OfferSubtasks { get; set; }
+        public ISubtaskRuns? Subtasks { get; set; }
+        public string? SubtaskId { get; private set; }
+        public TaskCompletionSource SubtaskRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SubtaskWaitStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SubtaskStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SubtaskCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private static AgentTool SubtaskTool(string name, bool readOnly) => new(
+            new ChatToolDefinition("mcp_app__" + name, name, JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_app__" + name, name, name, JsonSerializer.Deserialize<JsonElement>("{}"))
+                with { Annotations = new ToolAnnotations(null, readOnly, false, readOnly, false) },
+            AppMcpServer.Id, name, "schema");
         private static readonly AgentTool ProcessWait = new(
             new ChatToolDefinition("mcp_built_in__process_wait", "Wait for command", JsonSerializer.Deserialize<JsonElement>("{}")),
             ToolDescriptor.Basic("mcp_built_in__process_wait", "process_wait", "Wait", JsonSerializer.Deserialize<JsonElement>("{}"))
@@ -3296,6 +3309,7 @@ public sealed partial class ChatExecutionTests
             [SandboxedProcess, .. OfferProcessRun ? [OrdinaryProcess] : Array.Empty<AgentTool>(), .. OfferCSharp ? [ScriptRun] : Array.Empty<AgentTool>(), .. OfferExternalReads ? [ExternalRead] : Array.Empty<AgentTool>(),
                 .. OfferTrigger ? [TriggerWait] : Array.Empty<AgentTool>(),
                 .. OfferProcessWait ? [ProcessWait] : Array.Empty<AgentTool>(),
+                .. OfferSubtasks ? [SubtaskTool("spawn_subtask", false), SubtaskTool("subtask_wait", true), SubtaskTool("subtask_stop", false)] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
                 .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
                 .. OfferReads ? [ReadTextFile] : Array.Empty<AgentTool>()];
@@ -3334,6 +3348,39 @@ public sealed partial class ChatExecutionTests
         public async Task<ToolCallResult> CallAsync(AgentTool tool, string arguments, IProgress<ToolProgress>? progress, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _callCount);
+            if (OfferSubtasks && Subtasks is { } subtasks && Run is { } owner)
+            {
+                object? result = null;
+                if (tool.OriginalName == "spawn_subtask")
+                {
+                    var handle = subtasks.Start(owner, "policy", async (_, token) =>
+                    {
+                        SubtaskStarted.TrySetResult();
+                        try { await SubtaskRelease.Task.WaitAsync(token); }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            SubtaskCancelled.TrySetResult();
+                            throw;
+                        }
+                        return new SubtaskCompletion(new("policy", "Verified policy", "Test", 1, 0, 0, true, null,
+                            [], [new("focused check", "Passed")], []), []);
+                    });
+                    SubtaskId = handle.TaskId;
+                    result = handle;
+                }
+                else if (tool.OriginalName is "subtask_wait" or "subtask_stop")
+                {
+                    var input = JsonSerializer.Deserialize<JsonElement>(arguments);
+                    var ids = input.GetProperty("taskIds").EnumerateArray().Select(id => id.GetString()!).ToArray();
+                    SubtaskWaitStarted.TrySetResult();
+                    result = tool.OriginalName == "subtask_stop" ? await subtasks.StopAsync(owner, ids, cancellationToken)
+                        : await subtasks.WaitAsync(owner, ids, true,
+                            input.TryGetProperty("waitTimeoutMs", out var timeout) ? timeout.GetInt32() : 60000,
+                            null, cancellationToken);
+                }
+                if (result is not null)
+                    return _codec.Read(JsonSerializer.Serialize(new { structuredContent = result }, JsonSerializerOptions.Web));
+            }
             if (tool.Descriptor.Annotations?.ReadOnlyHint == true && tool.OriginalName != "process_wait")
             {
                 var active = Interlocked.Increment(ref _activeReads);

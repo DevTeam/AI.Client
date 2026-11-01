@@ -5,7 +5,7 @@ icon: code-review
 kind: playbook
 description: Review selected code, working-tree changes, branches or commits for correctness, compatibility and concurrency with actionable source evidence; changes nothing.
 parameters: {"type":"object","properties":{"focus":{"type":"string","description":"The review focus or acceptance criteria"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"},"scope":{"type":"string","enum":["files","working-tree","branches","commits"]},"branches":{"type":"array","items":{"type":"string"},"maxItems":200},"commits":{"type":"array","items":{"type":"string"},"maxItems":200},"base":{"type":"string","description":"The comparison base branch or commit, if specified"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","app_read","spawn_subtask","run_skill","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","ask_user","app_read","spawn_subtask","subtask_wait","subtask_stop","run_skill","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

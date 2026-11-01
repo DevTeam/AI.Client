@@ -11,6 +11,38 @@ public sealed class AppToolPresentationTests
     private readonly ToolsComposition _tools = new();
 
     [Fact]
+    public void ShouldDescribeSingleLaunchAndPartialCollectionWithoutClaimingCompletion()
+    {
+        _tools.Presentations.DescribeCall("mcp_app__spawn_subtask", """{"task":"Inspect the contract"}""")
+            .Detail.ShouldBe("Inspect the contract");
+        var launch = _tools.Presentations.DescribeResult("mcp_app__spawn_subtask", null,
+            Structured("""{"taskId":"abcdefgh1234","task":"Inspect","status":"queued"}"""));
+        launch.Summary.ShouldBe("1 subtask running");
+        launch.Facts.ShouldContain(fact => fact.Label == "abcdefgh" && fact.Value == "queued");
+        var partial = _tools.Presentations.DescribeResult("mcp_app__subtask_wait", null,
+            Structured("""
+                {"tasks":[{"taskId":"abcdefgh1234","status":"running","activity":"thinking"},
+                {"taskId":"ijklmnop1234","status":"completed","result":{"answer":"Verified","checks":[{"status":"Passed"}],"unresolved":[]}}]}
+                """));
+        partial.Summary.ShouldBe("1 subtask running");
+        partial.Facts.ShouldContain(fact => fact.Value == "thinking");
+        partial.Facts.ShouldContain(fact => fact.Value.Contains("1 check passed", StringComparison.Ordinal));
+        _tools.Presentations.DescribeCall("mcp_app__subtask_wait", """{"taskIds":["abcdefgh1234"]}""")
+            .Safety.ShouldBe(ToolSafety.ReadOnly);
+    }
+
+    [Fact]
+    public void ShouldDistinguishCancelledWorkFromSuccess()
+    {
+        var cancelled = _tools.Presentations.DescribeResult("mcp_app__subtask_stop", null,
+            Structured("""{"tasks":[{"taskId":"abcdefgh1234","status":"cancelled","result":{"completed":false,"error":"Cancelled"}}]}"""));
+        cancelled.Summary.ShouldBe("1 subtask cancelled");
+        cancelled.Severity.ShouldBe(ToolResultSeverity.Warning);
+        _tools.Presentations.DescribeCall("mcp_app__subtask_stop", """{"taskIds":["abcdefgh1234"]}""")
+            .Safety.ShouldBe(ToolSafety.Mutating);
+    }
+
+    [Fact]
     public void ShouldNameTheResourceBeingRead()
     {
         var call = _tools.Presentations.DescribeCall("mcp_app__app_read",

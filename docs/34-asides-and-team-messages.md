@@ -320,6 +320,13 @@ nor wait for someone to press Retry:
 - A tool with an `Ask` policy stops a teammate branch until the person answers; the sidebar marks the
   branch as needing attention.
 
+A teammate uses the same asynchronous subtask lifecycle as the lead: each `spawn_subtask` starts
+one assignment and returns a handle, while `subtask_wait` collects results after independent
+work. It retains handles across wait timeouts, uses `subtask_stop` for abandoned work, and
+collects every result before sending its combined report to the lead. Stop of its parent run
+cancels and drains its workers; waiting alone does not stop them.
+
+
 ## Storage
 
 `ChatMessage` gains two optional fields, written only when set:

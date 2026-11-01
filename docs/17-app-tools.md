@@ -23,7 +23,7 @@ The code is laid out as follows:
 
 The tools receive `IChatRunDispatcher` as `Func<IChatRunDispatcher>`: the dispatcher owns the agent, the agent owns the tool session, the session owns these tools. Lazy resolution breaks the construction cycle.
 
-`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, `app_navigate`, `app_theme` and `plan_update` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
+`App tools` is registered as a separate MCP server with a stable ID, the `InProcess` transport, appears in settings next to `Default tools`, and is **enabled by default**. `app_read`, `tool_search`, `skill_search`, `ask_user`, `app_navigate`, `app_theme`, `plan_update`, `subtask_wait` and `subtask_stop` default to `Allow`; tools that change data, execute skills, or delegate work default to `Ask`. Saved rules override these defaults. The global tool list offers `Use defaults` for already discovered tools.
 
 `InProcess` is a full value of the domain enum `McpTransportKind`, not just a string in settings: saving a project-level policy binds the server to the project and records its transport. Both servers bundled with the Host appear in settings identically — name and transport are read-only; instead of a command line, the list of tool policies is shown, and they cannot be removed.
 
@@ -44,7 +44,9 @@ The tools are grouped by risk level: the tool boundary matches the boundary of w
 | `app_memory` | `Create`, `Update`, `Delete` long-term memory entries — see [25-memory-and-instructions.md](25-memory-and-instructions.md) |
 | `app_instructions` | replace the current project's instructions; kept apart so it still asks where other writes are allowed |
 | `app_schedule` | `Get`, `Set`, `Pause`, `Resume`, `Remove`, `RunNow`, `ReportRun` for a chat's schedule — see [35-scheduled-chats.md](35-scheduled-chats.md) |
-| `spawn_subtask` | run a task in a separate conversation and return only its result |
+| `spawn_subtask` | start one independent task and immediately return its run-owned handle |
+| `subtask_wait` | collect statuses and terminal results of owned handles, waiting for any or all |
+| `subtask_stop` | cancel selected owned tasks and collect their terminal results |
 | `ask_user` | ask the user a question and wait for an answer — see [19-ask-user.md](19-ask-user.md) |
 | `plan_update` | lay out and move the plan the user watches during a multi-step task, with its optional criteria of done; changes no data — see [37-chat-plans.md](37-chat-plans.md) |
 
@@ -99,45 +101,69 @@ Every message `app_runs Submit` writes carries its sender, the chat and branch o
 
 `mode: Fork` takes an optional `title` for the new branch, so it needs no separate rename. `app_chats RenameBranch` (and the HTTP rename) no longer compares the chat revision: a title conflicts with nothing written meanwhile, and while branches run the revision moves with every message, so a rename against the revision the caller had read kept failing for as long as a team worked.
 
-### spawn_subtask
+### Subtask lifecycle
 
-Delegates work to a separate conversation and returns a compact structured outcome: its answer, changed artifacts, checks it actually performed and unresolved items. The point is the audience split already built into `ToolCallResult`: `ModelContent` is the only thing that enters the model context, and `_meta` is excluded from that projection by contract. Therefore the subtask's outcome goes to the calling model, while its entire conversation — reasoning, every tool call, every result — is placed into `_meta` and is visible only in the UI, as a folded block inside the call card.
+`spawn_subtask(task, acceptanceCriteria?, connectionId?)` starts one bounded assignment and
+returns `{taskId, task, status}` immediately. Status is `queued` or `running`; completion later
+becomes `completed`, `failed` or `cancelled`. Put essential context, the absolute workspace,
+owned paths and restrictions in `task`. The Host binds the current project, chat and branch;
+the model does not supply those ids. Several scalar launches overlap even when their MCP calls
+run sequentially. There is no batch-launch API or `sharedInstructions` parameter.
 
-This is fundamentally cheaper than having a second chat do the work and then reading it through `app_read`: reading would pull into context exactly the text whose absence the work was delegated for.
+Keep each `taskId`, do independent work, then call
+`subtask_wait(taskIds, mode="any", waitTimeoutMs=60000)`. `any` returns as soon as at least one
+selected task is terminal; `all` waits for every selected task. A zero timeout takes an immediate
+snapshot. The bounded wait returns current states at timeout, with `result` on terminal entries and
+`timedOut=true` when a positive wait elapsed before its condition was satisfied. Repeated
+bounded waits on active work do not trigger the Host's no-progress stall detector.
+After consuming a result, wait on remaining handles. Waiting again replays results and never
+starts another task. Failure of one task does not cancel its siblings.
 
-Nothing is saved. The subtask's messages live in the list for the duration of the call; there is no chat that can be opened afterwards — the price of also having nothing to clean up afterwards. The call record with the full conversation stays in the parent chat's history as a regular tool message.
+`subtask_stop(taskIds)` validates the entire selection belongs to the calling run, cancels it,
+waits for cancellation to settle and returns terminal results. Finished tasks keep their result.
+A cancelled wait, policy timeout or new joined user message ends only that wait: children remain
+alive. Stop or disposal of the parent run cancels and drains all its children. Handles expire at
+the end of that run and cannot be used by another branch, later run or after a Host restart.
+The Host prevents a normal final answer while owned results remain uncollected, using the normal
+permission-checked wait path. A stopped or failed result must be inspected rather than treated
+as successful work. The same lifecycle applies when the parent is a teammate branch: collect
+workers' results before sending the lead one integrated report.
 
-`projectId` and `chatId` are passed explicitly: ambient context does not cross the MCP boundary — the server handles the call in its own message loop — so the calling model names the project and chat it is working in. The subtask inherits directory grants and tool policies from them, and by default the connection too. An arbitrary endpoint cannot be set: only what the user has configured can be chosen.
+**Results and evidence.** Each terminal result contains the answer, selected connection,
+artifacts, tool-call count, elapsed time, checks actually performed and unresolved items. The
+worker returns a machine-readable evidence envelope that the Host separates from its answer.
+Trust passed local checks unless evidence conflicts; check the combined result rather than
+repeating every worker check. Stopped work may have partial artifacts and unresolved items.
+Each worker has its own workspace baseline. No separate chat is persisted.
 
-**Confirmations are not available to the subtask.** Nobody is watching the background run, so any tool whose policy is `Ask` is refused, and the subtask reports what it could not do. Before delegation the parent receives a run-specific execution-capability instruction: the available generic execution tools, their effective policy state and a bounded probe of common programs on `PATH`. If a required tool still needs approval and no allowed equivalent exists, the parent asks the user and establishes the narrowest saved permission before spawning the task. The execution tools and the basic file tools that survive policy filtering are core in the adaptive tool selection of every run, parent and subtask alike (see [tool selection](21-tool-selection-and-adaptive-compaction.md)): the parent measures and splits the input and joins the parts, which an execution tool (`process_run` with an argument array, or `cs_run`) does in one step where file tools take many, and a worker reads its range and writes its part with the file tools. They used to be pinned on every step instead, and a pin narrows the rest of the selection to a handful of tools: subtasks were left with 8 of 71 tools, without `read_text_file` and `write_file`, and wrote whole output files through scripts.
+The full conversation is attached to wait/stop results only as `_meta.transcript`; it remains
+visible in the existing expandable tool card and survives in the parent chat's tool history.
+`ModelContent` excludes that transcript. This keeps delegated detail inspectable without
+importing it into the caller's model context. Wait progress reports each selected task's
+current activity (thinking, writing or tool name) and the completed count.
 
-**When to delegate.** A single model writes its output token by token, so long output is the slowest part of a run, and doing it in the parent also keeps the whole source and every written part in the context of each later step. The standing instructions therefore name a concrete threshold: a task that must write or transform more than about 20,000 tokens of text (for example rewriting or converting a file over about 50 KB) is measured with one script (size, line count, section boundaries) without the parent reading the content it delegates, split into ranges that the same script confirms cover the source with no gap or overlap (hand-picked ranges once skipped ten lines that every worker's own checks then passed), and delegated in one call, each part written to its own file and joined in one execution-tool call. Each worker is pointed at its range of the source (path and line range) instead of a prepared copy, writes only its new output and never reproduces its input: a worker told to write back its input with the result beside it generates both, which doubles the slowest part of the run. Ranges are about equal in characters, because the call ends with its slowest task, and each ends at a natural boundary of the material, never inside a unit that must stay whole: a range cut just before the start of a new unit left its worker some twenty calls of sorting out the edges against a strict check. A task holds only what is specific to it, without retelling its input; tasks that retold their input made the call's arguments some 21,000 characters, which took the parent over a minute to generate. The acceptance criteria ask only for the checks the result needs.
+**Models.** An explicit enabled `connectionId` wins; otherwise scalar launches rotate through
+enabled connections marked `ForSubtasks`, then fall back to the caller's branch connection.
+Explicit selections do not advance the pool. User connection ratings, `goodFor` and prices
+remain available through `app_read` Settings; they are not embedded in the tool schema.
 
-**Next step in the result.** Told only in its standing instructions to trust passed evidence, a caller still re-verified every part itself, which took longer than the parts. The result therefore carries `next`: when every task completed and passed its own checks, it tells the caller to integrate the results and run at most one cross-result check; otherwise it names the tasks, by position, that failed, left unresolved items or lack passed checks, and tells the caller to inspect or retry only those. The same instructions tell every run to verify its own output with a few targeted checks, such as comparing counts or structure with the source in one call, instead of rereading or searching it piece by piece.
+**Permissions.** Workers inherit project grants and the caller's effective approval mode.
+They cannot request interactive approval: an unresolved `Ask` is refused. Establish a narrow
+permission in the caller only when authorized, or choose an already allowed equivalent. Do not
+loosen permissions merely for parallelism. Generic execution and basic file tools remain core
+in adaptive selection for parents and workers.
 
-**Model.** Each task is an object with text, optional `acceptanceCriteria`, and an optional `connectionId`. The connection is selected by chain: the task's own, otherwise the call's common one, otherwise one of those marked in settings as connections for subtasks, otherwise the calling chat's connection. The named connection must exist and be enabled; an arbitrary endpoint cannot be set — it is chosen from what the user has configured. The used connection is returned in the result and visible in the card. A subtask is told to verify its own result and end with a small machine-readable evidence envelope; the Host separates that envelope from the answer and exposes it as `checks` and `unresolved`.
+**Resource limits.** There is no model-facing batch-size restriction. Internally the Host retains
+at most 256 handles per parent run and executes at most 32 workers concurrently. Excess root
+work queues. Nested work never waits behind occupied parents when all slots are full: it fails
+with a bounded error, so the caller can continue directly. Each worker has a 40-model-step budget
+and nesting still respects `MaxSubtaskDepth` (default 1). These guards apply to team members too;
+being a teammate does not itself consume a subtask depth level.
 
-Connections for all tasks are resolved before work begins: a batch that would fail on the last task's endpoint anyway should not first spend a minute on the rest.
-
-**"For subtasks" flag and connection ratings.** In settings, a connection can be marked as the one delegated work goes to when nobody addressed it explicitly — usually a cheap fast model. Unlike the "default" flag, this one can be set on multiple connections at once: tasks that did not name a connection are distributed among marked connections in round-robin, so a fan of subtasks is answered by several providers rather than queued to one. The queue is counted only by unaddressed tasks, so one pinned task does not shift the rest. The flag is removed together with `Enabled`: a disabled connection receives no subtasks.
-
-The flag forbids nothing. An explicit `connectionId` works for any enabled connection, otherwise the scenario this argument was introduced for — checking all connections at once — would become impossible.
-
-Next to the flag, the connection carries a coarse rating from 1 to 5 — `capability` — and a `goodFor` string about what the rating does not express: long context, vision, locality. This is the user's opinion, not a fact about the model, so the scale is deliberately short, and an unrated connection returns `null` rather than the middle: "nobody rated it" must be distinguishable by the model from "average". Token prices are stored separately in `prices`; the former `cost` rating is no longer part of connection data. All of this arrives through `app_read` with the `Settings` resource — no separate mechanism is needed — and the model chooses what to pay for a task.
-
-The ratings are not placed in the description of `spawn_subtask` itself. The description is part of the tool schema, and the hash is computed from the schema, to which permissions are tied — moving a slider would reset the tool's permission to `Ask`.
-
-A task with its own connection exists for parallelism. Tools in a single model response run sequentially, so "one task — one call" queues the connection checks: fourteen connections at one timeout each are fourteen waits in a row. Tasks in one call, however, run in parallel, so the same fourteen are checked by two calls.
-
-**Live progress.** The subtask reports what it is doing via MCP `notifications/progress`: "thinking", "writing", or the name of the tool it is currently calling. The message reaches the active call row in the parent card through the same path as progress for any other server. With multiple tasks, the row numbers them and shows how many have already finished. Otherwise a subtask that goes silent is indistinguishable from a stuck one.
-
-**Limits.** Up to 256 tasks may be queued in one call and no more than 32 subtask runs execute simultaneously across the entire Host. Excess root tasks wait in the same call for a slot. A nested subtask, allowed only when `MaxSubtaskDepth` is raised (see [Recursion](#recursion)), keeps its parent open and therefore never waits behind all occupied parents: when no slot is immediately available, it fails with a bounded error instead of deadlocking. Each subtask has a 40-model-step budget. One task failing does not cancel its neighbors.
-
-The tool's policy timeout measures the call's silence, not its duration. Otherwise a single number would have to suit two addressees at once — reading a file and a fan of subtasks — and the fan would lose: it would die halfway through with all work already started, even though its progress notifications were saying it was working. MCP allows resetting the timeout on a progress notification for exactly this reason. On top sits a hard ceiling of 24 hours per call, so a looping tool that faithfully reports on itself does not run forever.
-
-The subtask has its own branch for tracking changes in the working directory, so its file edits are attributed to it, not to the parent's summary. The result returns both the count and an `artifacts` list with path, change kind, line counts and previous path when applicable. The parent trusts successful local checks and normally performs only cross-result integration checks.
-
-What is not there: a subtask does not survive a restart; it cannot be resumed or extended. It is a single bounded call, not a place to return to.
+For large transformations, measure size and natural section boundaries before reading delegated
+content, verify ranges cover the source without gaps or overlaps, launch each range separately
+with disjoint output paths, collect all handles, and join the outputs in one execution call.
+Do not duplicate the source in the briefing or ask workers to reproduce their inputs.
 
 ## Scope
 
@@ -248,7 +274,7 @@ A run with the App server gets one system line naming its `projectId`, `chatId` 
 because several tools take them as ids and nothing else in the context says which ones the run
 belongs to. Where a tool knows the run, an omitted id means the current one: project-scoped
 `app_read` resources, `Chat`, `Messages` and `Reviews` in `app_read` (current chat), and
-`spawn_subtask` (current project and chat).
+`spawn_subtask`, `subtask_wait` and `subtask_stop` (current parent run).
 
 Before the input schema is checked, the Host repairs three common slips in top-level arguments: an
 object or array sent as its JSON text is parsed when the schema does not also accept a string, an

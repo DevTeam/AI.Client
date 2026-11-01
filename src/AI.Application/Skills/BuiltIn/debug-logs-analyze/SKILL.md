@@ -6,7 +6,7 @@ aliases: ["logs"]
 kind: playbook
 description: Analyze application or system logs over a bounded time window, including rolled and compressed files, against the host's actual current time; report the causal chain, gaps and whether the verbosity and retention were enough, and propose a targeted increase; changes nothing.
 parameters: {"type":"object","properties":{"symptom":{"type":"string","description":"The failure, error text or behavior to explain"},"since":{"type":"string","description":"Start of the time window, absolute or relative (\"last hour\")"},"until":{"type":"string","description":"End of the time window"},"timeZone":{"type":"string","description":"The time zone the user means, when it differs from the host"},"correlationId":{"type":"string","description":"A request, trace, operation or user-visible error id to follow"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Log files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","zip_list","zip_read","process_run","cs_run","trigger_wait","ask_user","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

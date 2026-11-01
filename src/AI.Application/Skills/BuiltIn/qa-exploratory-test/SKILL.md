@@ -5,7 +5,7 @@ icon: qa-exploratory-test
 kind: playbook
 description: Execute a focused exploratory test session in an authorized environment, record observed behavior and defects, and clean up task-owned data.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The exploration charter or risk to investigate"},"environment":{"type":"string","description":"The authorized application/environment"},"duration":{"type":"string","description":"The requested time box, if specified"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

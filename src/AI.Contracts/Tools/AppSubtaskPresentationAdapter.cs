@@ -10,17 +10,22 @@ namespace AI.Contracts.Tools;
 /// </summary>
 public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapter
 {
-    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "spawn_subtask" };
+    protected override IReadOnlySet<string> Names { get; } = new HashSet<string>(StringComparer.Ordinal) { "spawn_subtask", "subtask_wait", "subtask_stop" };
 
     protected override string Prefix => ToolRef.AppPrefix;
 
     public override ToolCallPresentation DescribeCall(ToolRef tool, JsonElement? arguments)
     {
         ArgumentNullException.ThrowIfNull(tool);
+        if (tool.Name is "subtask_wait" or "subtask_stop")
+            return new ToolCallPresentation(tool.Name == "subtask_wait" ? "Collect subtasks" : "Stop subtasks",
+                $"{ArgumentArray(arguments, "taskIds")?.GetArrayLength() ?? 0} selected",
+                tool.Name == "subtask_wait" ? ToolSafety.ReadOnly : ToolSafety.Mutating);
+        if (Argument(arguments, "task") is { Length: > 0 } task)
+            return new ToolCallPresentation("Delegate a subtask", task.Length <= 80 ? task : task[..79] + "…", ToolSafety.Mutating);
         var tasks = ArgumentArray(arguments, "tasks");
         var count = tasks?.GetArrayLength() ?? 0;
-        // A task is an object carrying its own connection now, and was a bare string before; a
-        // result written by the earlier shape still has to describe itself.
+        // Older history stored a batch of objects or bare task strings. Keep those records readable.
         var first = count == 0 ? null
             : tasks!.Value[0] is { ValueKind: JsonValueKind.Object } item ? Text(item, "task")
             : tasks.Value[0].GetString();
@@ -35,7 +40,15 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
         ToolRef tool, JsonElement? arguments, JsonElement? structured, ToolCallResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        var outcomes = structured is { } value && value.TryGetProperty("results", out var found)
+        var handles = structured is { ValueKind: JsonValueKind.Object } root
+            ? root.TryGetProperty("tasks", out var selected) && selected.ValueKind == JsonValueKind.Array
+                ? selected.EnumerateArray().ToArray()
+                : root.TryGetProperty("taskId", out _) ? [root] : []
+            : [];
+        var outcomes = handles.Length > 0
+            ? handles.Where(item => item.TryGetProperty("result", out var outcome) && outcome.ValueKind == JsonValueKind.Object)
+                .Select(item => item.GetProperty("result")).ToArray()
+            : structured is { } value && value.TryGetProperty("results", out var found)
                                                && found.ValueKind == JsonValueKind.Array
             ? found.EnumerateArray().ToArray()
             : [];
@@ -44,6 +57,9 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
             ArrayLength(item, "unresolved") + Array(item, "checks").Count(check =>
                 Text(check, "status") is "Failed" or "NotRun"));
         var facts = new List<ToolFact>();
+        foreach (var handle in handles)
+            facts.Add(new ToolFact(Text(handle, "taskId") is { Length: >= 8 } id ? id[..8] : "Subtask",
+                Text(handle, "activity") ?? Text(handle, "status") ?? "unknown"));
         for (var index = 0; index < outcomes.Length; index++)
         {
             var outcome = outcomes[index];
@@ -67,13 +83,17 @@ public sealed class AppSubtaskPresentationAdapter : BuiltInToolPresentationAdapt
                 + (note.Length > 0 ? $" — {(note.Length <= 160 ? note : note[..159] + "…")}" : string.Empty)));
         }
 
+        var pending = handles.Count(item => Text(item, "status") is "queued" or "running");
+        var cancelled = handles.Count(item => Text(item, "status") == "cancelled");
         return new ToolResultPresentation(
-            failed == 0
+            pending > 0 ? Plural(pending, "subtask running", "subtasks running")
+            : cancelled > 0 ? Plural(cancelled, "subtask cancelled", "subtasks cancelled")
+            : failed == 0
                 ? evidenceIssues == 0
                     ? Plural(outcomes.Length, "subtask finished", "subtasks finished")
                     : $"{evidenceIssues} evidence {(evidenceIssues == 1 ? "issue" : "issues")} need attention"
                 : $"{failed} of {outcomes.Length} subtasks failed",
-            failed == 0 && evidenceIssues == 0 ? ToolResultSeverity.Ok : ToolResultSeverity.Warning,
+            failed == 0 && evidenceIssues == 0 && cancelled == 0 ? ToolResultSeverity.Ok : ToolResultSeverity.Warning,
             facts,
             Transcript(result));
     }

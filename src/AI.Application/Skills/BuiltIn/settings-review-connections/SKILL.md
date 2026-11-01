@@ -6,7 +6,7 @@ aliases: ["models"]
 kind: playbook
 description: Compare Connections on small synthetic tasks and measured run times, report failures and recommend a default and subtask pool, then apply approved selections, deactivations or deletions.
 parameters: {"type":"object","properties":{"connections":{"type":"array","items":{"type":"string"},"description":"Connection names or ids selected by the user"},"goal":{"type":"string","description":"The user's priority: quality, speed, cost or a particular kind of work"}},"additionalProperties":false}
-tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","ask_user"]
+tools: ["app_read","spawn_subtask","subtask_wait","subtask_stop","app_security","app_projects","app_chats","ask_user"]
 ---
 
 1. Read all Settings pages with `app_read`. Match connections by exact name or id; ask about
@@ -30,8 +30,10 @@ tools: ["app_read","spawn_subtask","app_security","app_projects","app_chats","as
    personal data or chat history. In each task instruct the subtask to answer directly, use no
    tools, spawn no children, and change no files or settings.
 4. Call `spawn_subtask` with an explicit connectionId on EVERY task; never rely on the subtask
-   pool or the current default. Keep batches at most eight tasks, leaving no nested subtasks.
-   Start with one combined suite per candidate. Compare answers against the fixed rubric,
+   pool or the current default. Start one combined suite per candidate in a separate nonblocking
+   call and keep its taskId, leaving no nested subtasks. Collect all candidates with
+   `subtask_wait` mode=all, reusing remaining handles after a wait timeout. Compare collected
+   answers against the fixed rubric,
    completed/error, toolCalls, filesChanged and elapsedMilliseconds from the result. This is
    measured total run time, including application overhead, not token throughput or pure API
    latency. Report unexpected tool calls or writes and exclude those runs from speed comparison.

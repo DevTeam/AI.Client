@@ -5,7 +5,7 @@ icon: qa-regression-run
 kind: playbook
 description: Select regression checks from changed files, branches or commits, execute them in the authorized test environment and report coverage gaps and defects.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The authorized test environment"},"branch":{"type":"string","description":"The source branch to assess"},"commits":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The explicitly selected commits"},"base":{"type":"string","description":"The agreed comparison base"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","cs_run","trigger_wait","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","cs_run","trigger_wait","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

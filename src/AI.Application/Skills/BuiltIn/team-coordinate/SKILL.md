@@ -5,7 +5,7 @@ icon: workflow
 kind: playbook
 description: Lead a team from its coordinating branch: answer teammates, record decisions, unblock, track status, integrate.
 parameters: {"type":"object","properties":{},"additionalProperties":false}
-tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","process_wait","process_stop","run_skill","spawn_subtask","tool_search"]
+tools: ["app_read","app_runs","app_chats","app_navigate","ask_user","list_directory","search_files","grep_files","read_text_file","read_multiple_files","process_run","process_wait","process_stop","run_skill","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

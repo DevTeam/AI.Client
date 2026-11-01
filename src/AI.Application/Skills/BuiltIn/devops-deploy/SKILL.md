@@ -5,7 +5,7 @@ icon: devops-deploy
 kind: playbook
 description: Prepare and perform an authorized deployment of a selected immutable artifact to an explicitly chosen environment, verify rollout and report recovery options.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The exact target environment"},"service":{"type":"string","description":"The target service"},"artifact":{"type":"string","description":"The immutable artifact version or digest"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

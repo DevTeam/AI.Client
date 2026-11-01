@@ -5,7 +5,7 @@ icon: code-plan
 kind: playbook
 description: Plan a code change by researching the existing implementation, comparing approaches and defining files, steps and acceptance checks; changes nothing.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The change to plan"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","app_read","spawn_subtask","run_skill","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","app_read","spawn_subtask","subtask_wait","subtask_stop","run_skill","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

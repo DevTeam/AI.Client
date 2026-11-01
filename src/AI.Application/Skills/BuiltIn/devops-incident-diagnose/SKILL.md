@@ -5,7 +5,7 @@ icon: devops-incident-diagnose
 kind: playbook
 description: Investigate an operational incident using logs, metrics, configuration and recent changes, report supported causes and a concrete recovery plan; changes nothing.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The affected environment"},"service":{"type":"string","description":"The affected service"},"symptom":{"type":"string","description":"The symptom, alert or observed failure"},"since":{"type":"string","description":"The incident time window"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user","app_read","spawn_subtask","run_skill","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","trigger_wait","ask_user","app_read","spawn_subtask","subtask_wait","subtask_stop","run_skill","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

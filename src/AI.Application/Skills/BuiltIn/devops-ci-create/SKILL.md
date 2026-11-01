@@ -5,7 +5,7 @@ icon: devops-ci-create
 kind: playbook
 description: Create a CI pipeline using the project's existing platform, build and test commands, caches and artifacts, then validate its configuration; does not trigger remote jobs.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The pipeline requirements"},"platform":{"type":"string","description":"The existing CI platform, when specified"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

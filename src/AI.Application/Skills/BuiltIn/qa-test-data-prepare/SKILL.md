@@ -5,7 +5,7 @@ icon: qa-test-data-prepare
 kind: playbook
 description: Prepare reproducible synthetic test datasets and fixtures for selected cases, validate their setup and define safe task-owned cleanup; never alters live data.
 parameters: {"type":"object","properties":{"goal":{"type":"string","description":"The cases and data conditions to support"},"environment":{"type":"string","description":"The isolated destination, when data will be loaded"},"seed":{"type":"string","description":"The requested reproducibility seed"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","cs_run","ask_user","tool_search","run_skill","write_file","edit_file","create_directory","move_file","delete_file","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

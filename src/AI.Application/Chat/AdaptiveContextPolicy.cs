@@ -189,8 +189,11 @@ public sealed partial class AdaptiveContextPolicy(
             .Select(item => new Candidate(item.Tool, estimator.EstimateTools([item.Tool.ModelDefinition]),
                 requiredNames.Contains(item.Tool.ModelDefinition.Name), Core(item.Tool), pinnedTools?.Contains(item.Tool.ModelDefinition.Name) == true,
                 item.Words.Count(word => query.Contains(word) && !common.Contains(word))))
-            .OrderByDescending(item => item.Required).ThenByDescending(item => item.Core)
-            .ThenByDescending(item => item.Discovered).ThenByDescending(item => item.Relevance)
+            .OrderByDescending(item => item.Required)
+            // Preserve discovery in small windows; explicit discoveries outrank the general core set.
+            .ThenByDescending(item => item.Tool.ModelDefinition.Name == ToolRef.ToolSearchName)
+            .ThenByDescending(item => item.Discovered).ThenByDescending(item => item.Core)
+            .ThenByDescending(item => item.Relevance)
             .ThenByDescending(item => item.Tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
             .ThenBy(item => item.Tokens).ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal).ToArray();
         var availableTokens = estimator.EstimateTools(availableTools.Select(tool => tool.ModelDefinition).ToArray());
@@ -322,7 +325,7 @@ public sealed partial class AdaptiveContextPolicy(
         var name = tool.ModelDefinition.Name;
         if (name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
             return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask"
-                or "skill_search" or "run_skill";
+                or "skill_search" or "run_skill" or "subtask_wait" or "subtask_stop";
         return name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal)
             && tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
                 or "search_files" or "directory_tree" or ToolPolicyResolver.ProcessRun

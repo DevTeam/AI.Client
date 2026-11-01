@@ -39,6 +39,7 @@ internal sealed partial class ChatExecutionComposition
             .Root<IGlobalSettingsRepository>(nameof(Settings))
             .Root<IChatService>(nameof(Chats))
             .Root<IChatRunDispatcher>(nameof(Dispatcher))
+            .Root<ISubtaskRuns>(nameof(Subtasks))
             .Root<IStandingInstructions>(nameof(Standing))
             .Root<IProjectService>(nameof(Projects))
             .Root<IChatReplySuggestions>(nameof(ReplySuggestions))

@@ -6,7 +6,7 @@ kind: playbook
 aliases: ["team"]
 description: Start a team for substantial independent work, inheriting its workspace and branch settings; ask only for unresolved setup choices.
 parameters: {"type":"object","properties":{"task":{"type":"string","description":"The task"}},"additionalProperties":false}
-tools: ["app_read","app_runs","app_navigate","ask_user","list_allowed_directories","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill","spawn_subtask","tool_search"]
+tools: ["app_read","app_runs","app_navigate","ask_user","list_allowed_directories","list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","process_run","run_skill","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

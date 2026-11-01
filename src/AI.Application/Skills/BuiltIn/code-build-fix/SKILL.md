@@ -5,7 +5,7 @@ icon: code-build-fix
 kind: playbook
 description: Fix build failures, compiler warnings or analyzer diagnostics by finding their causes and rerunning the affected checks; never commits.
 parameters: {"type":"object","properties":{"diagnostics":{"type":"string","description":"Build errors, warnings or analyzer output supplied by the user"},"project":{"type":"string","description":"The project, target or configuration to build"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories to work on, only when provided or already selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

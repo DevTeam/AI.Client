@@ -5,7 +5,7 @@ icon: qa-accessibility-review
 kind: playbook
 description: Review selected UI accessibility using available semantic, keyboard, focus and contrast checks, reporting supported findings and unverified areas; does not edit code.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The UI target/build to inspect"},"scenarios":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The workflows or UI states to review"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

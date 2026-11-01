@@ -75,11 +75,17 @@ execution policy to be consulted, source evidence for each question and complete
 subtasks are used; they allow direct work when delegation would cost more. A teammate may reasonably
 implement small policy modules directly; this is not a delegation failure.
 
-Run `--filter tag:execution-capability --parallel 1` separately to verify delegation from a
+Run `--filter asynchronous-subtasks --parallel 1` for a small scalar-launch probe: two workers,
+independent parent work before collection, matching completed handles and the combined answer.
+This verifies the real Host/model path. Deterministic MCP and dispatcher tests separately cover
+interrupted waits, ownership, cancellation, replay and completion gating.
+
+Run `--filter team-member-subtask-capability --parallel 1` separately to verify delegation from a
 teammate: its prompt explicitly selects a Backend/Client team and tells Backend to delegate a
 shipping module, then consume its artifact. This tests capability rather than automatic choice.
 `teammateTranscriptMatches` requires the correct role, its own call after the fork and the actual
-completed result; a lead's inherited call, a Client call or an unsuccessful attempt cannot pass.
+collected result with the same taskId from `subtask_wait`; a lead's inherited call, a Client call,
+unrelated completion or an unsuccessful attempt cannot pass.
 The executable check verifies that the receipt service consumes the delegated shipping module.
 
 The runner waits for every branch and answers prompts in teammate branches too; the lead's first

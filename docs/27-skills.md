@@ -198,7 +198,7 @@ deletes a chat the user asked for by name.
 | `debug-dump-analyze` (`/dump`) | Analyzes crash, hang and memory dumps with installed debuggers and matching symbols; a new capture of a live process needs an explicit yes | file readers, `process_run`, `ask_user`, `run_skill` |
 | `debug-logging-configure` (`/log-level`) | Works out the effective levels, sinks and rolling policy, raises or restores chosen categories with matching retention after confirmation and records how to revert | file readers, `edit_file`, `process_run`, `trigger_wait`, `ask_user` |
 | `settings-add-connections` | Discovers models from API URLs and adds or merges Connections by URL + model, preserving credentials and unrelated settings; offers comparison | `app_read`, `app_security`, `ask_user`, `run_skill` |
-| `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
+| `settings-review-connections` | Compares selected Connections with bounded synthetic tasks, reports quality, measured run time and errors, then applies approved defaults, subtask pools or cleanup | `app_read`, `spawn_subtask`, `subtask_wait`, `subtask_stop`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-select-connection` | Selects an enabled connection for the global default, current project/chat or subtask pool; can restore project/chat inheritance | `app_read`, `app_security`, `app_projects`, `app_chats`, `ask_user` |
 | `settings-create-theme` (`/theme`) | Builds a colour theme from a description, a mood, a brand colour or an image, previews it live, fixes readability and saves it once the user agrees | `app_theme`, `ask_user` |
 | `settings-improve-theme` (`/tweak-theme`) | Adjusts a saved theme or the one in use from short instructions (warmer, softer, more readable), previews each step and saves it in place or as a copy | `app_theme`, `ask_user` |
@@ -339,7 +339,8 @@ environment values; the settings editor collects them. The report keeps discover
 calls as separate verdicts.
 
 The comparison uses explicit connection ids in `spawn_subtask`, one bounded task per candidate and
-two small suites per candidate. Its `elapsedMilliseconds` measures the whole delegated run,
+at most two small suites per candidate. Each launch returns immediately; `subtask_wait` collects
+its outcome. Its `elapsedMilliseconds` measures the whole delegated run,
 including application overhead and tool calls, on successes and failures. Cost stays unknown
 unless token prices or reported usage are available; stored Capability values are coarse user
 ratings, not benchmark scores. Default, subtask and cleanup changes are proposed for approval, and referenced

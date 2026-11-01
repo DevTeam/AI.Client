@@ -42,7 +42,7 @@
     {
       "type": "toolTranscriptMatches",
       "name": "any delegated review produced a completed result for a requested area",
-      "pattern": "(?s)\\A(?!.*CALL \\S*__spawn_subtask\\s)|CALL \\S*__spawn_subtask\\s(?=[^\\n]*(?:AI\\.Application[^\\n]*(?:Skills|Tools)|AI\\.Contracts[^\\n]*Chats)).*?RESULT.*?\"completed\"\\s*:\\s*true"
+      "pattern": "(?s)\\A(?!.*CALL \\S*__spawn_subtask\\s)|CALL \\S*__spawn_subtask\\s(?=[^\\n]*(?:AI\\.Application[^\\n]*(?:Skills|Tools)|AI\\.Contracts[^\\n]*Chats)).*?CALL \\S*__subtask_wait\\s.*?RESULT.*?\"completed\"\\s*:\\s*true"
     },
     {
       "type": "answerMatches",

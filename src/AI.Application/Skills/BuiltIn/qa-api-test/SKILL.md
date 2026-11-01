@@ -5,7 +5,7 @@ icon: qa-api-test
 kind: playbook
 description: Test selected API contracts and permission/error scenarios against an authorized target, verify responses and side effects, and clean up task-owned data.
 parameters: {"type":"object","properties":{"environment":{"type":"string","description":"The exact authorized API environment/base URL"},"scenarios":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"The endpoints or contract scenarios to check"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

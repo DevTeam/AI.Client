@@ -17,60 +17,6 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
-/// <summary>One piece of work to delegate, and optionally the connection that should answer it.</summary>
-/// <param name="Task">What the subtask is asked to do.</param>
-/// <param name="ConnectionId">
-/// Which connection answers this one. Omitted means the call's own 'connectionId', and failing that
-/// the calling chat's. Naming one per task is what lets several models be exercised at once: tasks
-/// of a single call run together, while separate calls do not.
-/// </param>
-public sealed record SubtaskRequest(
-    string Task,
-    Guid? ConnectionId = null,
-    [property: Description("Concrete conditions this task must verify before it reports completion.")]
-    [property: MaxLength(32)] string[]? AcceptanceCriteria = null);
-
-/// <summary>A file changed by the subtask, measured from that subtask's own workspace baseline.</summary>
-public sealed record SubtaskArtifact(
-    string Path,
-    string Change,
-    int? Additions = null,
-    int? Deletions = null,
-    string? PreviousPath = null);
-
-/// <summary>A check the subtask actually performed, not a check the parent still has to repeat.</summary>
-/// <param name="Status">Passed, Failed or NotRun.</param>
-public sealed record SubtaskCheck(string Name, string Status, string? Details = null);
-
-/// <summary>What one delegated task produced. The transcript is deliberately not here.</summary>
-/// <param name="Answer">The subtask's final reply, which is all the calling model is given.</param>
-/// <param name="Connection">Which connection answered, so the record shows what the work was worth.</param>
-/// <param name="ElapsedMilliseconds">Wall time of the delegated run, including its model and tool calls; not provider-only latency.</param>
-public sealed record SubtaskOutcome(
-    string Task,
-    string Answer,
-    string Connection,
-    int Messages,
-    int ToolCalls,
-    int FilesChanged,
-    bool Completed,
-    string? Error,
-    IReadOnlyList<SubtaskArtifact> Artifacts,
-    IReadOnlyList<SubtaskCheck> Checks,
-    IReadOnlyList<string> Unresolved,
-    long ElapsedMilliseconds = 0);
-
-/// <param name="Next">
-/// What the caller should do with these results. Told only in its standing instructions to trust
-/// passed evidence, a caller still re-verified every part itself, which took longer than the parts.
-/// </param>
-public sealed record SubtaskResult(IReadOnlyList<SubtaskOutcome> Results, string? Error, string? Next = null);
-
-/// <summary>One turn of a subtask, kept for the user to read and withheld from the model.</summary>
-public sealed record SubtaskTranscriptEntry(string Task, string Role, string Content, string? ToolName);
-
-public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Transcript);
-
 /// <summary>
 /// Runs a task in a conversation of its own and hands back only its conclusion.
 /// </summary>
@@ -81,8 +27,8 @@ public sealed record SubtaskTranscript(IReadOnlyList<SubtaskTranscriptEntry> Tra
 /// answer alone. Delegating work this way is cheaper than reading a second chat back, which would
 /// import exactly the text the delegation was meant to avoid.
 ///
-/// Nothing is stored: the subtask's messages live in a list for the duration of the call. There is
-/// no chat to find afterwards, which is the trade for not having one to clean up.
+/// Messages and results live in the parent run's registry until that run ends; no separate chat
+/// is persisted. Wait and stop calls expose completed transcripts only through host metadata.
 /// </remarks>
 [McpServerToolType]
 public sealed class AppSubtaskTool(
@@ -95,30 +41,15 @@ public sealed class AppSubtaskTool(
     IToolResultCodec toolResultCodec,
     IAppToolReply reply,
     Func<IToolAutoApprover> autoApprover,
-    ITokenUsageMeter usageMeter, IChatBranchSettingsResolver branchSettings) : IAppTool
+    ITokenUsageMeter usageMeter, IChatBranchSettingsResolver branchSettings, ISubtaskRuns runs) : IAppTool
 {
     private const string EvidenceStart = "<subtask_evidence>";
     private const string EvidenceEnd = "</subtask_evidence>";
 
-    /// <summary>
-    /// How many subtask runs may be in flight across the Host at once. Extra work in a root fan-out
-    /// waits for a slot, while nested work never waits behind its own parents and fails instead;
-    /// this bounds width without creating a recursive deadlock.
-    /// </summary>
-    private const int MaxConcurrentRuns = 32;
-
-    /// <summary>
-    /// One fan-out may use every execution slot. If other calls already occupy slots, queued work
-    /// starts as those calls finish instead of making the model submit the remaining tasks again.
-    /// </summary>
-    private const int MaxTasks = 256;
-
     private const int MaxEntryLength = 2000;
 
-    private static readonly SemaphoreSlim Slots = new(MaxConcurrentRuns, MaxConcurrentRuns);
-
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(this, run, reply).Create();
-    private CallToolResult Failed(string error) => reply.Reply(new SubtaskResult([], error), true);
+    private CallToolResult Failed(string error) => reply.Reply(new SubtaskSnapshot("", "", "failed", Error: error), true);
 
     /// <summary>
     /// Binds the tool to the run that opened the session. The tool itself is shared by every
@@ -127,123 +58,58 @@ public sealed class AppSubtaskTool(
     /// </summary>
     private sealed class Session(AppSubtaskTool tool, ToolRunContext run, IAppToolReply reply)
     {
-        public McpServerTool Create() => McpServerTool.Create(
-            RunAsync,
-            new McpServerToolCreateOptions
-            {
-                SerializerOptions = reply.Json,
-                Description = "Delegate independent self-contained work to separate conversations and return compact answers, artifacts, checks and unresolved items. "
-                              + "Put all parallel tasks in one call, give each explicit acceptance criteria, use disjoint write targets, and put common rules in "
-                              + $"'sharedInstructions'. At most {MaxConcurrentRuns} tasks run at once; excess tasks wait in this call. Omitted project/chat ids use the current ones. "
-                              + "A task's connectionId wins, then the call's, then the marked subtask pool, then the current chat model. Subtasks inherit directory grants "
-                              + "and policies but cannot ask for approval: obtain the narrowest saved permission before delegating when no allowed alternative exists. "
-                              + "Nothing is saved as a chat; the full exchange is attached for the user but excluded from model context."
-            });
+        public McpServerTool Create() => McpServerTool.Create(RunAsync, new McpServerToolCreateOptions
+        {
+            SerializerOptions = reply.Json,
+            Description = "Start one independent subtask and immediately return its run-owned taskId and queued/running status. "
+                + "Put essential context, absolute workspace, owned paths and restrictions in task. Continue independent work, "
+                + "then collect the result with subtask_wait; do not relaunch it. The current project, chat, permissions and model "
+                + "selection are supplied by the Host. A named connection overrides the marked subtask pool and inherited model. "
+                + "Subtasks cannot request interactive approval. Stop of the parent run cancels its tasks."
+        });
 
-        [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true,
-            UseStructuredContent = true, OutputSchemaType = typeof(SubtaskResult))]
+        [McpServerTool(Name = "spawn_subtask", ReadOnly = false, Destructive = false, Idempotent = false,
+            OpenWorld = true, UseStructuredContent = true, OutputSchemaType = typeof(SubtaskSnapshot))]
         private Task<CallToolResult> RunAsync(
-            [MinLength(1)] [MaxLength(MaxTasks)] SubtaskRequest[] tasks,
-            IProgress<ProgressNotificationValue> progress,
-            Guid? projectId = null,
-            Guid? chatId = null,
-            Guid? connectionId = null,
-            [Description("Instructions common to every task, supplied once to keep the call compact.")]
-            [MaxLength(20000)] string? sharedInstructions = null,
-            CancellationToken cancellationToken = default) =>
-            // Omitted ids mean the run's own project and chat, which is almost always what is meant
-            // and is the one pair a model cannot get wrong.
-            tool.RunAsync(run, projectId ?? run.ProjectId, chatId ?? run.ChatId, tasks, progress, connectionId,
-                sharedInstructions, cancellationToken);
+            [MinLength(1)] string task,
+            [Description("Conditions the worker must verify before reporting completion.")] [MaxLength(32)] string[]? acceptanceCriteria = null,
+            Guid? connectionId = null, CancellationToken cancellationToken = default) =>
+            tool.StartAsync(run, task, acceptanceCriteria, connectionId, cancellationToken);
     }
 
-    private async Task<CallToolResult> RunAsync(
-        ToolRunContext run,
-        Guid projectId,
-        Guid chatId,
-        SubtaskRequest[] tasks,
-        IProgress<ProgressNotificationValue> progress,
-        Guid? connectionId = null,
-        string? sharedInstructions = null,
-        CancellationToken cancellationToken = default)
+    private async Task<CallToolResult> StartAsync(ToolRunContext run, string task, string[]? acceptanceCriteria,
+        Guid? connectionId, CancellationToken cancellationToken)
     {
-        if (tasks is not { Length: > 0 }) return Failed("At least one task is required.");
-        if (tasks.Length > MaxTasks) return Failed($"At most {MaxTasks} tasks can be delegated in one call.");
-        if (tasks.Any(item => item is null || string.IsNullOrWhiteSpace(item.Task))) return Failed("A task cannot be empty.");
-        // Refused here rather than by dropping the tool from a subtask's list: the list is part of the
-        // prompt prefix the subtask may share with its parent, and a refusal says why.
+        if (string.IsNullOrWhiteSpace(task)) return Failed("Provide one nonempty task.");
         if (!SubtaskNesting.CanDelegate(run.SubtaskDepth, await settings.LoadAsync(cancellationToken)))
-            return Failed("Delegation is not available from a subtask at this depth. Do the work yourself, "
-                + "or report what is left as unresolved so the conversation that started you can delegate it.");
-
-        // Every connection is resolved before anything starts: a batch that would fail on its last
-        // task's endpoint should not first spend a minute on the others.
-        (ChatCompletionRequest Template, string Name)[] endpoints;
+            return Failed("Delegation is not available from a subtask at this depth. Do the work yourself or report it as unresolved.");
         try
         {
-            // Only the tasks that named nothing take a turn in the rotation, so one pinned task
-            // does not shift where the rest of the batch lands.
-            var unaddressed = 0;
-            var wanted = tasks.Select(item => item.ConnectionId ?? connectionId)
-                .Select(chosen => (Chosen: chosen, Turn: chosen is null ? unaddressed++ : 0)).ToArray();
-            endpoints = await Task.WhenAll(wanted.Select(item =>
-                RequestTemplateAsync(projectId, chatId, chatId == run.ChatId ? run.BranchId : chatId,
-                    item.Chosen, item.Turn, cancellationToken)));
+            var endpoint = await RequestTemplateAsync(run.ProjectId, run.ChatId, run.BranchId, connectionId,
+                connectionId is null ? runs.NextConnection(run) : 0, cancellationToken);
+            var prompt = Prompt(task, acceptanceCriteria);
+            var snapshot = runs.Start(run, task, async (activity, stopping) =>
+            {
+                var completed = await RunOneAsync(run, run.ProjectId, run.ChatId, endpoint.Template,
+                    endpoint.Name, task, prompt, activity, stopping);
+                return new SubtaskCompletion(completed.Outcome, completed.Transcript);
+            });
+            return reply.Reply(snapshot, false);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
             return Failed(error.Message);
         }
-
-        var board = new Board(progress, tasks.Length);
-        var runs = tasks.Select((item, index) => RunQueuedAsync(run, projectId, chatId,
-            endpoints[index].Template, endpoints[index].Name, item.Task,
-            Prompt(sharedInstructions, item.Task, item.AcceptanceCriteria),
-            index, board, cancellationToken)).ToArray();
-        var completed = await Task.WhenAll(runs);
-        var outcomes = completed.Select(item => item.Outcome).ToArray();
-        return reply.Reply(
-            new SubtaskResult(outcomes, null, Next(outcomes)),
-            new SubtaskTranscript(completed.SelectMany(item => item.Transcript).ToArray()),
-            completed.Any(item => item.Outcome.Error is not null));
-    }
-
-    private async Task<(SubtaskOutcome Outcome, IReadOnlyList<SubtaskTranscriptEntry> Transcript)> RunQueuedAsync(
-        ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task, string prompt,
-        int index, Board board, CancellationToken cancellationToken)
-    {
-        board.Set(index, "queued");
-        var entered = run.IsSubtask
-            ? await Slots.WaitAsync(0, cancellationToken)
-            : await WaitAsync(cancellationToken);
-        if (!entered)
-            return (new SubtaskOutcome(task, string.Empty, connection, 0, 0, 0, false,
-                $"No subtask slot is available for nested work ({MaxConcurrentRuns} at most).", [], [],
-                [$"The task did not start because all {MaxConcurrentRuns} subtask slots were occupied."]), []);
-        try
-        {
-            return await RunOneAsync(run, projectId, chatId, template, connection, task, prompt, index, board, cancellationToken);
-        }
-        finally
-        {
-            Slots.Release();
-        }
-    }
-
-    private static async Task<bool> WaitAsync(CancellationToken cancellationToken)
-    {
-        await Slots.WaitAsync(cancellationToken);
-        return true;
     }
 
     private async Task<(SubtaskOutcome Outcome, IReadOnlyList<SubtaskTranscriptEntry> Transcript)> RunOneAsync(
         ToolRunContext run, Guid projectId, Guid chatId, ChatCompletionRequest template, string connection, string task, string prompt,
-        int index, Board board, CancellationToken cancellationToken)
+        Action<string> activity, CancellationToken cancellationToken)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        var sink = new SubtaskSink(this, task, index, board, presentations,
+        var sink = new SubtaskSink(this, task, activity, presentations,
             (tool, arguments, ct) => autoApprover().DecideAsync(projectId, chatId, run.BranchId, tool, arguments, ct));
-        board.Set(index, "starting");
+        activity("starting");
         // Counted in the turn that delegated the work, which the scope inherits, but apart from
         // its own answer: a fan-out is where a turn's cost usually hides.
         using var usageScope = usageMeter.Begin(new TokenUsageScope(TokenUsagePurpose.Subtask));
@@ -266,24 +132,23 @@ public sealed class AppSubtaskTool(
             var rawText = sink.Answer.ToString();
             var (text, evidence) = ExtractEvidence(rawText);
             sink.Transcript.Add(new SubtaskTranscriptEntry(task, "assistant", rawText, null));
-            board.Finish(index);
             var artifacts = changes.Files.Select(file => new SubtaskArtifact(file.Path, file.Kind.ToString(),
                 file.Additions, file.Deletions, file.PreviousPath)).ToArray();
             return (new SubtaskOutcome(task, text, connection, sink.Transcript.Count, sink.ToolCalls, changes.Files.Count, true, null,
                 artifacts, evidence.Checks, evidence.Unresolved, elapsed.ElapsedMilliseconds), sink.Transcript);
         }
-        catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception error)
         {
             // One failed subtask does not fail its siblings: the caller is told which one broke and
             // keeps whatever the others produced.
-            board.Finish(index);
             return (new SubtaskOutcome(task, sink.Answer.ToString(), connection, sink.Transcript.Count, sink.ToolCalls, 0, false,
-                error.Message, [], [], [error.Message], elapsed.ElapsedMilliseconds), sink.Transcript);
+                cancellationToken.IsCancellationRequested ? "The subtask was cancelled." : error.Message, [], [],
+                [cancellationToken.IsCancellationRequested ? "The subtask was cancelled; inspect any partial artifacts before continuing." : error.Message], elapsed.ElapsedMilliseconds), sink.Transcript);
         }
     }
 
     /// <summary>What a subtask's turn reports, kept in memory for the outcome and its transcript.</summary>
-    private sealed class SubtaskSink(AppSubtaskTool owner, string task, int index, Board board, IToolPresentations presentations,
+    private sealed class SubtaskSink(AppSubtaskTool owner, string task, Action<string> reportActivity, IToolPresentations presentations,
         Func<AgentTool, string, CancellationToken, Task<ToolAutoApproval>> decide) : IAgentRunSink
     {
         // A tool message names only the call it answers, so what that call was has to be remembered
@@ -311,17 +176,17 @@ public sealed class AppSubtaskTool(
 
         public Task TextAsync(string text, CancellationToken cancellationToken)
         {
-            if (Answer.Length == 0 && text.Length > 0) board.Set(index, "writing");
+            if (Answer.Length == 0 && text.Length > 0) reportActivity("writing");
             Answer.Append(text);
             return Task.CompletedTask;
         }
 
         // A subtask that reports nothing looks identical to one that has hung, so what it is doing
         // right now is forwarded to the caller's own progress channel and lands in the live row of the
-        // tool card that started it.
+        // active wait tool card.
         public Task ActivityAsync(ToolActivity? activity, CancellationToken cancellationToken)
         {
-            board.Set(index, activity is { } running ? ToolRef.Parse(running.Name).Name : "thinking");
+            reportActivity(activity is { } running ? ToolRef.Parse(running.Name).Name : "thinking");
             return Task.CompletedTask;
         }
 
@@ -335,29 +200,9 @@ public sealed class AppSubtaskTool(
             (await decide(tool, arguments, cancellationToken)).Allowed ? ToolApprovalAction.Allow : ToolApprovalAction.Deny;
     }
 
-    /// <summary>
-    /// Points the caller at the tasks that need it, by their 1-based position, and away from the
-    /// ones whose own checks already passed.
-    /// </summary>
-    private static string Next(IReadOnlyList<SubtaskOutcome> outcomes)
-    {
-        var attention = outcomes.Select((outcome, index) => (outcome, number: index + 1))
-            .Where(item => !item.outcome.Completed || item.outcome.Error is not null || item.outcome.Unresolved.Count > 0
-                           || item.outcome.Checks.Count == 0
-                           || item.outcome.Checks.Any(check => !string.Equals(check.Status, "Passed", StringComparison.OrdinalIgnoreCase)))
-            .Select(item => item.number).ToArray();
-        if (attention.Length == 0)
-            return "Every task completed and passed its own checks. Integrate the results and run at most one cross-result check, "
-                + "such as one combined comparison with the source; do not reread or re-verify individual results.";
-        return $"Tasks {string.Join(", ", attention)} failed, left unresolved items or lack passed checks: inspect, fix or retry only "
-            + "those. Trust the passed checks of the others; integrate them without re-verifying.";
-    }
-
-    private static string Prompt(string? sharedInstructions, string task, IReadOnlyList<string>? acceptanceCriteria)
+    private static string Prompt(string task, IReadOnlyList<string>? acceptanceCriteria)
     {
         var prompt = new System.Text.StringBuilder();
-        if (!string.IsNullOrWhiteSpace(sharedInstructions))
-            prompt.Append(sharedInstructions.Trim()).AppendLine().AppendLine();
         prompt.Append(task.Trim());
         if (acceptanceCriteria is { Count: > 0 })
         {
@@ -473,56 +318,5 @@ public sealed class AppSubtaskTool(
             await secrets.GetAsync("connection", connection.Id, cancellationToken), string.Empty, connection.Id, [],
             ReasoningEffort: connection.ReasoningEffort),
             connection.Name);
-    }
-
-
-
-    /// <summary>
-    /// What every subtask is doing right now, collapsed into one line for the caller's progress
-    /// channel. Held in one place because several subtasks share a single channel: reporting them
-    /// independently would just overwrite each other with whichever finished its sentence last.
-    /// </summary>
-    private sealed class Board(IProgress<ProgressNotificationValue>? sink, int total)
-    {
-        private readonly string?[] _state = new string?[total];
-        private readonly Lock _gate = new();
-        private int _finished;
-
-        public void Set(int index, string what)
-        {
-            lock (_gate) _state[index] = what;
-            Report();
-        }
-
-        public void Finish(int index)
-        {
-            lock (_gate)
-            {
-                _state[index] = null;
-                _finished++;
-            }
-
-            Report();
-        }
-
-        private void Report()
-        {
-            if (sink is null) return;
-            string message;
-            int finished;
-            lock (_gate)
-            {
-                finished = _finished;
-                // One subtask needs no numbering; several do, or the line says nothing about which
-                // of them is where.
-                message = string.Join(" · ", _state
-                    .Select((what, index) => what is null ? null : total == 1 ? what : $"{index + 1}: {what}")
-                    .OfType<string>());
-            }
-
-            if (finished > 0 && total > 1)
-                message = message.Length == 0 ? $"{finished}/{total} done" : $"{finished}/{total} done · {message}";
-            sink.Report(new ProgressNotificationValue { Progress = finished, Total = total, Message = message });
-        }
     }
 }

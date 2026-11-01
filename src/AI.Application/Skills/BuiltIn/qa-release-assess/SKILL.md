@@ -5,7 +5,7 @@ icon: qa-release-assess
 kind: playbook
 description: Assess a selected release against agreed quality gates, test evidence, open defects and residual risks, reporting readiness or insufficient evidence; never publishes.
 parameters: {"type":"object","properties":{"release":{"type":"string","description":"The exact release/build/source revision"},"criteria":{"type":"string","description":"The approved release quality gates"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Files or directories explicitly supplied or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","app_read","spawn_subtask"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","process_run","ask_user","tool_search","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

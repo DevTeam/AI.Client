@@ -5,7 +5,7 @@ icon: devops-ci-fix
 kind: playbook
 description: Diagnose a failed CI run from its logs and configuration, fix the demonstrated pipeline cause and validate the change; reruns remote jobs only when explicitly authorized.
 parameters: {"type":"object","properties":{"run":{"type":"string","description":"The failed CI run identifier or URL"},"diagnostics":{"type":"string","description":"The relevant failure output"},"paths":{"type":"array","items":{"type":"string"},"maxItems":200,"description":"Configuration files or directories explicitly named or selected"}},"additionalProperties":false}
-tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","tool_search"]
+tools: ["list_directory","directory_tree","search_files","grep_files","read_text_file","read_multiple_files","get_file_info","list_allowed_directories","process_run","process_wait","process_stop","ask_user","write_file","edit_file","create_directory","move_file","delete_file","run_skill","app_read","spawn_subtask","subtask_wait","subtask_stop","tool_search"]
 ---
 
 Before exploring multiple independent areas, read the full shared execution policy with

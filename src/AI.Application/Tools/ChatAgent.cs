@@ -44,7 +44,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
     IConnectionContextWindowDetector contextWindows, IExecutableLocator executables,
-    Func<IToolAutoApprover> autoApprover) : IAgentHarness
+    Func<IToolAutoApprover> autoApprover, ISubtaskRuns subtaskRuns) : IAgentHarness
 {
     public Task<WorkspaceChangeSet> RunAsync(AgentRunRequest request, IAgentRunSink sink, CancellationToken cancellationToken) =>
         RunCoreAsync(request.ProjectId, request.ChatId, request.BranchId, request.Completion, sink.PersistAsync, sink.TextAsync,
@@ -118,6 +118,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         var subtask = parentBranchId is not null;
         var run = new ToolRunContext(projectId, chatId, branchId, interactive, kindPolicy.Kind, request.KindState,
             request.KindStateVersion, overlayPromptsAllowed, subtask, subtaskDepth);
+        await using var subtaskScope = subtaskRuns.Begin(run, token);
         using var catalogScope = toolCatalog.Begin(run);
         using var instructionScope = instructions.Begin(run);
         var plansAllowed = !subtask && servers.Contains(AppMcpServer.Id) && kindPolicy.AllowsTool(AppMcpServer.Id, ChatPlanResults.ToolName);
@@ -143,7 +144,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 "You are a focused background worker. Execute the assigned task directly with the tools already offered. "
                 + "Do not plan, search for additional tools, inspect unrelated application state, or repeat successful reads and checks. "
                 + (SubtaskNesting.CanDelegate(subtaskDepth, global)
-                    ? "Keep spawn_subtask available, but delegate again only when the assigned work is itself independently divisible. "
+                    ? "Delegate again only when the assigned work is itself independently divisible; retain each taskId, continue independent work and collect every result with subtask_wait before answering. "
                     : "Do not delegate: spawn_subtask refuses work from a subtask at this depth, so do the work yourself or report what is left as unresolved. ")
                 + "Keep necessary verification proportional and return a short factual result to the parent.",
                 995, ModelInstructionLifetime.Run, Required: true));
@@ -201,6 +202,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             parentBranchId is { } parent ? new WorkspaceRunKey(projectId, chatId, parent) : null, token);
         async Task<WorkspaceChangeSet> FinishAsync(string answer)
         {
+            var uncollected = subtaskRuns.Outstanding(run).Count;
+            await subtaskRuns.StopAllAsync(run);
+            if (uncollected > 0)
+                answer += "\n\nSome delegated results were not collected before this run stopped. Owned subtasks have been stopped; inspect partial artifacts before continuing.";
             await Draft(null);
             await Answer(answer);
             var changes = await workspace.SnapshotAsync(runKey, token);
@@ -344,7 +349,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (session is not null)
             {
                 var candidates = session.Tools.Where(tool => kindPolicy.AllowsTool(tool.ServerId, tool.OriginalName))
-                    .Where(tool => !subtask || tool.ServerId != AppMcpServer.Id || tool.OriginalName == "spawn_subtask").ToArray();
+                    .Where(tool => !subtask || tool.ServerId != AppMcpServer.Id || tool.OriginalName is "spawn_subtask" or "subtask_wait" or "subtask_stop").ToArray();
                 var resolved = await policies.ResolveAsync(projectId, chatId, branchId, candidates, token);
                 for (var index = 0; index < candidates.Length; index++)
                     if (resolved[index].Decision != "Deny") permitted.Add(candidates[index]);
@@ -393,6 +398,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     970, ModelInstructionLifetime.Request));
             if (!subtask && behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
                 await UpsertActiveSkillAsync(run, context, token);
+            if (subtaskRuns.Outstanding(run) is { Count: > 0 } pendingSubtasks)
+                instructions.Upsert(run, new ModelInstruction("run.subtasks",
+                    "Delegated work remains uncollected. Continue independent work, then call subtask_wait for these taskIds "
+                    + "before your final answer (or explicitly stop tasks you no longer need): "
+                    + string.Join(", ", pendingSubtasks.Select(task => task.TaskId + " (" + task.Status + ")")),
+                    990, ModelInstructionLifetime.Run, Required: true));
+            else instructions.Remove(run, "run.subtasks");
             if (plansAllowed) UpsertPlan(run);
             // Every step is finished and only the criteria are left: the answer this step may write
             // would be dropped at the gate below, so the check is asked for now, before it is written.
@@ -573,6 +585,26 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 continue;
             }
 
+            // A parent cannot publish completion while owned work or unread results remain. Feed a
+            // normal, permission-checked wait through the tool loop so its result enters history.
+            if (calls.Count == 0 && !stalled && subtaskRuns.Outstanding(run) is { Count: > 0 } outstanding)
+            {
+                var waitTool = selectedTools.FirstOrDefault(tool => tool.ServerId == AppMcpServer.Id && tool.OriginalName == "subtask_wait");
+                if (waitTool is null)
+                {
+                    if (!permitted.Any(tool => tool.ServerId == AppMcpServer.Id && tool.OriginalName == "subtask_wait"))
+                        throw new InvalidOperationException("Cannot collect delegated work: subtask_wait is unavailable. Outstanding tasks will be stopped.");
+                    toolCatalog.Pin(run, ["subtask_wait"]);
+                    await Draft(null);
+                    continuedAnswer.Clear();
+                    continue;
+                }
+                calls.Add(new ChatToolCall($"collect_{Guid.CreateVersion7():N}", waitTool.ModelDefinition.Name,
+                    JsonSerializer.Serialize(new { taskIds = outstanding.Select(task => task.TaskId).ToArray(), mode = "all", waitTimeoutMs = 60000 })));
+                content.Clear();
+                continuedAnswer.Clear();
+            }
+
             truncated = 0;
             // A response without tool calls ends the turn, as the models are trained to: it is the
             // answer, published as written.
@@ -670,6 +702,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                 input["waitTimeoutMs"] = Math.Min(input["waitTimeoutMs"]?.GetValue<int>() ?? wait, (int)policy.TimeoutSeconds * 1000);
                                 arguments = input.ToJsonString();
                             }
+                            if (tool.ServerId == AppMcpServer.Id && tool.OriginalName == "subtask_wait")
+                            {
+                                var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
+                                input["waitTimeoutMs"] = Math.Min(input["waitTimeoutMs"]?.GetValue<int>() ?? 60000,
+                                    Math.Min(60000, (int)policy.TimeoutSeconds * 1000));
+                                arguments = input.ToJsonString();
+                            }
                             var count = counts.GetValueOrDefault(call.Name) + 1;
                             counts[call.Name] = count;
                             if (policy.Decision == "Deny") result = Error("Tool denied by current policy.");
@@ -695,7 +734,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                                     // A wait gives way to a message joining the turn: the model waits for
                                     // something to happen, and the person writing to it is that something.
-                                    var joined = tool.OriginalName is "trigger_wait" or "process_wait"
+                                    var joined = tool.OriginalName is "trigger_wait" or "process_wait" or "subtask_wait"
                                         ? joinSignal?.Invoke() ?? CancellationToken.None
                                         : CancellationToken.None;
                                     using var wake = joined.Register(timeout.Cancel);
@@ -772,10 +811,21 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     var message = ToolMessage(call.Id, repeated ? result with { ModelContent = RepeatedRead(firstReads[seen]) } : result);
                     await persist(message, token);
                     context.Add(message);
+                    if (!result.IsError
+                        && selectedTools.Any(tool => tool.ModelDefinition.Name == call.Name && tool.ServerId == AppMcpServer.Id
+                            && tool.OriginalName is "subtask_wait" or "subtask_stop"))
+                        subtaskRuns.Acknowledge(run, result.StructuredContent);
                     toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
                         .Select(item => item.AssetId).OfType<string>());
                     await activity(null, token);
                     learned |= observedResults.Add((call.Name, call.Arguments, result.ModelContent));
+                    // A bounded wait timing out is expected while work continues. Repeated snapshots
+                    // and replayed terminal results still participate in the normal stall detector.
+                    if (!result.IsError && selectedTools.Any(tool => tool.ModelDefinition.Name == call.Name
+                            && tool.ServerId == AppMcpServer.Id && tool.OriginalName == "subtask_wait")
+                        && result.StructuredContent is { ValueKind: JsonValueKind.Object } waitResult
+                        && waitResult.TryGetProperty("timedOut", out var timedOut) && timedOut.ValueKind == JsonValueKind.True)
+                        learned = true;
                 }
             }
             finally
@@ -1354,7 +1404,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     /// </summary>
     private static bool RunsAlongside(AgentTool tool) =>
         tool.Descriptor.Annotations?.ReadOnlyHint == true
-        && tool.OriginalName is not ("trigger_wait" or "process_wait")
+        && tool.OriginalName is not ("trigger_wait" or "process_wait" or "subtask_wait")
         && !AsksTheUser(tool);
 
     /// <summary>

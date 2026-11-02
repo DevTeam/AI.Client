@@ -161,8 +161,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
-            .Transient<DesktopUnreadCountPublisher, ChatSkillStatisticsCalculator, ChatPlanStatisticsCalculator>()
-            .Transient<ChatMemoryStatisticsCalculator>()
+            .Transient<DesktopUnreadCountPublisher, ChatSkillStatisticsCalculator, ChatPlanStatisticsCalculator,
+                ChatMemoryStatisticsCalculator>()
             .Bind<TimeProvider>().To(_ => TimeProvider.System)
             .Transient((IApiBaseUrl arg, IClientMode mode, IJSRuntime jsRuntime) =>
                 new HttpClient(new BridgeAuthorizationHandler(mode, jsRuntime)

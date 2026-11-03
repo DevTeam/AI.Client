@@ -44,7 +44,7 @@ Ask  — request confirmation before the call
 Deny — do not show the tool to the model and reject direct calls
 ```
 
-The initial policy for any new or changed external tool is `Ask`. Known Host tools that only read local files or application data, search, wait, ask the user, or navigate the app have explicit `Allow` defaults. Network fetches, writes, process and script execution, skill execution, and delegation still start at `Ask`. Unknown Host tool names also start at `Ask`. `subtask_wait` and `subtask_stop` default to `Allow` because they can only collect or cancel work owned by the active parent run; explicit saved policies still override those defaults.
+The initial policy for any new or changed external tool is `Ask`. Known Host tools that only read local files or application data, search, wait, ask the user, or navigate the app have explicit `Allow` defaults. Network fetches, writes, process and script execution, and skill execution still start at `Ask`. Unknown Host tool names also start at `Ask`. The three subtask tools default to `Allow` because they only act on work owned by the active parent run: `subtask_wait` and `subtask_stop` collect or cancel it, and `spawn_subtask` starts a worker that inherits the caller's project grants and approval mode, cannot ask for approval itself, and returns a report the caller still has to use. Explicit saved policies still override those defaults.
 
 A change in tool schema hash resets the stored permission. `notifications/tools/list_changed` triggers re-evaluation.
 

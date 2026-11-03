@@ -34,6 +34,7 @@ public sealed class ToolDefaultDecisionTests
     // A theme only paints the window; Save and Activate are agreed with the person by the playbook.
     [InlineData("app_theme")]
     [InlineData("plan_update")]
+    [InlineData("spawn_subtask")]
     [InlineData("subtask_wait")]
     [InlineData("subtask_stop")]
     public void AppReadAndNavigationToolsRunWithoutApproval(string name) =>
@@ -50,9 +51,8 @@ public sealed class ToolDefaultDecisionTests
     [Theory]
     [InlineData("app_security")]
     [InlineData("app_chats")]
-    [InlineData("spawn_subtask")]
     [InlineData("run_skill")]
-    public void AppMutationsAndDelegationStillAsk(string name) =>
+    public void AppMutationsStillAsk(string name) =>
         _defaults.GetDecision(AppMcpServer.Id, name).ShouldBe("Ask");
 
     [Fact]

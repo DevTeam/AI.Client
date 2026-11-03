@@ -16,8 +16,11 @@ public sealed class ToolDefaultDecision : IToolDefaultDecision
         if (serverId == DefaultMcpServer.Id && name is CommandRule.ProcessRunSandboxed or "cs_run")
             return "Allow";
 
+        // Delegation counts as reading here: a worker inherits the caller's grants and approval mode,
+        // cannot ask for approval itself, and its result is only a report the caller still has to use.
         if (serverId == AppMcpServer.Id && name is
-            "app_read" or "tool_search" or "skill_search" or "ask_user" or "app_navigate" or "app_theme" or "plan_update" or "subtask_wait" or "subtask_stop")
+            "app_read" or "tool_search" or "skill_search" or "ask_user" or "app_navigate" or "app_theme" or "plan_update"
+            or "spawn_subtask" or "subtask_wait" or "subtask_stop")
             return "Allow";
 
         return "Ask";

@@ -441,6 +441,58 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ATimedOutIdleConditionShouldSayHowFarTheSilenceHadCome()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-idle-report").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            Directory.CreateDirectory(output);
+            File.WriteAllText(Path.Combine(output, "one.txt"), "first");
+            var file = Path.Combine(root, "stream.log");
+            File.WriteAllText(file, "line");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // A writer that never stops: the quiet period is never reached, and the timeout has to
+            // say how close it came instead of reporting a bare absence of news.
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 60000, Depth: 2),
+                new TriggerCondition("file_idle", Path: file, QuietMs: 60000)
+            ], 700, null, cancel.Token);
+            var writing = Stopwatch.StartNew();
+            var written = 1;
+            while (writing.ElapsedMilliseconds < 900)
+            {
+                await File.WriteAllTextAsync(Path.Combine(output, $"part-{written++}.txt"), "more",
+                    TestContext.Current.CancellationToken);
+                await File.AppendAllTextAsync(file, "\nmore", TestContext.Current.CancellationToken);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            var result = await pending;
+            result.Outcome.ShouldBe("timeout");
+            var observed = result.Observed.ShouldNotBeNull();
+
+            // What the directory walk actually counted, so "quiet" can be read together with it.
+            var directory = observed.Single(item => item.ConditionIndex == 0);
+            directory.Exists.ShouldBe(true);
+            directory.Entries.ShouldNotBeNull().ShouldBeGreaterThan(1);
+            directory.Depth.ShouldBe(2);
+            directory.LastWriteTime.ShouldNotBeNull();
+            // The last write restarted the period a moment ago, so little of the minute had passed.
+            directory.IdleMs.ShouldNotBeNull().ShouldBeLessThan(60000);
+
+            var stream = observed.Single(item => item.ConditionIndex == 1);
+            stream.IdleMs.ShouldNotBeNull().ShouldBeLessThan(60000);
+            // A file has no entries and no levels to count, and says so by leaving them out.
+            stream.Entries.ShouldBeNull();
+            stream.Depth.ShouldBeNull();
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldRejectADirectoryConditionThatNamesSomethingElse()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-invalid").FullName;

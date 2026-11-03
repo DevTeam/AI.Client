@@ -186,6 +186,14 @@ from a nonzero output offset). A miss with `olderTextUnsearched` means the patte
 what was read, which is not the same as the pattern never having been written; a managed execution
 that finished without printing the pattern says so in its `error` instead of leaving a bare timeout.
 
+The two idle conditions say how far they had come. `observed` carries `idleMs` (how long the current
+silence has lasted) beside the fields the file ones always report, so a timeout reads as "quiet for
+400 ms of the 60000 asked for" instead of leaving a writer that never stopped indistinguishable from
+one that had nearly settled. `directory_idle` also reports `entries` (what its last walk counted) and
+`depth` (how many levels that count covered), and its `lastWriteTime` is the newest write among those
+entries: a directory has no length of its own, so its size and the freshness of what it holds are the
+two numbers that say whether it is still moving.
+
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. File and directory observation combine
 platform notifications with a bounded periodic check so a missed notification does not leave the

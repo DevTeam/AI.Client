@@ -182,7 +182,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
             state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
             state.MemoryBytes, state.ProcessStatus, state.Error, state.Matched, state.SearchedBytes,
-            state.OlderTextUnsearched)).ToArray();
+            state.OlderTextUnsearched, state.Entries, state.Kind == TriggerKind.DirectoryIdle ? state.Depth : null,
+            state.Kind is TriggerKind.FileIdle or TriggerKind.DirectoryIdle ? state.IdleMs : null)).ToArray();
 
     /// <summary>Names the condition in an error, so a model fixes the right one of up to eight.</summary>
     private static string Label(int index, string? type) => $"Condition {index} ('{type}')";
@@ -480,6 +481,14 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 : await SnapshotAsync(path, cancellationToken);
             if (isDirectory) state.Exists = snapshot.Exists;
             else Observe(state, snapshot);
+            // A directory has no length of its own, so the two numbers that say whether it is moving are
+            // its entry count and the newest write among what it counts. A timeout quiet for either
+            // reason is otherwise indistinguishable from a directory that is there and doing nothing.
+            if (isDirectory && snapshot.Exists)
+            {
+                state.Entries = snapshot.Length;
+                state.LastWriteTime = new DateTimeOffset(snapshot.LastWriteTicks, TimeSpan.Zero);
+            }
             var newEvent = Interlocked.Exchange(ref state.FileEvents, 0) != 0;
             var changed = newEvent || snapshot != state.LastFile;
             if (newEvent) state.SawFileChange = true;
@@ -496,6 +505,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 state.Error = "The directory no longer exists.";
                 return null;
             }
+            // Reported as it stands, not as a verdict: a timeout says how far the silence had come,
+            // which separates a quiet period that was nearly reached from a writer that never stopped.
+            if (state.Kind is TriggerKind.FileIdle or TriggerKind.DirectoryIdle)
+                state.IdleMs = elapsedMs - state.LastChangeMs;
             state.LastFile = snapshot;
             var eligible = state.Kind switch
             {
@@ -959,6 +972,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public bool? Matched { get; set; }
         public long? SearchedBytes { get; set; }
         public bool? OlderTextUnsearched { get; set; }
+
+        /// <summary>Entries a <c>directory_idle</c> walk counted, reported so a timeout can be read.</summary>
+        public long? Entries { get; set; }
+
+        /// <summary>How long the current silence has lasted, for the two idle conditions.</summary>
+        public long? IdleMs { get; set; }
         public long StdoutOffset { get; set; }
         public long StderrOffset { get; set; }
 

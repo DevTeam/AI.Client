@@ -27,7 +27,8 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
                           + "Text conditions read a file's last 256 KiB, or the output a managed process printed after the given offsets, "
                           + "and a literal pattern is a plain substring while regex enables a regular expression. "
                           + "A timeout returns the state it last read for every condition in observed, so a missing file is "
-                          + "distinguishable from an unparsed process or a pattern that was never printed. "
+                          + "distinguishable from an unparsed process or a pattern that was never printed; the idle conditions "
+                          + "also report how long the silence has lasted, and directory_idle what it counted and how deep. "
                           + "Prefer process_completed for one bounded wait on a managed command; it also matches commands already finished. Timeout/cancellation does not stop the command or change its hard deadline. "
                           + "Managed handles belong to this MCP session, not OS PIDs. File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
         });

@@ -29,7 +29,11 @@ public sealed record TriggerCondition(
 /// <param name="Path">The canonical path a file condition watched, otherwise <c>null</c>.</param>
 /// <param name="Exists">Whether the file existed when the state was read.</param>
 /// <param name="LengthBytes">File length in bytes when it existed.</param>
-/// <param name="LastWriteTime">Last write time of the file when it existed.</param>
+/// <param name="LastWriteTime">
+/// Last write time of the file when it existed. A <c>directory_idle</c> condition reports here the
+/// newest write among the entries it counted, which is the timestamp its quiet period is measured
+/// against.
+/// </param>
 /// <param name="ProcessId">The OS process a process condition watched.</param>
 /// <param name="ProcessRunning">Whether that process was still alive.</param>
 /// <param name="CpuPercent">The last sampled CPU percentage, normalized across logical processors.</param>
@@ -47,6 +51,19 @@ public sealed record TriggerCondition(
 /// with this set means the pattern may sit outside what was read, which is not the same as the
 /// pattern never having been written.
 /// </param>
+/// <param name="Entries">
+/// How many entries a <c>directory_idle</c> condition counted on its last walk. A timeout that says
+/// how large the tree is tells whether the directory was still growing or had long settled.
+/// </param>
+/// <param name="Depth">
+/// How many levels below <paramref name="Path"/> that count covered, so a report of "quiet" can be
+/// read together with what it actually looked at.
+/// </param>
+/// <param name="IdleMs">
+/// How long the current silence has lasted for <c>file_idle</c> and <c>directory_idle</c>. A timeout
+/// with this set says how close the quiet period had come, which separates "almost there" from "a
+/// writer never stopped".
+/// </param>
 public sealed record TriggerObservation(
     int ConditionIndex,
     string Type,
@@ -62,7 +79,10 @@ public sealed record TriggerObservation(
     string? Error = null,
     bool? Matched = null,
     long? SearchedBytes = null,
-    bool? OlderTextUnsearched = null);
+    bool? OlderTextUnsearched = null,
+    long? Entries = null,
+    int? Depth = null,
+    long? IdleMs = null);
 
 /// <summary>How far the wait has come, reported as <c>notifications/progress</c>.</summary>
 /// <param name="ElapsedMs">Time since the wait started.</param>

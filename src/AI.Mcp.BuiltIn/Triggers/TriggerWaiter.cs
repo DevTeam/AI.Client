@@ -709,7 +709,15 @@ public sealed class TriggerWaiter : ITriggerWaiter
         var newest = 0L;
         foreach (var entry in entries)
         {
-            var written = await _files.GetLastWriteTimeAsync(entry.Path, cancellationToken);
+            DateTimeOffset written;
+            try { written = await _files.GetLastWriteTimeAsync(entry.Path, cancellationToken); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // The entry was removed between the listing and this read, which is itself a change;
+                // the next poll sees the smaller listing. Failing the whole wait over it would make
+                // the condition unusable on the busy directories it exists for.
+                continue;
+            }
             if (written.UtcTicks > newest) newest = written.UtcTicks;
         }
         return new FileStamp(true, entries.Count, newest);

@@ -411,6 +411,34 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ADirectoryListingShouldCarryTheWriteTimeOfEveryEntry()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-listing-time").FullName;
+        try
+        {
+            var files = new SystemFileSystem();
+            var first = Path.Combine(root, "first.txt");
+            var second = Path.Combine(root, "second.txt");
+            File.WriteAllText(first, "one");
+            File.WriteAllText(second, "two");
+            var older = new DateTimeOffset(2020, 1, 2, 3, 4, 5, TimeSpan.Zero);
+            var newer = new DateTimeOffset(2021, 6, 7, 8, 9, 10, TimeSpan.Zero);
+            File.SetLastWriteTimeUtc(first, older.UtcDateTime);
+            File.SetLastWriteTimeUtc(second, newer.UtcDateTime);
+
+            var entries = await files.ListEntriesAsync(root, recursive: false, TestContext.Current.CancellationToken);
+
+            // The listing is what directory_idle polls with: a timestamp it had to fetch per entry
+            // afterwards is exactly what made a large directory cost more than the poll interval.
+            entries.Single(entry => entry.Name == "first.txt").LastWriteTime.ShouldBe(older);
+            entries.Single(entry => entry.Name == "second.txt").LastWriteTime.ShouldBe(newer);
+            var single = await files.GetEntryAsync(first, TestContext.Current.CancellationToken);
+            single.ShouldNotBeNull().LastWriteTime.ShouldBe(older);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldRejectATextConditionWithoutPatternOrWithABadExpression()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-text-invalid").FullName;

@@ -707,18 +707,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
         if (!await _files.DirectoryExistsAsync(path, cancellationToken)) return default;
         var entries = await _files.ListEntriesAsync(path, recursive: false, cancellationToken);
         var newest = 0L;
+        // The write time comes with the entry: asking the platform once per entry cost a second on a
+        // twenty-thousand-entry directory, which is longer than the interval this loop polls on.
         foreach (var entry in entries)
         {
-            DateTimeOffset written;
-            try { written = await _files.GetLastWriteTimeAsync(entry.Path, cancellationToken); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                // The entry was removed between the listing and this read, which is itself a change;
-                // the next poll sees the smaller listing. Failing the whole wait over it would make
-                // the condition unusable on the busy directories it exists for.
-                continue;
-            }
-            if (written.UtcTicks > newest) newest = written.UtcTicks;
+            var written = entry.LastWriteTime.UtcTicks;
+            if (written > newest) newest = written;
         }
         return new FileStamp(true, entries.Count, newest);
     }

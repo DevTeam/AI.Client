@@ -17,9 +17,16 @@ namespace AI.Contracts.FileSystem;
 /// was given instead of asking again. A fake reports what it models; it is <see cref="FileAttributes.Normal"/>
 /// by default because that is what an ordinary entry is.
 /// </param>
+/// <param name="LastWriteTime">
+/// The entry's last write time as the listing already knows it. A caller that needs the newest
+/// entry of a directory — <c>directory_idle</c> does, on every poll — reads it from here: asking the
+/// platform once per entry turned a twenty-thousand-entry directory into a poll longer than the
+/// interval the wait runs on, while the enumeration had the same timestamp in hand already.
+/// </param>
 public sealed record FileSystemEntry(
     string Path,
     string Name,
     bool IsDirectory,
     long Length,
-    FileAttributes Attributes = FileAttributes.Normal);
+    FileAttributes Attributes = FileAttributes.Normal,
+    DateTimeOffset LastWriteTime = default);

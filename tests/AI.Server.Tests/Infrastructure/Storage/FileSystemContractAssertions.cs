@@ -254,6 +254,27 @@ internal static class FileSystemContractAssertions
         (await files.ListFilesRecursivelyAsync(root, "*.txt", token)).Count.ShouldBe(2);
     }
 
+    /// <summary>
+    /// A listing carries each entry's write time, and says the same thing as asking for the entry by
+    /// name. <c>directory_idle</c> polls a listing once per interval, so an implementation that
+    /// answered entries without their time would force it to ask again for every entry.
+    /// </summary>
+    public static async Task AListingCarriesTheWriteTimeOfEachEntry(ContractEnvironment environment)
+    {
+        var files = environment.Files;
+        var token = TestContext.Current.CancellationToken;
+        var root = Under(environment, environment.Root, "listing-times");
+        var written = Under(environment, root, "written.txt");
+        await files.WriteTextAsync(written, "a", token);
+
+        var entry = (await files.ListEntriesAsync(root, new FileEnumerationOptions(), token))
+            .Single(item => item.Name == "written.txt");
+        entry.LastWriteTime.ShouldNotBe(default(DateTimeOffset));
+        entry.LastWriteTime.ShouldBe(await files.GetLastWriteTimeAsync(written, token));
+        var single = await files.GetEntryAsync(written, token);
+        single.ShouldNotBeNull().LastWriteTime.ShouldBe(entry.LastWriteTime);
+    }
+
     public static async Task ResolvingAPathFollowsItToTheSamePlaceEveryTime(ContractEnvironment environment)
     {
         var files = environment.Files;

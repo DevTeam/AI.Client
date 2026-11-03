@@ -64,12 +64,22 @@ internal sealed class MemoryFileSystem : IFileSystem
     {
         if (DirectoryExists(path))
             return Task.FromResult<FileSystemEntry?>(
-                new FileSystemEntry(path, Path.GetFileName(path), true, 0, FileAttributes.Directory));
+                new FileSystemEntry(path, Path.GetFileName(path), true, 0, FileAttributes.Directory,
+                    TimeOf(path)));
         if (Files.TryGetValue(path, out var content))
             return Task.FromResult<FileSystemEntry?>(
-                new FileSystemEntry(path, Path.GetFileName(path), false, Encoding.UTF8.GetByteCount(content)));
+                new FileSystemEntry(path, Path.GetFileName(path), false, Encoding.UTF8.GetByteCount(content),
+                    LastWriteTime: TimeOf(path)));
         return Task.FromResult<FileSystemEntry?>(null);
     }
+
+    /// <summary>
+    /// The write time a listing reports for an entry, from the same deterministic table
+    /// <see cref="GetLastWriteTimeAsync"/> answers from: a caller reading it out of a listing and a
+    /// caller asking for it by name must never disagree about which write is newer.
+    /// </summary>
+    private DateTimeOffset TimeOf(string path) =>
+        _times.TryGetValue(path, out var written) ? written : DateTimeOffset.UnixEpoch;
 
     public Task<FileAttributes> GetAttributesAsync(string path, CancellationToken cancellationToken) =>
         Task.FromResult(DirectoryExists(path) ? FileAttributes.Directory : Existing(path) ? FileAttributes.Normal
@@ -231,7 +241,8 @@ internal sealed class MemoryFileSystem : IFileSystem
             // descended into whether or not its own name matches, because otherwise a walk with a file
             // pattern would find nothing below the first level.
             if (FileSystemName.MatchesSimpleExpression(options.SearchPattern, Path.GetFileName(child)))
-                entries.Add(new FileSystemEntry(child, Path.GetFileName(child), true, 0, FileAttributes.Directory));
+                entries.Add(new FileSystemEntry(child, Path.GetFileName(child), true, 0, FileAttributes.Directory,
+                    TimeOf(child)));
             if (options.Recursive) Collect(child, options, entries);
         }
 
@@ -240,7 +251,7 @@ internal sealed class MemoryFileSystem : IFileSystem
             if ((options.AttributesToSkip & FileAttributes.Normal) != 0) continue;
             if (!FileSystemName.MatchesSimpleExpression(options.SearchPattern, Path.GetFileName(file))) continue;
             entries.Add(new FileSystemEntry(file, Path.GetFileName(file), false,
-                Encoding.UTF8.GetByteCount(Files[file])));
+                Encoding.UTF8.GetByteCount(Files[file]), LastWriteTime: TimeOf(file)));
         }
     }
 

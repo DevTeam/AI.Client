@@ -60,6 +60,10 @@ public sealed class FileSystemContractTests : IDisposable
         FileSystemContractAssertions.ListingRecursesAndFiltersOnlyWhenAsked(_environment);
 
     [Fact]
+    public Task AListingShouldCarryTheWriteTimeOfEachEntry() =>
+        FileSystemContractAssertions.AListingCarriesTheWriteTimeOfEachEntry(_environment);
+
+    [Fact]
     public Task ResolvingAPathShouldFollowItToTheSamePlaceEveryTime() =>
         FileSystemContractAssertions.ResolvingAPathFollowsItToTheSamePlaceEveryTime(_environment);
 

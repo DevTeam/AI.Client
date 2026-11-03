@@ -41,7 +41,8 @@ public sealed class SystemFileSystem : IFileSystem
         // person means by the size of what they are looking at.
         var length = isDirectory ? 0 : new FileInfo(path).Length;
         return Task.FromResult<FileSystemEntry?>(
-            new FileSystemEntry(path, Path.GetFileName(path), isDirectory, length, attributes));
+            new FileSystemEntry(path, Path.GetFileName(path), isDirectory, length, attributes,
+                Guarded(() => new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero), path)));
     }
 
     public Task<FileAttributes> GetAttributesAsync(string path, CancellationToken cancellationToken) =>
@@ -299,7 +300,10 @@ public sealed class SystemFileSystem : IFileSystem
                 // pattern hides everything below every directory that does not itself match.
                 if (FileSystemName.MatchesSimpleExpression(options.SearchPattern, child.Name))
                     entries.Add(new FileSystemEntry(child.FullName, child.Name, isDirectory,
-                        child is FileInfo file ? file.Length : 0, attributes));
+                        child is FileInfo file ? file.Length : 0, attributes,
+                        // Read from the entry the enumeration already returned: asking the platform
+                        // again per entry is what made a large directory cost a second a poll.
+                        SafeLastWriteTime(child)));
                 // A link is never followed: walking through one leads back to a directory already
                 // visited, and a listing of a tree with a link to itself would never end.
                 if (options.Recursive && isDirectory && !isLink) Collect(child.FullName, options, entries);
@@ -504,6 +508,17 @@ public sealed class SystemFileSystem : IFileSystem
         {
             throw Named(error, path);
         }
+    }
+
+    /// <summary>
+    /// The write time of an entry the enumeration has already returned, or the default when the
+    /// platform cannot report it. A directory being walked may lose entries under it; a timestamp
+    /// nobody can read is not a reason to fail the whole listing the caller asked for.
+    /// </summary>
+    private static DateTimeOffset SafeLastWriteTime(FileSystemInfo child)
+    {
+        try { return new DateTimeOffset(child.LastWriteTimeUtc, TimeSpan.Zero); }
+        catch (Exception error) when (error is UnauthorizedAccessException or IOException) { return default; }
     }
 
     private static T Guarded<T>(Func<T> action, string path)

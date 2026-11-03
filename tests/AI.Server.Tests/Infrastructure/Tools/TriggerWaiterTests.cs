@@ -524,15 +524,22 @@ public sealed class TriggerWaiterTests
         {
             var waiter = NewWaiter();
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            // What is being measured is the waiter's own lag, so the clock starts at the signal
+            // that ends the process. The sleeper starts no children, so it is stopped without the
+            // process-tree walk: that walk scans /proc for every descendant, and on a loaded
+            // runner it alone outlasted the poll interval and failed this by a millisecond while
+            // the notification was never late.
             var pending = waiter.WaitAsync([new TriggerCondition("process_exit", ProcessId: process.Id)],
                 20000, null, cancel.Token);
             await Task.Delay(300, TestContext.Current.CancellationToken);
-            var started = System.Diagnostics.Stopwatch.StartNew();
-            process.Kill(entireProcessTree: true);
+            var signalledAt = System.Diagnostics.Stopwatch.GetTimestamp();
+            process.Kill();
             var result = await pending;
+            var lagMs = (System.Diagnostics.Stopwatch.GetTimestamp() - signalledAt) * 1000.0
+                / System.Diagnostics.Stopwatch.Frequency;
 
             result.Outcome.ShouldBe("triggered");
-            started.ElapsedMilliseconds.ShouldBeLessThan(200);
+            lagMs.ShouldBeLessThan(200);
         }
         finally
         {

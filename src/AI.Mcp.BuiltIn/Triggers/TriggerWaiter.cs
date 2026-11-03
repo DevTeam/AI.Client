@@ -269,7 +269,11 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 throw new InvalidOperationException("Managed process observation is unavailable.");
             // One snapshot now: it proves the handle belongs to this session, and a process that has
             // already finished is read from the same page the first evaluation will search, so its
-            // result carries the text that matched. The offsets therefore stay as they were asked for.
+            // result carries the text that matched. The offsets therefore stay as they were asked for,
+            // and the state starts from them: without this the first poll would read from the start of
+            // the log and could match output the caller explicitly excluded.
+            state.StdoutOffset = condition.StdoutOffset;
+            state.StderrOffset = condition.StderrOffset;
             var page = await _processes.WaitAsync(condition.ProcessSessionId!, 0, condition.StdoutOffset,
                 condition.StderrOffset, cancellationToken);
             if (page.Status == "failed")
@@ -484,10 +488,14 @@ public sealed class TriggerWaiter : ITriggerWaiter
             // A directory has no length of its own, so the two numbers that say whether it is moving are
             // its entry count and the newest write among what it counts. A timeout quiet for either
             // reason is otherwise indistinguishable from a directory that is there and doing nothing.
+            // An empty directory has no newest write: a timestamp from tick zero would read as a real,
+            // ancient write and hide that there was nothing to count.
             if (isDirectory && snapshot.Exists)
             {
                 state.Entries = snapshot.Length;
-                state.LastWriteTime = new DateTimeOffset(snapshot.LastWriteTicks, TimeSpan.Zero);
+                state.LastWriteTime = snapshot.Length == 0
+                    ? null
+                    : new DateTimeOffset(snapshot.LastWriteTicks, TimeSpan.Zero);
             }
             var newEvent = Interlocked.Exchange(ref state.FileEvents, 0) != 0;
             var changed = newEvent || snapshot != state.LastFile;

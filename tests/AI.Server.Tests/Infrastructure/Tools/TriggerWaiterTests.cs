@@ -441,6 +441,32 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task AnEmptyDirectoryHasNoNewestWriteToReport()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-empty").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            Directory.CreateDirectory(output);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // Nothing inside means nothing was written: a timestamp invented for an entry that does
+            // not exist reads as a real, ancient write and hides that the count is zero.
+            var result = await waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 60000)
+            ], 700, null, cancel.Token);
+
+            result.Outcome.ShouldBe("timeout");
+            var observed = result.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+            observed.Entries.ShouldBe(0);
+            observed.Depth.ShouldBe(1);
+            observed.LastWriteTime.ShouldBeNull();
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ATimedOutIdleConditionShouldSayHowFarTheSilenceHadCome()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-idle-report").FullName;

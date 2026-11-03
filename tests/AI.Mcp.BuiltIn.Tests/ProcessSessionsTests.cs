@@ -129,6 +129,29 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TriggerNeverLooksAtOutputOlderThanTheOffsetItWasGiven()
+    {
+        var runner = new ControlledRunner("partial", "");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        await runner.Written.Task.WaitAsync(Token);
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+
+        // "partial" is seven bytes long, so an offset past all of it asks for output printed after it.
+        // The pattern sits before that offset: matching it would report news the caller excluded.
+        var alreadyPrinted = await waiter.WaitAsync([
+            new TriggerCondition("process_output_contains", ProcessSessionId: started.ProcessId,
+                Pattern: "partial", StdoutOffset: 7)
+        ], 400, null, Token);
+
+        alreadyPrinted.Outcome.ShouldBe("timeout");
+        var observed = alreadyPrinted.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+        observed.Matched.ShouldBe(false);
+        observed.OlderTextUnsearched.ShouldBe(true);
+        runner.Stopped.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task TriggerFiresWhenManagedOutputContainsAPattern()
     {
         var runner = new ControlledRunner("partial", "diagnostic");

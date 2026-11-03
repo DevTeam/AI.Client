@@ -16,7 +16,8 @@ public sealed record TriggerCondition(
     string? Pattern = null,
     bool Regex = false,
     bool IgnoreCase = false,
-    int? QuietMs = null);
+    int? QuietMs = null,
+    int? Depth = null);
 
 /// <summary>
 /// What one condition looked like when the wait ended. A timeout that says nothing leaves the model

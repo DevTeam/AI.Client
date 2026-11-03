@@ -25,6 +25,13 @@ public sealed class TriggerWaiter : ITriggerWaiter
     /// </summary>
     private const int OutputCarryChars = 1024;
 
+    /// <summary>
+    /// Levels <c>directory_idle</c> may look through. A directory is bounded here for the same reason
+    /// <c>directory_tree</c> bounds its own walk: a directory can contain itself by link, and a condition
+    /// that promised to watch "everything" would poll a whole tree every quarter second.
+    /// </summary>
+    public const int MaxDepth = 32;
+
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
 
     private const int PollIntervalMs = 250;
@@ -155,7 +162,9 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.FileContains => $"the file {state.Path} to contain "
                 + (state.Condition.Regex ? $"a match for '{state.Condition.Pattern}'" : $"'{state.Condition.Pattern}'"),
             TriggerKind.FileIdle => $"the file {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
-            TriggerKind.DirectoryIdle => $"the directory {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
+            TriggerKind.DirectoryIdle => state.Depth > 1
+                ? $"the directory {state.Path} and everything up to {state.Depth} levels below it to stay unchanged for {state.Condition.QuietMs} ms"
+                : $"the directory {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
             TriggerKind.ProcessExit => $"process {state.Condition.ProcessId} to exit",
             TriggerKind.ProcessCompleted => "the managed process to finish",
             TriggerKind.ProcessOutputContains => "the managed process output to contain "
@@ -230,10 +239,15 @@ public sealed class TriggerWaiter : ITriggerWaiter
             state.Path = _guard.Resolve(condition.Path!, GrantCapability.Read);
             if (!await _files.DirectoryExistsAsync(state.Path, cancellationToken))
                 throw new ArgumentException($"{label} must name an existing directory.");
-            state.Baseline = await DirectoryStampAsync(state.Path, cancellationToken);
+            state.Depth = condition.Depth ?? 1;
+            state.Baseline = await DirectoryStampAsync(_files, state.Path, state.Depth, cancellationToken);
             state.LastFile = state.Baseline;
-            // Watching the directory itself, not its parent: every entry directly inside it is the
-            // subject, and a subdirectory is one entry whose own contents are not this condition's.
+            // Watching the directory itself, not its parent, and always one level: the platform
+            // watcher stays one subscription however deep the condition looks. A deeper level is
+            // still seen, at the polling interval, because the stamp walks the levels the condition
+            // asked for and a moved stamp restarts the quiet period. Making the subscription
+            // recursive instead would cost a kernel watch per directory on a tree the condition only
+            // reads every quarter second, and an overflowing buffer would then be the normal case.
             state.Watch = watches.Add(state.Path, recursive: false, state.Path,
                 candidate =>
                 {
@@ -327,7 +341,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged => ["path", "stableForMs"],
             TriggerKind.FileContains => ["path", "pattern", "regex", "ignoreCase", "stableForMs"],
             TriggerKind.FileIdle => ["path", "quietMs", "stableForMs"],
-            TriggerKind.DirectoryIdle => ["path", "quietMs", "stableForMs"],
+            TriggerKind.DirectoryIdle => ["path", "quietMs", "depth", "stableForMs"],
             TriggerKind.ProcessExit => ["processId"],
             TriggerKind.ProcessCompleted => ["processSessionId", "stdoutOffset", "stderrOffset"],
             TriggerKind.ProcessOutputContains => ["processSessionId", "pattern", "regex", "ignoreCase",
@@ -354,6 +368,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
         Check("regex", condition.Regex);
         Check("ignoreCase", condition.IgnoreCase);
         Check("quietMs", condition.QuietMs is not null);
+        Check("depth", condition.Depth is not null);
         if (unexpected.Count == 0) return;
         throw new ArgumentException($"{label} does not read {string.Join(", ", unexpected)}; condition {index} takes "
             + string.Join(", ", allowed) + ".");
@@ -384,6 +399,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
             if (kind is (TriggerKind.FileIdle or TriggerKind.DirectoryIdle)
                 && condition.QuietMs is not > 0 or > MaxTimeoutMs)
                 throw new ArgumentException($"{label} requires quietMs in 1..{MaxTimeoutMs}.");
+            if (kind == TriggerKind.DirectoryIdle && condition.Depth is { } depth && depth is < 1 or > MaxDepth)
+                throw new ArgumentException($"{label} requires depth in 1..{MaxDepth}.");
         }
         else if (kind != TriggerKind.ProcessOutputContains)
         {
@@ -459,7 +476,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             _guard.Resolve(path, GrantCapability.Read);
             var isDirectory = state.Kind == TriggerKind.DirectoryIdle;
             var snapshot = isDirectory
-                ? await DirectoryStampAsync(path, cancellationToken)
+                ? await DirectoryStampAsync(_files, path, state.Depth, cancellationToken)
                 : await SnapshotAsync(path, cancellationToken);
             if (isDirectory) state.Exists = snapshot.Exists;
             else Observe(state, snapshot);
@@ -698,23 +715,39 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
     /// <summary>
     /// What a directory looks like now: whether it is there, how many entries it holds and when the
-    /// busiest of them was last written. The quiet period of <c>directory_idle</c> asks whether any
-    /// of that moved, so a build that keeps writing into the directory is not idle however long ago
-    /// the wait started.
+    /// busiest of them was last written, counting every entry down to <paramref name="depth"/> levels
+    /// below it. The quiet period of <c>directory_idle</c> asks whether any of that moved, so a build
+    /// that keeps writing into the directory is not idle however long ago the wait started.
     /// </summary>
-    private async Task<FileStamp> DirectoryStampAsync(string path, CancellationToken cancellationToken)
+    /// <remarks>
+    /// The levels below the first are walked here rather than asked for with a recursive listing,
+    /// because the depth is the condition's own limit: a recursive walk would answer with everything.
+    /// A deeper level is entered only for a directory that is not a link — a link is an entry the
+    /// listing reports and never one it follows.
+    /// </remarks>
+    private static async Task<FileStamp> DirectoryStampAsync(IFileSystem files, string path, int depth,
+        CancellationToken cancellationToken)
     {
-        if (!await _files.DirectoryExistsAsync(path, cancellationToken)) return default;
-        var entries = await _files.ListEntriesAsync(path, recursive: false, cancellationToken);
+        if (!await files.DirectoryExistsAsync(path, cancellationToken)) return default;
+        var entries = 0L;
         var newest = 0L;
-        // The write time comes with the entry: asking the platform once per entry cost a second on a
-        // twenty-thousand-entry directory, which is longer than the interval this loop polls on.
-        foreach (var entry in entries)
+        var pending = new Queue<(string Directory, int Level)>();
+        pending.Enqueue((path, 1));
+        while (pending.Count > 0)
         {
-            var written = entry.LastWriteTime.UtcTicks;
-            if (written > newest) newest = written;
+            var (directory, level) = pending.Dequeue();
+            foreach (var entry in await files.ListEntriesAsync(directory, recursive: false, cancellationToken))
+            {
+                entries++;
+                // The write time comes with the entry: asking the platform once per entry cost a second on a
+                // twenty-thousand-entry directory, which is longer than the interval this loop polls on.
+                var written = entry.LastWriteTime.UtcTicks;
+                if (written > newest) newest = written;
+                if (level < depth && entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0)
+                    pending.Enqueue((entry.Path, level + 1));
+            }
         }
-        return new FileStamp(true, entries.Count, newest);
+        return new FileStamp(true, entries, newest);
     }
 
     /// <summary>
@@ -898,6 +931,9 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public TriggerKind Kind { get; } = kind;
         public int Index { get; } = index;
         public string? Path { get; set; }
+
+        /// <summary>How many levels below <see cref="Path"/> a <c>directory_idle</c> condition counts.</summary>
+        public int Depth { get; set; } = 1;
         public IDisposable? Watch { get; set; }
         public System.Diagnostics.Process? Process { get; set; }
         public DateTimeOffset? BoundAt { get; set; }

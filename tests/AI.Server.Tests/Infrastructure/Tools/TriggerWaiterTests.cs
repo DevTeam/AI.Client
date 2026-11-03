@@ -370,6 +370,77 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ShouldCountTheLevelsTheDirectoryWasAskedFor()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-depth").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            var nested = Path.Combine(output, "nested");
+            Directory.CreateDirectory(nested);
+            var part = Path.Combine(nested, "part.txt");
+            File.WriteAllText(part, "first");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // One level would see the nested directory alone and call it quiet; two levels count what
+            // is written inside it, which is what a caller watching build output one directory down asks.
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 800, Depth: 2)
+            ], 10000, null, cancel.Token);
+            var writing = Stopwatch.StartNew();
+            while (writing.ElapsedMilliseconds < 1200)
+            {
+                // Rewritten in place: creating entries would move the nested directory's own timestamp
+                // and make the default depth look as attentive as this one.
+                await File.WriteAllTextAsync(part, $"more {writing.ElapsedMilliseconds}",
+                    TestContext.Current.CancellationToken);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+                pending.IsCompleted.ShouldBeFalse();
+            }
+
+            var result = await pending;
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("directory_idle");
+            result.ElapsedMs.ShouldBeGreaterThanOrEqualTo(1100);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task TheDefaultDepthShouldNotLookPastTheDirectoryItself()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-shallow").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            var nested = Path.Combine(output, "nested");
+            Directory.CreateDirectory(nested);
+            var part = Path.Combine(nested, "part.txt");
+            File.WriteAllText(part, "first");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 300)
+            ], 10000, null, cancel.Token);
+            // Depth is 1 unless it is asked for: a write inside the nested directory is not this
+            // condition's business, and waiting for it would make the default wait forever.
+            var writing = Stopwatch.StartNew();
+            while (writing.ElapsedMilliseconds < 500)
+            {
+                await File.WriteAllTextAsync(part, $"more {writing.ElapsedMilliseconds}",
+                    TestContext.Current.CancellationToken);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            var result = await pending;
+            result.Outcome.ShouldBe("triggered");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldRejectADirectoryConditionThatNamesSomethingElse()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-invalid").FullName;
@@ -406,6 +477,27 @@ public sealed class TriggerWaiterTests
                     new TriggerCondition("directory_idle", Path: root, QuietMs: 100, Pattern: "x")
                 ], 1000, null, cancel.Token));
             pattern.Message.ShouldContain("pattern");
+
+            // A depth of zero would count nothing at all, and the level limit is the one the walk has.
+            var noDepth = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: root, QuietMs: 100, Depth: 0)
+                ], 1000, null, cancel.Token));
+            noDepth.Message.ShouldContain("depth in 1.." + TriggerWaiter.MaxDepth);
+
+            var tooDeep = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: root, QuietMs: 100,
+                        Depth: TriggerWaiter.MaxDepth + 1)
+                ], 1000, null, cancel.Token));
+            tooDeep.Message.ShouldContain("depth");
+
+            // depth belongs to directory_idle alone: a file has no levels to count.
+            var fileDepth = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("file_idle", Path: file, QuietMs: 100, Depth: 2)
+                ], 1000, null, cancel.Token));
+            fileDepth.Message.ShouldContain("depth");
         }
         finally { Directory.Delete(root, true); }
     }

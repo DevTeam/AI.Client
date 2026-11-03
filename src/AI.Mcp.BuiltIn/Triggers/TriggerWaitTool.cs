@@ -16,7 +16,7 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
         {
             Description = "Wait once for the first file, process or time condition. The wait ends on a match, timeout or chat cancellation; it does not survive the current run. "
                           + "Types: delay (afterMs), file_exists/file_missing/file_changed (absolute path), file_contains (path and pattern, optional regex/ignoreCase), "
-                          + "file_idle (path and quietMs, the time the file must stay unchanged), directory_idle (path and quietMs, the time every entry directly inside the directory must stay unchanged), process_exit, "
+                          + "file_idle (path and quietMs, the time the file must stay unchanged), directory_idle (path and quietMs, the time every entry directly inside the directory must stay unchanged, plus optional depth up to 32 to count the levels below it as well; 1 is the default), process_exit, "
                           + "process_completed (processSessionId from process_run or process_run_sandboxed, optional stdoutOffset/stderrOffset; returns processResult with status, exitCode and new output), "
                           + "process_output_contains (processSessionId and pattern, optional regex/ignoreCase), "
                           + "process_cpu_below/process_cpu_above (OS processId and cpuPercent), process_memory_below/process_memory_above "

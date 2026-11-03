@@ -1,0 +1,57 @@
+{
+  "id": "trigger-wait-directory-idle-depth",
+  "description": "One-level and two-level directory_idle waits differ on the same writer: the first fires while the log two levels down is still growing, the second does not.",
+  "tags": [
+    "trigger-wait",
+    "windows"
+  ],
+  "platform": "windows",
+  "git": false,
+  "timeoutSeconds": 300,
+  "turns": [
+    "The workspace {workspace} holds writer.cmd, which keeps appending to out\\level1\\build.log for about forty seconds. Launch it with cmd.exe and arguments [\"/d\",\"/c\",\"writer.cmd\"] using process_run, with waitTimeoutMs=100 so the call returns while the writer is still running. Then make two trigger_wait calls, in this order. First a single directory_idle condition on {workspace}/out with quietMs=1200 and timeoutMs=8000, without naming a depth. Then a single directory_idle condition on the same folder with quietMs=1200, depth=2 and timeoutMs=6000. Report what each wait returned, the outcome, the number of entries it counted and the depth it covered, and explain why the two differ. Keep writer.cmd and writer.ps1 unchanged."
+  ],
+  "checks": [
+    {
+      "type": "fileUnchanged",
+      "path": "writer.cmd"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "writer.ps1"
+    },
+    {
+      "type": "callsMatch",
+      "name": "launches the writer and keeps the call short",
+      "pattern": "^\\S*__process_run\\s(?=[^\\n]*writer\\.cmd)(?=[^\\n]*\"waitTimeoutMs\"\\s*:\\s*100)"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "one level fires with a single entry",
+      "pattern": "(?s)CALL \\S*__trigger_wait (?=[^\\n]*\"type\"\\s*:\\s*\"directory_idle\")(?![^\\n]*\"depth\")[^\\n]*\\nRESULT (?=[^\\n]*\"outcome\"\\s*:\\s*\"triggered\")(?=[^\\n]*\"entries\"\\s*:\\s*1\\b)(?=[^\\n]*\"depth\"\\s*:\\s*1\\b)"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "two levels does not fire while the log grows",
+      "pattern": "(?s)CALL \\S*__trigger_wait (?=[^\\n]*\"type\"\\s*:\\s*\"directory_idle\")(?=[^\\n]*\"depth\"\\s*:\\s*[2-9])[^\\n]*\\nRESULT (?=[^\\n]*\"outcome\"\\s*:\\s*\"timeout\")(?=[^\\n]*\"entries\"\\s*:\\s*[2-9])(?=[^\\n]*\"idleMs\"\\s*:\\s*\\d+)"
+    },
+    {
+      "type": "answerMatches",
+      "name": "reports the depth of the count",
+      "pattern": "depth|глубин"
+    },
+    {
+      "type": "answerMatches",
+      "name": "reports the entry count of each wait",
+      "pattern": "entr|запис|элемент"
+    },
+    {
+      "type": "maxToolErrors",
+      "value": 0
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 14
+    }
+  ]
+}

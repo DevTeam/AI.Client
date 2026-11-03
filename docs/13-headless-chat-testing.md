@@ -93,6 +93,19 @@ assembly reply is not completion of the attempt. Long scenarios are tagged `slow
 explicit time limits. These checks demonstrate execution and correctness, not a speedup; compare
 repeated runs against a baseline before claiming time or cost savings.
 
+### trigger_wait evaluations
+
+Run `--filter tag:trigger-wait --parallel 1` to check the two `directory_idle` properties a model
+cannot see from a file: `trigger-wait-directory-idle-depth` has one writer appending two levels
+below the watched folder, and expects a default wait (depth 1) to fire with a single entry while a
+`depth: 2` wait stays open until the writer stops; `trigger-wait-idle-timeout-diagnostics` makes a
+`quietMs` the writer cannot reach time out, and expects `observed` to carry `idleMs`, `entries` and
+`depth` so the answer reports how close the silence had come instead of claiming the folder settled.
+Both checks read the actual tool result, since only there do `entries` and `depth` appear. Their
+patterns are pinned by `TriggerWaitChecksTests` in `evals/AI.Agent.Evals.Tests`, which asserts they
+pass on a realistic transcript and fail when the evidence is missing, so a broken pattern cannot
+silently pass.
+
 ## One attempt
 
 1. The scenario's `workspace` folder, or the files of a repository commit, are copied to a temporary

@@ -1,0 +1,48 @@
+{
+  "id": "trigger-wait-idle-timeout-diagnostics",
+  "description": "A timed-out directory_idle wait must say how far the silence had come: idleMs, entries and depth in observed.",
+  "tags": [
+    "trigger-wait",
+    "windows"
+  ],
+  "platform": "windows",
+  "git": false,
+  "timeoutSeconds": 300,
+  "turns": [
+    "The workspace {workspace} holds writer.cmd, which keeps writing a log two levels below out\\ for about five seconds. Launch it with cmd.exe and arguments [\"/d\",\"/c\",\"writer.cmd\"] using process_run, with waitTimeoutMs=100 so the call returns while the writer is still running. Then use trigger_wait with a single directory_idle condition on {workspace}/out, quietMs=60000, depth=2 and timeoutMs=1500, so the wait deliberately times out while the writer is still active. Read the result and report, from its observed state, how long the folder had been quiet, how many entries were counted and how deep the count went. Do not retry the wait and do not claim the folder became quiet. Keep writer.cmd and writer.ps1 unchanged."
+  ],
+  "checks": [
+    {
+      "type": "fileUnchanged",
+      "path": "writer.cmd"
+    },
+    {
+      "type": "fileUnchanged",
+      "path": "writer.ps1"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "timed-out idle wait reports idleMs",
+      "pattern": "(?s)CALL \\S*__trigger_wait (?=[^\\n]*\"type\"\\s*:\\s*\"directory_idle\")[^\\n]*\\nRESULT (?=[^\\n]*\"outcome\"\\s*:\\s*\"timeout\")(?=[^\\n]*\"idleMs\"\\s*:\\s*\\d+)"
+    },
+    {
+      "type": "toolTranscriptMatches",
+      "name": "timed-out idle wait reports depth and entries",
+      "pattern": "(?s)CALL \\S*__trigger_wait (?=[^\\n]*\"type\"\\s*:\\s*\"directory_idle\")[^\\n]*\\nRESULT (?=[^\\n]*\"depth\"\\s*:\\s*[2-9])(?=[^\\n]*\"entries\"\\s*:\\s*\\d+)"
+    },
+    {
+      "type": "answerMatches",
+      "name": "reports how long it was quiet",
+      "pattern": "idleMs|\\b\\d+\\s*ms\\b|мс|миллисекунд"
+    },
+    {
+      "type": "answerNotMatches",
+      "name": "does not claim the folder became quiet",
+      "pattern": "folder became quiet|directory became quiet|folder is idle"
+    },
+    {
+      "type": "maxToolCalls",
+      "value": 12
+    }
+  ]
+}

@@ -172,7 +172,7 @@ A condition is refused when it carries a field its type does not read: `stableFo
 misnamed `stableMs` into an immediate change and a threshold that nothing ever compares, and the
 error names the condition index, its type and the fields it does take.
 
-The three text conditions share one reading rule. A `pattern` is a plain substring unless `regex`
+The two text conditions share one reading rule. A `pattern` is a plain substring unless `regex`
 is set, `ignoreCase` widens either form, and a regular expression is compiled with a one-second
 match limit so a pattern that backtracks cannot hold the wait. Invalid expressions are refused with
 the condition index rather than failing once per poll. A file is read from its end, at most its last
@@ -187,11 +187,11 @@ what was read, which is not the same as the pattern never having been written; a
 that finished without printing the pattern says so in its `error` instead of leaving a bare timeout.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
-`process_exit` and `process_completed` do not take it. File observation combines platform
-notifications with a bounded periodic check so a missed notification does not leave the call waiting
-indefinitely. All file conditions that look into the same directory share one watcher and differ
-only in their subscriptions, so eight conditions no longer cost eight buffers and eight overflow
-risks. The result reports `watcherOverflow` if a watcher reported an error. Process observation
+`process_exit` and `process_completed` do not take it. File and directory observation combine
+platform notifications with a bounded periodic check so a missed notification does not leave the
+call waiting indefinitely. All conditions that look into the same directory share one watcher and
+differ only in their subscriptions, so eight conditions no longer cost eight buffers and eight
+overflow risks. The result reports `watcherOverflow` if a watcher reported an error. Process observation
 reads only the named PID; it neither enumerates processes nor stops them, and it compares the
 process start time with the one bound at the start of the wait, so a reused PID is reported as
 exited instead of having a stranger's memory read as the finished process's.

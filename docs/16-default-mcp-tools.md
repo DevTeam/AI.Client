@@ -192,7 +192,8 @@ silence has lasted) beside the fields the file ones always report, so a timeout 
 one that had nearly settled. `directory_idle` also reports `entries` (what its last walk counted) and
 `depth` (how many levels that count covered), and its `lastWriteTime` is the newest write among those
 entries: a directory has no length of its own, so its size and the freshness of what it holds are the
-two numbers that say whether it is still moving.
+two numbers that say whether it is still moving. A directory with no entries has no newest write and
+reports `lastWriteTime` as null rather than a placeholder date.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. File and directory observation combine

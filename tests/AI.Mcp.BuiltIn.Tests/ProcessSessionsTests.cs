@@ -128,6 +128,58 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         runner.Stopped.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task TriggerFiresWhenManagedOutputContainsAPattern()
+    {
+        var runner = new ControlledRunner("partial", "diagnostic");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        await runner.Written.Task.WaitAsync(Token);
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+
+        var matching = waiter.WaitAsync([
+            new TriggerCondition("process_output_contains", ProcessSessionId: started.ProcessId, Pattern: "diagnostic")
+        ], 60000, null, Token);
+        // What the process wrote before the wait is what matches; the command is still running.
+        var result = await matching;
+        result.Outcome.ShouldBe("triggered");
+        result.Type.ShouldBe("process_output_contains");
+        result.ProcessResult!.Status.ShouldBe("running");
+        result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Matched.ShouldBe(true);
+
+        // A pattern the command has not printed waits, and the command is not stopped by a timeout.
+        var absent = await waiter.WaitAsync([
+            new TriggerCondition("process_output_contains", ProcessSessionId: started.ProcessId, Pattern: "never printed")
+        ], 300, null, Token);
+        absent.Outcome.ShouldBe("timeout");
+        absent.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Matched.ShouldBe(false);
+        runner.Stopped.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task TriggerSeesWhatACommandPrintsAfterTheWaitStarted()
+    {
+        var runner = new ControlledRunner("partial", "");
+        await using var sessions = new ProcessSessions(runner, new TestSandbox(_root));
+        var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
+        await runner.Written.Task.WaitAsync(Token);
+        var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
+
+        var waiting = waiter.WaitAsync([
+            new TriggerCondition("process_output_contains", ProcessSessionId: started.ProcessId, Pattern: "last")
+        ], 60000, null, Token);
+        await Task.Delay(400, Token);
+        waiting.IsCompleted.ShouldBeFalse();
+
+        // The runner writes "last" as it finishes, and a completed command can print no more, so
+        // this is the last page the condition will ever read.
+        runner.Release.TrySetResult();
+        var result = await waiting;
+
+        result.Outcome.ShouldBe("triggered");
+        result.ProcessResult!.Status.ShouldBe("completed");
+    }
+
     private sealed class EmptyGrants : IGrantSource
     {
         public IReadOnlyList<DirectoryGrantSpec> Load() => [];

@@ -12,7 +12,11 @@ public sealed record TriggerCondition(
     int StableForMs = 0,
     string? ProcessSessionId = null,
     long StdoutOffset = 0,
-    long StderrOffset = 0);
+    long StderrOffset = 0,
+    string? Pattern = null,
+    bool Regex = false,
+    bool IgnoreCase = false,
+    int? QuietMs = null);
 
 /// <summary>
 /// What one condition looked like when the wait ended. A timeout that says nothing leaves the model
@@ -30,6 +34,7 @@ public sealed record TriggerCondition(
 /// <param name="CpuPercent">The last sampled CPU percentage, normalized across logical processors.</param>
 /// <param name="MemoryBytes">The last sampled working set of the process.</param>
 /// <param name="ProcessStatus">Status of a managed execution: <c>running</c> until it finishes.</param>
+/// <param name="Matched">Whether a text condition found its pattern in the text it read.</param>
 /// <param name="Error">Why the state could not be read, if it could not.</param>
 public sealed record TriggerObservation(
     int ConditionIndex,
@@ -43,7 +48,8 @@ public sealed record TriggerObservation(
     double? CpuPercent = null,
     long? MemoryBytes = null,
     string? ProcessStatus = null,
-    string? Error = null);
+    string? Error = null,
+    bool? Matched = null);
 
 /// <summary>How far the wait has come, reported as <c>notifications/progress</c>.</summary>
 /// <param name="ElapsedMs">Time since the wait started.</param>

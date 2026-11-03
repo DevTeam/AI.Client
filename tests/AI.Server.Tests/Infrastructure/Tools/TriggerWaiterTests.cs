@@ -1,5 +1,6 @@
 namespace AI.Infrastructure.Tests.Tools;
 
+using System.Diagnostics;
 using AI.Contracts.FileSystem;
 using AI.Mcp.BuiltIn.Grants;
 using AI.Mcp.BuiltIn.Triggers;
@@ -198,6 +199,147 @@ public sealed class TriggerWaiterTests
         result.ProcessId.ShouldBe(process.Id);
         result.MemoryBytes!.Value.ShouldBeGreaterThan(1);
         result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().ProcessRunning.ShouldBe(true);
+    }
+
+    [Fact]
+    public async Task ShouldWaitForAFileToContainAPattern()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-contains").FullName;
+        try
+        {
+            var path = Path.Combine(root, "build.log");
+            await File.WriteAllTextAsync(path, "starting\n", TestContext.Current.CancellationToken);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: path, Pattern: "BUILD SUCCEEDED")
+            ], 10000, null, cancel.Token);
+            // Still waiting while the file exists without the line: existing is not the condition.
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            pending.IsCompleted.ShouldBeFalse();
+
+            await File.WriteAllTextAsync(path, "starting\nBUILD SUCCEEDED\n", TestContext.Current.CancellationToken);
+            var result = await pending;
+
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("file_contains");
+            result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Matched.ShouldBe(true);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldWaitForAPatternInAFileThatDoesNotExistYet()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-contains-new").FullName;
+        try
+        {
+            var path = Path.Combine(root, "result.txt");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            var pending = waiter.WaitAsync([new TriggerCondition("file_contains", Path: path, Pattern: "ok")],
+                10000, null, cancel.Token);
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(path, "ok\n", TestContext.Current.CancellationToken);
+
+            (await pending).Outcome.ShouldBe("triggered");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldTreatAPatternAsALiteralUnlessRegexIsAskedFor()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-literal").FullName;
+        try
+        {
+            var path = Path.Combine(root, "log.txt");
+            await File.WriteAllTextAsync(path, "needle in a haystack\n", TestContext.Current.CancellationToken);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            // "need.e" is a literal string here, and the file says "needle": no dot, no match.
+            var literal = await waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: path, Pattern: "need.e")
+            ], 300, null, cancel.Token);
+            literal.Outcome.ShouldBe("timeout");
+            literal.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Matched.ShouldBe(false);
+
+            // The same text as a regular expression does match, and ignoring case widens it again.
+            (await waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: path, Pattern: "need.e", Regex: true)
+            ], 1000, null, cancel.Token)).Outcome.ShouldBe("triggered");
+            (await waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: path, Pattern: "NEEDLE", IgnoreCase: true)
+            ], 1000, null, cancel.Token)).Outcome.ShouldBe("triggered");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldWaitForAFileToStayIdle()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-idle").FullName;
+        try
+        {
+            var path = Path.Combine(root, "stream.log");
+            await File.WriteAllTextAsync(path, "line 1\n", TestContext.Current.CancellationToken);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("file_idle", Path: path, QuietMs: 800)
+            ], 10000, null, cancel.Token);
+            // A writer keeps touching the file well past the quiet period: idleness has to be
+            // earned by the silence after the last change, not by the wait having started.
+            var writing = Stopwatch.StartNew();
+            while (writing.ElapsedMilliseconds < 1200)
+            {
+                await File.AppendAllTextAsync(path, "more\n", TestContext.Current.CancellationToken);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+                pending.IsCompleted.ShouldBeFalse();
+            }
+
+            var result = await pending;
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("file_idle");
+            result.ElapsedMs.ShouldBeGreaterThanOrEqualTo(1100);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldRejectATextConditionWithoutPatternOrWithABadExpression()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-text-invalid").FullName;
+        try
+        {
+            var path = Path.Combine(root, "log.txt");
+            File.WriteAllText(path, "text");
+            var waiter = NewWaiter(root);
+
+            (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                    [new TriggerCondition("file_contains", Path: path)], 1000, null, CancellationToken.None)))
+                .Message.ShouldContain("requires pattern");
+            (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                    [new TriggerCondition("file_contains", Path: path, Pattern: "(", Regex: true)],
+                    1000, null, CancellationToken.None)))
+                .Message.ShouldContain("invalid regular expression");
+            (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                    [new TriggerCondition("file_contains", Path: path, Pattern: "text", QuietMs: 100)],
+                    1000, null, CancellationToken.None)))
+                .Message.ShouldContain("does not read quietMs");
+            (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                    [new TriggerCondition("file_idle", Path: path)], 1000, null, CancellationToken.None)))
+                .Message.ShouldContain("requires quietMs");
+            (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                    [new TriggerCondition("process_output_contains", ProcessId: Environment.ProcessId, Pattern: "x")],
+                    1000, null, CancellationToken.None)))
+                .Message.ShouldContain("does not read processId");
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     /// <remarks>

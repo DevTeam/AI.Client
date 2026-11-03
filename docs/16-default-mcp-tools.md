@@ -158,8 +158,11 @@ Conditions use `type` and type-specific fields:
 | --- | --- | --- |
 | `delay` | `afterMs` | Elapsed time reaches the interval. |
 | `file_exists`, `file_missing`, `file_changed` | `path` | File state or a change after observation starts. The absolute path needs a read grant. |
+| `file_contains` | `path`, `pattern` | The file's text carries the pattern, whether it already did when the wait started or the writer adds it. `regex` and `ignoreCase` are optional. |
+| `file_idle` | `path`, `quietMs` | The file has not changed for `quietMs` (1..86400000): the quiet period restarts on every observed change, so a stream that keeps growing never satisfies it. |
 | `process_exit` | `processId` | The named process exits. It must exist when observation starts. It is woken by the platform's exit notification rather than by the polling interval. |
 | `process_completed` | `processSessionId` | A managed `process_run` or `process_run_sandboxed` execution finishes, including output draining. The string handle must belong to this MCP session; an already finished execution matches immediately. |
+| `process_output_contains` | `processSessionId`, `pattern` | The output a managed execution printed after the given offsets carries the pattern. `regex` and `ignoreCase` are optional. |
 | `process_cpu_below`, `process_cpu_above` | `processId`, `cpuPercent` | Sampled CPU usage crosses a 0..100 percent threshold, normalized across logical processors. |
 | `process_memory_below`, `process_memory_above` | `processId`, `memoryBytes` | The named process's working set crosses a byte threshold. |
 
@@ -167,6 +170,17 @@ A condition is refused when it carries a field its type does not read: `stableFo
 `process_exit`, `cpuPercent` on `file_exists` and the like. Silently ignoring the field would turn a
 misnamed `stableMs` into an immediate change and a threshold that nothing ever compares, and the
 error names the condition index, its type and the fields it does take.
+
+The three text conditions share one reading rule. A `pattern` is a plain substring unless `regex`
+is set, `ignoreCase` widens either form, and a regular expression is compiled with a one-second
+match limit so a pattern that backtracks cannot hold the wait. Invalid expressions are refused with
+the condition index rather than failing once per poll. A file is read from its end, at most its last
+256 KiB, which is both where the newest lines are and the only part worth paying for: a log that grew
+to a gigabyte is not re-read whole on every poll. Managed output is read as pages through
+`process_wait`'s own contract, and a short tail of the previous page is prepended so a pattern
+written across a page boundary still matches. `observed` carries `matched` for these conditions,
+and a managed execution that finished without printing the pattern says so in its `error` instead of
+leaving a bare timeout.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. File observation combines platform

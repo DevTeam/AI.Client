@@ -15,15 +15,19 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
         new McpServerToolCreateOptions
         {
             Description = "Wait once for the first file, process or time condition. The wait ends on a match, timeout or chat cancellation; it does not survive the current run. "
-                          + "Types: delay (afterMs), file_exists/file_missing/file_changed (absolute path), process_exit, "
+                          + "Types: delay (afterMs), file_exists/file_missing/file_changed (absolute path), file_contains (path and pattern, optional regex/ignoreCase), "
+                          + "file_idle (path and quietMs, the time the file must stay unchanged), process_exit, "
                           + "process_completed (processSessionId from process_run or process_run_sandboxed, optional stdoutOffset/stderrOffset; returns processResult with status, exitCode and new output), "
+                          + "process_output_contains (processSessionId and pattern, optional regex/ignoreCase), "
                           + "process_cpu_below/process_cpu_above (OS processId and cpuPercent), process_memory_below/process_memory_above "
-                          + "(processId and memoryBytes). Each condition takes only its own fields: processId for a single process, "
-                          + "cpuPercent for the CPU thresholds, memoryBytes for the memory ones, stdio offsets only for process_completed. "
+                          + "(processId and memoryBytes). Each condition takes only its own fields and rejects the others, so a "
+                          + "misnamed field fails instead of being ignored. "
                           + "stableForMs (0 to 86400000) holds a file or metric condition true before it fires; process_exit and "
                           + "process_completed do not take it. CPU percent is normalized across logical processors. "
+                          + "Text conditions read a file's last 256 KiB, or the output a managed process printed after the given offsets, "
+                          + "and a literal pattern is a plain substring while regex enables a regular expression. "
                           + "A timeout returns the state it last read for every condition in observed, so a missing file is "
-                          + "distinguishable from an unparsed process. "
+                          + "distinguishable from an unparsed process or a pattern that was never printed. "
                           + "Prefer process_completed for one bounded wait on a managed command; it also matches commands already finished. Timeout/cancellation does not stop the command or change its hard deadline. "
                           + "Managed handles belong to this MCP session, not OS PIDs. File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
         });

@@ -1,6 +1,8 @@
 namespace AI.Mcp.BuiltIn.Triggers;
 
 using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
 using AI.Contracts.FileSystem;
 using Grants;
 using Process;
@@ -9,6 +11,22 @@ public sealed class TriggerWaiter : ITriggerWaiter
 {
     public const int MaxConditions = 8;
     public const int MaxTimeoutMs = 86400000;
+
+    /// <summary>
+    /// How much of a file a text condition reads. A log is read from its end, so a build log that has
+    /// grown to a gigabyte does not cost a gigabyte on every poll; the tail is where the newest
+    /// lines are anyway.
+    /// </summary>
+    public const int TailBytes = 256 * 1024;
+
+    /// <summary>
+    /// Characters kept from the previous page of managed output, enough for a pattern written across
+    /// two pages to still read as one match.
+    /// </summary>
+    private const int OutputCarryChars = 1024;
+
+    private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
+
     private const int PollIntervalMs = 250;
     private const int ProgressIntervalMs = 1000;
 
@@ -134,8 +152,13 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.FileExists => $"the file {state.Path} to exist",
             TriggerKind.FileMissing => $"the file {state.Path} to disappear",
             TriggerKind.FileChanged => $"the file {state.Path} to change",
+            TriggerKind.FileContains => $"the file {state.Path} to contain "
+                + (state.Condition.Regex ? $"a match for '{state.Condition.Pattern}'" : $"'{state.Condition.Pattern}'"),
+            TriggerKind.FileIdle => $"the file {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
             TriggerKind.ProcessExit => $"process {state.Condition.ProcessId} to exit",
             TriggerKind.ProcessCompleted => "the managed process to finish",
+            TriggerKind.ProcessOutputContains => "the managed process output to contain "
+                + (state.Condition.Regex ? $"a match for '{state.Condition.Pattern}'" : $"'{state.Condition.Pattern}'"),
             TriggerKind.ProcessCpuBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.CpuPercent}% CPU",
             TriggerKind.ProcessCpuAbove => $"process {state.Condition.ProcessId} to rise above {state.Condition.CpuPercent}% CPU",
             TriggerKind.ProcessMemoryBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.MemoryBytes} bytes",
@@ -148,7 +171,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private static TriggerObservation[] Observations(List<ConditionState> states) =>
         states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
             state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
-            state.MemoryBytes, state.ProcessStatus, state.Error)).ToArray();
+            state.MemoryBytes, state.ProcessStatus, state.Error, state.Matched)).ToArray();
 
     /// <summary>Names the condition in an error, so a model fixes the right one of up to eight.</summary>
     private static string Label(int index, string? type) => $"Condition {index} ('{type}')";
@@ -164,15 +187,19 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "file_exists" => TriggerKind.FileExists,
             "file_missing" => TriggerKind.FileMissing,
             "file_changed" => TriggerKind.FileChanged,
+            "file_contains" => TriggerKind.FileContains,
+            "file_idle" => TriggerKind.FileIdle,
             "process_exit" => TriggerKind.ProcessExit,
             "process_completed" => TriggerKind.ProcessCompleted,
+            "process_output_contains" => TriggerKind.ProcessOutputContains,
             "process_cpu_below" => TriggerKind.ProcessCpuBelow,
             "process_cpu_above" => TriggerKind.ProcessCpuAbove,
             "process_memory_below" => TriggerKind.ProcessMemoryBelow,
             "process_memory_above" => TriggerKind.ProcessMemoryAbove,
             _ => throw new ArgumentException(Label(index, condition.Type)
-                + " has an unknown type. Use delay, file_exists, file_missing, file_changed, process_exit, "
-                + "process_completed, process_cpu_below, process_cpu_above, process_memory_below or process_memory_above.")
+                + " has an unknown type. Use delay, file_exists, file_missing, file_changed, file_contains, file_idle, "
+                + "process_exit, process_completed, process_output_contains, process_cpu_below, process_cpu_above, "
+                + "process_memory_below or process_memory_above.")
         };
         var label = Label(index, condition.Type);
         RejectUnrelatedFields(condition, kind, label, index);
@@ -195,7 +222,23 @@ public sealed class TriggerWaiter : ITriggerWaiter
         if (kind == TriggerKind.Delay)
             return state;
 
-        if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged)
+        if (kind == TriggerKind.ProcessOutputContains)
+        {
+            if (_processes is null)
+                throw new InvalidOperationException("Managed process observation is unavailable.");
+            // One snapshot now: it proves the handle belongs to this session, and a process that has
+            // already finished is read from the same page the first evaluation will search, so its
+            // result carries the text that matched. The offsets therefore stay as they were asked for.
+            var page = await _processes.WaitAsync(condition.ProcessSessionId!, 0, condition.StdoutOffset,
+                condition.StderrOffset, cancellationToken);
+            if (page.Status == "failed")
+                throw new ArgumentException($"{label}: {page.Error}");
+            state.ProcessStatus = page.Status;
+            return state;
+        }
+
+        if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged
+            or TriggerKind.FileContains or TriggerKind.FileIdle)
         {
             state.Path = _guard.Resolve(condition.Path!, GrantCapability.Read);
             if (await _files.DirectoryExistsAsync(state.Path, cancellationToken))
@@ -203,6 +246,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
             state.Baseline = await SnapshotAsync(state.Path, cancellationToken);
             state.LastFile = state.Baseline;
             Observe(state, state.Baseline);
+            // A text condition asks for the text once before it starts watching: a file that already
+            // carries the pattern is a match now, not something to wait for.
+            if (kind == TriggerKind.FileContains)
+                state.Matched = await ContainsAsync(state.Path, condition, cancellationToken);
             var directory = _paths.GetDirectoryName(state.Path);
             while (directory is not null && !await _files.DirectoryExistsAsync(directory, cancellationToken))
                 directory = _paths.GetDirectoryName(directory);
@@ -252,8 +299,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
         {
             TriggerKind.Delay => new[] { "afterMs" },
             TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged => ["path", "stableForMs"],
+            TriggerKind.FileContains => ["path", "pattern", "regex", "ignoreCase", "stableForMs"],
+            TriggerKind.FileIdle => ["path", "quietMs", "stableForMs"],
             TriggerKind.ProcessExit => ["processId"],
             TriggerKind.ProcessCompleted => ["processSessionId", "stdoutOffset", "stderrOffset"],
+            TriggerKind.ProcessOutputContains => ["processSessionId", "pattern", "regex", "ignoreCase",
+                "stdoutOffset", "stderrOffset"],
             TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove => ["processId", "cpuPercent", "stableForMs"],
             _ => ["processId", "memoryBytes", "stableForMs"]
         };
@@ -272,6 +323,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
         Check("processSessionId", !string.IsNullOrWhiteSpace(condition.ProcessSessionId));
         Check("stdoutOffset", condition.StdoutOffset != 0);
         Check("stderrOffset", condition.StderrOffset != 0);
+        Check("pattern", !string.IsNullOrEmpty(condition.Pattern));
+        Check("regex", condition.Regex);
+        Check("ignoreCase", condition.IgnoreCase);
+        Check("quietMs", condition.QuietMs is not null);
         if (unexpected.Count == 0) return;
         throw new ArgumentException($"{label} does not read {string.Join(", ", unexpected)}; condition {index} takes "
             + string.Join(", ", allowed) + ".");
@@ -290,23 +345,42 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 throw new ArgumentException($"{label} requires processSessionId from a process_run result.");
             case TriggerKind.ProcessCompleted:
                 return;
+            case TriggerKind.ProcessOutputContains when string.IsNullOrWhiteSpace(condition.ProcessSessionId):
+                throw new ArgumentException($"{label} requires processSessionId from a process_run result.");
         }
 
-        if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged)
+        if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged
+            or TriggerKind.FileContains or TriggerKind.FileIdle)
         {
             if (string.IsNullOrWhiteSpace(condition.Path))
                 throw new ArgumentException($"{label} requires an absolute path.");
-            return;
+            if (kind == TriggerKind.FileIdle && condition.QuietMs is not > 0 or > MaxTimeoutMs)
+                throw new ArgumentException($"{label} requires quietMs in 1..{MaxTimeoutMs}.");
+        }
+        else if (kind != TriggerKind.ProcessOutputContains)
+        {
+            if (condition.ProcessId is not > 0)
+                throw new ArgumentException($"{label} requires a positive processId.");
+            if (kind is TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove
+                && condition.CpuPercent is null or < 0 or > 100)
+                throw new ArgumentException($"{label} requires cpuPercent in 0..100.");
+            if (kind is TriggerKind.ProcessMemoryBelow or TriggerKind.ProcessMemoryAbove
+                && condition.MemoryBytes is null or < 0)
+                throw new ArgumentException($"{label} requires nonnegative memoryBytes.");
         }
 
-        if (condition.ProcessId is not > 0)
-            throw new ArgumentException($"{label} requires a positive processId.");
-        if (kind is TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove
-            && condition.CpuPercent is null or < 0 or > 100)
-            throw new ArgumentException($"{label} requires cpuPercent in 0..100.");
-        if (kind is TriggerKind.ProcessMemoryBelow or TriggerKind.ProcessMemoryAbove
-            && condition.MemoryBytes is null or < 0)
-            throw new ArgumentException($"{label} requires nonnegative memoryBytes.");
+        if (kind is not (TriggerKind.FileContains or TriggerKind.ProcessOutputContains)) return;
+        if (string.IsNullOrEmpty(condition.Pattern))
+            throw new ArgumentException($"{label} requires pattern.");
+        if (!condition.Regex) return;
+        try
+        {
+            _ = new Regex(condition.Pattern, PatternOptions(condition), PatternTimeout);
+        }
+        catch (ArgumentException error)
+        {
+            throw new ArgumentException($"{label} has an invalid regular expression: {error.Message}");
+        }
     }
 
     private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, CancellationToken cancellationToken)
@@ -326,6 +400,27 @@ public sealed class TriggerWaiter : ITriggerWaiter
             return Match(state, elapsedMs) with { ProcessResult = finished };
         }
 
+        if (state.Kind == TriggerKind.ProcessOutputContains)
+        {
+            if (_processes is null) return null;
+            var page = await _processes.WaitAsync(condition.ProcessSessionId!, 0, state.StdoutOffset,
+                state.StderrOffset, cancellationToken);
+            if (page.Status == "failed" && state.Matched != true)
+            {
+                state.Error = page.Error;
+                return null;
+            }
+            state.ProcessStatus = page.Status;
+            state.StdoutOffset = page.StdoutOffset;
+            state.StderrOffset = page.StderrOffset;
+            if (state.Matched != true) state.Matched = SearchOutput(state, page.Stdout, page.Stderr);
+            if (state.Matched == true) return Match(state, elapsedMs) with { ProcessResult = page };
+            // A finished command can print no more: its last page has already been searched. Reporting
+            // that in the observation is what tells a timeout from a command that never said the line.
+            if (page.Status is not "running") state.Error = "The process finished without printing the pattern.";
+            return null;
+        }
+
         if (state.Kind == TriggerKind.Delay)
             return elapsedMs >= condition.AfterMs
                 ? Match(state, elapsedMs) : null;
@@ -340,15 +435,30 @@ public sealed class TriggerWaiter : ITriggerWaiter
             var changed = newEvent || snapshot != state.LastFile;
             if (newEvent) state.SawFileChange = true;
             state.SawFileChange |= snapshot != state.Baseline;
-            if (changed) state.EligibleSinceMs = null;
+            if (changed)
+            {
+                // A snapshot that moved restarts the quiet period: file_idle asks for silence since
+                // the last observed change, not since the wait started.
+                state.EligibleSinceMs = null;
+                state.LastChangeMs = elapsedMs;
+            }
             state.LastFile = snapshot;
             var eligible = state.Kind switch
             {
                 TriggerKind.FileExists => snapshot.Exists,
                 TriggerKind.FileMissing => !snapshot.Exists,
                 TriggerKind.FileChanged => state.SawFileChange,
+                TriggerKind.FileIdle => !changed && elapsedMs - state.LastChangeMs >= condition.QuietMs,
                 _ => false
             };
+            // Reading the text is the expensive half of a text condition, so it happens only once the
+            // file is known to be there, and only when the snapshot says something moved.
+            if (state.Kind == TriggerKind.FileContains)
+            {
+                if (snapshot.Exists && (changed || state.Matched is null))
+                    state.Matched = await ContainsAsync(path, condition, cancellationToken);
+                eligible = state.Matched == true;
+            }
             return Eligible(state, eligible, elapsedMs);
         }
 
@@ -398,6 +508,75 @@ public sealed class TriggerWaiter : ITriggerWaiter
         return Eligible(state, state.Kind == TriggerKind.ProcessCpuBelow
             ? state.CpuPercent < condition.CpuPercent : state.CpuPercent > condition.CpuPercent, elapsedMs);
     }
+
+    /// <summary>
+    /// Searches one page of managed output, with the tail of the previous pages in front of it, so a
+    /// pattern written across a page boundary still reads as one match. The tail kept is short and
+    /// bounded; without it a model waiting for "BUILD SUCCEEDED" could miss it because the page ended
+    /// in the middle of the phrase.
+    /// </summary>
+    private static bool SearchOutput(ConditionState state, string stdout, string stderr)
+    {
+        var page = (stdout.Length == 0 ? "" : stdout) + (stderr.Length == 0 ? "" : "\n" + stderr);
+        if (page.Length == 0) return false;
+        var text = state.OutputTail is { Length: > 0 } tail ? tail + page : page;
+        if (state.OutputTail is { Length: > 0 }) state.OutputTail = null;
+        if (Matches(state.Condition, text)) return true;
+        state.OutputTail = text.Length <= OutputCarryChars ? text : text[^OutputCarryChars..];
+        return false;
+    }
+
+    /// <summary>Whether a file's own text carries the pattern, read from the end of the file.</summary>
+    private async Task<bool> ContainsAsync(string path, TriggerCondition condition, CancellationToken cancellationToken)
+    {
+        var text = await ReadTailAsync(path, cancellationToken);
+        return text is not null && Matches(condition, text);
+    }
+
+    /// <summary>
+    /// The last <see cref="TailBytes"/> of a file as text, or <c>null</c> when it cannot be read now.
+    /// A log is read from its end because that is both where the news is and the only part worth
+    /// paying for: a build log that grew to a gigabyte is not re-read whole on every poll.
+    /// </summary>
+    private async Task<string?> ReadTailAsync(string path, CancellationToken cancellationToken)
+    {
+        Stream? stream;
+        try { stream = await _files.OpenReadAsync(path, cancellationToken); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // A writer holding the file against readers is not a failure of the wait: the next poll
+            // tries again and the observation keeps saying the file is there.
+            return null;
+        }
+        if (stream is null) return null;
+        await using (stream)
+        {
+            if (stream.CanSeek && stream.Length > TailBytes) stream.Position = stream.Length - TailBytes;
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            return await reader.ReadToEndAsync(cancellationToken);
+        }
+    }
+
+    private static bool Matches(TriggerCondition condition, string text)
+    {
+        if (text.Length == 0 || string.IsNullOrEmpty(condition.Pattern)) return false;
+        if (!condition.Regex)
+            return text.Contains(condition.Pattern,
+                condition.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        try
+        {
+            return Regex.IsMatch(text, condition.Pattern, PatternOptions(condition), PatternTimeout);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // A pattern that backtracks past the limit is a pattern problem, not a match; the next
+            // poll tries again instead of ending a long wait.
+            return false;
+        }
+    }
+
+    private static RegexOptions PatternOptions(TriggerCondition condition) =>
+        RegexOptions.CultureInvariant | (condition.IgnoreCase ? RegexOptions.IgnoreCase : RegexOptions.None);
 
     /// <summary>
     /// Whether the process a condition was bound to is still that process. A PID is reused, so a
@@ -509,8 +688,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
     private enum TriggerKind
     {
-        Delay, FileExists, FileMissing, FileChanged, ProcessExit, ProcessCompleted,
-        ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow, ProcessMemoryAbove
+        Delay, FileExists, FileMissing, FileChanged, FileContains, FileIdle, ProcessExit, ProcessCompleted,
+        ProcessOutputContains, ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow, ProcessMemoryAbove
     }
 
     /// <summary>
@@ -657,6 +836,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public FileStamp LastFile { get; set; }
         public int FileEvents;
         public bool SawFileChange { get; set; }
+        public long LastChangeMs { get; set; }
         public long? EligibleSinceMs { get; set; }
         public TimeSpan? PreviousCpuTime { get; set; }
         public long PreviousSampleMs { get; set; }
@@ -667,6 +847,15 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public DateTimeOffset? LastWriteTime { get; set; }
         public bool? ProcessRunning { get; set; }
         public string? ProcessStatus { get; set; }
+        public bool? Matched { get; set; }
+        public long StdoutOffset { get; set; }
+        public long StderrOffset { get; set; }
+
+        /// <summary>
+        /// The end of the managed output read so far, kept only as far as a pattern could straddle it.
+        /// </summary>
+        public string? OutputTail { get; set; }
+
         public string? Error { get; set; }
 
         public void Dispose()

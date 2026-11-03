@@ -162,6 +162,99 @@ public sealed class BuiltInToolTests
     }
 
     [Fact]
+    public async Task ShouldWaitForFileTextAndIdleOverStdio()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-text").FullName;
+        try
+        {
+            var log = Path.Combine(root, "build.log");
+            await File.WriteAllTextAsync(log, "build 42 done\n", TestContext.Current.CancellationToken);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            await using var session = await CreateFactory().OpenAsync(
+                [new ToolDirectoryGrant(root, true, ["read"])], ToolRunContext.None, timeout.Token);
+            var token = timeout.Token;
+
+            // The same text is a literal here, so "\d+" is a backslash and a letter, not a pattern.
+            (await Structured(session, "trigger_wait", new
+                {
+                    conditions = new[] { new { type = "file_contains", path = log, pattern = "build \\d+ done" } },
+                    timeoutMs = 200
+                }, token)).GetProperty("outcome").GetString().ShouldBe("timeout");
+            var matched = await Structured(session, "trigger_wait", new
+            {
+                conditions = new[] { new { type = "file_contains", path = log, pattern = "build \\d+ done", regex = true } },
+                timeoutMs = 5000
+            }, token);
+            matched.GetProperty("outcome").GetString().ShouldBe("triggered");
+            matched.GetProperty("observed")[0].GetProperty("matched").GetBoolean().ShouldBeTrue();
+
+            var idle = await Structured(session, "trigger_wait", new
+            {
+                conditions = new[] { new { type = "file_idle", path = log, quietMs = 100 } },
+                timeoutMs = 5000
+            }, token);
+            idle.GetProperty("outcome").GetString().ShouldBe("triggered");
+            idle.GetProperty("type").GetString().ShouldBe("file_idle");
+
+            // A field the type does not read is refused with the condition it belongs to, so a model
+            // fixes the right one instead of watching a condition that silently ignores it.
+            var refused = await Structured(session, "trigger_wait", new
+            {
+                conditions = new[] { new { type = "file_idle", path = log } },
+                timeoutMs = 200
+            }, token);
+            refused.GetProperty("outcome").GetString().ShouldBe("error");
+            refused.GetProperty("error").GetString()!.ShouldContain("requires quietMs");
+            var description = session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.Description;
+            description.ShouldContain("file_contains");
+            description.ShouldContain("file_idle");
+            description.ShouldContain("process_output_contains");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldWaitForManagedOutputToContainAPatternOverStdio()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        await using var session = await CreateFactory().OpenAsync([], ToolRunContext.None, timeout.Token);
+        var token = timeout.Token;
+
+        var run = await Structured(session, "process_run", new
+        {
+            executable = "dotnet", arguments = (string[])["--info"], workingDirectory = AppContext.BaseDirectory,
+            timeoutMs = 60000, waitTimeoutMs = 0
+        }, token);
+        var handle = run.GetProperty("processId").GetString();
+        var completed = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "process_completed", processSessionId = handle } },
+            timeoutMs = 60000
+        }, token);
+        completed.GetProperty("outcome").GetString().ShouldBe("triggered");
+        var output = completed.GetProperty("processResult").GetProperty("stdout").GetString()!;
+        output.ShouldNotBeNullOrWhiteSpace();
+
+        // A pattern taken from the command's own output is what it printed, not what its docs say.
+        var line = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+        var matched = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "process_output_contains", processSessionId = handle, pattern = line } },
+            timeoutMs = 10000
+        }, token);
+        matched.GetProperty("outcome").GetString().ShouldBe("triggered");
+        matched.GetProperty("observed")[0].GetProperty("matched").GetBoolean().ShouldBeTrue();
+        var absent = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "process_output_contains", processSessionId = handle,
+                pattern = "ai-client-pattern-that-is-never-printed" } },
+            timeoutMs = 300
+        }, token);
+        absent.GetProperty("outcome").GetString().ShouldBe("timeout");
+        absent.GetProperty("observed")[0].GetProperty("matched").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task ShouldGrantAndCleanUpOnlyTheCurrentChatTemporaryDirectory()
     {
         var temporary = NewTemporaryDirectory();

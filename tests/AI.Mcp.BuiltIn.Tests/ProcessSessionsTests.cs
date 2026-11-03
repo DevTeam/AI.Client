@@ -57,7 +57,7 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
             new TriggerCondition("delay", AfterMs: 60000),
             new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId,
                 StdoutOffset: first.StdoutOffset, StderrOffset: first.StderrOffset)
-        ], 60000, Token);
+        ], 60000, null, Token);
         if (!alreadyCompleted)
         {
             pending.IsCompleted.ShouldBeFalse();
@@ -85,16 +85,16 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         var started = await sessions.RunAsync(new ProcessRequest("program", [], _root), 0, Token);
         var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
         var condition = new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId);
-        (await waiter.WaitAsync([condition], 1, Token)).Outcome.ShouldBe("timeout");
-        (await waiter.WaitAsync([condition, new TriggerCondition("delay", AfterMs: 1)], 1000, Token))
+        (await waiter.WaitAsync([condition], 1, null, Token)).Outcome.ShouldBe("timeout");
+        (await waiter.WaitAsync([condition, new TriggerCondition("delay", AfterMs: 1)], 1000, null, Token))
             .ConditionIndex.ShouldBe(1);
         using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(Token);
-        var waiting = waiter.WaitAsync([condition], 60000, cancelled.Token);
+        var waiting = waiter.WaitAsync([condition], 60000, null, cancelled.Token);
         await cancelled.CancelAsync();
         await Should.ThrowAsync<OperationCanceledException>(() => waiting);
         runner.Stopped.ShouldBeFalse();
         (await sessions.WaitAsync(started.ProcessId!, 0, 0, 0, Token)).Status.ShouldBe("running");
-        var stopping = waiter.WaitAsync([condition], 60000, Token);
+        var stopping = waiter.WaitAsync([condition], 60000, null, Token);
         await sessions.StopAsync(started.ProcessId!, Token);
         var result = await stopping.WaitAsync(TimeSpan.FromSeconds(5), Token);
         result.Outcome.ShouldBe("triggered");
@@ -112,19 +112,19 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         var foreignWaiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: other);
         await Should.ThrowAsync<ArgumentException>(() => foreignWaiter.WaitAsync([
             new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId)
-        ], 1000, Token));
+        ], 1000, null, Token));
         var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
         foreach (var invalid in new[] {
                      new TriggerCondition("process_completed"),
                      new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, StableForMs: 1),
                      new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, StdoutOffset: -1),
                      new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId, ProcessId: 1) })
-            await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync([invalid], 1000, Token));
+            await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync([invalid], 1000, null, Token));
         // A later invalid condition also cancels an observer that was already prepared.
         await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync([
             new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId),
             new TriggerCondition("unknown")
-        ], 1000, Token));
+        ], 1000, null, Token));
         runner.Stopped.ShouldBeFalse();
     }
 
@@ -146,7 +146,7 @@ public sealed class ProcessSessionsTests : IAsyncLifetime
         var waiter = new TriggerWaiter(new PathGuard(new EmptyGrants()), processes: sessions);
         var waiting = waiter.WaitAsync([
             new TriggerCondition("process_completed", ProcessSessionId: started.ProcessId)
-        ], 60000, Token);
+        ], 60000, null, Token);
         runner.Release.TrySetResult();
         var result = await waiting.WaitAsync(TimeSpan.FromSeconds(5), Token);
         result.Outcome.ShouldBe("triggered");

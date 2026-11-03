@@ -3,6 +3,7 @@ namespace AI.Mcp.BuiltIn.Triggers;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using Grants;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -17,8 +18,12 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
                           + "Types: delay (afterMs), file_exists/file_missing/file_changed (absolute path), process_exit, "
                           + "process_completed (processSessionId from process_run or process_run_sandboxed, optional stdoutOffset/stderrOffset; returns processResult with status, exitCode and new output), "
                           + "process_cpu_below/process_cpu_above (OS processId and cpuPercent), process_memory_below/process_memory_above "
-                          + "(processId and memoryBytes). CPU percent is normalized across logical processors. "
-                          + "stableForMs requires a file or metric condition to hold without change. "
+                          + "(processId and memoryBytes). Each condition takes only its own fields: processId for a single process, "
+                          + "cpuPercent for the CPU thresholds, memoryBytes for the memory ones, stdio offsets only for process_completed. "
+                          + "stableForMs (0 to 86400000) holds a file or metric condition true before it fires; process_exit and "
+                          + "process_completed do not take it. CPU percent is normalized across logical processors. "
+                          + "A timeout returns the state it last read for every condition in observed, so a missing file is "
+                          + "distinguishable from an unparsed process. "
                           + "Prefer process_completed for one bounded wait on a managed command; it also matches commands already finished. Timeout/cancellation does not stop the command or change its hard deadline. "
                           + "Managed handles belong to this MCP session, not OS PIDs. File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
         });
@@ -26,20 +31,34 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
     [McpServerTool(Name = "trigger_wait", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = true,
         UseStructuredContent = true, OutputSchemaType = typeof(TriggerWaitResult))]
     private async Task<CallToolResult> WaitAsync(
-        [Description("One to eight conditions; the first satisfied condition wins.")] TriggerCondition[] conditions,
+        [Description("One to eight conditions; the first satisfied condition wins.")]
+        [MinLength(1)] [MaxLength(TriggerWaiter.MaxConditions)] TriggerCondition[] conditions,
+        IProgress<ProgressNotificationValue> progress,
         [Description("Maximum wait in milliseconds, 1 to 86400000; defaults to 600000. The effective tool policy may shorten it.")]
         [Range(1, TriggerWaiter.MaxTimeoutMs)] int timeoutMs = 600000,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var result = await waiter.WaitAsync(conditions, timeoutMs, cancellationToken);
+            var result = await waiter.WaitAsync(conditions, timeoutMs, new ForwardProgress(progress), cancellationToken);
             return reply.Reply(result, isError: result.Error is not null);
         }
         catch (Exception error) when (error is ArgumentException or GrantException or IOException or UnauthorizedAccessException
                                       or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return reply.Reply(new TriggerWaitResult("error", null, null, null, null, null, null, 0, false, error.Message), true);
+            return reply.Reply(new TriggerWaitResult("error", null, null, null, null, null, null, 0, false,
+                error.Message, TimeoutMs: timeoutMs), true);
         }
+    }
+
+    /// <summary>
+    /// Adapts the waiter's own report to the protocol's progress notification. The elapsed time is
+    /// the value and the wait's limit the total, so a card can show how much of the wait is left;
+    /// the message names what is being waited for.
+    /// </summary>
+    private sealed class ForwardProgress(IProgress<ProgressNotificationValue> sink) : IProgress<TriggerProgress>
+    {
+        public void Report(TriggerProgress value) => sink.Report(new ProgressNotificationValue
+            { Progress = value.ElapsedMs, Total = value.TimeoutMs, Message = value.Message });
     }
 }

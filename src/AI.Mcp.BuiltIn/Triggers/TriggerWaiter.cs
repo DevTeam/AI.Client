@@ -10,12 +10,13 @@ public sealed class TriggerWaiter : ITriggerWaiter
     public const int MaxConditions = 8;
     public const int MaxTimeoutMs = 86400000;
     private const int PollIntervalMs = 250;
-    private const int MaxStableForMs = 60000;
+    private const int ProgressIntervalMs = 1000;
 
     private readonly IPathGuard _guard;
     private readonly IFileSystem _files;
     private readonly IPath _paths;
     private readonly IProcessSessions? _processes;
+    private readonly IFileWatcherFactory _watchers;
 
     /// <param name="guard">The grants a condition path has to pass before it is watched.</param>
     /// <param name="files">
@@ -24,16 +25,23 @@ public sealed class TriggerWaiter : ITriggerWaiter
     /// </param>
     /// <param name="paths">The path semantics this waiter judges with.</param>
     /// <param name="processes">Managed executions owned by this MCP session.</param>
-    public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null, IProcessSessions? processes = null)
+    /// <param name="watchers">
+    /// The platform watchers. Optional for the same reason as the file system: the composition binds
+    /// the platform implementation, a test binds one it can count.
+    /// </param>
+    public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null,
+        IProcessSessions? processes = null, IFileWatcherFactory? watchers = null)
     {
         ArgumentNullException.ThrowIfNull(guard);
         _guard = guard;
         _files = files ?? new SystemFileSystem();
         _paths = paths ?? new SystemPath();
         _processes = processes;
+        _watchers = watchers ?? new SystemFileWatcherFactory();
     }
 
-    public async Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs, CancellationToken cancellationToken)
+    public async Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs,
+        IProgress<TriggerProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(conditions);
         if (conditions.Length is < 1 or > MaxConditions)
@@ -43,26 +51,44 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
         using var signal = new SemaphoreSlim(0, 1);
         using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var watches = new FileWatchRegistry(_watchers);
         var states = new List<ConditionState>(conditions.Length);
         var watchOverflow = 0;
         var clock = Stopwatch.StartNew();
         try
         {
             for (var index = 0; index < conditions.Length; index++)
-                states.Add(await PrepareAsync(conditions[index], index, signal, () => Interlocked.Exchange(ref watchOverflow, 1), observers.Token));
+                states.Add(await PrepareAsync(conditions[index], index, signal, watches,
+                    () => Interlocked.Exchange(ref watchOverflow, 1), observers.Token));
 
-            var needsPolling = states.Any(state => state.Kind is not (TriggerKind.Delay or TriggerKind.ProcessCompleted));
+            var needsPolling = states.Any(state =>
+                state.Kind is not (TriggerKind.Delay or TriggerKind.ProcessCompleted or TriggerKind.ProcessExit));
+            var lastReportMs = 0L;
+            Report(progress, 0, timeoutMs, states);
             while (true)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (cancellationToken.IsCancellationRequested)
+                    throw new OperationCanceledException("The wait was cancelled.", cancellationToken);
                 foreach (var state in states)
                     if (await EvaluateAsync(state, clock.ElapsedMilliseconds, cancellationToken) is { } match)
-                        return match with { ElapsedMs = clock.ElapsedMilliseconds, WatcherOverflow = Volatile.Read(ref watchOverflow) != 0 };
+                        return match with
+                        {
+                            ElapsedMs = clock.ElapsedMilliseconds,
+                            WatcherOverflow = Volatile.Read(ref watchOverflow) != 0,
+                            TimeoutMs = timeoutMs,
+                            Observed = Observations(states)
+                        };
 
                 var elapsed = clock.ElapsedMilliseconds;
                 if (elapsed >= timeoutMs)
                     return new TriggerWaitResult("timeout", null, null, null, null, null, null, elapsed,
-                        Volatile.Read(ref watchOverflow) != 0);
+                        Volatile.Read(ref watchOverflow) != 0, TimeoutMs: timeoutMs, Observed: Observations(states));
+
+                if (elapsed - lastReportMs >= ProgressIntervalMs)
+                {
+                    Report(progress, elapsed, timeoutMs, states);
+                    lastReportMs = elapsed;
+                }
 
                 var waitMs = (int)Math.Min(needsPolling ? PollIntervalMs : timeoutMs, timeoutMs - elapsed);
                 foreach (var state in states)
@@ -76,24 +102,62 @@ public sealed class TriggerWaiter : ITriggerWaiter
                     }
                 }
 
+                // A reported wait wakes for its next report even when nothing can change meanwhile:
+                // a delay of a minute used to be one long silence with no sign of life.
+                if (progress is not null)
+                    waitMs = (int)Math.Min(waitMs, Math.Max(1, ProgressIntervalMs - (elapsed - lastReportMs)));
+
                 await signal.WaitAsync(Math.Max(1, waitMs), cancellationToken);
             }
         }
         finally
         {
             await observers.CancelAsync();
-            await Task.WhenAll(states.Where(state => state.CompletionObserver is not null).Select(state => state.CompletionObserver!));
+            await Task.WhenAll(states.SelectMany(state => new[] { state.CompletionObserver, state.ExitObserver })
+                .OfType<Task>());
             foreach (var state in states) state.Dispose();
+            watches.Dispose();
         }
     }
 
+    /// <summary>
+    /// What one condition is waiting for, in a line the person reading the tool card understands.
+    /// The message is the only part of a progress report a human sees.
+    /// </summary>
+    private static void Report(IProgress<TriggerProgress>? progress, long elapsedMs, int timeoutMs,
+        List<ConditionState> states)
+    {
+        if (progress is null) return;
+        var waiting = string.Join(" or ", states.Select(state => state.Kind switch
+        {
+            TriggerKind.Delay => $"a delay of {state.Condition.AfterMs} ms",
+            TriggerKind.FileExists => $"the file {state.Path} to exist",
+            TriggerKind.FileMissing => $"the file {state.Path} to disappear",
+            TriggerKind.FileChanged => $"the file {state.Path} to change",
+            TriggerKind.ProcessExit => $"process {state.Condition.ProcessId} to exit",
+            TriggerKind.ProcessCompleted => "the managed process to finish",
+            TriggerKind.ProcessCpuBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.CpuPercent}% CPU",
+            TriggerKind.ProcessCpuAbove => $"process {state.Condition.ProcessId} to rise above {state.Condition.CpuPercent}% CPU",
+            TriggerKind.ProcessMemoryBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.MemoryBytes} bytes",
+            _ => $"process {state.Condition.ProcessId} to rise above {state.Condition.MemoryBytes} bytes"
+        }));
+        progress.Report(new TriggerProgress((int)Math.Min(elapsedMs, int.MaxValue), timeoutMs, states.Count,
+            $"Waiting for {waiting}."));
+    }
+
+    private static TriggerObservation[] Observations(List<ConditionState> states) =>
+        states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
+            state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
+            state.MemoryBytes, state.ProcessStatus, state.Error)).ToArray();
+
+    /// <summary>Names the condition in an error, so a model fixes the right one of up to eight.</summary>
+    private static string Label(int index, string? type) => $"Condition {index} ('{type}')";
+
     private async Task<ConditionState> PrepareAsync(
-        TriggerCondition condition, int index, SemaphoreSlim signal, Action overflow, CancellationToken cancellationToken)
+        TriggerCondition condition, int index, SemaphoreSlim signal, FileWatchRegistry watches, Action overflow,
+        CancellationToken cancellationToken)
     {
         if (condition is null) throw new ArgumentException($"Condition {index} is null.");
-        if (condition.StableForMs is < 0 or > MaxStableForMs)
-            throw new ArgumentException($"Condition {index} has an invalid stableForMs.");
-
         var kind = condition.Type?.Trim().ToLowerInvariant() switch
         {
             "delay" => TriggerKind.Delay,
@@ -106,98 +170,162 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "process_cpu_above" => TriggerKind.ProcessCpuAbove,
             "process_memory_below" => TriggerKind.ProcessMemoryBelow,
             "process_memory_above" => TriggerKind.ProcessMemoryAbove,
-            _ => throw new ArgumentException($"Condition {index} has an unknown type.")
+            _ => throw new ArgumentException(Label(index, condition.Type)
+                + " has an unknown type. Use delay, file_exists, file_missing, file_changed, process_exit, "
+                + "process_completed, process_cpu_below, process_cpu_above, process_memory_below or process_memory_above.")
         };
+        var label = Label(index, condition.Type);
+        RejectUnrelatedFields(condition, kind, label, index);
+
         var state = new ConditionState(condition, kind, index);
+        if (condition.StableForMs is < 0 or > MaxTimeoutMs)
+            throw new ArgumentException($"{label} has stableForMs outside 0..{MaxTimeoutMs}.");
+        RequireFields(condition, kind, label);
+
         if (kind == TriggerKind.ProcessCompleted)
         {
-            if (string.IsNullOrWhiteSpace(condition.ProcessSessionId) || condition.StableForMs != 0
-                || condition.ProcessId is not null || condition.StdoutOffset < 0 || condition.StderrOffset < 0)
-                throw new ArgumentException($"Condition {index} requires processSessionId, nonnegative output offsets, no OS processId and no stableForMs.");
             if (_processes is null)
                 throw new InvalidOperationException("Managed process observation is unavailable.");
-            state.Completion = _processes.WaitForCompletionAsync(condition.ProcessSessionId,
+            state.Completion = _processes.WaitForCompletionAsync(condition.ProcessSessionId!,
                 condition.StdoutOffset, condition.StderrOffset, cancellationToken);
             state.CompletionObserver = WakeOnCompletionAsync(state.Completion, signal);
             return state;
         }
+
         if (kind == TriggerKind.Delay)
-        {
-            if (condition.AfterMs is not > 0 or > MaxTimeoutMs || condition.StableForMs != 0)
-                throw new ArgumentException($"Condition {index} requires afterMs in 1..{MaxTimeoutMs} and no stableForMs.");
             return state;
+
+        if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged)
+        {
+            state.Path = _guard.Resolve(condition.Path!, GrantCapability.Read);
+            if (await _files.DirectoryExistsAsync(state.Path, cancellationToken))
+                throw new ArgumentException($"{label} must name a file, not a directory.");
+            state.Baseline = await SnapshotAsync(state.Path, cancellationToken);
+            state.LastFile = state.Baseline;
+            Observe(state, state.Baseline);
+            var directory = _paths.GetDirectoryName(state.Path);
+            while (directory is not null && !await _files.DirectoryExistsAsync(directory, cancellationToken))
+                directory = _paths.GetDirectoryName(directory);
+            if (directory is null)
+                throw new ArgumentException($"{label} has no existing parent directory.");
+            _guard.Resolve(directory, GrantCapability.Read);
+            var watched = state.Path;
+            var ownDirectory = _paths.GetDirectoryName(watched);
+            // The watcher itself stays on the platform: it is a kernel notification, not a file
+            // operation, and one of the ADR's documented exceptions says so. Everything it is told
+            // is judged through the contract. Conditions watching the same directory share it.
+            state.Watch = watches.Add(directory, !string.Equals(directory, ownDirectory, _paths.Comparison), watched,
+                candidate =>
+                {
+                    if (string.Equals(candidate, watched, _paths.Comparison)) Interlocked.Increment(ref state.FileEvents);
+                    else if (!_paths.IsInside(watched, candidate, recursive: true)) return;
+                    Wake(signal);
+                },
+                () =>
+                {
+                    overflow();
+                    Wake(signal);
+                });
+            return state;
+        }
+
+        state.Process = System.Diagnostics.Process.GetProcessById(condition.ProcessId!.Value);
+        state.BoundAt = StartTime(state.Process);
+        if (kind == TriggerKind.ProcessExit)
+        {
+            // Waiting on the kernel's own exit notification instead of polling every quarter second:
+            // a process that ends just after the wait starts used to cost a full poll interval.
+            state.Exit = state.Process.WaitForExitAsync(cancellationToken);
+            state.ExitObserver = WakeOnExitAsync(state.Exit, signal);
+        }
+        return state;
+    }
+
+    /// <summary>
+    /// A condition that carries a field its type does not read is a mistake, not a detail to ignore:
+    /// <c>stableMs</c> for <c>stableForMs</c> would silently watch for an immediate change, and
+    /// <c>cpuPercent</c> next to <c>file_exists</c> would promise a threshold nothing compares.
+    /// </summary>
+    private static void RejectUnrelatedFields(TriggerCondition condition, TriggerKind kind, string label, int index)
+    {
+        var allowed = kind switch
+        {
+            TriggerKind.Delay => new[] { "afterMs" },
+            TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged => ["path", "stableForMs"],
+            TriggerKind.ProcessExit => ["processId"],
+            TriggerKind.ProcessCompleted => ["processSessionId", "stdoutOffset", "stderrOffset"],
+            TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove => ["processId", "cpuPercent", "stableForMs"],
+            _ => ["processId", "memoryBytes", "stableForMs"]
+        };
+        var unexpected = new List<string>();
+        void Check(string name, bool set)
+        {
+            if (set && !allowed.Contains(name)) unexpected.Add(name);
+        }
+
+        Check("path", !string.IsNullOrWhiteSpace(condition.Path));
+        Check("processId", condition.ProcessId is not null);
+        Check("afterMs", condition.AfterMs is not null);
+        Check("cpuPercent", condition.CpuPercent is not null);
+        Check("memoryBytes", condition.MemoryBytes is not null);
+        Check("stableForMs", condition.StableForMs != 0);
+        Check("processSessionId", !string.IsNullOrWhiteSpace(condition.ProcessSessionId));
+        Check("stdoutOffset", condition.StdoutOffset != 0);
+        Check("stderrOffset", condition.StderrOffset != 0);
+        if (unexpected.Count == 0) return;
+        throw new ArgumentException($"{label} does not read {string.Join(", ", unexpected)}; condition {index} takes "
+            + string.Join(", ", allowed) + ".");
+    }
+
+    /// <summary>What a type cannot work without, checked before anything is watched.</summary>
+    private static void RequireFields(TriggerCondition condition, TriggerKind kind, string label)
+    {
+        switch (kind)
+        {
+            case TriggerKind.Delay when condition.AfterMs is not > 0 or > MaxTimeoutMs:
+                throw new ArgumentException($"{label} requires afterMs in 1..{MaxTimeoutMs}.");
+            case TriggerKind.Delay:
+                return;
+            case TriggerKind.ProcessCompleted when string.IsNullOrWhiteSpace(condition.ProcessSessionId):
+                throw new ArgumentException($"{label} requires processSessionId from a process_run result.");
+            case TriggerKind.ProcessCompleted:
+                return;
         }
 
         if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged)
         {
             if (string.IsNullOrWhiteSpace(condition.Path))
-                throw new ArgumentException($"Condition {index} requires an absolute path.");
-            state.Path = _guard.Resolve(condition.Path, GrantCapability.Read);
-            if (await _files.DirectoryExistsAsync(state.Path, cancellationToken))
-                throw new ArgumentException($"Condition {index} must name a file, not a directory.");
-            state.Baseline = await SnapshotAsync(state.Path, cancellationToken);
-            state.LastFile = state.Baseline;
-            var directory = _paths.GetDirectoryName(state.Path);
-            while (directory is not null && !await _files.DirectoryExistsAsync(directory, cancellationToken))
-                directory = _paths.GetDirectoryName(directory);
-            if (directory is null)
-                throw new ArgumentException($"Condition {index} has no existing parent directory.");
-            _guard.Resolve(directory, GrantCapability.Read);
-
-            // The watcher itself stays on the platform: it is a kernel notification, not a file
-            // operation, and one of the ADR's documented exceptions says so. Everything it is told
-            // is judged through the contract above.
-            var ownDirectory = _paths.GetDirectoryName(state.Path);
-            var watcher = new FileSystemWatcher(directory)
-            {
-                IncludeSubdirectories = !string.Equals(directory, ownDirectory, _paths.Comparison),
-                Filter = string.Equals(directory, ownDirectory, _paths.Comparison)
-                    ? _paths.GetFileName(state.Path) : "*",
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size
-            };
-            state.Watcher = watcher;
-            void FileEvent(string candidate)
-            {
-                if (string.Equals(candidate, state.Path, _paths.Comparison))
-                    Interlocked.Increment(ref state.FileEvents);
-                else if (!_paths.IsInside(state.Path, candidate, recursive: true))
-                    return;
-                Wake(signal);
-            }
-            FileSystemEventHandler changed = (_, args) => FileEvent(args.FullPath);
-            RenamedEventHandler renamed = (_, args) => { FileEvent(args.OldFullPath); FileEvent(args.FullPath); };
-            ErrorEventHandler error = (_, _) => { overflow(); Wake(signal); };
-            watcher.Changed += changed;
-            watcher.Created += changed;
-            watcher.Deleted += changed;
-            watcher.Renamed += renamed;
-            watcher.Error += error;
-            try { watcher.EnableRaisingEvents = true; }
-            catch { watcher.Dispose(); throw; }
-            return state;
+                throw new ArgumentException($"{label} requires an absolute path.");
+            return;
         }
 
         if (condition.ProcessId is not > 0)
-            throw new ArgumentException($"Condition {index} requires a positive processId.");
+            throw new ArgumentException($"{label} requires a positive processId.");
         if (kind is TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove
-            && condition.CpuPercent is (null or < 0 or > 100))
-            throw new ArgumentException($"Condition {index} requires cpuPercent in 0..100.");
+            && condition.CpuPercent is null or < 0 or > 100)
+            throw new ArgumentException($"{label} requires cpuPercent in 0..100.");
         if (kind is TriggerKind.ProcessMemoryBelow or TriggerKind.ProcessMemoryAbove
-            && condition.MemoryBytes is (null or < 0))
-            throw new ArgumentException($"Condition {index} requires nonnegative memoryBytes.");
-        if (kind == TriggerKind.ProcessExit && condition.StableForMs != 0)
-            throw new ArgumentException($"Condition {index} does not support stableForMs.");
-        state.Process = System.Diagnostics.Process.GetProcessById(condition.ProcessId.Value);
-        return state;
+            && condition.MemoryBytes is null or < 0)
+            throw new ArgumentException($"{label} requires nonnegative memoryBytes.");
     }
 
     private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, CancellationToken cancellationToken)
     {
         var condition = state.Condition;
         if (state.Completion is { } completion)
-            return completion.IsCompleted
-                ? Match(state, elapsedMs) with { ProcessResult = await completion }
-                : null;
+        {
+            if (!completion.IsCompleted)
+            {
+                // Still running is the observation a timeout needs here: the managed handle was found
+                // and watched, the command simply had not finished.
+                state.ProcessStatus = "running";
+                return null;
+            }
+            var finished = await completion;
+            state.ProcessStatus = finished.Status;
+            return Match(state, elapsedMs) with { ProcessResult = finished };
+        }
+
         if (state.Kind == TriggerKind.Delay)
             return elapsedMs >= condition.AfterMs
                 ? Match(state, elapsedMs) : null;
@@ -207,6 +335,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             // Recheck the observed path in case a link appears after registration.
             _guard.Resolve(path, GrantCapability.Read);
             var snapshot = await SnapshotAsync(path, cancellationToken);
+            Observe(state, snapshot);
             var newEvent = Interlocked.Exchange(ref state.FileEvents, 0) != 0;
             var changed = newEvent || snapshot != state.LastFile;
             if (newEvent) state.SawFileChange = true;
@@ -224,17 +353,36 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
 
         var process = state.Process!;
-        process.Refresh();
-        if (process.HasExited)
-            return state.Kind == TriggerKind.ProcessExit ? Match(state, elapsedMs) : null;
-        if (state.Kind == TriggerKind.ProcessExit) return null;
+        if (!Running(state))
+        {
+            state.MemoryBytes = null;
+            // A process that ended cannot reach a threshold, but it did do what process_exit waits for.
+            if (state.Kind == TriggerKind.ProcessExit) return Match(state, elapsedMs);
+            state.Error ??= "The process exited before the condition was satisfied.";
+            return null;
+        }
 
-        state.MemoryBytes = process.WorkingSet64;
+        long memory;
+        try { memory = process.WorkingSet64; }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            state.Error = error.Message;
+            return null;
+        }
+
+        state.MemoryBytes = memory;
         if (state.Kind is TriggerKind.ProcessMemoryBelow or TriggerKind.ProcessMemoryAbove)
             return Eligible(state, state.Kind == TriggerKind.ProcessMemoryBelow
-                ? state.MemoryBytes < condition.MemoryBytes : state.MemoryBytes > condition.MemoryBytes, elapsedMs);
+                ? memory < condition.MemoryBytes : memory > condition.MemoryBytes, elapsedMs);
 
-        var cpuTime = process.TotalProcessorTime;
+        TimeSpan cpuTime;
+        try { cpuTime = process.TotalProcessorTime; }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            state.Error = error.Message;
+            return null;
+        }
+
         if (state.PreviousCpuTime is null)
         {
             state.PreviousCpuTime = cpuTime;
@@ -251,6 +399,51 @@ public sealed class TriggerWaiter : ITriggerWaiter
             ? state.CpuPercent < condition.CpuPercent : state.CpuPercent > condition.CpuPercent, elapsedMs);
     }
 
+    /// <summary>
+    /// Whether the process a condition was bound to is still that process. A PID is reused, so a
+    /// process that ended can hand its number to a stranger whose CPU and memory would otherwise be
+    /// reported as the finished one's. When this account may not read the start time, the answer
+    /// falls back to liveness alone: the stronger check is unavailable, not negative.
+    /// </summary>
+    private static bool Running(ConditionState state)
+    {
+        var process = state.Process!;
+        try
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                state.ProcessRunning = false;
+                return false;
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            state.Error = error.Message;
+            state.ProcessRunning = false;
+            return false;
+        }
+
+        if (state.BoundAt is { } bound && StartTime(process) is { } started && started != bound)
+        {
+            state.ProcessRunning = false;
+            state.Error = "The process identifier now belongs to another process.";
+            return false;
+        }
+
+        state.ProcessRunning = true;
+        return true;
+    }
+
+    private static DateTimeOffset? StartTime(System.Diagnostics.Process process)
+    {
+        try { return process.StartTime; }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     private static TriggerWaitResult? Eligible(ConditionState state, bool eligible, long elapsedMs)
     {
         if (!eligible)
@@ -265,6 +458,13 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private static TriggerWaitResult Match(ConditionState state, long elapsedMs) =>
         new("triggered", state.Index, state.Condition.Type, state.Path, state.Condition.ProcessId,
             state.CpuPercent, state.MemoryBytes, elapsedMs, false);
+
+    private static void Observe(ConditionState state, FileStamp stamp)
+    {
+        state.Exists = stamp.Exists;
+        state.LengthBytes = stamp.Exists ? stamp.Length : null;
+        state.LastWriteTime = stamp.Exists ? new DateTimeOffset(stamp.LastWriteTicks, TimeSpan.Zero) : null;
+    }
 
     /// <summary>
     /// What the file looks like now, through the contract rather than through a fresh
@@ -298,6 +498,13 @@ public sealed class TriggerWaiter : ITriggerWaiter
         finally { Wake(signal); }
     }
 
+    private static async Task WakeOnExitAsync(Task exit, SemaphoreSlim signal)
+    {
+        try { await exit; }
+        catch (Exception) { }
+        finally { Wake(signal); }
+    }
+
     private readonly record struct FileStamp(bool Exists, long Length, long LastWriteTicks);
 
     private enum TriggerKind
@@ -306,16 +513,146 @@ public sealed class TriggerWaiter : ITriggerWaiter
         ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow, ProcessMemoryAbove
     }
 
+    /// <summary>
+    /// One platform watcher per watched directory and depth, however many conditions look into it: a
+    /// condition costs a subscription, not a watcher with its own buffer and its own overflow risk.
+    /// A subscriber receives every entry the directory reports and decides whether it is its own
+    /// path, so the filter stays exact without a per-condition watcher filter.
+    /// </summary>
+    private sealed class FileWatchRegistry(IFileWatcherFactory factory) : IDisposable
+    {
+        private readonly Dictionary<(string Directory, bool Recursive), WatchedDirectory> _watched = new();
+
+        /// <summary>
+        /// Subscribes to the watcher for <paramref name="directory"/>, creating it when this is the
+        /// first condition that looks there. Either everything this condition needs is in place or
+        /// nothing is: a condition that fails later must not leave a watcher behind.
+        /// </summary>
+        public IDisposable Add(string directory, bool recursive, string path, Action<string> onEvent, Action onOverflow)
+        {
+            if (!_watched.TryGetValue((directory, recursive), out var watched))
+            {
+                watched = new WatchedDirectory(factory, directory, recursive);
+                var subscription = watched.Add(path, onEvent, onOverflow);
+                try
+                {
+                    watched.Start();
+                }
+                catch
+                {
+                    subscription.Dispose();
+                    throw;
+                }
+                _watched.Add((directory, recursive), watched);
+                return subscription;
+            }
+            return watched.Add(path, onEvent, onOverflow);
+        }
+
+        public void Dispose()
+        {
+            foreach (var watched in _watched.Values.ToArray()) watched.Dispose();
+            _watched.Clear();
+        }
+
+        private sealed class WatchedDirectory : IDisposable
+        {
+            private readonly object _gate = new();
+            private readonly Dictionary<string, List<Subscription>> _subscriptions = new(StringComparer.Ordinal);
+            private readonly IFileWatcher _watcher;
+            private int _count;
+            private bool _disposed;
+
+            public WatchedDirectory(IFileWatcherFactory factory, string directory, bool recursive)
+            {
+                _watcher = factory.Create(directory, recursive);
+                _watcher.Changed += Dispatch;
+                _watcher.Renamed += (oldPath, newPath) => { Dispatch(oldPath); Dispatch(newPath); };
+                _watcher.Faulted += Overflow;
+            }
+
+            public void Start() => _watcher.Start();
+
+            public Subscription Add(string path, Action<string> onEvent, Action onOverflow)
+            {
+                var subscription = new Subscription(this, path, onEvent, onOverflow);
+                lock (_gate)
+                {
+                    if (!_subscriptions.TryGetValue(path, out var list))
+                        _subscriptions.Add(path, list = []);
+                    list.Add(subscription);
+                    _count++;
+                }
+                return subscription;
+            }
+
+            public void Remove(string path, Subscription subscription)
+            {
+                var empty = false;
+                lock (_gate)
+                {
+                    if (_subscriptions.TryGetValue(path, out var list) && list.Remove(subscription))
+                        _count--;
+                    empty = _count == 0;
+                }
+                if (empty) Dispose();
+            }
+
+            private void Dispatch(string candidate)
+            {
+                Subscription[] targets;
+                lock (_gate) targets = _subscriptions.Values.SelectMany(list => list).ToArray();
+                foreach (var target in targets) target.Event(candidate);
+            }
+
+            private void Overflow()
+            {
+                Subscription[] targets;
+                lock (_gate) targets = _subscriptions.Values.SelectMany(list => list).ToArray();
+                foreach (var target in targets) target.Overflow();
+            }
+
+            public void Dispose()
+            {
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    _disposed = true;
+                    _subscriptions.Clear();
+                    _count = 0;
+                }
+                _watcher.Dispose();
+            }
+        }
+
+        private sealed class Subscription(WatchedDirectory owner, string path, Action<string> onEvent, Action onOverflow) : IDisposable
+        {
+            private int _disposed;
+
+            public void Event(string candidate) => onEvent(candidate);
+
+            public void Overflow() => onOverflow();
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.Remove(path, this);
+            }
+        }
+    }
+
     private sealed class ConditionState(TriggerCondition condition, TriggerKind kind, int index) : IDisposable
     {
         public TriggerCondition Condition { get; } = condition;
         public TriggerKind Kind { get; } = kind;
         public int Index { get; } = index;
         public string? Path { get; set; }
-        public FileSystemWatcher? Watcher { get; set; }
+        public IDisposable? Watch { get; set; }
         public System.Diagnostics.Process? Process { get; set; }
+        public DateTimeOffset? BoundAt { get; set; }
         public Task<ProcessResult>? Completion { get; set; }
         public Task? CompletionObserver { get; set; }
+        public Task? Exit { get; set; }
+        public Task? ExitObserver { get; set; }
         public FileStamp Baseline { get; set; }
         public FileStamp LastFile { get; set; }
         public int FileEvents;
@@ -325,10 +662,16 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public long PreviousSampleMs { get; set; }
         public double? CpuPercent { get; set; }
         public long? MemoryBytes { get; set; }
+        public bool? Exists { get; set; }
+        public long? LengthBytes { get; set; }
+        public DateTimeOffset? LastWriteTime { get; set; }
+        public bool? ProcessRunning { get; set; }
+        public string? ProcessStatus { get; set; }
+        public string? Error { get; set; }
 
         public void Dispose()
         {
-            Watcher?.Dispose();
+            Watch?.Dispose();
             Process?.Dispose();
         }
     }

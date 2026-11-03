@@ -127,6 +127,17 @@ public sealed class BuiltInToolTests
         }, timeout.Token);
         trigger.GetProperty("outcome").GetString().ShouldBe("triggered");
         trigger.GetProperty("conditionIndex").GetInt32().ShouldBe(0);
+        // A timeout says what the wait actually had and what every condition last saw, so an empty
+        // result can no longer be mistaken for a condition that was never read.
+        trigger.GetProperty("timeoutMs").GetInt32().ShouldBe(1000);
+        trigger.GetProperty("observed").GetArrayLength().ShouldBe(1);
+        var expired = await Structured(session, "trigger_wait", new
+        {
+            conditions = new[] { new { type = "delay", afterMs = 5000 } }, timeoutMs = 10
+        }, timeout.Token);
+        expired.GetProperty("outcome").GetString().ShouldBe("timeout");
+        expired.GetProperty("timeoutMs").GetInt32().ShouldBe(10);
+        expired.GetProperty("observed").GetArrayLength().ShouldBe(1);
         var completion = await Structured(session, "trigger_wait", new
         {
             conditions = new[] { new { type = "process_completed",
@@ -138,6 +149,12 @@ public sealed class BuiltInToolTests
         completion.GetProperty("processResult").GetProperty("exitCode").GetInt32().ShouldBe(0);
         session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.InputSchema
             .GetProperty("properties").GetProperty("timeoutMs").GetProperty("maximum").GetInt32().ShouldBe(86400000);
+        // A condition list is bounded by the tool, not only by the waiter: an over-long list is
+        // refused before a single watcher is created.
+        session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.InputSchema
+            .GetProperty("properties").GetProperty("conditions").GetProperty("maxItems").GetInt32().ShouldBe(8);
+        session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.InputSchema
+            .GetProperty("properties").GetProperty("conditions").GetProperty("minItems").GetInt32().ShouldBe(1);
         var canonical = session.ValidateArguments(tool, "{\"executable\":\"dotnet\"}");
         using var canonicalJson = JsonDocument.Parse(canonical);
         canonicalJson.RootElement.GetProperty("executable").GetString().ShouldBe("dotnet");

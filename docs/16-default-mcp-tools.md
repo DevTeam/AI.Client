@@ -143,7 +143,14 @@ Starting .NET, loading Roslyn and compiling cost about 1.4 seconds per call when
 not register a persistent trigger; stopping the run cancels the wait and disposes its observers.
 The result is `triggered` with a zero-based `conditionIndex`, or `timeout`. Cancellation of the
 chat run cancels the call. `timeoutMs` accepts 1..86400000 and is capped by the effective tool
-policy, like `process_run`.
+policy, like `process_run`. Every result carries the `timeoutMs` the wait actually used and an
+`observed` array with the last state read for each condition, including on a timeout, so a missing
+file is distinguishable from a process whose metrics could not be read.
+
+While it waits, the call reports `notifications/progress` about once a second: elapsed
+milliseconds as the value, the wait's limit as the total, and a message naming what it is waiting
+for. That keeps the tool card live and keeps the Host's silence timer from treating a long wait as
+a hung call.
 
 Conditions use `type` and type-specific fields:
 
@@ -151,16 +158,25 @@ Conditions use `type` and type-specific fields:
 | --- | --- | --- |
 | `delay` | `afterMs` | Elapsed time reaches the interval. |
 | `file_exists`, `file_missing`, `file_changed` | `path` | File state or a change after observation starts. The absolute path needs a read grant. |
-| `process_exit` | `processId` | The named process exits. It must exist when observation starts. |
+| `process_exit` | `processId` | The named process exits. It must exist when observation starts. It is woken by the platform's exit notification rather than by the polling interval. |
 | `process_completed` | `processSessionId` | A managed `process_run` or `process_run_sandboxed` execution finishes, including output draining. The string handle must belong to this MCP session; an already finished execution matches immediately. |
 | `process_cpu_below`, `process_cpu_above` | `processId`, `cpuPercent` | Sampled CPU usage crosses a 0..100 percent threshold, normalized across logical processors. |
 | `process_memory_below`, `process_memory_above` | `processId`, `memoryBytes` | The named process's working set crosses a byte threshold. |
 
-`stableForMs` (0..60000) can require a file or metric condition to remain true before it fires.
-File observation combines `FileSystemWatcher` notifications with a bounded periodic check so a
-missed notification does not leave the call waiting indefinitely. The result reports
-`watcherOverflow` if the watcher reported an error. Process observation reads only the named PID;
-it neither enumerates processes nor stops them.
+A condition is refused when it carries a field its type does not read: `stableForMs` on
+`process_exit`, `cpuPercent` on `file_exists` and the like. Silently ignoring the field would turn a
+misnamed `stableMs` into an immediate change and a threshold that nothing ever compares, and the
+error names the condition index, its type and the fields it does take.
+
+`stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
+`process_exit` and `process_completed` do not take it. File observation combines platform
+notifications with a bounded periodic check so a missed notification does not leave the call waiting
+indefinitely. All file conditions that look into the same directory share one watcher and differ
+only in their subscriptions, so eight conditions no longer cost eight buffers and eight overflow
+risks. The result reports `watcherOverflow` if a watcher reported an error. Process observation
+reads only the named PID; it neither enumerates processes nor stops them, and it compares the
+process start time with the one bound at the start of the wait, so a reused PID is reported as
+exited instead of having a stranger's memory read as the finished process's.
 
 For `process_completed`, pass the launch result's string `processId` as `processSessionId`,
 not as the numeric OS `processId`. Optional `stdoutOffset` and `stderrOffset` select new output

@@ -311,6 +311,106 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ShouldWaitForADirectoryToStayIdle()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-idle").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            Directory.CreateDirectory(output);
+            File.WriteAllText(Path.Combine(output, "one.txt"), "first");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var pending = waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 800)
+            ], 10000, null, cancel.Token);
+            // A build keeps adding entries to the directory past the quiet period: idleness has to
+            // come from the silence after the last write, not from the wait having started.
+            var writing = Stopwatch.StartNew();
+            var created = 1;
+            while (writing.ElapsedMilliseconds < 1200)
+            {
+                await File.WriteAllTextAsync(Path.Combine(output, $"part-{created++}.txt"), "more",
+                    TestContext.Current.CancellationToken);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+                pending.IsCompleted.ShouldBeFalse();
+            }
+
+            var result = await pending;
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("directory_idle");
+            result.Path.ShouldBe(output);
+            result.ElapsedMs.ShouldBeGreaterThanOrEqualTo(1100);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldTriggerDirectoryIdleWhenNothingMoved()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-quiet").FullName;
+        try
+        {
+            var output = Path.Combine(root, "output");
+            Directory.CreateDirectory(output);
+            File.WriteAllText(Path.Combine(output, "one.txt"), "first");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var result = await waiter.WaitAsync([
+                new TriggerCondition("directory_idle", Path: output, QuietMs: 200)
+            ], 10000, null, cancel.Token);
+            result.Outcome.ShouldBe("triggered");
+            result.ElapsedMs.ShouldBeGreaterThanOrEqualTo(150);
+            // An idle directory holds no text to search, so the observation reports no window.
+            result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().SearchedBytes.ShouldBeNull();
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ShouldRejectADirectoryConditionThatNamesSomethingElse()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-dir-invalid").FullName;
+        try
+        {
+            var file = Path.Combine(root, "log.txt");
+            File.WriteAllText(file, "text");
+            var missing = Path.Combine(root, "absent");
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // A file is not a directory, so waiting for its entries to go quiet is a mistake to report.
+            var notADirectory = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: file, QuietMs: 100)
+                ], 1000, null, cancel.Token));
+            notADirectory.Message.ShouldContain("existing directory");
+
+            var gone = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: missing, QuietMs: 100)
+                ], 1000, null, cancel.Token));
+            gone.Message.ShouldContain("existing directory");
+
+            // quietMs is the whole point of the condition, and a field it does not read is refused.
+            var noQuiet = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: root)
+                ], 1000, null, cancel.Token));
+            noQuiet.Message.ShouldContain("quietMs");
+
+            var pattern = await Should.ThrowAsync<ArgumentException>(async () =>
+                await waiter.WaitAsync([
+                    new TriggerCondition("directory_idle", Path: root, QuietMs: 100, Pattern: "x")
+                ], 1000, null, cancel.Token));
+            pattern.Message.ShouldContain("pattern");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task ShouldRejectATextConditionWithoutPatternOrWithABadExpression()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-text-invalid").FullName;

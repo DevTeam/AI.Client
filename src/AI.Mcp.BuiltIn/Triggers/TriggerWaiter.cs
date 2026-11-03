@@ -155,6 +155,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.FileContains => $"the file {state.Path} to contain "
                 + (state.Condition.Regex ? $"a match for '{state.Condition.Pattern}'" : $"'{state.Condition.Pattern}'"),
             TriggerKind.FileIdle => $"the file {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
+            TriggerKind.DirectoryIdle => $"the directory {state.Path} to stay unchanged for {state.Condition.QuietMs} ms",
             TriggerKind.ProcessExit => $"process {state.Condition.ProcessId} to exit",
             TriggerKind.ProcessCompleted => "the managed process to finish",
             TriggerKind.ProcessOutputContains => "the managed process output to contain "
@@ -190,6 +191,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "file_changed" => TriggerKind.FileChanged,
             "file_contains" => TriggerKind.FileContains,
             "file_idle" => TriggerKind.FileIdle,
+            "directory_idle" => TriggerKind.DirectoryIdle,
             "process_exit" => TriggerKind.ProcessExit,
             "process_completed" => TriggerKind.ProcessCompleted,
             "process_output_contains" => TriggerKind.ProcessOutputContains,
@@ -199,8 +201,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "process_memory_above" => TriggerKind.ProcessMemoryAbove,
             _ => throw new ArgumentException(Label(index, condition.Type)
                 + " has an unknown type. Use delay, file_exists, file_missing, file_changed, file_contains, file_idle, "
-                + "process_exit, process_completed, process_output_contains, process_cpu_below, process_cpu_above, "
-                + "process_memory_below or process_memory_above.")
+                + "directory_idle, process_exit, process_completed, process_output_contains, process_cpu_below, "
+                + "process_cpu_above, process_memory_below or process_memory_above.")
         };
         var label = Label(index, condition.Type);
         RejectUnrelatedFields(condition, kind, label, index);
@@ -222,6 +224,29 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
         if (kind == TriggerKind.Delay)
             return state;
+
+        if (kind == TriggerKind.DirectoryIdle)
+        {
+            state.Path = _guard.Resolve(condition.Path!, GrantCapability.Read);
+            if (!await _files.DirectoryExistsAsync(state.Path, cancellationToken))
+                throw new ArgumentException($"{label} must name an existing directory.");
+            state.Baseline = await DirectoryStampAsync(state.Path, cancellationToken);
+            state.LastFile = state.Baseline;
+            // Watching the directory itself, not its parent: every entry directly inside it is the
+            // subject, and a subdirectory is one entry whose own contents are not this condition's.
+            state.Watch = watches.Add(state.Path, recursive: false, state.Path,
+                candidate =>
+                {
+                    Interlocked.Increment(ref state.FileEvents);
+                    Wake(signal);
+                },
+                () =>
+                {
+                    overflow();
+                    Wake(signal);
+                });
+            return state;
+        }
 
         if (kind == TriggerKind.ProcessOutputContains)
         {
@@ -302,6 +327,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged => ["path", "stableForMs"],
             TriggerKind.FileContains => ["path", "pattern", "regex", "ignoreCase", "stableForMs"],
             TriggerKind.FileIdle => ["path", "quietMs", "stableForMs"],
+            TriggerKind.DirectoryIdle => ["path", "quietMs", "stableForMs"],
             TriggerKind.ProcessExit => ["processId"],
             TriggerKind.ProcessCompleted => ["processSessionId", "stdoutOffset", "stderrOffset"],
             TriggerKind.ProcessOutputContains => ["processSessionId", "pattern", "regex", "ignoreCase",
@@ -351,11 +377,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
 
         if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged
-            or TriggerKind.FileContains or TriggerKind.FileIdle)
+            or TriggerKind.FileContains or TriggerKind.FileIdle or TriggerKind.DirectoryIdle)
         {
             if (string.IsNullOrWhiteSpace(condition.Path))
                 throw new ArgumentException($"{label} requires an absolute path.");
-            if (kind == TriggerKind.FileIdle && condition.QuietMs is not > 0 or > MaxTimeoutMs)
+            if (kind is (TriggerKind.FileIdle or TriggerKind.DirectoryIdle)
+                && condition.QuietMs is not > 0 or > MaxTimeoutMs)
                 throw new ArgumentException($"{label} requires quietMs in 1..{MaxTimeoutMs}.");
         }
         else if (kind != TriggerKind.ProcessOutputContains)
@@ -430,18 +457,27 @@ public sealed class TriggerWaiter : ITriggerWaiter
         {
             // Recheck the observed path in case a link appears after registration.
             _guard.Resolve(path, GrantCapability.Read);
-            var snapshot = await SnapshotAsync(path, cancellationToken);
-            Observe(state, snapshot);
+            var isDirectory = state.Kind == TriggerKind.DirectoryIdle;
+            var snapshot = isDirectory
+                ? await DirectoryStampAsync(path, cancellationToken)
+                : await SnapshotAsync(path, cancellationToken);
+            if (isDirectory) state.Exists = snapshot.Exists;
+            else Observe(state, snapshot);
             var newEvent = Interlocked.Exchange(ref state.FileEvents, 0) != 0;
             var changed = newEvent || snapshot != state.LastFile;
             if (newEvent) state.SawFileChange = true;
             state.SawFileChange |= snapshot != state.Baseline;
             if (changed)
             {
-                // A snapshot that moved restarts the quiet period: file_idle asks for silence since
-                // the last observed change, not since the wait started.
+                // A snapshot that moved restarts the quiet period: file_idle and directory_idle ask
+                // for silence since the last observed change, not since the wait started.
                 state.EligibleSinceMs = null;
                 state.LastChangeMs = elapsedMs;
+            }
+            if (isDirectory && !snapshot.Exists)
+            {
+                state.Error = "The directory no longer exists.";
+                return null;
             }
             state.LastFile = snapshot;
             var eligible = state.Kind switch
@@ -450,6 +486,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 TriggerKind.FileMissing => !snapshot.Exists,
                 TriggerKind.FileChanged => state.SawFileChange,
                 TriggerKind.FileIdle => !changed && elapsedMs - state.LastChangeMs >= condition.QuietMs,
+                TriggerKind.DirectoryIdle => !changed && elapsedMs - state.LastChangeMs >= condition.QuietMs,
                 _ => false
             };
             // Reading the text is the expensive half of a text condition, so it happens only once the
@@ -660,6 +697,25 @@ public sealed class TriggerWaiter : ITriggerWaiter
     }
 
     /// <summary>
+    /// What a directory looks like now: whether it is there, how many entries it holds and when the
+    /// busiest of them was last written. The quiet period of <c>directory_idle</c> asks whether any
+    /// of that moved, so a build that keeps writing into the directory is not idle however long ago
+    /// the wait started.
+    /// </summary>
+    private async Task<FileStamp> DirectoryStampAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!await _files.DirectoryExistsAsync(path, cancellationToken)) return default;
+        var entries = await _files.ListEntriesAsync(path, recursive: false, cancellationToken);
+        var newest = 0L;
+        foreach (var entry in entries)
+        {
+            var written = await _files.GetLastWriteTimeAsync(entry.Path, cancellationToken);
+            if (written.UtcTicks > newest) newest = written.UtcTicks;
+        }
+        return new FileStamp(true, entries.Count, newest);
+    }
+
+    /// <summary>
     /// What the file looks like now, through the contract rather than through a fresh
     /// <c>FileInfo</c>: the entry answers whether it is there and how long it is, and the write time
     /// is asked for only for an entry that exists.
@@ -702,8 +758,9 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
     private enum TriggerKind
     {
-        Delay, FileExists, FileMissing, FileChanged, FileContains, FileIdle, ProcessExit, ProcessCompleted,
-        ProcessOutputContains, ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow, ProcessMemoryAbove
+        Delay, FileExists, FileMissing, FileChanged, FileContains, FileIdle, DirectoryIdle, ProcessExit,
+        ProcessCompleted, ProcessOutputContains, ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow,
+        ProcessMemoryAbove
     }
 
     /// <summary>

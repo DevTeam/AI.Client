@@ -209,9 +209,23 @@ public sealed class BuiltInToolTests
             }, token);
             refused.GetProperty("outcome").GetString().ShouldBe("error");
             refused.GetProperty("error").GetString()!.ShouldContain("requires quietMs");
+
+            // The same silence over a whole directory: every entry directly inside it belongs to the
+            // wait, so a build that keeps writing into it is not idle.
+            var output = Path.Combine(root, "output");
+            Directory.CreateDirectory(output);
+            var directory = await Structured(session, "trigger_wait", new
+            {
+                conditions = new[] { new { type = "directory_idle", path = output, quietMs = 100 } },
+                timeoutMs = 5000
+            }, token);
+            directory.GetProperty("outcome").GetString().ShouldBe("triggered");
+            directory.GetProperty("type").GetString().ShouldBe("directory_idle");
+
             var description = session.Tools.Single(item => item.OriginalName == "trigger_wait").ModelDefinition.Description;
             description.ShouldContain("file_contains");
             description.ShouldContain("file_idle");
+            description.ShouldContain("directory_idle");
             description.ShouldContain("process_output_contains");
         }
         finally { Directory.Delete(root, true); }

@@ -342,6 +342,43 @@ public sealed class TriggerWaiterTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task ATextConditionShouldSayHowMuchTextItSearched()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-window").FullName;
+        try
+        {
+            // Small file: the whole text is read, so a miss means the line was never written.
+            var small = Path.Combine(root, "small.log");
+            await File.WriteAllTextAsync(small, "alpha\nbeta\n", TestContext.Current.CancellationToken);
+            // Large file: only the tail fits the window, so a miss may simply be older than it.
+            var large = Path.Combine(root, "large.log");
+            await File.WriteAllTextAsync(large,
+                "EARLY LINE\n" + string.Concat(Enumerable.Repeat("padding line\n", 40000)),
+                TestContext.Current.CancellationToken);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            var read = await waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: small, Pattern: "missing")
+            ], 300, null, cancel.Token);
+            var whole = read.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+            whole.Matched.ShouldBe(false);
+            whole.SearchedBytes.ShouldBe(new FileInfo(small).Length);
+            whole.OlderTextUnsearched.ShouldBe(false);
+
+            var truncated = await waiter.WaitAsync([
+                new TriggerCondition("file_contains", Path: large, Pattern: "EARLY LINE")
+            ], 300, null, cancel.Token);
+            var tail = truncated.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+            tail.Matched.ShouldBe(false);
+            tail.OlderTextUnsearched.ShouldBe(true);
+            tail.SearchedBytes.ShouldNotBeNull().ShouldBeLessThanOrEqualTo(TriggerWaiter.TailBytes);
+            tail.SearchedBytes!.Value.ShouldBeGreaterThan(0);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     /// <remarks>
     /// The test ends the process itself rather than waiting for it to exit on its own: a child that
     /// sleeps for a second also has to start, and PowerShell alone takes most of two seconds to do

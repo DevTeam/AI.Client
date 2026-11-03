@@ -36,6 +36,16 @@ public sealed record TriggerCondition(
 /// <param name="ProcessStatus">Status of a managed execution: <c>running</c> until it finishes.</param>
 /// <param name="Matched">Whether a text condition found its pattern in the text it read.</param>
 /// <param name="Error">Why the state could not be read, if it could not.</param>
+/// <param name="SearchedBytes">
+/// How much text a text condition actually examined. A file is read from its end, so this is the
+/// window that was searched, not the file's length.
+/// </param>
+/// <param name="OlderTextUnsearched">
+/// Whether text older than the searched window was never examined, either because the file is
+/// longer than that window or because the condition started from a nonzero output offset. A miss
+/// with this set means the pattern may sit outside what was read, which is not the same as the
+/// pattern never having been written.
+/// </param>
 public sealed record TriggerObservation(
     int ConditionIndex,
     string Type,
@@ -49,7 +59,9 @@ public sealed record TriggerObservation(
     long? MemoryBytes = null,
     string? ProcessStatus = null,
     string? Error = null,
-    bool? Matched = null);
+    bool? Matched = null,
+    long? SearchedBytes = null,
+    bool? OlderTextUnsearched = null);
 
 /// <summary>How far the wait has come, reported as <c>notifications/progress</c>.</summary>
 /// <param name="ElapsedMs">Time since the wait started.</param>

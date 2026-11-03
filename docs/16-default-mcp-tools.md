@@ -179,8 +179,11 @@ the condition index rather than failing once per poll. A file is read from its e
 to a gigabyte is not re-read whole on every poll. Managed output is read as pages through
 `process_wait`'s own contract, and a short tail of the previous page is prepended so a pattern
 written across a page boundary still matches. `observed` carries `matched` for these conditions,
-and a managed execution that finished without printing the pattern says so in its `error` instead of
-leaving a bare timeout.
+plus `searchedBytes` (how much text was actually examined) and `olderTextUnsearched` (whether text
+older than the window was never read, because the file is longer than it or the condition started
+from a nonzero output offset). A miss with `olderTextUnsearched` means the pattern may sit outside
+what was read, which is not the same as the pattern never having been written; a managed execution
+that finished without printing the pattern says so in its `error` instead of leaving a bare timeout.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. File observation combines platform

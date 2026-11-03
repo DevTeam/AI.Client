@@ -187,6 +187,10 @@ public sealed class BuiltInToolTests
             }, token);
             matched.GetProperty("outcome").GetString().ShouldBe("triggered");
             matched.GetProperty("observed")[0].GetProperty("matched").GetBoolean().ShouldBeTrue();
+            // A text condition says what it read, so a miss cannot be mistaken for a shorter file.
+            matched.GetProperty("observed")[0].GetProperty("searchedBytes").GetInt64()
+                .ShouldBe(new FileInfo(log).Length);
+            matched.GetProperty("observed")[0].GetProperty("olderTextUnsearched").GetBoolean().ShouldBeFalse();
 
             var idle = await Structured(session, "trigger_wait", new
             {

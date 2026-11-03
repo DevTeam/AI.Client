@@ -171,7 +171,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private static TriggerObservation[] Observations(List<ConditionState> states) =>
         states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
             state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
-            state.MemoryBytes, state.ProcessStatus, state.Error, state.Matched)).ToArray();
+            state.MemoryBytes, state.ProcessStatus, state.Error, state.Matched, state.SearchedBytes,
+            state.OlderTextUnsearched)).ToArray();
 
     /// <summary>Names the condition in an error, so a model fixes the right one of up to eight.</summary>
     private static string Label(int index, string? type) => $"Condition {index} ('{type}')";
@@ -249,7 +250,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             // A text condition asks for the text once before it starts watching: a file that already
             // carries the pattern is a match now, not something to wait for.
             if (kind == TriggerKind.FileContains)
-                state.Matched = await ContainsAsync(state.Path, condition, cancellationToken);
+                state.Matched = await ContainsAsync(state.Path, condition, state, cancellationToken);
             var directory = _paths.GetDirectoryName(state.Path);
             while (directory is not null && !await _files.DirectoryExistsAsync(directory, cancellationToken))
                 directory = _paths.GetDirectoryName(directory);
@@ -456,7 +457,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             if (state.Kind == TriggerKind.FileContains)
             {
                 if (snapshot.Exists && (changed || state.Matched is null))
-                    state.Matched = await ContainsAsync(path, condition, cancellationToken);
+                    state.Matched = await ContainsAsync(path, condition, state, cancellationToken);
                 eligible = state.Matched == true;
             }
             return Eligible(state, eligible, elapsedMs);
@@ -518,6 +519,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private static bool SearchOutput(ConditionState state, string stdout, string stderr)
     {
         var page = (stdout.Length == 0 ? "" : stdout) + (stderr.Length == 0 ? "" : "\n" + stderr);
+        // What this condition has looked at, across pages: a miss at the end then says whether the
+        // whole output was read or only the part after the offsets it was given.
+        state.SearchedBytes = (state.SearchedBytes ?? 0) + Encoding.UTF8.GetByteCount(page);
+        state.OlderTextUnsearched = state.Condition.StdoutOffset > 0 || state.Condition.StderrOffset > 0;
         if (page.Length == 0) return false;
         var text = state.OutputTail is { Length: > 0 } tail ? tail + page : page;
         if (state.OutputTail is { Length: > 0 }) state.OutputTail = null;
@@ -527,33 +532,42 @@ public sealed class TriggerWaiter : ITriggerWaiter
     }
 
     /// <summary>Whether a file's own text carries the pattern, read from the end of the file.</summary>
-    private async Task<bool> ContainsAsync(string path, TriggerCondition condition, CancellationToken cancellationToken)
+    private async Task<bool> ContainsAsync(string path, TriggerCondition condition, ConditionState state,
+        CancellationToken cancellationToken)
     {
-        var text = await ReadTailAsync(path, cancellationToken);
+        var (text, searched, unsearched) = await ReadTailAsync(path, cancellationToken);
+        state.SearchedBytes = searched;
+        state.OlderTextUnsearched = unsearched;
         return text is not null && Matches(condition, text);
     }
 
     /// <summary>
-    /// The last <see cref="TailBytes"/> of a file as text, or <c>null</c> when it cannot be read now.
-    /// A log is read from its end because that is both where the news is and the only part worth
-    /// paying for: a build log that grew to a gigabyte is not re-read whole on every poll.
+    /// The last <see cref="TailBytes"/> of a file as text, with the size of the window that was read
+    /// and whether anything older was left unread. A writer holding the file against readers answers
+    /// with no text at all: the next poll tries again and the observation keeps saying the file is
+    /// there, which is different from a file that was read and did not match. A log is read from its
+    /// end because that is both where the news is and the only part worth paying for: a build log
+    /// that grew to a gigabyte is not re-read whole on every poll.
     /// </summary>
-    private async Task<string?> ReadTailAsync(string path, CancellationToken cancellationToken)
+    private async Task<(string? Text, long SearchedBytes, bool OlderTextUnsearched)> ReadTailAsync(
+        string path, CancellationToken cancellationToken)
     {
         Stream? stream;
         try { stream = await _files.OpenReadAsync(path, cancellationToken); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // A writer holding the file against readers is not a failure of the wait: the next poll
-            // tries again and the observation keeps saying the file is there.
-            return null;
+            return (null, 0, false);
         }
-        if (stream is null) return null;
+        if (stream is null) return (null, 0, false);
         await using (stream)
         {
-            if (stream.CanSeek && stream.Length > TailBytes) stream.Position = stream.Length - TailBytes;
+            var length = stream.CanSeek ? stream.Length : 0;
+            if (stream.CanSeek && length > TailBytes) stream.Position = length - TailBytes;
             using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            return await reader.ReadToEndAsync(cancellationToken);
+            var text = await reader.ReadToEndAsync(cancellationToken);
+            // Bytes, not characters: what a person compares with the size the file tool reports.
+            var searched = Encoding.UTF8.GetByteCount(text);
+            return (text, searched, stream.CanSeek && length > searched);
         }
     }
 
@@ -848,6 +862,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public bool? ProcessRunning { get; set; }
         public string? ProcessStatus { get; set; }
         public bool? Matched { get; set; }
+        public long? SearchedBytes { get; set; }
+        public bool? OlderTextUnsearched { get; set; }
         public long StdoutOffset { get; set; }
         public long StderrOffset { get; set; }
 

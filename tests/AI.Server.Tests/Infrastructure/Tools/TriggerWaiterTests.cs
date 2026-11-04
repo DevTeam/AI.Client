@@ -64,6 +64,34 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ShouldTriggerWhenTheFileDisappears()
+    {
+        var root = Directory.CreateTempSubdirectory("ai-client-trigger-missing").FullName;
+        try
+        {
+            var path = Path.Combine(root, "lock.txt");
+            await File.WriteAllTextAsync(path, "in use", TestContext.Current.CancellationToken);
+            var waiter = NewWaiter(root);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+            var pending = waiter.WaitAsync([new TriggerCondition("file_missing", Path: path)],
+                5000, null, cancel.Token);
+            // A file that is there when the wait starts has to hold it: firing at once would report a
+            // deletion that had not happened and turn the condition into "file does not exist".
+            await Task.Delay(300, TestContext.Current.CancellationToken);
+            pending.IsCompleted.ShouldBeFalse();
+
+            File.Delete(path);
+            var result = await pending;
+
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("file_missing");
+            result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Exists.ShouldBe(false);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task AMatchedConditionShouldCarryItsObservations()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-match").FullName;
@@ -199,6 +227,84 @@ public sealed class TriggerWaiterTests
         result.ProcessId.ShouldBe(process.Id);
         result.MemoryBytes!.Value.ShouldBeGreaterThan(1);
         result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().ProcessRunning.ShouldBe(true);
+    }
+
+    [Fact]
+    public async Task ShouldTriggerWhenAProcessFallsBelowAMemoryThreshold()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var waiter = NewWaiter();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        // A terabyte is above any working set this host has, so the outcome is decided by the "below"
+        // branch of the comparison and not by how much memory the test runner happens to use.
+        const long ceiling = 1_000_000_000_000;
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("process_memory_below", ProcessId: process.Id, MemoryBytes: ceiling)
+        ], 2000, null, timeout.Token);
+
+        result.Outcome.ShouldBe("triggered");
+        result.Type.ShouldBe("process_memory_below");
+        result.MemoryBytes!.Value.ShouldBeLessThan(ceiling);
+        result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().ProcessRunning.ShouldBe(true);
+    }
+
+    [Fact]
+    public async Task ShouldTriggerWhenASleepingProcessFallsBelowACpuThreshold()
+    {
+        using var process = StartSleeper();
+        try
+        {
+            var waiter = NewWaiter();
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // The first reading only establishes a baseline, so the condition cannot fire on a
+            // percentage nothing has been measured against yet; a sleeper then reads as nearly zero.
+            var result = await waiter.WaitAsync([
+                new TriggerCondition("process_cpu_below", ProcessId: process.Id, CpuPercent: 100)
+            ], 5000, null, cancel.Token);
+
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("process_cpu_below");
+            var observed = result.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+            observed.CpuPercent.ShouldNotBeNull();
+            observed.CpuPercent.Value.ShouldBeLessThan(100);
+            observed.ProcessRunning.ShouldBe(true);
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+    }
+
+    [Fact]
+    public async Task ShouldTriggerWhenAProcessRisesAboveACpuThreshold()
+    {
+        var waiter = NewWaiter();
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var busy = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token);
+        // Load has to come from somewhere: a sleeping process sits at zero and would show only that
+        // the wait times out, never that the "above" branch is read.
+        var work = Task.Run(() =>
+        {
+            while (!busy.IsCancellationRequested) { }
+        }, CancellationToken.None);
+        try
+        {
+            var result = await waiter.WaitAsync([
+                new TriggerCondition("process_cpu_above", ProcessId: Environment.ProcessId, CpuPercent: 1)
+            ], 10000, null, cancel.Token);
+
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("process_cpu_above");
+            var observed = result.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+            observed.CpuPercent!.Value.ShouldBeGreaterThan(1);
+        }
+        finally
+        {
+            await busy.CancelAsync();
+            await work;
+        }
     }
 
     [Fact]

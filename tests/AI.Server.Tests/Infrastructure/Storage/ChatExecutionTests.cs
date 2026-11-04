@@ -28,6 +28,10 @@ using AI.Contracts.Workspace;
 using AI.Infrastructure.Workspace;
 using AI.Server.Hosting;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using AI.Mcp.BuiltIn;
+using AI.Mcp.BuiltIn.Triggers;
+using Json.Schema;
 
 [Trait("Category", "Integration")]
 public sealed partial class ChatExecutionTests
@@ -659,11 +663,31 @@ public sealed partial class ChatExecutionTests
         {
             // The turn writes this answer itself, because cancelling the client's token discards the
             // reply the server was preparing. It still has to be the tool's declared result, so the
-            // model reads an outcome rather than a sentence it has to interpret.
-            // The stored content escapes the JSON it carries, so the outcome is checked by the word
-            // itself together with the request that follows it.
-            answer.ShouldContain("interrupted");
-            answer.ShouldContain("A new message joined this turn");
+            // model reads an outcome rather than a sentence it has to interpret. Its fields are read
+            // back through the codec and checked against the schema the server really declares, which
+            // is what catches a result field the handwritten answer forgot to carry.
+            var result = fixture.Codec.Read(answer);
+            var structured = result.StructuredContent.ShouldNotBeNull();
+            structured.GetProperty("outcome").GetString().ShouldBe("interrupted");
+            structured.GetProperty("elapsedMs").GetInt64().ShouldBeGreaterThanOrEqualTo(0);
+            structured.GetProperty("timeoutMs").GetInt32().ShouldBe(600000);
+            structured.GetProperty("error").GetString().ShouldNotBeNull()
+                .ShouldContain("A new message joined this turn");
+            // The last state of every condition lived in the cancelled call, so none is invented.
+            (!structured.TryGetProperty("observed", out var observed)
+             || observed.ValueKind == JsonValueKind.Null).ShouldBeTrue();
+
+            var schema = JsonSchema.Build(TestTools.TriggerWaitSchema, new BuildOptions
+            {
+                Dialect = Dialect.Draft202012.With([], allowUnknownKeywords: true)
+            });
+            schema.Evaluate(structured, new EvaluationOptions { OutputFormat = OutputFormat.List })
+                .IsValid.ShouldBeTrue($"The interrupted answer must stay the tool's declared result: {structured}");
+            // The same check has to reject an answer that lost a field, or it proves nothing.
+            var missing = JsonNode.Parse(structured.GetRawText())!.AsObject();
+            missing.Remove("elapsedMs");
+            schema.Evaluate(JsonSerializer.SerializeToElement(missing), new EvaluationOptions { OutputFormat = OutputFormat.List })
+                .IsValid.ShouldBeFalse();
         }
         else answer.ShouldContain("ended early");
     }
@@ -3249,9 +3273,27 @@ public sealed partial class ChatExecutionTests
                 with { Annotations = new ToolAnnotations(null, true, false, true, false) },
             ExternalServer.Id, "inspect", "schema");
 
+        /// <summary>
+        /// The output schema the real server declares for trigger_wait, not an empty stand-in. This
+        /// turn writes an interrupted answer itself, so only the declared schema can say whether that
+        /// answer is still the tool's result: a field added to the result later is required here and
+        /// missing there.
+        /// </summary>
+        public static readonly JsonElement TriggerWaitSchema =
+            new TriggerWaitTool(new NeverCalledWaiter(), new BuiltInToolReply()).Create().ProtocolTool.OutputSchema!.Value;
+
+        /// <summary>The schema is read from the tool; no test ever reaches this waiter.</summary>
+        private sealed class NeverCalledWaiter : ITriggerWaiter
+        {
+            public Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs,
+                IProgress<TriggerProgress>? progress, CancellationToken cancellationToken) =>
+                throw new InvalidOperationException("Only the declared schema was wanted.");
+        }
+
         private static readonly AgentTool TriggerWait = new(
             new ChatToolDefinition("mcp_built_in__trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
-            ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic("mcp_built_in__trigger_wait", "trigger_wait", "Wait for trigger", JsonSerializer.Deserialize<JsonElement>("{}"))
+                with { OutputSchema = TriggerWaitSchema },
             DefaultMcpServer.Id, "trigger_wait", "schema");
 
         public bool OfferProcessRun { get; set; }

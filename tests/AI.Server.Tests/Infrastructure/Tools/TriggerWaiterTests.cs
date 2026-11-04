@@ -358,6 +358,8 @@ public sealed class TriggerWaiterTests
             var result = await pending;
             result.Outcome.ShouldBe("triggered");
             result.Type.ShouldBe("port_open");
+            // The port refused the first attempts; once it answered, that refusal is no longer its state.
+            result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Error.ShouldBeNull();
         }
         finally { listener.Stop(); }
     }
@@ -397,6 +399,26 @@ public sealed class TriggerWaiterTests
 
         result.Outcome.ShouldBe("timeout");
         result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().StatusCode.ShouldBe(503);
+    }
+
+    [Fact]
+    public async Task AProbeShouldNotOutliveTheWaitThatAskedForIt()
+    {
+        // The transport keeps a thirty-second timeout of its own, and a connect two. A wait asked for
+        // half a second must answer in about that, so the probe is given what is left of the budget
+        // and its cancellation is read as an exhausted budget rather than as a failed tool.
+        var web = new SilentFetcher();
+        var waiter = new TriggerWaiter(new PathGuard(new Grants()), probe: web);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("http_ready", Url: "http://localhost:5173/health")
+        ], 500, null, cancel.Token);
+
+        result.Outcome.ShouldBe("timeout");
+        result.ElapsedMs.ShouldBeLessThan(5000);
+        clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -1149,5 +1171,14 @@ public sealed class TriggerWaiterTests
             Task.FromResult(new AI.Mcp.BuiltIn.Web.WebResponse(
                 statuses[Math.Min(_index++, statuses.Length - 1)], url.ToString(), "text/plain", "", false,
                 null));
+    }
+
+    /// <summary>An HTTP client that never answers, honouring only the token it was given.</summary>
+    private sealed class SilentFetcher : AI.Mcp.BuiltIn.Web.IHttpProbe
+    {
+        public Task<AI.Mcp.BuiltIn.Web.WebResponse> GetAsync(Uri url, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.Infinite, cancellationToken)
+                .ContinueWith(_ => new AI.Mcp.BuiltIn.Web.WebResponse(0, url.ToString(), "", "", false, "Timed out."),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }

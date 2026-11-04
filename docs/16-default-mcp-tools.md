@@ -205,7 +205,9 @@ refused for, so a redirect is reported as the status it is. `observed` reports t
 loopback addresses only: the tool is allowed by default, so a condition that reached any host would
 be a port scanner nobody approved, and a condition naming a public host is refused with a
 validation error instead of a failed connection. A redirect to a public host is refused for the
-same reason at the point the condition is checked.
+same reason at the point the condition is checked. Neither condition runs on a clock of its own: an
+attempt takes what is left of `timeoutMs`, so a fetch whose own limit is thirty seconds cannot make
+a wait asked for half of one answer half a minute later.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. A wait that a person's new message ends is not

@@ -107,7 +107,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 if (cancellationToken.IsCancellationRequested)
                     throw new OperationCanceledException("The wait was cancelled.", cancellationToken);
                 foreach (var state in states)
-                    if (await EvaluateAsync(state, clock.ElapsedMilliseconds, cancellationToken) is { } match)
+                    if (await EvaluateAsync(state, clock.ElapsedMilliseconds, timeoutMs, cancellationToken) is { } match)
                         return match with
                         {
                             ElapsedMs = clock.ElapsedMilliseconds,
@@ -483,10 +483,14 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
     }
 
-    private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs,
+    private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, int timeoutMs,
         CancellationToken cancellationToken)
     {
         var condition = state.Condition;
+        // Whatever one attempt costs, it never outlives the wait that asked for it: the probes below
+        // would otherwise run on their own clocks — a connect capped at two seconds, a fetch capped at
+        // thirty — and a wait asked for half a second would answer half a minute later.
+        var remainingMs = Math.Max(1, timeoutMs - elapsedMs);
         if (state.Completion is { } completion)
         {
             if (!completion.IsCompleted)
@@ -533,15 +537,22 @@ public sealed class TriggerWaiter : ITriggerWaiter
             // whole condition; nothing is sent, so a listening port learns nothing from the probe.
             using var probe = new TcpClient();
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            limit.CancelAfter(ProbeTimeout);
+            limit.CancelAfter(TimeSpan.FromMilliseconds(Math.Min(remainingMs, ProbeTimeout.TotalMilliseconds)));
             try
             {
                 await probe.ConnectAsync(target.Host, target.Port, limit.Token);
+                // A port that answered has no failure left to report: the error of an earlier attempt
+                // would otherwise outlive it and describe a state that is no longer true.
+                state.Error = null;
                 return Eligible(state, true, elapsedMs);
             }
             catch (Exception error) when (error is SocketException or OperationCanceledException)
             {
-                state.Error = cancellationToken.IsCancellationRequested ? null : error.Message;
+                // A connect the wait's own deadline cut short is not a refusal, and saying so would send
+                // the reader looking for a closed port that was never answered either way.
+                state.Error = cancellationToken.IsCancellationRequested ? null
+                    : error is OperationCanceledException ? "The connect attempt was still open when the time ran out."
+                    : error.Message;
                 return Eligible(state, false, elapsedMs);
             }
         }
@@ -555,7 +566,23 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 state.Error = "HTTP observation is unavailable.";
                 return null;
             }
-            var response = await _probe.GetAsync(new Uri(ReadyUrl(condition.Url!)!), cancellationToken);
+            // The fetch client's own timeout is thirty seconds, far beyond a wait that may be asked for
+            // half of one: the attempt takes what is left of the wait instead, so a page that never
+            // answers ends the wait at the time its caller declared.
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attempt.CancelAfter(TimeSpan.FromMilliseconds(remainingMs));
+            global::AI.Mcp.BuiltIn.Web.WebResponse response;
+            try
+            {
+                response = await _probe.GetAsync(new Uri(ReadyUrl(condition.Url!)!), attempt.Token);
+            }
+            // A fetch stopped by the wait's own deadline is not a failure of the tool: the loop below
+            // turns the exhausted budget into the timeout result its caller asked for.
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                state.Error = "The page did not answer before the time ran out.";
+                return null;
+            }
             state.StatusCode = response.Status == 0 ? null : response.Status;
             // A connection that never happened and a page that answered are different failures, so
             // the transport's own message is kept only when there was no status at all.

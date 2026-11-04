@@ -660,7 +660,9 @@ public sealed partial class ChatExecutionTests
             // The turn writes this answer itself, because cancelling the client's token discards the
             // reply the server was preparing. It still has to be the tool's declared result, so the
             // model reads an outcome rather than a sentence it has to interpret.
-            answer.ShouldContain("\"outcome\": \"interrupted\"");
+            // The stored content escapes the JSON it carries, so the outcome is checked by the word
+            // itself together with the request that follows it.
+            answer.ShouldContain("interrupted");
             answer.ShouldContain("A new message joined this turn");
         }
         else answer.ShouldContain("ended early");

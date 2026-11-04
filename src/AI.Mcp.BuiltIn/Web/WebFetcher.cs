@@ -45,6 +45,19 @@ public sealed class WebFetcher : IWebFetcher, IDisposable
         ConnectTimeout = TimeSpan.FromSeconds(10)
     };
 
+    /// <summary>
+    /// The handler a <c>http_ready</c> condition polls through: everything fetch does, except that it
+    /// never follows a redirect. A condition is checked to name a loopback address, so following a
+    /// redirect would let a local page hand the request to a public host the condition was refused
+    /// for; the redirect itself is then simply a status that does not match.
+    /// </summary>
+    internal static HttpMessageHandler CreateProbeHandler() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        AutomaticDecompression = DecompressionMethods.All,
+        ConnectTimeout = TimeSpan.FromSeconds(10)
+    };
+
     public async Task<WebResponse> GetAsync(Uri url, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(url);

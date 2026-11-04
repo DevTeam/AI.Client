@@ -18,6 +18,9 @@ public sealed record TriggerCondition(
     bool IgnoreCase = false,
     int? QuietMs = null,
     int? Depth = null,
+    string? Url = null,
+    string? Port = null,
+    int? StatusCode = null,
     bool InterruptOnJoin = false);
 
 /// <summary>
@@ -65,6 +68,10 @@ public sealed record TriggerCondition(
 /// with this set says how close the quiet period had come, which separates "almost there" from "a
 /// writer never stopped".
 /// </param>
+/// <param name="StatusCode">
+/// The HTTP status an <c>http_ready</c> condition last received, so a timeout can tell "nothing is
+/// listening" from "it answers with the wrong status".
+/// </param>
 public sealed record TriggerObservation(
     int ConditionIndex,
     string Type,
@@ -83,7 +90,8 @@ public sealed record TriggerObservation(
     bool? OlderTextUnsearched = null,
     long? Entries = null,
     int? Depth = null,
-    long? IdleMs = null);
+    long? IdleMs = null,
+    int? StatusCode = null);
 
 /// <summary>How far the wait has come, reported as <c>notifications/progress</c>.</summary>
 /// <param name="ElapsedMs">Time since the wait started.</param>

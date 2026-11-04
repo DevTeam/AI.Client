@@ -339,6 +339,136 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ShouldWaitForAPortToStartListening()
+    {
+        // A real listener on a free loopback port: the condition is about a socket, so a fake would
+        // only show that the waiter asked something. The port is closed until the test opens it.
+        var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        var waiter = NewWaiter();
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var pending = waiter.WaitAsync([
+            new TriggerCondition("port_open", Port: $"127.0.0.1:{port}")
+        ], 10000, null, cancel.Token);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        pending.IsCompleted.ShouldBeFalse();
+
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+        listener.Start();
+        try
+        {
+            var result = await pending;
+            result.Outcome.ShouldBe("triggered");
+            result.Type.ShouldBe("port_open");
+        }
+        finally { listener.Stop(); }
+    }
+
+    [Fact]
+    public async Task ShouldWaitForALoopbackUrlToAnswerWithTheWantedStatus()
+    {
+        // The transport is faked so the test says what the page answered, not what a machine happened
+        // to be running. The timeout path matters as much as the match: a wrong status must not fire.
+        var web = new ScriptedFetcher([404, 404, 200]);
+        var waiter = new TriggerWaiter(new PathGuard(new Grants()), probe: web);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("http_ready", Url: "http://localhost:5173/health", StatusCode: 200)
+        ], 10000, null, cancel.Token);
+
+        result.Outcome.ShouldBe("triggered");
+        result.Type.ShouldBe("http_ready");
+        var observed = result.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+        observed.StatusCode.ShouldBe(200);
+        web.Calls.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task ShouldReportTheStatusAPageAnsweredWithWhenTheWaitTimesOut()
+    {
+        var web = new ScriptedFetcher([503]);
+        var waiter = new TriggerWaiter(new PathGuard(new Grants()), probe: web);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Answering 503 is not readiness, and a timeout that says "nothing answered" would send the
+        // reader looking for a missing server instead of a failing one.
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("http_ready", Url: "http://127.0.0.1:5173/", StatusCode: 200)
+        ], 400, null, cancel.Token);
+
+        result.Outcome.ShouldBe("timeout");
+        result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().StatusCode.ShouldBe(503);
+    }
+
+    [Fact]
+    public async Task NetworkConditionsShouldStayOnLoopback()
+    {
+        var waiter = NewWaiter();
+
+        // The tool is allowed by default, so a condition that reached any host would be a port scanner
+        // nobody approved; the refusal is a validation error rather than a failing connection.
+        (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                [new TriggerCondition("port_open", Port: "example.com:443")], 1000, null, CancellationToken.None)))
+            .Message.ShouldContain("loopback");
+        (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                [new TriggerCondition("http_ready", Url: "https://example.com/")], 1000, null, CancellationToken.None)))
+            .Message.ShouldContain("loopback");
+        (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                [new TriggerCondition("port_open")], 1000, null, CancellationToken.None)))
+            .Message.ShouldContain("port");
+        (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                [new TriggerCondition("http_ready", Url: "file:///tmp/health")], 1000, null, CancellationToken.None)))
+            .Message.ShouldContain("loopback");
+    }
+
+    [Fact]
+    public async Task AProcessFallbackShouldNotSwallowAnUnknownType()
+    {
+        // Every switch over the kind has a fallback for the memory message; a new type must not
+        // quietly become "process X to rise above Y bytes" and be accepted with a processId.
+        var waiter = NewWaiter();
+        (await Should.ThrowAsync<ArgumentException>(() => waiter.WaitAsync(
+                [new TriggerCondition("disk_quiet", ProcessId: Environment.ProcessId, MemoryBytes: 1)],
+                1000, null, CancellationToken.None)))
+            .Message.ShouldContain("unknown type");
+    }
+
+    [Fact]
+    public async Task ShouldReportARedirectInsteadOfChasingIt()
+    {
+        // A loopback page can answer with a redirect anywhere. Following it would carry the request to
+        // a host the condition is refused for, so the probe reports the redirect as the status it is.
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        using var probe = new AI.Mcp.BuiltIn.Web.HttpProbe();
+        var answering = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken);
+            using var stream = client.GetStream();
+            // The request line is read only so the reply is not written before it arrived.
+            (await stream.ReadAsync(new byte[2048], TestContext.Current.CancellationToken)).ShouldBeGreaterThan(0);
+            const string reply = "HTTP/1.1 302 Found\r\nLocation: http://example.com/elsewhere\r\nContent-Length: 0\r\n\r\n";
+            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(reply),
+                TestContext.Current.CancellationToken);
+        }, TestContext.Current.CancellationToken);
+        try
+        {
+            var response = await probe.GetAsync(new Uri($"http://127.0.0.1:{port}/health"),
+                TestContext.Current.CancellationToken);
+
+            response.Status.ShouldBe(302);
+            response.FinalUrl.ShouldContain("127.0.0.1");
+            await answering;
+        }
+        finally { listener.Stop(); }
+    }
+
+    [Fact]
     public async Task ShouldWaitForAFileToContainAPattern()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-contains").FullName;
@@ -1011,5 +1141,18 @@ public sealed class TriggerWaiterTests
     private sealed class Grants(params DirectoryGrantSpec[] grants) : IGrantSource
     {
         public IReadOnlyList<DirectoryGrantSpec> Load() => grants;
+    }
+
+    /// <summary>An HTTP client that answers with the statuses it was given, in order.</summary>
+    private sealed class ScriptedFetcher(int[] statuses) : AI.Mcp.BuiltIn.Web.IHttpProbe
+    {
+        private int _index;
+
+        public int Calls => _index;
+
+        public Task<AI.Mcp.BuiltIn.Web.WebResponse> GetAsync(Uri url, CancellationToken cancellationToken) =>
+            Task.FromResult(new AI.Mcp.BuiltIn.Web.WebResponse(
+                statuses[Math.Min(_index++, statuses.Length - 1)], url.ToString(), "text/plain", "", false,
+                null));
     }
 }

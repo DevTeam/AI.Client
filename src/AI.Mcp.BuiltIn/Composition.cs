@@ -40,6 +40,10 @@ internal sealed partial class Composition
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
             .Transient<ProcessRunner, ProcessScriptRunner, ProcessLauncher, ToolSandbox, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
+            // The readiness probe is its own handler, not a second setting of fetch's: a handler that
+            // followed redirects would let a loopback condition reach the public host it was refused
+            // for. Shared, because a handler per wait would be a socket pool per call.
+            .Singleton(_ => new HttpProbe())
             .Transient((IEnumerable<IToolFactory> toolFactories) =>
             {
                 var tools = new McpServerPrimitiveCollection<McpServerTool>();

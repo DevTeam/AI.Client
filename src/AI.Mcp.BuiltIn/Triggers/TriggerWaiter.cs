@@ -1,11 +1,14 @@
 namespace AI.Mcp.BuiltIn.Triggers;
 
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using AI.Contracts.FileSystem;
 using Grants;
 using Process;
+using Web;
 
 public sealed class TriggerWaiter : ITriggerWaiter
 {
@@ -34,6 +37,9 @@ public sealed class TriggerWaiter : ITriggerWaiter
 
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
 
+    /// <summary>How long one connect attempt may take before the port counts as not listening.</summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+
     private const int PollIntervalMs = 250;
     private const int ProgressIntervalMs = 1000;
 
@@ -42,6 +48,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
     private readonly IPath _paths;
     private readonly IProcessSessions? _processes;
     private readonly IFileWatcherFactory _watchers;
+    private readonly IHttpProbe? _probe;
 
     /// <param name="guard">The grants a condition path has to pass before it is watched.</param>
     /// <param name="files">
@@ -54,8 +61,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
     /// The platform watchers. Optional for the same reason as the file system: the composition binds
     /// the platform implementation, a test binds one it can count.
     /// </param>
+    /// <param name="probe">
+    /// The HTTP client an <c>http_ready</c> condition polls with, so a test can answer it without a
+    /// socket. Optional: a wait that never asks for one does not need a client at all.
+    /// </param>
     public TriggerWaiter(IPathGuard guard, IFileSystem? files = null, IPath? paths = null,
-        IProcessSessions? processes = null, IFileWatcherFactory? watchers = null)
+        IProcessSessions? processes = null, IFileWatcherFactory? watchers = null, IHttpProbe? probe = null)
     {
         ArgumentNullException.ThrowIfNull(guard);
         _guard = guard;
@@ -63,6 +74,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
         _paths = paths ?? new SystemPath();
         _processes = processes;
         _watchers = watchers ?? new SystemFileWatcherFactory();
+        _probe = probe;
     }
 
     public async Task<TriggerWaitResult> WaitAsync(TriggerCondition[] conditions, int timeoutMs,
@@ -189,6 +201,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.ProcessCpuBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.CpuPercent}% CPU",
             TriggerKind.ProcessCpuAbove => $"process {state.Condition.ProcessId} to rise above {state.Condition.CpuPercent}% CPU",
             TriggerKind.ProcessMemoryBelow => $"process {state.Condition.ProcessId} to fall below {state.Condition.MemoryBytes} bytes",
+            TriggerKind.ProcessMemoryAbove => $"process {state.Condition.ProcessId} to rise above {state.Condition.MemoryBytes} bytes",
+            TriggerKind.PortOpen => $"{state.Condition.Port} to accept a connection",
+            TriggerKind.HttpReady => $"{state.Condition.Url} to answer "
+                 + (state.Condition.StatusCode is { } status ? $"with {status}" : "with any status"),
             _ => $"process {state.Condition.ProcessId} to rise above {state.Condition.MemoryBytes} bytes"
         }));
         progress.Report(new TriggerProgress((int)Math.Min(elapsedMs, int.MaxValue), timeoutMs, states.Count,
@@ -211,7 +227,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
             state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
             state.MemoryBytes, state.ProcessStatus, state.Error, state.Matched, state.SearchedBytes,
             state.OlderTextUnsearched, state.Entries, state.Kind == TriggerKind.DirectoryIdle ? state.Depth : null,
-            state.Kind is TriggerKind.FileIdle or TriggerKind.DirectoryIdle ? state.IdleMs : null)).ToArray();
+            state.Kind is TriggerKind.FileIdle or TriggerKind.DirectoryIdle ? state.IdleMs : null,
+            state.StatusCode)).ToArray();
 
     /// <summary>Names the condition in an error, so a model fixes the right one of up to eight.</summary>
     private static string Label(int index, string? type) => $"Condition {index} ('{type}')";
@@ -237,6 +254,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
             "process_cpu_above" => TriggerKind.ProcessCpuAbove,
             "process_memory_below" => TriggerKind.ProcessMemoryBelow,
             "process_memory_above" => TriggerKind.ProcessMemoryAbove,
+            "port_open" => TriggerKind.PortOpen,
+            "http_ready" => TriggerKind.HttpReady,
             _ => throw new ArgumentException(Label(index, condition.Type)
                 + " has an unknown type. Use delay, file_exists, file_missing, file_changed, file_contains, file_idle, "
                 + "directory_idle, process_exit, process_completed, process_output_contains, process_cpu_below, "
@@ -261,6 +280,12 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
 
         if (kind == TriggerKind.Delay)
+            return state;
+
+        // A port is a socket, not a process: nothing is bound to observe, and the poll below is what
+        // notices it opening, so these two leave preparation here instead of falling through to the
+        // process branch that would demand a processId.
+        if (kind is TriggerKind.PortOpen or TriggerKind.HttpReady)
             return state;
 
         if (kind == TriggerKind.DirectoryIdle)
@@ -380,6 +405,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
             TriggerKind.ProcessOutputContains => ["processSessionId", "pattern", "regex", "ignoreCase",
                 "stdoutOffset", "stderrOffset"],
             TriggerKind.ProcessCpuBelow or TriggerKind.ProcessCpuAbove => ["processId", "cpuPercent", "stableForMs"],
+            TriggerKind.PortOpen => ["port", "stableForMs"],
+            TriggerKind.HttpReady => ["url", "statusCode", "stableForMs"],
             _ => ["processId", "memoryBytes", "stableForMs"]
         };
         var unexpected = new List<string>();
@@ -402,6 +429,9 @@ public sealed class TriggerWaiter : ITriggerWaiter
         Check("ignoreCase", condition.IgnoreCase);
         Check("quietMs", condition.QuietMs is not null);
         Check("depth", condition.Depth is not null);
+        Check("url", !string.IsNullOrWhiteSpace(condition.Url));
+        Check("port", !string.IsNullOrWhiteSpace(condition.Port));
+        Check("statusCode", condition.StatusCode is not null);
         // The join flag is never checked here: a turn sets it on every type it waits with, so it is
         // neither an error on one of them nor a field a condition type has to opt into.
         if (unexpected.Count == 0) return;
@@ -424,6 +454,21 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 return;
             case TriggerKind.ProcessOutputContains when string.IsNullOrWhiteSpace(condition.ProcessSessionId):
                 throw new ArgumentException($"{label} requires processSessionId from a process_run result.");
+        }
+
+        if (kind is TriggerKind.PortOpen or TriggerKind.HttpReady)
+        {
+            if (kind == TriggerKind.PortOpen)
+            {
+                if (Address(condition.Port!) is null)
+                    throw new ArgumentException($"{label} requires port as host:port on a loopback address, such as localhost:5173.");
+                return;
+            }
+            if (ReadyUrl(condition.Url!) is not { Length: > 0 })
+                throw new ArgumentException($"{label} requires an http url on a loopback address, such as http://localhost:5173/health.");
+            if (condition.StatusCode is { } code and (< 100 or > 599))
+                throw new ArgumentException($"{label} requires statusCode in 100..599.");
+            return;
         }
 
         if (kind is TriggerKind.FileExists or TriggerKind.FileMissing or TriggerKind.FileChanged
@@ -463,7 +508,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         }
     }
 
-    private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs, CancellationToken cancellationToken)
+    private async Task<TriggerWaitResult?> EvaluateAsync(ConditionState state, long elapsedMs,
+        CancellationToken cancellationToken)
     {
         var condition = state.Condition;
         if (state.Completion is { } completion)
@@ -504,6 +550,44 @@ public sealed class TriggerWaiter : ITriggerWaiter
         if (state.Kind == TriggerKind.Delay)
             return elapsedMs >= condition.AfterMs
                 ? Match(state, elapsedMs) : null;
+
+        if (state.Kind == TriggerKind.PortOpen)
+        {
+            var target = Address(condition.Port!)!.Value;
+            // A closed port answers by refusing the connection at once, so a bounded connect is the
+            // whole condition; nothing is sent, so a listening port learns nothing from the probe.
+            using var probe = new TcpClient();
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            limit.CancelAfter(ProbeTimeout);
+            try
+            {
+                await probe.ConnectAsync(target.Host, target.Port, limit.Token);
+                return Eligible(state, true, elapsedMs);
+            }
+            catch (Exception error) when (error is SocketException or OperationCanceledException)
+            {
+                state.Error = cancellationToken.IsCancellationRequested ? null : error.Message;
+                return Eligible(state, false, elapsedMs);
+            }
+        }
+
+        if (state.Kind == TriggerKind.HttpReady)
+        {
+            // An http_ready condition without a client would wait out its timeout saying nothing, so
+            // it says why it cannot run instead.
+            if (_probe is null)
+            {
+                state.Error = "HTTP observation is unavailable.";
+                return null;
+            }
+            var response = await _probe.GetAsync(new Uri(ReadyUrl(condition.Url!)!), cancellationToken);
+            state.StatusCode = response.Status == 0 ? null : response.Status;
+            // A connection that never happened and a page that answered are different failures, so
+            // the transport's own message is kept only when there was no status at all.
+            state.Error = state.StatusCode is null ? response.Error : null;
+            return Eligible(state, state.StatusCode is not null
+                && (condition.StatusCode is not { } wanted || response.Status == wanted), elapsedMs);
+        }
 
         if (state.Path is { } path)
         {
@@ -757,6 +841,38 @@ public sealed class TriggerWaiter : ITriggerWaiter
         new("triggered", state.Index, state.Condition.Type, state.Path, state.Condition.ProcessId,
             state.CpuPercent, state.MemoryBytes, elapsedMs, false);
 
+    /// <summary>
+    /// The loopback address a port condition may probe, or <c>null</c>. Only loopback is accepted: the
+    /// tool is allowed by default, so a condition that reached any host would be a port scanner nobody
+    /// approved, and the reason it is refused says so rather than failing the connect.
+    /// </summary>
+    private static (string Host, int Port)? Address(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var separator = value.LastIndexOf(':');
+        if (separator <= 0) return null;
+        if (!int.TryParse(value[(separator + 1)..], out var port) || port is < 1 or > 65535) return null;
+        var host = value[..separator].Trim('[', ']');
+        return IsLoopback(host) ? (host, port) : null;
+    }
+
+    /// <summary>
+    /// The url an <c>http_ready</c> condition may poll, or <c>null</c> when it is not one. The same
+    /// loopback rule applies, and it is checked here rather than after following a redirect, so a
+    /// public host cannot be reached through a local one.
+    /// </summary>
+    private static string? ReadyUrl(string value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && Uri.TryCreate(value, UriKind.Absolute, out var url)
+        && url.Scheme is "http" or "https"
+        && IsLoopback(url.DnsSafeHost)
+            ? url.ToString()
+            : null;
+
+    private static bool IsLoopback(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
+
     private static void Observe(ConditionState state, FileStamp stamp)
     {
         state.Exists = stamp.Exists;
@@ -846,7 +962,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
     {
         Delay, FileExists, FileMissing, FileChanged, FileContains, FileIdle, DirectoryIdle, ProcessExit,
         ProcessCompleted, ProcessOutputContains, ProcessCpuBelow, ProcessCpuAbove, ProcessMemoryBelow,
-        ProcessMemoryAbove
+        ProcessMemoryAbove, PortOpen, HttpReady
     }
 
     /// <summary>
@@ -987,6 +1103,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
         public int Depth { get; set; } = 1;
         public IDisposable? Watch { get; set; }
         public System.Diagnostics.Process? Process { get; set; }
+        public int? StatusCode { get; set; }
         public DateTimeOffset? BoundAt { get; set; }
         public Task<ProcessResult>? Completion { get; set; }
         public Task? CompletionObserver { get; set; }

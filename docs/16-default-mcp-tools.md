@@ -195,6 +195,18 @@ entries: a directory has no length of its own, so its size and the freshness of 
 two numbers that say whether it is still moving. A directory with no entries has no newest write and
 reports `lastWriteTime` as null rather than a placeholder date.
 
+The two network conditions answer the "is it up yet" question a shell loop is usually written for.
+`port_open` takes `port` as `host:port` and considers it open once a TCP connection is accepted;
+the probe sends nothing, so a listening server learns only that something connected. `http_ready`
+takes `url` and optional `statusCode` and polls with the same bounded fetch, except that it never
+follows a redirect: a local page could otherwise hand the request to a public host the condition was
+refused for, so a redirect is reported as the status it is. `observed` reports the last
+`statusCode`, so a timeout that saw 503 reads differently from one that reached nothing. Both accept
+loopback addresses only: the tool is allowed by default, so a condition that reached any host would
+be a port scanner nobody approved, and a condition naming a public host is refused with a
+validation error instead of a failed connection. A redirect to a public host is refused for the
+same reason at the point the condition is checked.
+
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. A wait that a person's new message ends is not
 reported as a failure: the turn sets `interruptOnJoin` on the conditions it sends, and the wait then

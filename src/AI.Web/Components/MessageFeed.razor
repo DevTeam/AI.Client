@@ -2169,8 +2169,8 @@
         if (opener is null) return TimeSpan.Zero;
         if (isLast && IsRunningTurn(turn) && GeneratingElapsed is { } generating)
         {
-            // The run's elapsed time counts only the model's own work, while the opener's offset
-            // from the question is wall-clock time with tool calls and the person's answer in it,
+            // The run's elapsed time counts only its own work, while the opener's offset from the
+            // question is wall-clock time with the person's approvals and answers in it,
             // so the two cannot be subtracted. The segment counts from the run's time when its
             // opener was first seen instead.
             if (_openSegmentStart.Key != opener.Id) _openSegmentStart = new(opener.Id, generating);

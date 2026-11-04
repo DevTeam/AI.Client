@@ -7,7 +7,7 @@ public readonly record struct RunKey(Guid ChatId, Guid BranchId);
 public sealed class RunStateService : IRunStateService
 {
     private readonly Dictionary<RunKey, ChatRunSnapshot> _runs = [];
-    private readonly Dictionary<RunKey, LlmGeneratingTracker> _llmGenerating = [];
+    private readonly Dictionary<RunKey, WorkingTracker> _working = [];
     public IReadOnlyDictionary<RunKey, ChatRunSnapshot> Runs => _runs;
 
     public void RemoveMissing(IReadOnlyList<ChatRunSnapshot> snapshot)
@@ -16,7 +16,7 @@ public sealed class RunStateService : IRunStateService
         foreach (var key in _runs.Keys.Where(key => !keys.Contains(key)).ToArray())
         {
             _runs.Remove(key);
-            _llmGenerating.Remove(key);
+            _working.Remove(key);
         }
     }
 
@@ -26,7 +26,7 @@ public sealed class RunStateService : IRunStateService
         {
             var key = new RunKey(item.ChatId, item.BranchId);
             _runs.Remove(key);
-            _llmGenerating.Remove(key);
+            _working.Remove(key);
         }
     }
 
@@ -63,20 +63,20 @@ public sealed class RunStateService : IRunStateService
         if (!_runs.TryGetValue(key, out var previous) || run.Revision > previous.Revision
             || run.Revision == previous.Revision && run.ChatRevision >= previous.ChatRevision)
         {
-            if (!_llmGenerating.TryGetValue(key, out var tracker)) tracker = new LlmGeneratingTracker();
+            if (!_working.TryGetValue(key, out var tracker)) tracker = new WorkingTracker();
             tracker.Apply(run);
-            _llmGenerating[key] = tracker;
+            _working[key] = tracker;
             _runs[key] = run;
         }
     }
 
-    // Elapsed time spent with the LLM itself producing the response — excludes time spent
-    // waiting on a tool approval decision or a tool actually running, since neither is the LLM
-    // "generating".
-    public TimeSpan? GetLlmGeneratingElapsed(RunKey key) =>
-        _llmGenerating.TryGetValue(key, out var tracker) ? tracker.GetElapsed() : null;
+    // Elapsed time the run spent working — the model generating and its tools running — without
+    // the time it waited on the person for a tool approval or an answer. A running tool is work:
+    // stopping the clock for it froze "Working for …" through every long call.
+    public TimeSpan? GetWorkingElapsed(RunKey key) =>
+        _working.TryGetValue(key, out var tracker) ? tracker.GetElapsed() : null;
 
-    private sealed class LlmGeneratingTracker
+    private sealed class WorkingTracker
     {
         private TimeSpan _accumulated;
         private DateTimeOffset? _segmentStart;
@@ -92,10 +92,9 @@ public sealed class RunStateService : IRunStateService
                 return;
             }
 
-            var isLlmGenerating = run.PendingApproval is null && run.PendingPrompt is null
-                && run.ActiveTools is not { Count: > 0 };
+            var isWorking = run.PendingApproval is null && run.PendingPrompt is null;
             var now = DateTimeOffset.UtcNow;
-            if (isLlmGenerating)
+            if (isWorking)
             {
                 _segmentStart ??= now;
                 _everStarted = true;

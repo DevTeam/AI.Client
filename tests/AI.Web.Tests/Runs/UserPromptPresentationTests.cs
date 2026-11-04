@@ -42,7 +42,22 @@ public sealed class UserPromptPresentationTests
 
         // Reading a question is the person's time, not the endpoint's; counting it as generating
         // made the indicator claim work that nothing was doing.
-        service.GetLlmGeneratingElapsed(new RunKey(waiting.ChatId, waiting.BranchId)).ShouldBeNull();
+        service.GetWorkingElapsed(new RunKey(waiting.ChatId, waiting.BranchId)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void RunningToolShouldCountAsWork()
+    {
+        var service = new RunStateService();
+        var calling = Run(null) with
+        {
+            ActiveTools = [new ActiveToolInvocation("call", "wait", "{}", DateTimeOffset.UtcNow)]
+        };
+        service.Store(calling);
+
+        // A tool call is the run at work; stopping the clock for it froze "Working for …" for as
+        // long as the call ran.
+        service.GetWorkingElapsed(new RunKey(calling.ChatId, calling.BranchId)).ShouldNotBeNull();
     }
 
     [Theory]

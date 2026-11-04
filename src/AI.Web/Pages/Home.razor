@@ -2251,13 +2251,12 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    // Elapsed time the LLM has actually spent producing the response — excludes time spent
-    // waiting on a tool approval decision or a tool running, since the LLM isn't "generating"
-    // during either.
+    // Elapsed time the run has spent working, its tool calls included — excludes time spent
+    // waiting on the person for a tool approval or an answer.
     private TimeSpan? GetGeneratingElapsed()
     {
         if (_selectedChat is null || GetSelectedRun()?.Status != ChatRunStatus.Generating) return null;
-        return RunState.GetLlmGeneratingElapsed(new RunKey(_selectedChat.Id, GetSelectedRunBranchId()));
+        return RunState.GetWorkingElapsed(new RunKey(_selectedChat.Id, GetSelectedRunBranchId()));
     }
 
     private string GetGeneratingStatusText()

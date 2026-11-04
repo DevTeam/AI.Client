@@ -21,6 +21,6 @@ public interface IRunStateService
 
     void Store(ChatRunSnapshot run);
 
-    /// <summary>Elapsed time spent with the model itself generating, excluding tool and approval waits.</summary>
-    TimeSpan? GetLlmGeneratingElapsed(RunKey key);
+    /// <summary>Elapsed time the run spent working, tool calls included, excluding waits on the person.</summary>
+    TimeSpan? GetWorkingElapsed(RunKey key);
 }

@@ -455,6 +455,26 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task AReadinessMatchShouldNotCarryTheErrorOfAnEarlierAttempt()
+    {
+        // The first attempts reach nothing and the last one answers: the failure of the earlier ones is
+        // no longer the state of the page, and a triggered result that still reported it would read as
+        // a contradiction.
+        var web = new FailingThenAnsweringFetcher();
+        var waiter = new TriggerWaiter(new PathGuard(new Grants()), probe: web);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("http_ready", Url: "http://localhost:5173/health", StatusCode: 200)
+        ], 10000, null, cancel.Token);
+
+        result.Outcome.ShouldBe("triggered");
+        var observed = result.Observed.ShouldNotBeNull().ShouldHaveSingleItem();
+        observed.StatusCode.ShouldBe(200);
+        observed.Error.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ShouldReportARedirectInsteadOfChasingIt()
     {
         // A loopback page can answer with a redirect anywhere. Following it would carry the request to
@@ -1180,5 +1200,16 @@ public sealed class TriggerWaiterTests
             Task.Delay(Timeout.Infinite, cancellationToken)
                 .ContinueWith(_ => new AI.Mcp.BuiltIn.Web.WebResponse(0, url.ToString(), "", "", false, "Timed out."),
                     CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    /// <summary>An HTTP client that reaches nothing twice and then answers 200.</summary>
+    private sealed class FailingThenAnsweringFetcher : AI.Mcp.BuiltIn.Web.IHttpProbe
+    {
+        private int _calls;
+
+        public Task<AI.Mcp.BuiltIn.Web.WebResponse> GetAsync(Uri url, CancellationToken cancellationToken) =>
+            Task.FromResult(++_calls <= 2
+                ? new AI.Mcp.BuiltIn.Web.WebResponse(0, url.ToString(), "", "", false, "No connection could be made.")
+                : new AI.Mcp.BuiltIn.Web.WebResponse(200, url.ToString(), "text/plain", "", false, null));
     }
 }

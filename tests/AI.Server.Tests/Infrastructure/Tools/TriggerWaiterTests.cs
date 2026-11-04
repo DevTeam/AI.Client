@@ -32,22 +32,17 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
-    public async Task ANewMessageJoiningTheTurnShouldEndTheWaitWithAnOutcome()
+    public async Task CancellationEndsTheWaitAsAnExceptionTheCallerInterprets()
     {
         var waiter = NewWaiter();
         using var joined = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
-        // The cancellation is the message joining the turn, which the turn announced by setting the
-        // flag. Throwing here would leave the caller to invent a reply that matches no schema.
-        var result = await waiter.WaitAsync([
-            new TriggerCondition("delay", AfterMs: 60000, InterruptOnJoin: true)
-        ], 60000, null, joined.Token);
-
-        result.Outcome.ShouldBe("interrupted");
-        result.Error.ShouldNotBeNull().ShouldContain("new message");
-        result.TimeoutMs.ShouldBe(60000);
-        result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Type.ShouldBe("delay");
-        result.ElapsedMs.ShouldBeLessThan(60000);
+        // A result written here would be discarded unread: MCP reports a cancellation of a request
+        // already being answered as a notification that arrives after the handler has stopped
+        // watching it, and the client stops waiting for the reply the moment it cancels its own
+        // token. The turn therefore writes the answer for this case itself.
+        await Should.ThrowAsync<OperationCanceledException>(() => waiter.WaitAsync(
+            [new TriggerCondition("delay", AfterMs: 60000)], 60000, null, joined.Token));
     }
 
     [Fact]

@@ -105,15 +105,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             while (true)
             {
                 if (cancellationToken.IsCancellationRequested)
-                {
-                    // A wait the turn gave way to a new message is not a failure of the call: it ended
-                    // for a reason the model has to read next. Reporting that as a result keeps the
-                    // answer inside the declared schema, where a thrown exception left the caller to
-                    // invent a text block that matches nothing.
-                    if (states.Any(state => state.Condition.InterruptOnJoin))
-                        return Interrupted(states, clock.ElapsedMilliseconds, timeoutMs, watchOverflow);
                     throw new OperationCanceledException("The wait was cancelled.", cancellationToken);
-                }
                 foreach (var state in states)
                     if (await EvaluateAsync(state, clock.ElapsedMilliseconds, cancellationToken) is { } match)
                         return match with
@@ -152,16 +144,10 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 if (progress is not null)
                     waitMs = (int)Math.Min(waitMs, Math.Max(1, ProgressIntervalMs - (elapsed - lastReportMs)));
 
-                // A cancellation the turn announced as a message joining it arrives through this wait,
-                // not through the check above, so it is answered here rather than thrown past the
-                // caller who can still do something useful with it.
-                try { await signal.WaitAsync(Math.Max(1, waitMs), cancellationToken); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    if (states.Any(state => state.Condition.InterruptOnJoin))
-                        return Interrupted(states, clock.ElapsedMilliseconds, timeoutMs, watchOverflow);
-                    throw;
-                }
+                // A cancellation ends the call for the caller to interpret: this server never sees the
+                // cancellation notification of a request it is already answering, and the client's own
+                // token ends its wait for the reply, so a result written here would be discarded unread.
+                await signal.WaitAsync(Math.Max(1, waitMs), cancellationToken);
             }
         }
         finally
@@ -211,17 +197,6 @@ public sealed class TriggerWaiter : ITriggerWaiter
             $"Waiting for {waiting}."));
     }
 
-    /// <summary>
-    /// The result of a wait the turn gave way to a new message. It says what every condition last saw
-    /// and what to do next in a field of its own, because a caller that replaced this with free text
-    /// left the model with an answer that matched no declared schema.
-    /// </summary>
-    private static TriggerWaitResult Interrupted(List<ConditionState> states, long elapsedMs, int timeoutMs,
-        int watchOverflow) =>
-        new("interrupted", null, null, null, null, null, null, elapsedMs, Volatile.Read(ref watchOverflow) != 0,
-            "A new message joined this turn. Read it before deciding whether to wait again.",
-            TimeoutMs: timeoutMs, Observed: Observations(states));
-
     private static TriggerObservation[] Observations(List<ConditionState> states) =>
         states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
             state.LengthBytes, state.LastWriteTime, state.Condition.ProcessId, state.ProcessRunning, state.CpuPercent,
@@ -259,7 +234,7 @@ public sealed class TriggerWaiter : ITriggerWaiter
             _ => throw new ArgumentException(Label(index, condition.Type)
                 + " has an unknown type. Use delay, file_exists, file_missing, file_changed, file_contains, file_idle, "
                 + "directory_idle, process_exit, process_completed, process_output_contains, process_cpu_below, "
-                + "process_cpu_above, process_memory_below or process_memory_above.")
+                + "process_cpu_above, process_memory_below, process_memory_above, port_open or http_ready.")
         };
         var label = Label(index, condition.Type);
         RejectUnrelatedFields(condition, kind, label, index);

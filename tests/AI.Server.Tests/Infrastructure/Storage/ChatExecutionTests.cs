@@ -654,7 +654,16 @@ public sealed partial class ChatExecutionTests
         second.Answer.SetResult("Stopped waiting");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed && run.Queue.Count == 0);
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
-        chat!.Messages.Single(message => message.ToolCallId == "call-1").Content.ShouldContain("ended early");
+        var answer = chat!.Messages.Single(message => message.ToolCallId == "call-1").Content;
+        if (toolName == "trigger_wait")
+        {
+            // The turn writes this answer itself, because cancelling the client's token discards the
+            // reply the server was preparing. It still has to be the tool's declared result, so the
+            // model reads an outcome rather than a sentence it has to interpret.
+            answer.ShouldContain("\"outcome\": \"interrupted\"");
+            answer.ShouldContain("A new message joined this turn");
+        }
+        else answer.ShouldContain("ended early");
     }
 
     [Fact]

@@ -20,8 +20,7 @@ public sealed record TriggerCondition(
     int? Depth = null,
     string? Url = null,
     string? Port = null,
-    int? StatusCode = null,
-    bool InterruptOnJoin = false);
+    int? StatusCode = null);
 
 /// <summary>
 /// What one condition looked like when the wait ended. A timeout that says nothing leaves the model
@@ -102,9 +101,7 @@ public sealed record TriggerProgress(int ElapsedMs, int TimeoutMs, int Condition
 
 /// <param name="Observed">The last state of every condition.</param>
 /// <param name="Error">
-/// Why the wait ended without a match. An <c>interrupted</c> outcome carries here the request to read
-/// the message that joined the turn, so the model's next step comes from a field rather than from a
-/// text block that does not match the declared schema.
+/// Why the wait ended without a match, such as a path outside the grants or a refused request.
 /// </param>
 public sealed record TriggerWaitResult(
     string Outcome,

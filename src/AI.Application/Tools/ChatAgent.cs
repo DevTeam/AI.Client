@@ -692,13 +692,6 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                 var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                                 var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
                                 input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
-                                // The server sees one cancellation token and cannot tell a message joining
-                                // this turn from the run being stopped. The turn can, so it says which one
-                                // it is: the wait then answers with an outcome instead of a bare
-                                // cancellation that has to be turned into prose here.
-                                if (tool.OriginalName is "trigger_wait" && input["conditions"] is System.Text.Json.Nodes.JsonArray conditions)
-                                    foreach (var condition in conditions.OfType<System.Text.Json.Nodes.JsonObject>())
-                                        condition["interruptOnJoin"] = true;
                                 arguments = input.ToJsonString();
                             }
                             if (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName is "process_run" or "process_run_sandboxed" or "process_wait")
@@ -739,6 +732,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                 else
                                 {
                                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                                    var callStartedMs = Environment.TickCount64;
                                     // A wait gives way to a message joining the turn: the model waits for
                                     // something to happen, and the person writing to it is that something.
                                     var joined = tool.OriginalName is "trigger_wait" or "process_wait" or "subtask_wait"
@@ -781,8 +775,15 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                     // difference this guard draws.
                                     catch (OperationCanceledException) when (!token.IsCancellationRequested && joined.IsCancellationRequested)
                                     {
-                                        result = Text("The wait ended early because a new message joined this turn. "
-                                            + "It follows these results; read it before deciding whether to wait again.");
+                                        // The wait could not answer: cancelling the client's token ends its
+                                        // own wait for the reply, so the server's structured result is thrown
+                                        // away before it arrives. This turn is the one part that knows why the
+                                        // call ended, so it writes the answer itself, in the result shape the
+                                        // tool declares, rather than leaving the model a bare text block.
+                                        result = tool.OriginalName == "trigger_wait"
+                                            ? InterruptedWaitResult(arguments, Environment.TickCount64 - callStartedMs)
+                                            : Text("The wait ended early because a new message joined this turn. "
+                                                + "It follows these results; read it before deciding whether to wait again.");
                                     }
                                     catch (OperationCanceledException) when (!token.IsCancellationRequested)
                                     {
@@ -1505,6 +1506,42 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     {
         var content = new[] { ToolContent.OfText(message) };
         return new ToolCallResult(content, null, null, false, modelProjector.Project(content, null, false));
+    }
+
+    /// <summary>
+    /// The answer for a <c>trigger_wait</c> that a new message ended. The server is willing to send
+    /// this shape itself, but the client's cancellation ends its own wait for that reply, so the
+    /// declared fields are written here instead: the model then reads an outcome with the wait's
+    /// timing, not a sentence it has to interpret. <c>observed</c> stays out on purpose — the state of
+    /// every condition lived in the cancelled call, and reporting an invented one would be worse than
+    /// reporting none.
+    /// </summary>
+    private ToolCallResult InterruptedWaitResult(string arguments, long elapsedMs)
+    {
+        var input = System.Text.Json.Nodes.JsonNode.Parse(arguments);
+        var conditions = (input?["conditions"] as System.Text.Json.Nodes.JsonArray)?.OfType<System.Text.Json.Nodes.JsonObject>().ToArray()
+                         ?? [];
+        var watched = conditions.Length == 0
+            ? "the conditions"
+            : $"the {conditions.Length} condition(s) it was watching";
+        var structured = JsonSerializer.SerializeToElement(new
+        {
+            outcome = "interrupted",
+            conditionIndex = (int?)null,
+            type = (string?)null,
+            path = (string?)null,
+            processId = (int?)null,
+            cpuPercent = (double?)null,
+            memoryBytes = (long?)null,
+            elapsedMs = Math.Max(0, elapsedMs),
+            watcherOverflow = false,
+            error = "A new message joined this turn. Read it before deciding whether to wait again. "
+                    + $"The last state of {watched} was not read: the call ended before the server could report it.",
+            timeoutMs = input?["timeoutMs"]?.GetValue<int>(),
+            observed = (object?)null
+        });
+        var content = new[] { ToolContent.OfText(structured.GetRawText()) };
+        return new ToolCallResult(content, structured, null, false, modelProjector.Project(content, structured, false));
     }
 
     private ToolCallResult ToolCallLimitError(string tool, int count, EffectiveToolPolicy policy)

@@ -209,9 +209,13 @@ same reason at the point the condition is checked.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
 `process_exit` and `process_completed` do not take it. A wait that a person's new message ends is not
-reported as a failure: the turn sets `interruptOnJoin` on the conditions it sends, and the wait then
-answers with `outcome: "interrupted"`, the state it had reached and a request to read that message.
-A stopped run still cancels the call outright, so a cancelled turn is never told its tool answered. File and directory observation combine
+reported as a failure: the turn stops the call and writes the answer itself, because the client stops
+waiting for the reply the moment it cancels its own token, and MCP delivers the cancellation of a
+request already being answered as a notification the handler has stopped watching. The written answer
+still matches the declared schema — `outcome: "interrupted"`, the request to read that message and the
+wait's timing — with `observed` left out, since every condition's last state lived in the cancelled call
+and an invented one would be worse than none. A stopped run still cancels the call outright, so a
+cancelled turn is never told its tool answered. File and directory observation combine
 platform notifications with a bounded periodic check so a missed notification does not leave the
 call waiting indefinitely. All conditions that look into the same directory share one watcher and
 differ only in their subscriptions, so eight conditions no longer cost eight buffers and eight

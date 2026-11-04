@@ -30,7 +30,8 @@ public sealed class TriggerWaitTool(ITriggerWaiter waiter, IBuiltInToolReply rep
                           + "A timeout returns the state it last read for every condition in observed, so a missing file is "
                           + "distinguishable from an unparsed process or a pattern that was never printed; the idle conditions "
                           + "also report how long the silence has lasted, and directory_idle what it counted and how deep. "
-                          + "A wait that a person's new message ends answers with outcome interrupted and the state it reached. "
+                          + "A wait that a person's new message ends is answered as outcome interrupted with the wait's timing; "
+                          + "its observed state is not reported, because the call ends before the server can send it. "
                           + "Prefer process_completed for one bounded wait on a managed command; it also matches commands already finished. Timeout/cancellation does not stop the command or change its hard deadline. "
                           + "Managed handles belong to this MCP session, not OS PIDs. File paths need a read grant. Process metrics reveal only the named PID, not its command line or environment."
         });

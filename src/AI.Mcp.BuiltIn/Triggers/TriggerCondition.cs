@@ -17,7 +17,8 @@ public sealed record TriggerCondition(
     bool Regex = false,
     bool IgnoreCase = false,
     int? QuietMs = null,
-    int? Depth = null);
+    int? Depth = null,
+    bool InterruptOnJoin = false);
 
 /// <summary>
 /// What one condition looked like when the wait ended. A timeout that says nothing leaves the model
@@ -91,6 +92,12 @@ public sealed record TriggerObservation(
 /// <param name="Message">One short line naming what is being waited for.</param>
 public sealed record TriggerProgress(int ElapsedMs, int TimeoutMs, int Conditions, string Message);
 
+/// <param name="Observed">The last state of every condition.</param>
+/// <param name="Error">
+/// Why the wait ended without a match. An <c>interrupted</c> outcome carries here the request to read
+/// the message that joined the turn, so the model's next step comes from a field rather than from a
+/// text block that does not match the declared schema.
+/// </param>
 public sealed record TriggerWaitResult(
     string Outcome,
     int? ConditionIndex,

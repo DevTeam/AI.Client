@@ -32,6 +32,37 @@ public sealed class TriggerWaiterTests
     }
 
     [Fact]
+    public async Task ANewMessageJoiningTheTurnShouldEndTheWaitWithAnOutcome()
+    {
+        var waiter = NewWaiter();
+        using var joined = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        // The cancellation is the message joining the turn, which the turn announced by setting the
+        // flag. Throwing here would leave the caller to invent a reply that matches no schema.
+        var result = await waiter.WaitAsync([
+            new TriggerCondition("delay", AfterMs: 60000, InterruptOnJoin: true)
+        ], 60000, null, joined.Token);
+
+        result.Outcome.ShouldBe("interrupted");
+        result.Error.ShouldNotBeNull().ShouldContain("new message");
+        result.TimeoutMs.ShouldBe(60000);
+        result.Observed.ShouldNotBeNull().ShouldHaveSingleItem().Type.ShouldBe("delay");
+        result.ElapsedMs.ShouldBeLessThan(60000);
+    }
+
+    [Fact]
+    public async Task AStoppedRunShouldStillCancelTheWait()
+    {
+        var waiter = NewWaiter();
+        using var stopped = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        // Nothing announced a join, so the cancellation is the run being stopped and belongs to the
+        // caller: swallowing it would tell a stopped run that its tool had answered.
+        await Should.ThrowAsync<OperationCanceledException>(() => waiter.WaitAsync(
+            [new TriggerCondition("delay", AfterMs: 60000)], 60000, null, stopped.Token));
+    }
+
+    [Fact]
     public async Task TimeoutShouldReportWhatEachConditionLastSaw()
     {
         var root = Directory.CreateTempSubdirectory("ai-client-trigger-observed").FullName;

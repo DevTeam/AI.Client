@@ -196,7 +196,10 @@ two numbers that say whether it is still moving. A directory with no entries has
 reports `lastWriteTime` as null rather than a placeholder date.
 
 `stableForMs` (0..86400000) can require a file or metric condition to remain true before it fires;
-`process_exit` and `process_completed` do not take it. File and directory observation combine
+`process_exit` and `process_completed` do not take it. A wait that a person's new message ends is not
+reported as a failure: the turn sets `interruptOnJoin` on the conditions it sends, and the wait then
+answers with `outcome: "interrupted"`, the state it had reached and a request to read that message.
+A stopped run still cancels the call outright, so a cancelled turn is never told its tool answered. File and directory observation combine
 platform notifications with a bounded periodic check so a missed notification does not leave the
 call waiting indefinitely. All conditions that look into the same directory share one watcher and
 differ only in their subscriptions, so eight conditions no longer cost eight buffers and eight

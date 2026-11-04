@@ -93,7 +93,15 @@ public sealed class TriggerWaiter : ITriggerWaiter
             while (true)
             {
                 if (cancellationToken.IsCancellationRequested)
+                {
+                    // A wait the turn gave way to a new message is not a failure of the call: it ended
+                    // for a reason the model has to read next. Reporting that as a result keeps the
+                    // answer inside the declared schema, where a thrown exception left the caller to
+                    // invent a text block that matches nothing.
+                    if (states.Any(state => state.Condition.InterruptOnJoin))
+                        return Interrupted(states, clock.ElapsedMilliseconds, timeoutMs, watchOverflow);
                     throw new OperationCanceledException("The wait was cancelled.", cancellationToken);
+                }
                 foreach (var state in states)
                     if (await EvaluateAsync(state, clock.ElapsedMilliseconds, cancellationToken) is { } match)
                         return match with
@@ -132,7 +140,16 @@ public sealed class TriggerWaiter : ITriggerWaiter
                 if (progress is not null)
                     waitMs = (int)Math.Min(waitMs, Math.Max(1, ProgressIntervalMs - (elapsed - lastReportMs)));
 
-                await signal.WaitAsync(Math.Max(1, waitMs), cancellationToken);
+                // A cancellation the turn announced as a message joining it arrives through this wait,
+                // not through the check above, so it is answered here rather than thrown past the
+                // caller who can still do something useful with it.
+                try { await signal.WaitAsync(Math.Max(1, waitMs), cancellationToken); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    if (states.Any(state => state.Condition.InterruptOnJoin))
+                        return Interrupted(states, clock.ElapsedMilliseconds, timeoutMs, watchOverflow);
+                    throw;
+                }
             }
         }
         finally
@@ -177,6 +194,17 @@ public sealed class TriggerWaiter : ITriggerWaiter
         progress.Report(new TriggerProgress((int)Math.Min(elapsedMs, int.MaxValue), timeoutMs, states.Count,
             $"Waiting for {waiting}."));
     }
+
+    /// <summary>
+    /// The result of a wait the turn gave way to a new message. It says what every condition last saw
+    /// and what to do next in a field of its own, because a caller that replaced this with free text
+    /// left the model with an answer that matched no declared schema.
+    /// </summary>
+    private static TriggerWaitResult Interrupted(List<ConditionState> states, long elapsedMs, int timeoutMs,
+        int watchOverflow) =>
+        new("interrupted", null, null, null, null, null, null, elapsedMs, Volatile.Read(ref watchOverflow) != 0,
+            "A new message joined this turn. Read it before deciding whether to wait again.",
+            TimeoutMs: timeoutMs, Observed: Observations(states));
 
     private static TriggerObservation[] Observations(List<ConditionState> states) =>
         states.Select(state => new TriggerObservation(state.Index, state.Condition.Type, state.Path, state.Exists,
@@ -374,6 +402,8 @@ public sealed class TriggerWaiter : ITriggerWaiter
         Check("ignoreCase", condition.IgnoreCase);
         Check("quietMs", condition.QuietMs is not null);
         Check("depth", condition.Depth is not null);
+        // The join flag is never checked here: a turn sets it on every type it waits with, so it is
+        // neither an error on one of them nor a field a condition type has to opt into.
         if (unexpected.Count == 0) return;
         throw new ArgumentException($"{label} does not read {string.Join(", ", unexpected)}; condition {index} takes "
             + string.Join(", ", allowed) + ".");

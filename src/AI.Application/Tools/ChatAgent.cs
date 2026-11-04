@@ -692,6 +692,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                                 var input = System.Text.Json.Nodes.JsonNode.Parse(arguments)!;
                                 var policyTimeoutMs = (int)policy.TimeoutSeconds * 1000;
                                 input["timeoutMs"] = Math.Min(input["timeoutMs"]?.GetValue<int>() ?? policyTimeoutMs, policyTimeoutMs);
+                                // The server sees one cancellation token and cannot tell a message joining
+                                // this turn from the run being stopped. The turn can, so it says which one
+                                // it is: the wait then answers with an outcome instead of a bare
+                                // cancellation that has to be turned into prose here.
+                                if (tool.OriginalName is "trigger_wait" && input["conditions"] is System.Text.Json.Nodes.JsonArray conditions)
+                                    foreach (var condition in conditions.OfType<System.Text.Json.Nodes.JsonObject>())
+                                        condition["interruptOnJoin"] = true;
                                 arguments = input.ToJsonString();
                             }
                             if (tool.ServerId == DefaultMcpServer.Id && tool.OriginalName is "process_run" or "process_run_sandboxed" or "process_wait")

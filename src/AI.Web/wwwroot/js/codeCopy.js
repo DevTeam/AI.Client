@@ -48,6 +48,9 @@
             button.setAttribute("aria-label", "Copy code");
             button.innerHTML = BUTTON_HTML;
             pre.setAttribute(READY_ATTR, "");
+            // The fence's language, when it named one, is shown as a quiet label in the same corner (app.css).
+            const language = languageOf(pre.querySelector(":scope > code"));
+            if (language && !pre.classList.contains("svg-block")) pre.dataset.language = language;
             pre.prepend(button);
         }
     };

@@ -5727,7 +5727,9 @@ button:active:not(:disabled) {
 .markdown-content h4,
 .markdown-content h5,
 .markdown-content h6 {
-    margin: 0.7em 0 0.3em;
+    /* More air above than below: a heading belongs to what follows it, and a long answer is
+       scanned by its headings. */
+    margin: 1.15em 0 0.35em;
     line-height: 1.25;
     font-weight: 600;
 }
@@ -5762,11 +5764,15 @@ button:active:not(:disabled) {
 
 .markdown-content li { margin: 0.15em 0; }
 
+/* A quote is a tinted strip, not only a rule at its edge: the tint is mixed from the text colour,
+   so it reads on the page and inside the user's bubble alike. */
 .markdown-content blockquote {
-    margin: 0.5em 0;
-    padding: 0.1em 0.8em;
-    border-left: 3px solid var(--color-border);
-    color: var(--color-text-muted);
+    margin: 0.6em 0;
+    padding: 0.35em 0.8em;
+    border-left: 3px solid var(--color-border-strong);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: color-mix(in srgb, var(--color-text) 4%, transparent);
+    color: var(--color-text-secondary);
 }
 
 .markdown-content hr {
@@ -5849,6 +5855,23 @@ button:active:not(:disabled) {
 .markdown-content pre[data-code-copy]:not(.svg-block) > code {
     display: block;
     overflow-x: auto;
+}
+
+/* The language a fence named, in the corner beside Copy. It carries the block's own background,
+   so a long first line passes under it instead of through it. */
+.markdown-content pre[data-language]::before {
+    position: absolute;
+    top: 0.5rem;
+    right: 2.3rem;
+    z-index: 1;
+    padding: 0 0.35rem;
+    background: inherit;
+    color: var(--color-text-faint);
+    content: attr(data-language);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-2xs);
+    line-height: 1.4;
+    pointer-events: none;
 }
 
 .code-copy-action {

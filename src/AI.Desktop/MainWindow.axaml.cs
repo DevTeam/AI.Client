@@ -26,12 +26,16 @@ internal sealed partial class MainWindow : Window
     private readonly IWebViewSpellcheck _spellcheck;
     private readonly IDesktopUpdates _updates;
     private readonly DispatcherTimer _engineWatchdog;
+    private readonly Action _closeForUpdate;
     private bool _engineCreated;
     private PixelPoint _normalPosition;
     private Size _normalSize;
 
     /// <summary>The page picked a theme: "system", "light", "dark", "darkblue", "gray" or "lightgray".</summary>
     public event Action<string>? ThemeRequested;
+
+    /// <summary>The page asked for one more window (Ctrl+Shift+N, Cmd+Shift+N on macOS).</summary>
+    public event Action? NewWindowRequested;
 
     public MainWindow(DesktopStart start, IWindowPlacementStore placements,
         IWorkspaceLocationStore workspaceLocation, IClientSettingsStore clientSettings, IUiStateStore uiState,
@@ -47,7 +51,10 @@ internal sealed partial class MainWindow : Window
         _frameTheme = frameTheme;
         _spellcheck = spellcheck;
         _updates = updates;
-        _updates.ShutdownRequested += () => Dispatcher.UIThread.Post(Close);
+        // The update manager is the process's: an install closes every window, and with the last
+        // one the process.
+        _closeForUpdate = () => Dispatcher.UIThread.Post(Close);
+        _updates.ShutdownRequested += _closeForUpdate;
         InitializeComponent();
         Restore(placements.Load());
         PositionChanged += (_, _) => RememberNormalLater();
@@ -110,9 +117,6 @@ internal sealed partial class MainWindow : Window
         _frameTheme.Apply(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, variant == ThemeVariant.Dark);
     }
 
-    /// <summary>Whether the window has closed; safe to read from any thread.</summary>
-    public bool IsClosed => _closed;
-
     /// <summary>
     /// Shows the window above the others, restoring it as it was before it was minimized. Windows
     /// allows this because the launch that asked for it handed over the foreground first.
@@ -137,6 +141,7 @@ internal sealed partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        _updates.ShutdownRequested -= _closeForUpdate;
         _engineWatchdog.Stop();
         _fileDrop.Detach();
         base.OnClosed(e);
@@ -154,9 +159,7 @@ internal sealed partial class MainWindow : Window
             return;
         }
 
-        var titlebar = new PixelRect(placement.X, placement.Y, (int)placement.Width, 38);
-        var screens = Screens?.All ?? [];
-        if (screens.Any(screen => screen.WorkingArea.Intersect(titlebar) is { Width: >= 100, Height: >= 19 }))
+        if (IsOnScreen(new PixelPoint(placement.X, placement.Y), placement.Width))
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Position = _normalPosition = new PixelPoint(placement.X, placement.Y);
@@ -169,6 +172,35 @@ internal sealed partial class MainWindow : Window
         {
             WindowState = WindowState.Maximized;
         }
+    }
+
+    /// <summary>Whether some screen shows enough of a titlebar at this place to grab it.</summary>
+    private bool IsOnScreen(PixelPoint position, double width)
+    {
+        var titlebar = new PixelRect(position.X, position.Y, (int)width, 38);
+        var screens = Screens?.All ?? [];
+        return screens.Any(screen => screen.WorkingArea.Intersect(titlebar) is { Width: >= 100, Height: >= 19 });
+    }
+
+    /// <summary>
+    /// One more window opens over <paramref name="source"/>, shifted down and right as a cascade
+    /// and as large as its normal bounds. Where the shift would leave every screen, it opens over
+    /// the source instead. A maximized source gives a maximized window.
+    /// </summary>
+    public void CascadeFrom(MainWindow source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        source.RememberNormal();
+        var step = (int)Math.Round(32 * source.DesktopScaling);
+        var shifted = new PixelPoint(source._normalPosition.X + step, source._normalPosition.Y + step);
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Position = _normalPosition = IsOnScreen(shifted, source._normalSize.Width) ? shifted : source._normalPosition;
+        Width = source._normalSize.Width;
+        Height = source._normalSize.Height;
+        _normalSize = source._normalSize;
+        WindowState = source.WindowState is WindowState.Maximized or WindowState.FullScreen
+            ? WindowState.Maximized
+            : WindowState.Normal;
     }
 
     /// <summary>
@@ -269,6 +301,11 @@ internal sealed partial class MainWindow : Window
             {
                 _ = HandleUpdateAsync(id, operation.GetString() ?? "", root.TryGetProperty("preferences", out var prefs)
                     ? prefs.Deserialize<AI.Contracts.Updates.UpdatePreferences>(UpdateJson) : null);
+                return;
+            }
+            if (type.GetString() == "new-window")
+            {
+                Dispatcher.UIThread.Post(() => NewWindowRequested?.Invoke());
                 return;
             }
             if (type.GetString() == "open-external-link"

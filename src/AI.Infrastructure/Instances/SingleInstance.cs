@@ -11,7 +11,8 @@ using AI.Contracts.FileSystem;
 /// The instance of a data directory holds <c>&lt;data&gt;/.desktop.lock</c> and listens on a local
 /// channel named after the directory: a named pipe on Windows, a Unix domain socket on macOS and
 /// Linux, both limited to the current user. A later launch that cannot take the lock connects to
-/// the channel instead and asks the running instance to come to the front.
+/// the channel instead and hands its request — a window to the front, or one more window — to the
+/// running instance.
 /// </summary>
 /// <remarks>
 /// The lock, not the channel, decides who is the instance: on Unix a new listener replaces the
@@ -20,7 +21,6 @@ using AI.Contracts.FileSystem;
 /// </remarks>
 public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregroundHandoff) : ISingleInstance
 {
-    private const byte ActivateCommand = 1;
     private const byte Accepted = 1;
     private const byte Closing = 0;
     private static readonly TimeSpan ClosingPause = TimeSpan.FromMilliseconds(100);
@@ -29,7 +29,7 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
     /// <summary>How long a later launch waits for the running instance before starting on its own.</summary>
     public TimeSpan AnswerTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
-    public IInstanceClaim Claim(string dataDirectory)
+    public IInstanceClaim Claim(string dataDirectory, InstanceRequest request)
     {
         var root = Path.GetFullPath(dataDirectory);
         files.CreateDirectoryAsync(root, ownerOnly: false, CancellationToken.None).GetAwaiter().GetResult();
@@ -45,7 +45,7 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
 
             // Off this thread: the desktop calls this from its UI thread before any UI exists, and
             // nothing awaited here may need to come back to it.
-            if (Task.Run(() => TryActivateAsync(channel)).GetAwaiter().GetResult())
+            if (Task.Run(() => TrySendAsync(channel, request)).GetAwaiter().GetResult())
             {
                 return new ForwardedInstance();
             }
@@ -90,7 +90,7 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
         }
     }
 
-    private async Task<bool> TryActivateAsync(string channel)
+    private async Task<bool> TrySendAsync(string channel, InstanceRequest request)
     {
         await using var pipe = new NamedPipeClientStream(".", channel, PipeDirection.InOut,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -109,9 +109,9 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
             using var answering = new CancellationTokenSource(AnswerTimeout);
             var processId = new byte[sizeof(int)];
             await pipe.ReadExactlyAsync(processId, answering.Token).ConfigureAwait(false);
-            // Before the request: once the running instance hears it, it activates its window at once.
+            // Before the request: once the running instance hears it, it brings a window up at once.
             foregroundHandoff.AllowForeground(BinaryPrimitives.ReadInt32LittleEndian(processId));
-            await pipe.WriteAsync(new[] { ActivateCommand }, answering.Token).ConfigureAwait(false);
+            await pipe.WriteAsync(new[] { (byte)request }, answering.Token).ConfigureAwait(false);
             await pipe.FlushAsync(answering.Token).ConfigureAwait(false);
             var reply = new byte[1];
             await pipe.ReadExactlyAsync(reply, answering.Token).ConfigureAwait(false);
@@ -139,8 +139,8 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
         private readonly CancellationTokenSource _stop = new();
         private readonly Task _listening;
         private readonly Lock _sync = new();
-        private Func<bool>? _activate;
-        private bool _pending;
+        private readonly List<InstanceRequest> _pending = [];
+        private Func<InstanceRequest, bool>? _handle;
 
         public PrimaryInstance(FileStream held, string channel)
         {
@@ -151,20 +151,20 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
 
         public bool IsForwarded => false;
 
-        public void OnActivation(Func<bool> activate)
+        public void OnRequest(Func<InstanceRequest, bool> handle)
         {
-            ArgumentNullException.ThrowIfNull(activate);
-            bool pending;
+            ArgumentNullException.ThrowIfNull(handle);
+            InstanceRequest[] pending;
             lock (_sync)
             {
-                _activate = activate;
-                pending = _pending;
-                _pending = false;
+                _handle = handle;
+                pending = [.. _pending];
+                _pending.Clear();
             }
 
-            if (pending)
+            foreach (var request in pending)
             {
-                _ = activate();
+                _ = handle(request);
             }
         }
 
@@ -225,27 +225,31 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
             await server.FlushAsync(request.Token).ConfigureAwait(false);
             var command = new byte[1];
             await server.ReadExactlyAsync(command, request.Token).ConfigureAwait(false);
-            if (command[0] != ActivateCommand)
+            var asked = (InstanceRequest)command[0];
+            if (asked is not (InstanceRequest.Activate or InstanceRequest.NewWindow))
             {
                 return;
             }
 
-            var reply = Activate() ? Accepted : Closing;
+            var reply = Handle(asked) ? Accepted : Closing;
             await server.WriteAsync(new[] { reply }, request.Token).ConfigureAwait(false);
             await server.FlushAsync(request.Token).ConfigureAwait(false);
         }
 
-        /// <summary>Before the window exists the request waits for it: the window is about to show anyway.</summary>
-        private bool Activate()
+        /// <summary>Before the window exists a request waits for it: the first window is about to show anyway.</summary>
+        private bool Handle(InstanceRequest request)
         {
-            Func<bool>? activate;
+            Func<InstanceRequest, bool>? handle;
             lock (_sync)
             {
-                activate = _activate;
-                _pending = activate is null;
+                handle = _handle;
+                if (handle is null)
+                {
+                    _pending.Add(request);
+                }
             }
 
-            return activate?.Invoke() ?? true;
+            return handle?.Invoke(request) ?? true;
         }
     }
 
@@ -253,7 +257,7 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
     {
         public bool IsForwarded => true;
 
-        public void OnActivation(Func<bool> activate)
+        public void OnRequest(Func<InstanceRequest, bool> handle)
         {
         }
 
@@ -266,7 +270,7 @@ public sealed class SingleInstance(IFileSystem files, IForegroundHandoff foregro
     {
         public bool IsForwarded => false;
 
-        public void OnActivation(Func<bool> activate)
+        public void OnRequest(Func<InstanceRequest, bool> handle)
         {
         }
 

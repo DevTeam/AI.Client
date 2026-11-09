@@ -6,11 +6,13 @@ using Server.Hosting;
 
 internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator, ISingleInstance singleInstance) : IDesktopRunner
 {
-    public int Run(ServerOptions options, bool devTools)
+    public int Run(ServerOptions options, bool devTools, bool newWindow)
     {
-        // First of all: a window already open on this data directory comes to the front instead
-        // of this launch looking for a Host, starting a server or showing the lock error.
-        using var instance = singleInstance.Claim(options.DataDirectory);
+        // First of all: the process already running on this data directory brings up a window (or
+        // opens one more) instead of this launch looking for a Host, starting a server or showing
+        // the lock error. A first launch opens its one window either way.
+        using var instance = singleInstance.Claim(options.DataDirectory,
+            newWindow ? InstanceRequest.NewWindow : InstanceRequest.Activate);
         if (instance.IsForwarded)
         {
             return 0;

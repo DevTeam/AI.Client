@@ -14,17 +14,24 @@ internal sealed class DesktopCommand(
         Description = "Enable the web view's developer tools."
     };
 
+    private readonly Option<bool> _newWindow = new("--new-window")
+    {
+        Description = "Open one more window, in the instance already running on this data directory if there is one."
+    };
+
     public Task InitializeAsync(CancellationToken cancellationToken)
     {
         rootCommand.Description = "AI desktop app.";
         serverCommandLine.AddTo(rootCommand);
         rootCommand.Options.Add(_devTools);
+        rootCommand.Options.Add(_newWindow);
         // Loopback only and a port the OS picks: nothing outside this machine can reach the
         // server, and a second app on the same port cannot stop this one from starting.
         // The window owns Ctrl+C and SIGTERM: it closes, and closing it stops the server.
         rootCommand.SetAction(result => desktopRunner.Run(
             serverCommandLine.Bind(result, "http://127.0.0.1:0", serveWeb: true) with { StopOnProcessSignals = false },
-            result.GetValue(_devTools)));
+            result.GetValue(_devTools),
+            result.GetValue(_newWindow)));
         return Task.CompletedTask;
     }
 }

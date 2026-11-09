@@ -17,7 +17,7 @@ public sealed class SingleInstanceTests : IDisposable
     [Fact]
     public void ShouldMakeTheFirstLaunchTheInstance()
     {
-        using var first = NewInstance().Claim(_root);
+        using var first = NewInstance().Claim(_root, InstanceRequest.Activate);
 
         first.IsForwarded.ShouldBeFalse();
         File.Exists(Path.Combine(_root, ".desktop.lock")).ShouldBeTrue();
@@ -26,15 +26,15 @@ public sealed class SingleInstanceTests : IDisposable
     [Fact]
     public void ShouldHandALaterLaunchToTheRunningInstance()
     {
-        using var first = NewInstance().Claim(_root);
+        using var first = NewInstance().Claim(_root, InstanceRequest.Activate);
         using var activated = new ManualResetEventSlim();
-        first.OnActivation(() =>
+        first.OnRequest(_ =>
         {
             activated.Set();
             return true;
         });
 
-        using var second = NewInstance().Claim(_root);
+        using var second = NewInstance().Claim(_root, InstanceRequest.Activate);
 
         second.IsForwarded.ShouldBeTrue();
         activated.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken).ShouldBeTrue();
@@ -42,13 +42,30 @@ public sealed class SingleInstanceTests : IDisposable
     }
 
     [Fact]
+    public void ShouldPassOnTheRequestOfALaterLaunch()
+    {
+        using var first = NewInstance().Claim(_root, InstanceRequest.Activate);
+        var requests = new List<InstanceRequest>();
+        first.OnRequest(request =>
+        {
+            lock (requests) requests.Add(request);
+            return true;
+        });
+
+        using var second = NewInstance().Claim(_root, InstanceRequest.NewWindow);
+        using var third = NewInstance().Claim(_root, InstanceRequest.Activate);
+
+        lock (requests) requests.ShouldBe([InstanceRequest.NewWindow, InstanceRequest.Activate]);
+    }
+
+    [Fact]
     public void ShouldDeliverARequestThatCameBeforeTheWindow()
     {
-        using var first = NewInstance().Claim(_root);
-        using var second = NewInstance().Claim(_root);
+        using var first = NewInstance().Claim(_root, InstanceRequest.Activate);
+        using var second = NewInstance().Claim(_root, InstanceRequest.Activate);
         var activations = 0;
 
-        first.OnActivation(() =>
+        first.OnRequest(_ =>
         {
             Interlocked.Increment(ref activations);
             return true;
@@ -64,8 +81,8 @@ public sealed class SingleInstanceTests : IDisposable
         var other = _root + "-other";
         try
         {
-            using var first = NewInstance().Claim(_root);
-            using var second = NewInstance().Claim(other);
+            using var first = NewInstance().Claim(_root, InstanceRequest.Activate);
+            using var second = NewInstance().Claim(other, InstanceRequest.Activate);
 
             second.IsForwarded.ShouldBeFalse();
         }
@@ -78,9 +95,9 @@ public sealed class SingleInstanceTests : IDisposable
     [Fact]
     public void ShouldTakeOverOnceTheInstanceHasExited()
     {
-        NewInstance().Claim(_root).Dispose();
+        NewInstance().Claim(_root, InstanceRequest.Activate).Dispose();
 
-        using var second = NewInstance().Claim(_root);
+        using var second = NewInstance().Claim(_root, InstanceRequest.Activate);
 
         second.IsForwarded.ShouldBeFalse();
     }
@@ -89,15 +106,15 @@ public sealed class SingleInstanceTests : IDisposable
     public async Task ShouldTakeOverFromAWindowThatIsClosing()
     {
         var cancellation = TestContext.Current.CancellationToken;
-        var first = NewInstance().Claim(_root);
-        first.OnActivation(() => false);
+        var first = NewInstance().Claim(_root, InstanceRequest.Activate);
+        first.OnRequest(_ => false);
         var closing = Task.Run(async () =>
         {
             await Task.Delay(300, cancellation);
             first.Dispose();
         }, cancellation);
 
-        using var second = await Task.Run(() => NewInstance().Claim(_root), cancellation);
+        using var second = await Task.Run(() => NewInstance().Claim(_root, InstanceRequest.Activate), cancellation);
         await closing;
 
         second.IsForwarded.ShouldBeFalse();
@@ -110,7 +127,7 @@ public sealed class SingleInstanceTests : IDisposable
         // A holder without the channel, such as an older build.
         using var held = new FileStream(Path.Combine(_root, ".desktop.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 
-        using var second = NewInstance(TimeSpan.FromSeconds(1)).Claim(_root);
+        using var second = NewInstance(TimeSpan.FromSeconds(1)).Claim(_root, InstanceRequest.Activate);
 
         second.IsForwarded.ShouldBeFalse();
         _handoff.ProcessIds.ShouldBeEmpty();

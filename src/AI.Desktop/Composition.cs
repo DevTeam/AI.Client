@@ -49,8 +49,10 @@ internal sealed partial class UiComposition
             .Arg<IInstanceClaim>("instance")
             .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(65) })
             .Singleton<App>()
+            // One update manager for the process, whatever number of windows shows it.
+            .Singleton<DesktopUpdates>()
             .Transient<UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller, UpdateInstallationProvider,
-                MainWindow, ProcessSignals, DesktopUpdates, JsonWindowPlacementStore, JsonWorkspaceLocationStore,
+                MainWindow, ProcessSignals, JsonWindowPlacementStore, JsonWorkspaceLocationStore,
                 JsonThemePreferenceStore, JsonClientSettingsStore, JsonUiStateStore, WindowsTaskbarBadge, WindowsFrameTheme, WebView2FileDropBridge,
                 WebView2Spellcheck>();
 }

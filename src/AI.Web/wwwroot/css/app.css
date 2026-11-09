@@ -6099,6 +6099,18 @@ textarea {
     }
 }
 
+/* A finger needs more room than a pointer: under a coarse pointer the icon buttons of the feed and
+   of the chat header are large enough to hit, and the header and the feed's top padding grow with
+   them. The glyphs keep their size, so the row does not look heavier, only easier to press. */
+@media (pointer: coarse) {
+    .message-actions { gap: .3rem; min-height: 2.5rem; }
+    .message-actions .icon-action { width: 2.5rem; height: 2.5rem; }
+    .workspace-header { height: 3.2rem; }
+    .workspace-header .icon-action { width: 2.25rem; height: 2.25rem; }
+    .workspace-messages { padding-top: 3.5rem; }
+    .messages-area { --history-rail-top: 3.4rem; }
+}
+
 .shell.legacy-shell {
     display: none;
 }

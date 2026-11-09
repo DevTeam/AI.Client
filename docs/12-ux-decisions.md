@@ -578,3 +578,4 @@ This replaces the parts of the 2026-10-13 Chat files, 2026-10-14 sidebar and 202
 - **Search snippets read as prose.** Heading marks, code marks, bold and link syntax are dropped from a snippet before the query is highlighted, unless the query matched the marks themselves.
 - **A Recents row's project really gives way first.** The project name takes almost all of the squeeze in a narrow sidebar, so the title is the last to be cut.
 - **Settings has a row of section names.** It stays above the list and takes the reader to Appearance, the studio, Sidebar, Chat, the guide or Sounds; the studio itself stays unfolded, because the model's navigation and the guide point at its controls.
+- **Icon buttons are larger under a finger.** With a coarse pointer the action row under a message and the chat header's buttons take 2.25–2.5rem instead of 1.65–1.7rem; the glyphs keep their size, and the header and the feed's top padding grow with them.

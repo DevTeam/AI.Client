@@ -4540,8 +4540,10 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
 .composer-mention-bubble-modes .app-icon { width: .85rem; height: .85rem; }
 .workspace-composer .composer-mention-bubble-hint { overflow: hidden; color: var(--color-text-subtle); font-size: var(--font-size-sm); text-overflow: ellipsis; }
 
+/* Two lines at rest: enough for the placeholder on a phone and for a reply suggestion, and the
+   line it gives back goes to the transcript. The box grows with the text (chatComposer.js). */
 .workspace-composer textarea {
-    min-height: 4.5rem;
+    min-height: 3rem;
     max-height: calc(14 * 1.2em);
     padding: 0;
     border: 0;

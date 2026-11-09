@@ -1,12 +1,21 @@
 namespace AI.Desktop;
 
+using AI.Infrastructure.Instances;
 using Avalonia;
 using Server.Hosting;
 
-internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDesktopRunner
+internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator, ISingleInstance singleInstance) : IDesktopRunner
 {
     public int Run(ServerOptions options, bool devTools)
     {
+        // First of all: a window already open on this data directory comes to the front instead
+        // of this launch looking for a Host, starting a server or showing the lock error.
+        using var instance = singleInstance.Claim(options.DataDirectory);
+        if (instance.IsForwarded)
+        {
+            return 0;
+        }
+
         // A separately installed Host owns the shared data directory. Reuse its UI and API so
         // Desktop and the public Web application see the same projects at the same time.
         var sharedHost = sharedHostLocator.Find(options.DataDirectory);
@@ -15,7 +24,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
             // The server was not started here: the shared Host answered, and that is this run's
             // server-ready moment.
             StartupTimeline.HostReused();
-            var sharedUi = new UiComposition(new DesktopStart(sharedAddress, null, options.DataDirectory, devTools));
+            var sharedUi = new UiComposition(new DesktopStart(sharedAddress, null, options.DataDirectory, devTools), instance);
             return AppBuilder.Configure(() => sharedUi.App)
                 .UsePlatformDetect()
                 .WithInterFont()
@@ -26,7 +35,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
         if (sharedHost.Error is not null)
         {
             StartupTimeline.ServerUnavailable();
-            var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools, sharedHost.UpdateAddress));
+            var failedUi = new UiComposition(new DesktopStart(null, sharedHost.Error, options.DataDirectory, devTools, sharedHost.UpdateAddress), instance);
             return AppBuilder.Configure(() => failedUi.App)
                 .UsePlatformDetect()
                 .WithInterFont()
@@ -59,7 +68,7 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator) : IDes
 
         try
         {
-            var ui = new UiComposition(new DesktopStart(running?.Address, error, options.DataDirectory, devTools));
+            var ui = new UiComposition(new DesktopStart(running?.Address, error, options.DataDirectory, devTools), instance);
             return AppBuilder.Configure(() => ui.App)
                 .UsePlatformDetect()
                 .WithInterFont()

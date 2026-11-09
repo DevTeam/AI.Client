@@ -1,5 +1,6 @@
 namespace AI.Desktop;
 
+using AI.Infrastructure.Instances;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -10,7 +11,8 @@ using Avalonia.Threading;
 /// The window comes as a factory: a window built before <see cref="Initialize"/> loads the theme
 /// would miss its styles and brushes.
 /// </remarks>
-internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals processSignals, IThemePreferenceStore themes)
+internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals processSignals, IThemePreferenceStore themes,
+    IInstanceClaim instance)
     : Application
 {
     public override void Initialize()
@@ -35,6 +37,13 @@ internal sealed partial class App(Func<MainWindow> mainWindow, IProcessSignals p
             // A signal is a request to quit like any other: the window closes normally, so the
             // server behind it stops and the data directory is released.
             var signals = processSignals.OnTermination(() => Dispatcher.UIThread.Post(() => desktop.Shutdown()));
+            // A later launch on the same data directory brings this window back instead of opening another.
+            instance.OnActivation(() =>
+            {
+                if (window.IsClosed) return false;
+                Dispatcher.UIThread.Post(window.BringToFront);
+                return true;
+            });
             desktop.Exit += (_, _) => signals.Dispose();
         }
 

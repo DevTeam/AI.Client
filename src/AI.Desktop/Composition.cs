@@ -3,6 +3,7 @@
 namespace AI.Desktop;
 
 using System.Diagnostics;
+using AI.Infrastructure.Instances;
 using AI.Updates;
 using Pure.DI;
 using Pure.DI.MS;
@@ -19,7 +20,7 @@ internal sealed partial class CommandLineComposition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<Server.CommandLine.ICommandLineApplication>(nameof(Root))
             .Transient<DesktopCommand>(Tag.Unique)
-            .Transient<DesktopRunner, SharedHostLocator>();
+            .Transient<DesktopRunner, SharedHostLocator, SingleInstance, WindowsForegroundHandoff>();
 }
 
 /// <summary>The server graph for one run; also ASP.NET's service provider factory.</summary>
@@ -45,6 +46,7 @@ internal sealed partial class UiComposition
             .Hint(Hint.ThreadSafe, "Off")
             .Root<App>(nameof(App))
             .Arg<DesktopStart>("start")
+            .Arg<IInstanceClaim>("instance")
             .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(65) })
             .Singleton<App>()
             .Transient<UpdateManagerFactory, PublishedUpdateFeed, UpdateInstaller, UpdateInstallationProvider,

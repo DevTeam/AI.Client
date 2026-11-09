@@ -14,7 +14,8 @@ internal sealed partial class MainWindow : Window
     private static readonly TimeSpan EngineTimeout = TimeSpan.FromSeconds(20);
     private static readonly JsonSerializerOptions UpdateJson = new(JsonSerializerDefaults.Web);
     private DesktopStart _start;
-    private bool _closed;
+    private volatile bool _closed;
+    private WindowState _stateBeforeMinimized = WindowState.Normal;
     private readonly IWindowPlacementStore _placements;
     private readonly IWorkspaceLocationStore _workspaceLocation;
     private readonly IClientSettingsStore _clientSettings;
@@ -89,6 +90,12 @@ internal sealed partial class MainWindow : Window
         {
             RememberNormalLater();
         }
+        else if (change.Property == WindowStateProperty
+                 && change.GetNewValue<WindowState>() == WindowState.Minimized
+                 && change.GetOldValue<WindowState>() is var previous and not WindowState.Minimized)
+        {
+            _stateBeforeMinimized = previous;
+        }
         else if (change.Property == ActualThemeVariantProperty && IsVisible)
         {
             ApplyFrameTheme();
@@ -101,6 +108,21 @@ internal sealed partial class MainWindow : Window
         var variant = ActualThemeVariant;
         while (variant.InheritVariant is { } parent) variant = parent;
         _frameTheme.Apply(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero, variant == ThemeVariant.Dark);
+    }
+
+    /// <summary>Whether the window has closed; safe to read from any thread.</summary>
+    public bool IsClosed => _closed;
+
+    /// <summary>
+    /// Shows the window above the others, restoring it as it was before it was minimized. Windows
+    /// allows this because the launch that asked for it handed over the foreground first.
+    /// </summary>
+    public void BringToFront()
+    {
+        if (_closed) return;
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = _stateBeforeMinimized;
+        Activate();
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

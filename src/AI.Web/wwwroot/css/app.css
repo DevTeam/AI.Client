@@ -1387,9 +1387,10 @@ body {
 .chat-branch-count ~ .nav-notice-dot { margin-left: 0.35rem; }
 
 /* The project a Recents row belongs to, after its title: quiet, and the first to give way when
-   the row is narrow, so the title still reads. */
+   the row is narrow, so the title still reads. The shrink factor is what makes it first: with
+   the title's own factor of one, the two were cut in proportion and neither could be read. */
 .nav-item-project {
-    flex: 0 1 auto;
+    flex: 0 50 auto;
     min-width: 0;
     max-width: 45%;
     margin-left: auto;

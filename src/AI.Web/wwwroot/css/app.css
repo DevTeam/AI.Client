@@ -2516,6 +2516,21 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     overflow-anchor: auto;
 }
 
+/* The transcript thins out above the composer the way it does under the header, instead of a
+   line of text being cut flat against the composer's status line. The feed's own bottom padding
+   is taller than the fade, so the last message at rest is never dimmed. */
+.messages-area::after {
+    position: absolute;
+    z-index: 4;
+    right: var(--chat-scrollbar-width, 0px);
+    bottom: 0;
+    left: 0;
+    height: .9rem;
+    background: linear-gradient(to top, var(--color-bg), transparent);
+    content: "";
+    pointer-events: none;
+}
+
 /* Jump to the latest message: the one control that floats over the transcript, so it carries the
    floating look (accent tint, shadow, pill) and says what is waiting below. An arrow, not a
    chevron: it moves the view, while chevrons in the feed fold and unfold content. Centred over the
@@ -5463,11 +5478,13 @@ button.message-origin-sender:hover, button.message-origin-sender:focus-visible {
     align-items: center;
     gap: .35rem;
     min-width: 0;
-    height: 2.4rem;
+    height: 2.7rem;
     box-sizing: border-box;
-    /* Equal padding keeps both panel toggles symmetric inside the scrollbar-safe header. */
-    padding: .2rem .225rem .45rem;
-    background: linear-gradient(to bottom, var(--color-bg) 0%, color-mix(in srgb, var(--color-bg) 92%, transparent) 55%, transparent 100%);
+    /* Equal padding keeps both panel toggles symmetric inside the scrollbar-safe header. The
+       bottom padding is the fade: the row of controls sits on the solid part, so a message
+       scrolling under it never shows through the breadcrumb, and thins out only below it. */
+    padding: .2rem .225rem .75rem;
+    background: linear-gradient(to bottom, var(--color-bg) 0%, var(--color-bg) 70%, transparent 100%);
     pointer-events: none;
 }
 

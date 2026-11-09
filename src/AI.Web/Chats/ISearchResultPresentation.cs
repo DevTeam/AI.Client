@@ -16,7 +16,8 @@ public interface ISearchResultPresentation
 
     /// <summary>
     /// Splits <paramref name="snippet"/> into plain and matching runs the same way the server
-    /// matched it: literally and ignoring case.
+    /// matched it: literally and ignoring case. Markdown marks are dropped first, so the snippet
+    /// reads as prose, unless the query matched the marks themselves.
     /// </summary>
     IReadOnlyList<SnippetPart> Highlight(string snippet, string query);
 }

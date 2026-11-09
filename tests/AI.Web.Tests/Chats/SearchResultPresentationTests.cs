@@ -38,6 +38,26 @@ public sealed class SearchResultPresentationTests
     public void ShouldLeaveTextWithoutTheQueryWhole() =>
         _presentation.Highlight("nothing here", "deploy").ShouldBe([new SnippetPart("nothing here", false)]);
 
+    [Fact]
+    public void ShouldShowTheSnippetAsProse()
+    {
+        var parts = _presentation.Highlight("…version. ## Current state `Rank` is **slow**, see [the plan](docs/plan.md) > a_b * 2", "rank");
+
+        parts.ShouldBe([
+            new SnippetPart("…version. Current state ", false),
+            new SnippetPart("Rank", true),
+            new SnippetPart(" is slow, see the plan > a_b * 2", false)
+        ]);
+    }
+
+    [Fact]
+    public void ShouldKeepTheMarkupTheQueryMatched() =>
+        _presentation.Highlight("use `git status` here", "`git").ShouldBe([
+            new SnippetPart("use ", false),
+            new SnippetPart("`git", true),
+            new SnippetPart(" status` here", false)
+        ]);
+
     private static ChatSearchMatch Match(Guid chatId, string snippet, int count) =>
         new(Guid.Empty, "Project", chatId, "Chat", Guid.NewGuid(), null, "User", DateTimeOffset.UnixEpoch, snippet, count);
 }

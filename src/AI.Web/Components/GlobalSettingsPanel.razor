@@ -36,6 +36,14 @@
                 case "Settings":
                 {
                     <div class="app-settings">
+                        @* The page is one long list; these take the reader to a section without
+                           scrolling past the theme gallery and the studio every time. *@
+                        <nav class="settings-jump" aria-label="Settings sections">
+                            @foreach (var (id, label) in SettingsSections)
+                            {
+                                <button type="button" @onclick="() => ShowSettingsSectionAsync(id)">@label</button>
+                            }
+                        </nav>
                         @if (ClientMode.PublicWeb)
                         {
                             var (hostState, hostLabel) = HostConnection.Status switch
@@ -1525,6 +1533,30 @@
             _discoverErrorServerId = server.Id;
         }
         finally { _discoveringTools = false; }
+    }
+
+    /// <summary>The sections of the Settings page the jump row offers, by the id of their heading.</summary>
+    private static readonly (string Id, string Label)[] SettingsSections =
+    [
+        ("settings-appearance", "Appearance"),
+        ("settings-custom-themes", "Studio"),
+        ("settings-sidebar", "Sidebar"),
+        ("settings-chat", "Chat"),
+        ("settings-guide", "Guide"),
+        ("settings-sounds", "Sounds")
+    ];
+
+    private async Task ShowSettingsSectionAsync(string id)
+    {
+        try
+        {
+            _fieldsModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsFields.js");
+            await _fieldsModule.InvokeVoidAsync("showSection", _drawer, id);
+        }
+        catch (Exception error) when (error is JSException or JSDisconnectedException)
+        {
+            // The section is still there to scroll to by hand.
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

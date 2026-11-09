@@ -570,3 +570,11 @@ This replaces the parts of the 2026-10-13 Chat files, 2026-10-14 sidebar and 202
 - **Every unfolded project has the same tree.** The open project and any other unfolded one list their chats a page at a time (10), with the same `Show N more` and `Less`, the pinned divider, and the Archive row when something is archived. The Archive row of another project opens that project, then its archive. The pages opened in a project are kept per project, so opening it or leaving it keeps them; folding it starts over at one page.
 - **The open chat never opens the page.** When it lies under `Show more`, it is listed once more below the pager, after a hairline, instead of pulling the page open to reach it; the counts stay what they were.
 - **Recents keeps its rows across a project switch.** The project left behind hands its live chat list to Recents, which used to fall back to what the Host had said about that project before it was opened until the next read, so rows jumped or dropped out at the moment another chat was picked.
+
+## Reading and reach polish (2026-11-09)
+
+- **Message content has a shape.** A table in a message has padded cells, a hairline under each row and a stronger one under the header; a code fence sits on the sunken surface, which differs from the page in every theme (the text-field colour is the page's own white in the light family); inline code is a chip.
+- **The header is solid behind its controls.** The chat header fades only below the row of controls, and the transcript fades the same way above the composer, so no line of text shows through the breadcrumb or is cut flat at the bottom.
+- **Search snippets read as prose.** Heading marks, code marks, bold and link syntax are dropped from a snippet before the query is highlighted, unless the query matched the marks themselves.
+- **A Recents row's project really gives way first.** The project name takes almost all of the squeeze in a narrow sidebar, so the title is the last to be cut.
+- **Settings has a row of section names.** It stays above the list and takes the reader to Appearance, the studio, Sidebar, Chat, the guide or Sounds; the studio itself stays unfolded, because the model's navigation and the guide point at its controls.

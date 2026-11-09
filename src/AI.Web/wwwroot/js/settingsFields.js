@@ -10,3 +10,9 @@ export function focusFirstInvalid(root) {
     field.scrollIntoView({ block: "nearest" });
     field.focus({ preventScroll: true });
 }
+
+// Brings one section of the Settings page to the top of its list. The jump is instant: the row
+// of section names stays in place above it, so there is nothing to follow with the eye.
+export function showSection(root, id) {
+    root?.querySelector(`#${CSS.escape(id)}`)?.closest(".settings-group")?.scrollIntoView({ block: "start" });
+}

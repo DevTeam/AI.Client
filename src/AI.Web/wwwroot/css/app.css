@@ -6015,13 +6015,14 @@ textarea {
 
 /* Phone width: the conversation takes the whole screen and both panels are drawers over it,
    folded until a swipe (or Ctrl+B) brings one out; workspaceLayout.js owns the phone-*-open classes.
-   The wide-screen collapse state and widths are left alone and come back with a wider window. */
+   The sidebar's header button stays: a narrow desktop window is this layout too, and there a
+   swipe does not exist. The wide-screen collapse state and widths are left alone and come back
+   with a wider window. */
 @media (width <= 900px) {
     .workspace-shell { grid-template-columns: minmax(0, 1fr); }
     .workspace-conversation { --chat-content-inset: 1rem; grid-column: 1; grid-row: 1; }
 
     .workspace-resizer,
-    .sidebar-toggle-button,
     .workspace-widgets-toggle {
         display: none;
     }

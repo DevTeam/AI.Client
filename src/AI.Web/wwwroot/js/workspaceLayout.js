@@ -125,8 +125,12 @@ export function attach(workspace, callbacks, saved) {
             separator.setAttribute("aria-valuenow", open ? String(width) : "0");
             separator.setAttribute("aria-valuetext", open ? `${width} pixels` : `${panels[side].name} hidden`);
         }
+        // At phone width the same button brings the sidebar out as a drawer, so it reports the drawer.
+        const sidebarShown = window.matchMedia(phoneQuery).matches
+            ? workspace.classList.contains("phone-left-open")
+            : isOpen("left");
         for (const button of workspace.querySelectorAll("[data-sidebar-toggle]")) {
-            button.setAttribute("aria-pressed", String(isOpen("left")));
+            button.setAttribute("aria-pressed", String(sidebarShown));
         }
     };
 
@@ -305,6 +309,7 @@ export function attach(workspace, callbacks, saved) {
         workspace.classList.toggle("phone-left-open", side === "left");
         workspace.classList.toggle("phone-right-open", side === "right");
         if (side === "right") requestWidgets(true);
+        describe();
     };
     listen(phone, "change", () => openDrawer(null));
     const finishSwipe = (dx, dy) => {
@@ -380,7 +385,8 @@ export function attach(workspace, callbacks, saved) {
         if (!(event.target instanceof Element)) return;
         // The header button re-renders with Blazor, so its clicks are picked up here by delegation.
         if (event.target.closest("[data-sidebar-toggle]")) {
-            toggle("left", !isOpen("left"));
+            if (phone.matches) openDrawer(workspace.classList.contains("phone-left-open") ? null : "left");
+            else toggle("left", !isOpen("left"));
         } else if (event.target.closest(".workspace-phone-scrim")) {
             openDrawer(null);
         } else if (phone.matches && event.target.closest(".workspace-sidebar") && event.target.closest(navigationSelector)

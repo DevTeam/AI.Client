@@ -3,6 +3,9 @@ namespace AI.Application.Chat;
 public interface IChatTransportPolicy
 {
     TimeSpan ResponseHeadersTimeout { get; }
+
+    /// <summary>Allows gateways to process the prompt before sending response headers.</summary>
+    TimeSpan ResponseHeadersTimeoutFor(long inputCharacters);
     TimeSpan FirstTokenTimeout { get; }
 
     /// <summary>

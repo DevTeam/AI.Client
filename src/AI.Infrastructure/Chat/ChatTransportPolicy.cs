@@ -9,6 +9,11 @@ public sealed class ChatTransportPolicy(
     TimeSpan? streamIdleTimeout = null) : IChatTransportPolicy
 {
     public TimeSpan ResponseHeadersTimeout { get; } = responseHeadersTimeout ?? TimeSpan.FromSeconds(30);
+
+    // Some gateways send headers only when generation starts. Give them the same prompt-reading
+    // allowance as the first token, while preserving an explicitly configured headers limit.
+    public TimeSpan ResponseHeadersTimeoutFor(long inputCharacters) => responseHeadersTimeout
+        ?? TimeSpan.FromTicks(Math.Max(ResponseHeadersTimeout.Ticks, FirstTokenTimeoutFor(inputCharacters).Ticks));
     /// <summary>Prompt reading time allowed per thousand input tokens, on top of <see cref="FirstTokenTimeout"/>.</summary>
     private static readonly TimeSpan PrefillPerThousandTokens = TimeSpan.FromSeconds(1);
 

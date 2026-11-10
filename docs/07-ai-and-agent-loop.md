@@ -140,6 +140,10 @@ the answer. A first-token timeout is retried once: each attempt makes the endpoi
 prompt again, so more attempts only repeat the same wait. Once the stream has started, the idle
 timeout between lines applies instead.
 
+By default, waiting for HTTP response headers uses the same size-dependent allowance (at least
+30 seconds), because gateways may process the prompt before sending headers. An explicit
+response-headers timeout overrides this allowance. Caller cancellation still stops the wait.
+
 ## Branch context
 
 The root → head path is converted to provider input. Technical audit messages are not added automatically. Tool calls and tool results are included as a pair, preserving the original IDs. When the context window is exceeded, an explicitly visible compaction strategy is applied; the original nodes are not changed.

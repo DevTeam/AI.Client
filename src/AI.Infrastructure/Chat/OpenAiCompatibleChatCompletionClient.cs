@@ -63,7 +63,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         while (true)
         {
             using var message = await CreateRequestAsync(request, false, false, cacheKey, cancellationToken);
-            using var response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
+            using var response = await SendAsync(message, request.CredentialProfileId,
+                policy.ResponseHeadersTimeoutFor(InputCharacters(request)), cancellationToken);
             body = await ReadBodyAsync(response, cancellationToken);
             if (response.IsSuccessStatusCode) break;
             if (cacheKey is null || !Refuses(response, body, "prompt_cache_key")) throw Failure(response, body);
@@ -98,7 +99,8 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         while (true)
         {
             using var message = await CreateRequestAsync(request, true, askUsage, cacheKey, cancellationToken);
-            response = await SendAsync(message, request.CredentialProfileId, cancellationToken);
+            response = await SendAsync(message, request.CredentialProfileId,
+                policy.ResponseHeadersTimeoutFor(InputCharacters(request)), cancellationToken);
             if (response.IsSuccessStatusCode) break;
             var errorBody = await ReadBodyAsync(response, cancellationToken);
             if (askUsage && Refuses(response, errorBody, "stream_options", "include_usage"))
@@ -150,10 +152,10 @@ public sealed class OpenAiCompatibleChatCompletionClient(
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, Guid? connectionId,
-        CancellationToken cancellationToken)
+        TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        headers.CancelAfter(policy.ResponseHeadersTimeout);
+        headers.CancelAfter(timeout);
         try
         {
             var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, headers.Token);
@@ -164,7 +166,7 @@ public sealed class OpenAiCompatibleChatCompletionClient(
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ChatResponseHeadersTimeoutException(policy.ResponseHeadersTimeout, error);
+            throw new ChatResponseHeadersTimeoutException(timeout, error);
         }
     }
 

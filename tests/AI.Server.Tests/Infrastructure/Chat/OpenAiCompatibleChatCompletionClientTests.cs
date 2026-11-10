@@ -305,6 +305,23 @@ public class OpenAiCompatibleChatCompletionClientTests
     }
 
     [Fact]
+    public async Task ShouldPreserveCallerCancellationWhileWaitingForHeaders()
+    {
+        using var cancellation = new CancellationTokenSource();
+        _handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>(async (_, token) =>
+            {
+                cancellation.Cancel();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return CreateResponse(HttpStatusCode.OK, "");
+            });
+
+        await Should.ThrowAsync<OperationCanceledException>(() => CreateInstance().CompleteAsync(
+            new ChatCompletionRequest("https://llm.example/v1", "test-model", null, "Hi"), cancellation.Token));
+    }
+
+    [Fact]
     [Trait("Category", "Slow")]
     public async Task ShouldFailWhenFirstTokenDoesNotArriveInTime()
     {

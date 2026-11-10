@@ -62,10 +62,14 @@ comparison assumes:
 
 `Ignoring/IgnoreRules` parses the Git ignore syntax — comments, blank lines, negation with `!`,
 directory-only rules with a trailing `/`, anchored rules, and `**`, `*` and `?` — and applies the last
-matching rule, as Git does. `Ignoring/IgnoreRuleProvider` reads the repository's `.gitignore` and
-`.git/info/exclude` from the repository root down to the searched directory, then directory rules
-while walking. A matching directory is not descended into, which is where much of the speed of an
-ignore-aware search comes from.
+matching rule, as Git does. A rule with a slash anywhere but at its end is anchored to the directory
+of its own ignore file, and a leading slash anchors a rule without a slash the same way, so `/out/`
+leaves out the `out` of that directory without touching `src/out`. `Ignoring/IgnoreRuleProvider` reads
+the repository's `info/exclude` (following `gitdir` and `commondir`, so a linked worktree is ignored
+as its main checkout is), then the `.gitignore`, `.ignore` and `.rgignore` of every directory from the
+repository root down to the searched directory, then the rules of each directory as the walk enters
+it. A matching directory is not descended into, which is where much of the speed of an ignore-aware
+search comes from.
 
 ## Composition
 
@@ -85,6 +89,13 @@ var result = await engine.SearchAsync(new SearchRequest
     Exclude = ["bin", "obj"]
 });
 ```
+
+## Consumers
+
+`grep_files` in the built-in tools is the engine's consumer: the tool owns the directory grant, the
+result caps, the default exclusions and the context lines, and leaves the walk, the ignore rules,
+the globs and the matching to the engine. It resolves the engine through `SearchComposition`, which
+is why the tools take a project reference and no linked setup.
 
 ## Benchmarks
 

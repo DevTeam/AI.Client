@@ -21,8 +21,13 @@ internal sealed class PathGlob : IPathGlob
     }
 
     /// <summary>Compiles the pattern; <paramref name="ignoreCase"/> follows the platform's path comparison.</summary>
+    /// <param name="anchored">
+    /// Whether the pattern is tied to the root it is matched against even when it has no separator,
+    /// which is what an ignore rule written with a leading slash means: <c>/out/</c> ignores the
+    /// <c>out</c> directory of that one directory and not every <c>out</c> in the tree.
+    /// </param>
     /// <exception cref="ArgumentException">The pattern names nothing.</exception>
-    public static PathGlob Create(string pattern, bool ignoreCase)
+    public static PathGlob Create(string pattern, bool ignoreCase, bool anchored = false)
     {
         if (string.IsNullOrWhiteSpace(pattern))
         {
@@ -41,7 +46,7 @@ internal sealed class PathGlob : IPathGlob
             normalized = normalized[1..];
         }
 
-        var fullPath = normalized.Contains('/', StringComparison.Ordinal);
+        var fullPath = anchored || normalized.Contains('/', StringComparison.Ordinal);
         var options = RegexOptions.CultureInvariant | (ignoreCase ? RegexOptions.IgnoreCase : RegexOptions.None);
         return new PathGlob(new Regex(Translate(normalized, fullPath), options, TimeSpan.FromSeconds(1)), fullPath);
     }

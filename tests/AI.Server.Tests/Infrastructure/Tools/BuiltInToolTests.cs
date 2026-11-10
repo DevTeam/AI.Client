@@ -918,12 +918,12 @@ public sealed class BuiltInToolTests
                 .GetProperty("files").EnumerateArray().Single()
                 .GetProperty("path").GetString().ShouldBe("b.md");
 
-            // Lookaround is unsupported by the non-backtracking engine and has to surface as a
-            // readable error rather than as an exception escaping the tool.
+            // Lookaround is unsupported by the non-backtracking engine, so it is matched by the
+            // backtracking one instead: the same query still answers instead of failing.
             (await Structured(session, "grep_files", new { path = root, query = "(?=needle)", isRegex = true }, token))
-                .GetProperty("error").GetString().ShouldNotBeNullOrEmpty();
+                .GetProperty("totalMatches").GetInt32().ShouldBe(2);
             (await Structured(session, "grep_files", new { path = Path.Combine(root, "absent.txt"), query = "needle" }, token))
-                .GetProperty("error").GetString().ShouldBe("Path does not exist.");
+                .GetProperty("error").GetString().ShouldBe($"Nothing exists at the search path: {Path.Combine(root, "absent.txt")}");
 
             var outside = Path.Combine(Path.GetTempPath(), "ai-client-grep-outside");
             (await Structured(session, "grep_files", new { path = outside, query = "needle" }, token))

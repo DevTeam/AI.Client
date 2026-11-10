@@ -18,9 +18,10 @@ internal sealed record IgnoreGlob(IPathGlob Glob, bool Negated, bool DirectoryOn
 /// <remarks>
 /// A rule list is built once per ignore file and shared by every directory below it, so a walk with
 /// ten thousand files parses a handful of files instead of re-reading the rules of every directory
-/// it enters. The global excludes file and <c>.git/info/exclude</c> are not read: those are the
-/// machine's settings rather than the repository's, and a search that silently applies somebody
-/// else's ignore list is a search that silently finds too little.
+/// it enters. The global excludes file is not read: that is the machine's setting rather than the
+/// repository's, and a search that silently applies somebody else's ignore list is a search that
+/// silently finds too little. The repository's own <c>info/exclude</c> is read, before every
+/// <c>.gitignore</c>, because it belongs to the clone whose files are being searched.
 /// </remarks>
 internal sealed class IgnoreRules
 {
@@ -133,7 +134,7 @@ internal sealed class IgnoreRules
 
         try
         {
-            var glob = PathGlob.Create(line, comparison == StringComparison.OrdinalIgnoreCase);
+            var glob = PathGlob.Create(line, comparison == StringComparison.OrdinalIgnoreCase, anchored);
             return new IgnoreGlob(glob, negated, directoryOnly, anchored ? baseDirectory : null);
         }
         catch (ArgumentException)

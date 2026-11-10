@@ -4,6 +4,7 @@ namespace AI.Mcp.BuiltIn;
 
 using System.Diagnostics;
 using AI.Contracts.FileSystem;
+using AI.Search;
 using Archives;
 using Files;
 using Grants;
@@ -39,6 +40,9 @@ internal sealed partial class Composition
                 SearchFilesTool, GrepFilesTool, GetFileInfoTool, WriteFileTool, EditFileTool, CreateDirectoryTool, MoveFileTool,
                 DeleteFileTool, DeleteDirectoryTool, ZipListTool, ZipReadTool, ZipExtractTool, ZipCreateTool>(Tag.Unique)
             .Transient<ProcessRunner, ProcessScriptRunner, ProcessLauncher, ToolSandbox, TriggerWaiter, EnvironmentGrantSource, PathGuard, HtmlText, BuiltInToolReply>()
+            // The engine comes from the library's own root: a search keeps no state between requests, and
+            // that root is the one way to obtain it without linking the library's internal setup.
+            .Bind<ISearchEngine>().To(_ => new SearchComposition().Engine)
             .Transient(_ => new WebFetcher(WebFetcher.CreateDefaultHandler()))
             // The readiness probe is its own handler, not a second setting of fetch's: a handler that
             // followed redirects would let a loopback condition reach the public host it was refused

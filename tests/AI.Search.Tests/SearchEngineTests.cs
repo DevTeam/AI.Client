@@ -136,6 +136,39 @@ public sealed class SearchEngineTests
     }
 
     [Fact]
+    public async Task ANestedIgnoreFileIgnoresOnlyItsOwnDirectories()
+    {
+        using var corpus = new SearchCorpus()
+            .File(".git/HEAD", "ref: refs/heads/main")
+            .File(".gitignore", "/out/\n")
+            .File("out/top.cs", "needle")
+            .File("src/out/nested.cs", "needle")
+            .File("src/code.cs", "needle");
+
+        var result = await SearchCorpus.RunAsync(corpus.Request("needle"));
+
+        // The leading slash ties the rule to the directory of its own ignore file.
+        result.Files.Select(file => file.Path).ShouldBe([Path.Combine("src", "out", "nested.cs"), Path.Combine("src", "code.cs")], ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task RepositoryExcludesAreReadBeforeTheGitignoreFiles()
+    {
+        using var corpus = new SearchCorpus()
+            .File(".git/HEAD", "ref: refs/heads/main")
+            .File(".git/info/exclude", "worktrees/\n*.log\n")
+            .File(".gitignore", "!kept.log\n")
+            .File("worktrees/copy/code.cs", "needle")
+            .File("trace.log", "needle")
+            .File("kept.log", "needle")
+            .File("code.cs", "needle");
+
+        var result = await SearchCorpus.RunAsync(corpus.Request("needle"));
+
+        result.Files.Select(file => file.Path).ShouldBe(["kept.log", "code.cs"], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task NegatedIgnoreRuleReincludesAFile()
     {
         using var corpus = new SearchCorpus()

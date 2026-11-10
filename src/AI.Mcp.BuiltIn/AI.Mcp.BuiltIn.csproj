@@ -15,8 +15,12 @@
     <ItemGroup>
         <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj"/>
         <ProjectReference Include="..\AI.Sandbox\AI.Sandbox.csproj"/>
+        <ProjectReference Include="..\AI.Search\AI.Search.csproj"/>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting"/>
         <PackageReference Include="ModelContextProtocol.Core"/>
         <PackageReference Include="Pure.DI" PrivateAssets="all"/>
+    </ItemGroup>
+    <ItemGroup>
+        <InternalsVisibleTo Include="AI.Mcp.BuiltIn.Tests"/>
     </ItemGroup>
 </Project>

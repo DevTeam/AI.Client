@@ -12,6 +12,7 @@ public sealed class MatcherTests
     [Theory]
     [InlineData("*.cs", "a.cs", "src/a.cs", true)]
     [InlineData("*.cs", "a.txt", "src/a.txt", false)]
+    [InlineData("/out", "out", "out", true)]
     [InlineData("src/**/*.cs", "a.cs", "src/a.cs", true)]
     [InlineData("src/**/*.cs", "a.cs", "src/deep/a.cs", true)]
     [InlineData("src/**/*.cs", "a.cs", "other/a.cs", false)]
@@ -22,6 +23,13 @@ public sealed class MatcherTests
     [InlineData("[!ab].cs", "b.cs", "b.cs", false)]
     public void GlobsMatchNamesOrPaths(string pattern, string name, string relative, bool expected) =>
         PathGlob.Create(pattern, ignoreCase: false).IsMatch(name, relative).ShouldBe(expected);
+
+    [Theory]
+    [InlineData("out", "out", "src/out", true)]
+    [InlineData("out", "out", "src/out", false, true)]
+    public void AnAnchoredGlobIgnoresOnlyTheRootOfItsOwnDirectory(string pattern, string name, string relative, bool expected,
+        bool anchored = false) =>
+        PathGlob.Create(pattern, ignoreCase: false, anchored).IsMatch(name, relative).ShouldBe(expected);
 
     [Fact]
     public void ASetWithoutGlobsMatchesNothing()
@@ -112,6 +120,19 @@ public sealed class MatcherTests
 
         rules.IsIgnored(root, Path.Combine(root, "build"), true, paths).ShouldBeTrue();
         rules.IsIgnored(root, Path.Combine(root, "build"), false, paths).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AnAnchoredIgnoreRuleIgnoresTheDirectoryOfItsOwnIgnoreFile()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "AI.Search.Tests", "root");
+        var paths = new SystemPath();
+        var rules = IgnoreRules.Parse(["/out/", "/generated"], root, paths.Comparison);
+
+        rules.IsIgnored(root, Path.Combine(root, "out"), true, paths).ShouldBeTrue();
+        rules.IsIgnored(root, Path.Combine(root, "generated"), true, paths).ShouldBeTrue();
+        rules.IsIgnored(root, Path.Combine(root, "src", "out"), true, paths).ShouldBeFalse();
+        rules.IsIgnored(root, Path.Combine(root, "src", "generated"), true, paths).ShouldBeFalse();
     }
 
     [Fact]

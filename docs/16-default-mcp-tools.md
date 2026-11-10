@@ -301,11 +301,13 @@ Not implemented: archive formats other than zip, entry comments and extra fields
 
 Content search. `path` points to a file or to a directory walked recursively; file selection is governed by `filePattern` and `excludePatterns`; service directories are skipped by default, as in `search_files`.
 
-`query` is treated as a literal substring by default and compared case-sensitively; `ignoreCase` relaxes the comparison, `isRegex` switches to a regular expression. Regular expressions run in `RegexOptions.NonBacktracking` mode: runtime is linear in the length of the string, so a pathological pattern does not block the server, but backreferences and lookaround are not supported and are returned as an argument error rather than as an exception.
+`query` is treated as a literal substring by default and compared case-sensitively; `ignoreCase` relaxes the comparison, `isRegex` switches to a regular expression. The matching itself, the walk, the ignore files and the globs all come from the [search engine](40-search-engine.md) rather than from a second implementation inside the tool: `regex` tries `RegexOptions.NonBacktracking` first, whose runtime is linear in the length of the line, and falls back to the ordinary engine with a two-second timeout only for a pattern the linear one cannot run — a backreference or a lookaround.
 
 At most one match per line. `contextLines` adds the adjacent lines before and after; at file boundaries the arrays are shorter than requested rather than padded with empty lines, and without `contextLines` they are left out. `maxMatchesPerFile` (default 5) caps the number of quoted lines, while `matchCount` stays as the full number of matched lines in the file — file coverage matters more than completeness of output for any single one. A global size budget sits on top; any hit sets `truncated: true`.
 
 A file with a zero byte in its first 8192 bytes is treated as binary and skipped; the same goes for files larger than 16 MiB and unreadable files. Their count is returned in `filesSkipped`, the read ones in `filesScanned`. Contents are decoded as UTF-8 with BOM detection, so files in single-byte encodings are read with distortion. A line longer than 400 characters is returned as a window around the match with truncation markers, while `column` remains the position in the real line.
+
+`contextLines` is the one thing the result adds on top of the engine's own answer: the engine reports a match with its line number, and the file is read once more to collect the lines around it. A search without context therefore pays for the engine's single pass only.
 
 ## fetch
 

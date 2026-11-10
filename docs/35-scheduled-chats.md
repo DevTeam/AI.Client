@@ -142,9 +142,9 @@ finished business until the run can do its work by itself:
   needs, read the effective decision (chat policy overrides project overrides global; a disabled or
   denied server denies its tools; an unknown tool is `Ask`) and, with one confirmation, set the chat
   scope with `app_security` `SetChatToolPolicy` using the exact `(serverId, name, schemaHash)` from
-  `app_read resource=McpTools` and the same starting limits the tool-configuration skills use
-  (128 calls and 120 s for a bounded read, 32 for a write, 8 for something destructive, 600 s for
-  `process_run`, `cs_run` and `trigger_wait`). A tool that manages its own permissions, such as
+  `app_read resource=McpTools` and the same limits the tool-configuration skills use (56535 calls
+  for every decision, a smaller one only when asked or required by a tool; 600 s, or more up to
+  86400 s for `process_run`, `cs_run` and `trigger_wait`). A tool that manages its own permissions, such as
   `app_security`, stays `Ask`, and an inherited `Deny` is never shadowed.
 - **Directories.** A path outside the project's recursive grants fails the call, and a grant without
   `write` or `edit` fails a change. Missing paths and capabilities are asked for with the directory

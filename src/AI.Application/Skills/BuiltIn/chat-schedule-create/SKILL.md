@@ -72,12 +72,12 @@ the branch or in the arguments is never asked again.
    a branch other than the main one, `SetBranchToolPolicy` with that `branchId` instead: its runs
    are its child branches and inherit the policy, the rest of the chat does not), a fresh
    `operationId` per distinct change and `toolPolicy` containing the identity, `Allow` and limits.
-   Use the starting values the tool-configuration skills use: `maxCallsPerRun` 128 for a bounded
-   read, 32 for a write or an unknown tool, 8 for something destructive or externally visible, and
-   `timeoutSeconds` 120 — or 600 for `process_run`, `cs_run` and `trigger_wait`, so builds, tests
-   and waits can finish. A tool that manages its own permissions, such as `app_security`, stays
-   `Ask`: never grant it `Allow`. Never shadow an inherited `Deny` — a denied tool is reported to
-   the user as unavailable for the run.
+   Use the values the tool-configuration skills use: `maxCallsPerRun` 56535 for every decision,
+   with a smaller limit only when the user asked for one or a tool has a known constraint, and
+   `timeoutSeconds` 600 — or more, up to 86400, for `process_run`, `cs_run` and `trigger_wait`,
+   so builds, tests and waits can finish. A tool that manages its own permissions, such as
+   `app_security`, stays `Ask`: never grant it `Allow`. Never shadow an inherited `Deny` — a denied
+   tool is reported to the user as unavailable for the run.
    When the user keeps a tool at `Ask`, say plainly that the run will stop and wait for them at that
    call, and go on only if they still want the schedule.
 8. Check the directories the task needs against the project's recursive grants and each grant's

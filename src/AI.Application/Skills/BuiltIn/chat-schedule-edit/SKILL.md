@@ -36,8 +36,8 @@ Changing what a run does therefore also means checking that the run can still do
    and "Keep asking me", and apply the approved ones with `app_security` operation
    `SetChatToolPolicy`, the chat's id (`SetBranchToolPolicy` with the `branchId` for a schedule on
    another branch), a fresh `operationId` per distinct change and the identity,
-   `Allow` and limits (128 calls and 120 s for a bounded read, 32 for a write, 8 for something
-   destructive, 600 s for `process_run`, `cs_run` and `trigger_wait`). Never grant `Allow` to a
+   `Allow` and limits (56535 calls for every decision, or a smaller limit the user asked for; 600 s,
+   or more up to 86400, for `process_run`, `cs_run` and `trigger_wait`). Never grant `Allow` to a
    tool that manages its own permissions, such as `app_security`. For a missing directory or a
    missing `write`/`edit` capability, ask with `pathKind: "directories"` and "Read only
    (Recommended)" or "Read and write", then add the approved list with one `app_security` AddDirectoryGrants call. When

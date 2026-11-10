@@ -2,10 +2,11 @@ namespace Build.Targets;
 
 using System.Diagnostics;
 
-internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildPaths) : IRunTarget
+internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildPaths, IPrepareLocalAiTarget prepare) : IRunTarget
 {
-    public async Task<int> RunAsync(CancellationToken cancellationToken)
+    public async Task<int> RunAsync(CancellationToken cancellationToken, bool localAi = false)
     {
+        var package = localAi ? await prepare.RunAsync(System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, cancellationToken) : null;
         var output = buildPaths.HostOutputPath;
         // `dotnet publish` copies the default MCP server alongside the host through the existing
         // `PublishDefaultMcpServer` target, so the resulting directory is self-contained and
@@ -21,7 +22,7 @@ internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildP
             return publish;
         }
 
-        var exe = Path.Combine(output, "AI.Host.exe");
+        var exe = Path.Combine(output, OperatingSystem.IsWindows() ? "AI.Host.exe" : "AI.Host");
         if (!File.Exists(exe))
         {
             await Console.Error.WriteLineAsync($"Host executable was not produced at {exe}.");
@@ -43,11 +44,13 @@ internal sealed class RunTarget(IProcessRunner processRunner, IBuildPaths buildP
         Console.CancelKeyPress += cancel;
         try
         {
-            process = Process.Start(new ProcessStartInfo(exe)
+            var start = new ProcessStartInfo(exe)
             {
                 UseShellExecute = false,
                 WorkingDirectory = output
-            });
+            };
+            if (package is not null) start.Environment["AI_LOCAL_MODEL_DIRECTORY"] = package;
+            process = Process.Start(start);
             if (process is null)
             {
                 await Console.Error.WriteLineAsync($"Failed to start {exe}.");

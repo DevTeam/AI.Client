@@ -14,6 +14,8 @@ internal sealed class BuildApplication(
     IPackageReleaseTarget packageReleaseTarget,
     IRunTarget runTarget,
     IRunBothTarget runBothTarget,
+    IRunDesktopTarget runDesktopTarget,
+    IPrepareLocalAiTarget prepareLocalAiTarget,
     IProfileDesktopTarget profileDesktopTarget,
     IDesktopStartupMeasurementTarget desktopStartupMeasurementTarget,
     IReadmeTarget readmeTarget,
@@ -32,6 +34,7 @@ internal sealed class BuildApplication(
         RegisterPublishWeb(root);
         RegisterPackageRelease(root);
         RegisterHost(root);
+        RegisterLocalAi(root);
         RegisterProfileDesktop(root);
         RegisterMeasureDesktop(root);
         RegisterReadme(root);
@@ -142,15 +145,19 @@ internal sealed class BuildApplication(
 
     private void RegisterHost(RootCommand root)
     {
+        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
         // `host` is the legacy name for the run target. Renamed to `run` everywhere else, but kept
         // here as an alias so existing `.run` files and muscle memory continue to work until they
         // get updated.
         var hostCommand = new Command("host", "Alias for `run`. Publish AI.Host to artifacts/host/ and run it without blocking source-tree builds and tests.");
-        hostCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
+        hostCommand.Options.Add(localAi);
+        hostCommand.SetAction(parse => runTarget.RunAsync(cancellationToken, parse.GetValue(localAi)));
         root.Subcommands.Add(hostCommand);
 
         var runCommand = new Command("run", "Publish AI.Host to artifacts/host/ and run it. The frontend is started separately (see AI Backend.run.xml).");
-        runCommand.SetAction(_ => runTarget.RunAsync(cancellationToken));
+        var runLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        runCommand.Options.Add(runLocalAi);
+        runCommand.SetAction(parse => runTarget.RunAsync(cancellationToken, parse.GetValue(runLocalAi)));
         root.Subcommands.Add(runCommand);
 
         // `run-both` publishes and starts the host, waits for its API, then starts the web dev
@@ -187,15 +194,39 @@ internal sealed class BuildApplication(
         runBothCommand.Options.Add(corsOrigins);
         runBothCommand.Options.Add(environment);
         runBothCommand.Options.Add(publicWeb);
+        var bothLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        runBothCommand.Options.Add(bothLocalAi);
         runBothCommand.SetAction(parseResult => runBothTarget.RunAsync(
             new RunBothOptions(
                 parseResult.GetValue(hostUrls),
                 parseResult.GetValue(webUrls),
                 parseResult.GetValue(corsOrigins),
                 parseResult.GetValue(environment),
-                parseResult.GetValue(publicWeb)),
+                parseResult.GetValue(publicWeb), parseResult.GetValue(bothLocalAi)),
             cancellationToken));
         root.Subcommands.Add(runBothCommand);
+    }
+
+    private void RegisterLocalAi(RootCommand root)
+    {
+        var runtime = new Option<string>("--runtime")
+        {
+            Description = "Target platform for the prepared local model package.",
+            DefaultValueFactory = _ => System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
+        };
+        runtime.AcceptOnlyFromAmong("win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64");
+        var prepare = new Command("prepare-local-ai", "Download and verify the cached Qwen3 and llama.cpp package.");
+        prepare.Options.Add(runtime);
+        prepare.SetAction(async parse => { await prepareLocalAiTarget.RunAsync(parse.GetValue(runtime)!, cancellationToken); return 0; });
+        root.Subcommands.Add(prepare);
+
+        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        var data = new Option<string?>("--data-dir") { Description = "Desktop data directory, relative to the solution or absolute." };
+        var desktop = new Command("run-desktop", "Publish and run Desktop outside the source tree.");
+        desktop.Options.Add(localAi);
+        desktop.Options.Add(data);
+        desktop.SetAction(parse => runDesktopTarget.RunAsync(parse.GetValue(data), parse.GetValue(localAi), cancellationToken));
+        root.Subcommands.Add(desktop);
     }
 
     private void RegisterMeasureDesktop(RootCommand root)

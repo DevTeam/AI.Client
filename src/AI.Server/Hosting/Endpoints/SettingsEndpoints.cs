@@ -14,6 +14,7 @@ public sealed class SettingsEndpoints : IEndpointModule
 {
     public void Map(IEndpointRouteBuilder routes)
     {
+        routes.MapGet("/api/settings/local-ai", ([FromServices] ILocalModelService service) => service.Status);
         routes.MapGet(
             "/api/settings",
             (IGlobalSettingsService service, CancellationToken cancellationToken) => service.GetAsync(cancellationToken));

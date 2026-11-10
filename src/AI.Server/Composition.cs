@@ -93,6 +93,13 @@ internal sealed class Composition
                 return portable;
             })
             .Singleton(_ => new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
+            .Bind<ILocalModelService>().As(Lifetime.Singleton).To<LocalModelService>()
+            .Transient<LocalModelPackageLocator>()
+            .Transient(_ => new LocalModelOptions(Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_DIRECTORY")
+                ?? Path.Combine(AppContext.BaseDirectory, "local-ai"),
+                Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_DIRECTORY") is null
+                && System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "AI.Desktop"
+                    ? AppContext.BaseDirectory : null))
             // Reading embedded skill definitions once avoids repeated parsing.
             .Singleton<BuiltInSkillCatalog>("built-in")
             .Singleton<OpenAiCompatibleChatCompletionClient>("base")
@@ -176,6 +183,7 @@ internal sealed class AspNetComposition
             .DependsOn("AI.Server.Composition")
             .Hint(Hint.Comments, "Off")
             .Root<IHostDescriptor>()
+            .Root<ILocalModelService>()
             .Root<IDirectoryBrowser>()
             .Root<IGitBrowser>()
             .Root<IProjectService>()

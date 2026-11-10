@@ -19,7 +19,8 @@ internal sealed partial class Composition
             .Root<BuildApplication>(nameof(Root))
             .Arg<string[]>("args")
             .Arg<CancellationToken>("cancellationToken")
+            .Singleton(_ => new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
             .Transient<PrepareTextCorrectionTarget, BuildPaths, ProcessRunner, BuildSolutionTarget, TestSolutionTarget,
                 VerifyTarget, PublishTarget, PublishDesktopTarget, PublishWebTarget, PackageReleaseTarget, RunTarget,
-                RunBothTarget, ProfileDesktopTarget, DesktopStartupMeasurementTarget, RazorTemplateEngine, ReadmeTarget>();
+                RunBothTarget, RunDesktopTarget, PrepareLocalAiTarget, ProfileDesktopTarget, DesktopStartupMeasurementTarget, RazorTemplateEngine, ReadmeTarget>();
 }

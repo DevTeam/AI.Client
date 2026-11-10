@@ -22,6 +22,20 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
             throw new PlatformNotSupportedException($"Package {runtime} on a runner with the matching operating system.");
 
         var output = Path.Combine(paths.SolutionDirectory, "artifacts", "release");
+        var localModelPackage = Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_PACKAGE");
+        if (!string.IsNullOrWhiteSpace(localModelPackage))
+        {
+            localModelPackage = Path.GetFullPath(localModelPackage);
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (localModelPackage.Equals(Path.GetFullPath(output), comparison)
+                || localModelPackage.StartsWith(Path.GetFullPath(output) + Path.DirectorySeparatorChar, comparison))
+                throw new InvalidDataException("Keep the local AI package outside artifacts/release, which is cleaned before publishing.");
+            using var manifest = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(localModelPackage, "manifest.json"), cancellationToken));
+            if (manifest.RootElement.TryGetProperty("RuntimeIdentifier", out var identifier)
+                && identifier.GetString() != runtime)
+                throw new InvalidDataException("The local AI runtime does not match the release platform.");
+        }
         var host = Path.Combine(output, runtime, "host");
         var desktop = Path.Combine(output, runtime, "desktop");
         var packages = Path.Combine(output, "packages");
@@ -50,6 +64,11 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
 
         foreach (var (product, directory) in new[] { ("Host", host), ("Desktop", desktop) })
         {
+            // A platform-matched, prepared component is supplied explicitly by the release runner.
+            if (!string.IsNullOrWhiteSpace(localModelPackage))
+            {
+                CopyTree(localModelPackage, Path.Combine(directory, "local-ai"));
+            }
             await File.WriteAllTextAsync(Path.Combine(directory, "update-installation.json"),
                 System.Text.Json.JsonSerializer.Serialize(new { product, runtime, version }), cancellationToken);
             if (!File.Exists(Path.Combine(directory, "wwwroot", "index.html"))

@@ -253,6 +253,18 @@
                             var limits = EffectiveLimits(connection);
                             var problems = ShownProblems(ConnectionProblems(connection));
                             <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
+                                @if (connection.Id == LocalModelStatus.ConnectionId)
+                                {
+                                    <div class="settings-card">
+                                        <p>Compact offline model for simple commands. Disable this connection and save to unload it.</p>
+                                        <button type="button" @onclick="RefreshLocalModelStatusAsync">Check local AI status</button>
+                                        @if (_localModelStatus is { } localStatus)
+                                        {
+                                            <p role="status">@LocalModelStateText(localStatus.State)</p>
+                                            @if (localStatus.Error is { } localError) { <p>@localError</p> }
+                                        }
+                                    </div>
+                                }
                                 <div class="settings-card">
                                     <label @attributes="@(ControlHints.Attributes("settings.connection.enabled"))" class="settings-row">
                                         <span class="settings-row-label">Enabled</span>
@@ -528,6 +540,29 @@
                            Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
 }
 @code {
+    private LocalModelStatus? _localModelStatus;
+    private readonly CancellationTokenSource _localStatusCancellation = new();
+
+    private async Task RefreshLocalModelStatusAsync()
+    {
+        try { _localModelStatus = await GlobalSettingsApi.GetLocalModelStatusAsync(_localStatusCancellation.Token); }
+        catch (OperationCanceledException) when (_localStatusCancellation.IsCancellationRequested) { }
+        catch (Exception error) when (error is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            _localModelStatus = new("failed", Error: "Could not read local AI status. Check the Host connection.");
+        }
+    }
+
+    private static string LocalModelStateText(string state) => state switch
+    {
+        "notInstalled" => "Local AI is not installed.",
+        "verifying" => "Checking the installed model.",
+        "starting" => "Starting local AI.",
+        "ready" => "Local AI is ready.",
+        "disabled" => "Local AI is disabled and unloaded.",
+        "stopped" => "Local AI is stopped.",
+        _ => "Local AI is unavailable."
+    };
     [Inject] private IToolDefaultDecision ToolDefaults { get; set; } = default!;
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public string? SkillToEdit { get; set; }
@@ -1239,6 +1274,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _localStatusCancellation.Cancel();
+        _localStatusCancellation.Dispose();
         HostConnection.Changed -= OnHostConnectionChanged;
         // The Host keeps the previous request alive if we do not tell it to stop; this can fire
         // a toast into a drawer the user has already closed.

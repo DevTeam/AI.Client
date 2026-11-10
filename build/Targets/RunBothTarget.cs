@@ -2,10 +2,11 @@ namespace Build.Targets;
 
 using System.Diagnostics;
 
-internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths buildPaths) : IRunBothTarget
+internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths buildPaths, IPrepareLocalAiTarget prepare) : IRunBothTarget
 {
     public async Task<int> RunAsync(RunBothOptions options, CancellationToken cancellationToken)
     {
+        var package = options.LocalAi ? await prepare.RunAsync(System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, cancellationToken) : null;
         // 1. Publish host first. We reuse the existing `ProcessRunner` because it already logs
         //    stdout/stderr to `artifacts/logs/` and surfaces the tail on failure — same behaviour
         //    as `RunTarget` had on its own.
@@ -20,7 +21,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
             return publish;
         }
 
-        var hostExe = Path.Combine(hostOutput, "AI.Host.exe");
+        var hostExe = Path.Combine(hostOutput, OperatingSystem.IsWindows() ? "AI.Host.exe" : "AI.Host");
         if (!File.Exists(hostExe))
         {
             await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExe}.");
@@ -57,6 +58,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
             UseShellExecute = false,
             WorkingDirectory = hostOutput
         };
+        if (package is not null) hostStart.Environment["AI_LOCAL_MODEL_DIRECTORY"] = package;
         hostStart.ArgumentList.Add("--urls");
         hostStart.ArgumentList.Add(hostUrls);
         if (options.PublicWeb)

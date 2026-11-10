@@ -85,6 +85,7 @@ public sealed class AiClientServer(
         // are rooted in the same directory by construction.
         builder.Logging.AddProvider(fileLogger);
         builder.Services.AddHostedService<ChatRunHostedService>();
+        builder.Services.AddHostedService<ILocalModelService>(provider => provider.GetRequiredService<ILocalModelService>());
         builder.Services.AddHostedService<AI.Updates.IHostUpdateService>(provider =>
         {
             var updates = provider.GetRequiredService<AI.Updates.IHostUpdateService>();

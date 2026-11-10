@@ -16,9 +16,18 @@ WizardImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 WizardSmallImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 CloseApplications=yes
 
+[Components]
+Name: "main"; Description: "Application"; Types: full compact custom; Flags: fixed
+#if DirExists(SourceDir + "\local-ai")
+Name: "localai"; Description: "Offline Qwen3 0.6B model"; Types: full
+#endif
+
 [Files]
 Source: "{#SourceDir}\stop-installed-app.ps1"; Flags: dontcopy noencryption
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "local-ai\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+#if DirExists(SourceDir + "\local-ai")
+Source: "{#SourceDir}\local-ai\*"; DestDir: "{app}\local-ai"; Components: localai; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 
 [InstallDelete]
 ; The retired optional C# scripting tools lived here; C# scripts now run in the built-in tools.

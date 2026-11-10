@@ -6,5 +6,6 @@ internal interface IProcessRunner
         string operation,
         string fileName,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment = null);
 }

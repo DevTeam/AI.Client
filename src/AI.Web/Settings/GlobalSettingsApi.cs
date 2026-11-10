@@ -6,6 +6,9 @@ using System.Text.Json;
 
 public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsApi
 {
+    public async Task<LocalModelStatus> GetLocalModelStatusAsync(CancellationToken cancellationToken) =>
+        await httpClient.GetFromJsonAsync<LocalModelStatus>("api/settings/local-ai", cancellationToken)
+        ?? throw new InvalidOperationException("Local AI status response is empty.");
     public async Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<McpToolInfo[]>("api/mcp/default/tools", cancellationToken) ?? [];
 

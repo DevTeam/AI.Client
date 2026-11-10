@@ -18,6 +18,8 @@ dotnet run --project build -- test
 dotnet run --project build -- test-all
 dotnet run --project build -- verify
 dotnet run --project build -- publish --output artifacts/publish
+dotnet run --project build -- run-desktop --local-ai --data-dir .data
+dotnet run --project build -- prepare-local-ai
 ```
 
 `test` runs fast unit tests, and `test-all` also runs tests marked `Category=Integration` or `Category=Slow`.

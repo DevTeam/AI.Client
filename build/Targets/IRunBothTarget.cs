@@ -5,7 +5,8 @@ internal sealed record RunBothOptions(
     string? WebUrls,
     string? CorsOrigins,
     string? Environment,
-    bool PublicWeb = false);
+    bool PublicWeb = false,
+    bool LocalAi = false);
 
 internal interface IRunBothTarget
 {

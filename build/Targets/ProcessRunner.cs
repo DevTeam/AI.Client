@@ -11,7 +11,8 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
         string operation,
         string fileName,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var logsDirectory = Path.Combine(buildPaths.SolutionDirectory, "artifacts", "logs");
         Directory.CreateDirectory(logsDirectory);
@@ -29,6 +30,8 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
         {
             startInfo.ArgumentList.Add(argument);
         }
+        if (environment is not null)
+            foreach (var (key, value) in environment) startInfo.Environment[key] = value;
 
         using var process = new Process();
         process.StartInfo = startInfo;
@@ -38,7 +41,15 @@ internal sealed class ProcessRunner(IBuildPaths buildPaths) : IProcessRunner
 
         var output = CaptureAsync(process.StandardOutput, "stdout");
         var error = CaptureAsync(process.StandardError, "stderr");
-        await process.WaitForExitAsync(cancellationToken);
+        try { await process.WaitForExitAsync(cancellationToken); }
+        finally
+        {
+            if (cancellationToken.IsCancellationRequested && !process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+        }
         await Task.WhenAll(output, error);
 
         if (process.ExitCode == 0)

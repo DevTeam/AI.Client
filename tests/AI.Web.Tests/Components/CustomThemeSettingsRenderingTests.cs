@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.HtmlRendering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -39,6 +40,7 @@ public sealed class CustomThemeSettingsRenderingTests
             .AddTransient<IAppControlHints, AppControlHints>()
             .AddSingleton(theme.Object)
             .AddSingleton(Mock.Of<INotificationService>())
+            .AddSingleton(Mock.Of<IJSRuntime>())
             .AddSingleton(Mock.Of<ISettingsListFilter>())
             .BuildServiceProvider();
     }
@@ -78,6 +80,26 @@ public sealed class CustomThemeSettingsRenderingTests
             html.ShouldContain("value=\"#2b2320\"");
             html.ShouldContain("checked");
         });
+    }
+
+    [Fact]
+    public async Task ShouldUnfoldTheStudioOnlyForAThemeInUse()
+    {
+        await using var withTheme = Services(Theme());
+        await using var withPreset = Services(null);
+        await using var themeRenderer = new HtmlRenderer(withTheme, NullLoggerFactory.Instance);
+        await using var presetRenderer = new HtmlRenderer(withPreset, NullLoggerFactory.Instance);
+
+        var unfolded = await themeRenderer.Dispatcher.InvokeAsync(async () =>
+            (await themeRenderer.RenderComponentAsync<CustomThemeSettings>(ParameterView.Empty)).ToHtmlString());
+        var folded = await presetRenderer.Dispatcher.InvokeAsync(async () =>
+            (await presetRenderer.RenderComponentAsync<CustomThemeSettings>(ParameterView.Empty)).ToHtmlString());
+
+        // The dials of the theme on the page are in view; with a preset the studio waits under its
+        // head row, and its controls are still in the page for the guide to unfold.
+        unfolded.ShouldContain("<details class=\"settings-card theme-studio\" open");
+        folded.ShouldContain("<details class=\"settings-card theme-studio\">");
+        folded.ShouldContain("data-app-target=\"settings.appearance.custom_theme.background\"");
     }
 
     [Fact]
@@ -129,6 +151,7 @@ public sealed class CustomThemeSettingsRenderingTests
             .AddTransient<IAppControlHints, AppControlHints>()
             .AddSingleton(theme.Object)
             .AddSingleton(Mock.Of<INotificationService>())
+            .AddSingleton(Mock.Of<IJSRuntime>())
             .AddSingleton(Mock.Of<ISettingsListFilter>())
             .BuildServiceProvider();
         var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);

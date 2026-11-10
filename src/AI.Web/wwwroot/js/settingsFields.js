@@ -16,3 +16,11 @@ export function focusFirstInvalid(root) {
 export function showSection(root, id) {
     root?.querySelector(`#${CSS.escape(id)}`)?.closest(".settings-group")?.scrollIntoView({ block: "start" });
 }
+
+// Unfolds a disclosure the page was asked to work in (the theme studio after New theme) and
+// brings it into view. The element owns its open state, so this and its summary never disagree.
+export function openDisclosure(details) {
+    if (!details) return;
+    details.open = true;
+    details.scrollIntoView({ block: "nearest" });
+}

@@ -1687,6 +1687,15 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
    text says so under the dials in the warning words rather than the danger ones: the theme is weak,
    not broken. */
 .theme-studio-head { gap: .75rem; padding-block: .65rem; }
+/* The studio folds under its head row, which says what is being built and whether it reads. */
+.theme-studio > summary { list-style: none; cursor: pointer; }
+.theme-studio > summary::-webkit-details-marker { display: none; }
+.theme-studio > summary:hover { background: var(--color-fill-hover); }
+.theme-studio > summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+/* The card's own radius, spelled out: a summary inherits through the disclosure's slot, not from the card. */
+.settings-card.theme-studio > summary { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.settings-card.theme-studio:not([open]) > summary { border-radius: var(--radius-lg); }
+.theme-studio[open] > summary .settings-disclosure-chevron { transform: rotate(90deg); }
 .theme-studio-head .settings-row-label { overflow: hidden; color: var(--color-text-strong); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .theme-studio-verdict { display: inline-flex; flex: none; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: var(--radius-pill); font-size: var(--font-size-sm); font-weight: 500; }
 .theme-studio-verdict .app-icon { width: .8rem; height: .8rem; }

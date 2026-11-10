@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A recursive text search engine built the way ripgrep works: an ignore-aware walk feeding a pool
+    of workers that scan files in parallel. Library consumers take ISearchEngine; the standalone
+    composition below is the root the tests and benchmarks start from.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Pure.DI" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AI.Search.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/AI.Search.Benchmarks/AI.Search.Benchmarks.csproj" />
     <Project Path="benchmarks/AI.TextCorrection.Benchmarks/AI.TextCorrection.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/build/">
@@ -14,6 +15,7 @@
     <Project Path="src/AI.Infrastructure/AI.Infrastructure.csproj" />
     <Project Path="src/AI.Mcp.BuiltIn/AI.Mcp.BuiltIn.csproj" />
     <Project Path="src/AI.Sandbox/AI.Sandbox.csproj" />
+    <Project Path="src/AI.Search/AI.Search.csproj" />
     <Project Path="src/AI.Server/AI.Server.csproj" />
     <Project Path="src/AI.Web/AI.Web.csproj" />
     <Project Path="src/AI.TextCorrection/AI.TextCorrection.csproj" />
@@ -22,6 +24,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/AI.Mcp.BuiltIn.Tests/AI.Mcp.BuiltIn.Tests.csproj" />
     <Project Path="tests/AI.Sandbox.Tests/AI.Sandbox.Tests.csproj" />
+    <Project Path="tests/AI.Search.Tests/AI.Search.Tests.csproj" />
     <Project Path="tests/AI.Server.Tests/AI.Server.Tests.csproj" />
     <Project Path="tests/AI.Web.Tests/AI.Web.Tests.csproj" />
     <Project Path="tests/AI.TextCorrection.Tests/AI.TextCorrection.Tests.csproj" />

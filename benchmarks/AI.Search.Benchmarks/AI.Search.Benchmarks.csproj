@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Measures AI.Search and compares it with ripgrep on one generated corpus. BenchmarkDotNet runs the
+    in-process benchmarks; the `compare` command times both tools on the same workloads and prints a
+    table, so the numbers come from one machine, one corpus and the same inputs.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AI.Search/AI.Search.csproj" />
+  </ItemGroup>
+</Project>

@@ -42,6 +42,7 @@ The documents describe the agreed-upon architecture and are the source of truth 
 36. [Chat plans](37-chat-plans.md)
 37. [Process sandbox](38-process-sandbox.md)
 38. [Subtask context inheritance (proposal)](39-subtask-context-inheritance.md)
+39. [Recursive search (`AI.Search`)](40-search-engine.md)
 
 Generator diagnostics and complaints are tracked separately in [Pure.DI observations and issues](pure-di-issues.md).
 

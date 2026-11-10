@@ -180,7 +180,7 @@ deletes a chat the user asked for by name.
 | `svg-optimize` | Optimize SVG source size or rendering cost with measured before-and-after results while preserving appearance and consumer contracts. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `svg-review` | Review SVG source and rendered output for correctness, readability, accessibility, portability and unnecessary complexity without editing files. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
 | `svg-export` | Export an SVG image to requested PNG, WebP, JPEG or PDF with an available renderer, explicit dimensions/background and verified output. | file tools/readers, `process_run`, `fetch`, `tool_search`, `ask_user` |
-| `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; never pushes | `process_run` |
+| `git-commit` | On request only: drafts a message in the log's style and commits the chosen paths; one card offers the whole proposal first and lists files only when asked; never pushes | `process_run`, `ask_user` |
 | `git-commit-message-suggest` | Drafts a message for staged/local changes or selected commits; changes nothing | `process_run`, `ask_user` commit picker |
 | `git-rebase` | Rebases the current branch onto a selected branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |
 | `git-merge` | Merges a selected branch into the current branch, keeps a recovery ref and pauses at conflicts | `process_run`, `ask_user` branch picker |

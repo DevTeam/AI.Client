@@ -229,6 +229,25 @@ public class BuiltInSkillCatalogTests
     }
 
     [Fact]
+    public void ShouldKeepTheCommitConfirmationToOneCardUntilFilesAreAskedFor()
+    {
+        var commit = new BuiltInSkillCatalog().GetById("git-commit").ShouldNotBeNull();
+        var body = SkillMarkdown.Body(commit.Content);
+
+        // Committing the whole proposal is the common case, so the first card offers it in one click.
+        body.ShouldContain("All N files (Recommended)");
+        body.ShouldContain("Choose files…");
+        // The card reads at a glance: no per-file option until the person asks for them.
+        body.ShouldContain("no list of files yet");
+        // A per-file list is capped by the question itself, so a bigger change is grouped.
+        body.ShouldContain("at most eight options");
+        body.ShouldContain("A label holds at most 80 characters");
+        // Silence commits nothing, while a partial answer still names the assumption.
+        body.ShouldContain("Dismissed, declined, expired or interrupted commits nothing");
+        commit.AllowedTools.ShouldNotBeNull().ShouldContain("ask_user");
+    }
+
+    [Fact]
     public void ShouldGiveEveryBundledSkillAnIconThatSkillCreateOffers()
     {
         var skills = new BuiltInSkillCatalog().List();

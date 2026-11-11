@@ -17,10 +17,14 @@ public sealed class ModelInstructionComposer(
     public const string TrailingClose = "\n</application-guidance>";
 
     public ModelInstructionComposition Compose(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
-        ConnectionSettings? connection = null)
+        ConnectionSettings? connection = null, IReadOnlyList<AgentTool>? tools = null)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var selected = policy.SelectInstructions(registry.List(run), connection);
+        var names = (tools ?? []).Select(tool => tool.OriginalName).ToHashSet(StringComparer.Ordinal);
+        var registered = registry.List(run).Where(item => item.AppliesToTools is null || item.AppliesToTools.Any(names.Contains)).ToArray();
+        var modules = (policy.Resolve(connection).Compact || registered.Any(item => item.UsesCapabilityInstructions)) && tools is { Count: > 0 }
+            ? policy.ToolInstructions(tools) : [];
+        var selected = policy.SelectInstructions(registered.Concat(modules).ToArray(), connection);
         var tokens = estimator.ForModel(connection?.Model).EstimateMessages(selected.Select(item => new ChatCompletionMessage("system", item.Content)).ToArray());
 
         if (selected.Count == 0)
@@ -38,7 +42,8 @@ public sealed class ModelInstructionComposer(
             ? null
             : TrailingOpen + string.Join("\n\n", trailing.Select(item => item.Content)) + TrailingClose;
         return new ModelInstructionComposition(messages, leading.Concat(trailing).Select(item => item.Key).ToArray(),
-            tokens, note);
+            tokens, note, selected.Select(item => new ModelInstructionSize(item.Key,
+                estimator.ForModel(connection?.Model).EstimateMessages([new ChatCompletionMessage("system", item.Content)]))).ToArray());
     }
 
     public void Acknowledge(ToolRunContext run, ModelInstructionComposition composition) =>

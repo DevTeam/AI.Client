@@ -383,3 +383,40 @@ who is not looking at logs or the run banner.
 
 No chat or settings migration is required. No existing stored message is rewritten. Connections
 without explicit context limits continue to use the existing defaults.
+
+## Capability-scoped instructions in compact requests
+
+Compact requests use a short stable core rather than the full application-tool manual. The
+adaptive policy supplies one small contract for each selected application capability: discovery,
+writes, security, skills, navigation, subtasks, and themes. Selection uses trusted application
+server identity and tool identifiers, not user-message keywords or a separate intent classifier.
+Contracts are deduplicated when several tools need the same rules. The legacy full-window guide
+remains compatible; no platform-specific or model-specific prompt copies are introduced.
+
+Schema admission reserves the corresponding contract tokens and any tool-scoped run instructions.
+A schema that fits alone is insufficient if its required guidance would not fit. Instructions
+needed for already-used tool calls remain mandatory; the final complete-request planner still
+refuses an oversized request instead of silently removing protocol rules or user instructions.
+
+`ModelInstruction.AppliesToTools` scopes dynamic run guidance to selected tool identifiers. The
+execution-capability report, for example, is included only when a command/script tool is offered.
+`UsesCapabilityInstructions` marks standing compact cores so a budget-selected compact profile
+receives the same capability contracts even on a connection with a larger context window.
+The initial composition has no selected capabilities; after selection the composer adds their
+contracts before final planning. Existing tool retention and discovery pins continue to control
+which schemas survive between steps.
+
+Project/user instructions are never clipped by this policy. Memory and skill catalog projections
+retain their existing adaptive budgets, while active skill/run controls retain their existing
+lifetimes. This change does not add a summarization model, embeddings, new runtime dependencies,
+or a per-phone prompt configuration. Safety and output reserves are unchanged.
+
+Diagnostics include the size and key of every composed instruction, without its text. Individual
+sizes include per-message framing and therefore need not sum to the final serialized single
+system message's estimate. The request planner remains authoritative for total input cost.
+
+`LocalAgentGreetingLiveTests` runs a Russian greeting through the production Host, dispatcher,
+agent, instruction composer, budget planner, and real local Qwen, asserting the connection still
+uses 4096 tokens and the run completes. Opt in with `AI_LOCAL_AGENT_LIVE_TEST=1` and an isolated
+`AI_LOCAL_MODEL_DIRECTORY`; use a different runtime port from any active Desktop session.
+`AI_LOCAL_AGENT_REPORT_DIRECTORY` optionally retains only log files for inspection.

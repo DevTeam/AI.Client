@@ -360,7 +360,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     if (capabilityText is null) instructions.Remove(run, "run.execution-capabilities");
                     else instructions.Upsert(run, new ModelInstruction("run.execution-capabilities", capabilityText,
                         985, ModelInstructionLifetime.Run, Required: true,
-                        CompactContent: ExecutionCapabilities(candidates, resolved, approvalMode, installedPrograms, compact: true)));
+                        CompactContent: ExecutionCapabilities(candidates, resolved, approvalMode, installedPrograms, compact: true),
+                        AppliesToTools: ["process_run", "process_run_sandboxed", "cs_run"]));
                 }
             }
             if (maxModelSteps is { } warningLimit && modelSteps == Math.Max(1, warningLimit - 5))
@@ -419,7 +420,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var pendingTools = toolCatalog.ConsumePinned(run);
             var selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
                 pendingTools, sentTools, composition.Trailing is null ? 0
-                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]), instructions.List(run));
             var selectedTools = selection.Tools;
             var available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             if (toolGuidance.ForSelection(selection) is { } discovery)
@@ -431,7 +432,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             var content = new StringBuilder();
             string? finish = null;
             var chunkCount = 0;
-            composition = instructionComposer.Compose(run, modelContext, configuredConnection);
+            composition = instructionComposer.Compose(run, modelContext, configuredConnection, selectedTools);
             // Measured with the instructions and tools the request carries: they share the window.
             var stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
                 composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
@@ -455,7 +456,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     observedResults.Clear();
                     firstReads.Clear();
                     modelContext = checkpoints.Apply(run, context);
-                    composition = instructionComposer.Compose(run, modelContext, configuredConnection);
+                    composition = instructionComposer.Compose(run, modelContext, configuredConnection, selectedTools);
                 }
                 // Even an accepted checkpoint waits for more input before another automatic attempt.
                 compactAheadFrom = estimator.EstimateMessages(composition.Messages) + stepBudget.RetryGrowthTokens;
@@ -464,7 +465,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             // be sent, releasing definitions whose protected protocol groups were summarized away.
             selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
                 pendingTools, sentTools, composition.Trailing is null ? 0
-                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
+                    : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]), instructions.List(run));
             selectedTools = selection.Tools;
             sentTools = selectedTools;
             available = selectedTools.Select(item => item.ModelDefinition).ToArray();
@@ -474,12 +475,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 instructions.Upsert(run, new ModelInstruction("run.tool-discovery", finalDiscovery,
                     990, ModelInstructionLifetime.Request));
             else instructions.Remove(run, "run.tool-discovery");
-            composition = instructionComposer.Compose(run, modelContext, configuredConnection);
+            composition = instructionComposer.Compose(run, modelContext, configuredConnection, selectedTools);
             stepBudget = contextPolicy.ResolveCompaction(configuredConnection, estimator.EstimateTools(available),
                 composition.Trailing is null ? 0 : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]));
             checkpoints.UpdateBudget(run, stepBudget);
             contextDiagnostics.RecordToolSelection(request.Model, selection);
             instructionDiagnostics.RecordInstructions(request.Model, composition.Keys, composition.EstimatedTokens);
+            instructionDiagnostics.RecordInstructionSizes(request.Model, composition.Sizes ?? []);
             var plan = await contextPlanner.PlanAsync(configuredConnection, request.Model, composition.Messages, available,
                 new CompletionClientSummarizer(completion, request, usageMeter), stepBudget.SummaryTargetTokens, token,
                 composition.Trailing, compactionMemory);
@@ -1026,7 +1028,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
         {
             if (preview.Layers[index].Content.Length == 0) continue;
             instructions.Upsert(run, new ModelInstruction(preview.Layers[index].Key, preview.Layers[index].Content,
-                preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing));
+                preview.Layers.Count - index, ModelInstructionLifetime.Run, ModelInstructionPlacement.Standing,
+                UsesCapabilityInstructions: preview.Profile == "Compact" && preview.Layers[index].Key == StandingInstructions.BaseKey));
         }
     }
 

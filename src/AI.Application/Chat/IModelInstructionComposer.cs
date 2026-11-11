@@ -12,7 +12,10 @@ public sealed record ModelInstructionComposition(
     IReadOnlyList<ChatCompletionMessage> Messages,
     IReadOnlyList<string> Keys,
     long EstimatedTokens,
-    string? Trailing = null);
+    string? Trailing = null,
+    IReadOnlyList<ModelInstructionSize>? Sizes = null);
+
+public sealed record ModelInstructionSize(string Key, long Tokens);
 
 /// <summary>
 /// Builds the model-only instructions. It is the sole boundary at which hidden application
@@ -23,7 +26,7 @@ public sealed record ModelInstructionComposition(
 public interface IModelInstructionComposer
 {
     ModelInstructionComposition Compose(ToolRunContext run, IReadOnlyList<ChatCompletionMessage> context,
-        ConnectionSettings? connection = null);
+        ConnectionSettings? connection = null, IReadOnlyList<AgentTool>? tools = null);
     void Acknowledge(ToolRunContext run, ModelInstructionComposition composition);
 }
 
@@ -31,6 +34,7 @@ public interface IModelInstructionComposer
 public interface IModelInstructionDiagnostics
 {
     void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens);
+    void RecordInstructionSizes(string model, IReadOnlyList<ModelInstructionSize> sizes) { }
 
     /// <param name="usedTools">Whether the turn had called a tool before the empty response.</param>
     void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount, bool usedTools);

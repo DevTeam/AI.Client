@@ -31,6 +31,12 @@ public sealed partial class ContextPlanDiagnostics(ILogger<ContextPlanDiagnostic
     public void RecordInstructions(string model, IReadOnlyList<string> keys, long estimatedTokens) =>
         InstructionsComposed(logger, model, keys.Count, estimatedTokens, string.Join(",", keys));
 
+    public void RecordInstructionSizes(string model, IReadOnlyList<ModelInstructionSize> sizes) =>
+        InstructionSizes(logger, model, string.Join(",", sizes.Select(item => $"{item.Key}={item.Tokens}")));
+
+    [LoggerMessage(1006, LogLevel.Information, "LLM instruction sizes for {Model}: {Sizes}")]
+    private static partial void InstructionSizes(ILogger logger, string model, string sizes);
+
     public void RecordEmptyResponse(string model, int attempt, string? finishReason, int chunkCount, bool usedTools) =>
         EmptyResponse(logger, model, attempt, finishReason ?? "none", chunkCount, usedTools);
 

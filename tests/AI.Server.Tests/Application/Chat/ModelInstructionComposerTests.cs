@@ -8,6 +8,23 @@ using Xunit;
 public sealed class ModelInstructionComposerTests
 {
     [Fact]
+    public void InactiveScopedInstructionsDoNotConsumeTheGreetingBudget()
+    {
+        var registry = new ModelInstructionRegistry();
+        var composer = new ModelInstructionComposer(registry, new ContextTokenEstimator(),
+            new AdaptiveContextPolicy(new ContextTokenEstimator(), new AI.Contracts.Settings.ConnectionContextLimitsResolver()));
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = registry.Begin(run);
+        registry.Upsert(run, new ModelInstruction("user.rules", "Keep all user instructions.", Required: true));
+        registry.Upsert(run, new ModelInstruction("execution", "Only relevant when executing.", Required: true,
+            AppliesToTools: ["process_run"]));
+        var result = composer.Compose(run, [new ChatCompletionMessage("user", "Hello")]);
+        result.Keys.ShouldBe(["user.rules"]);
+        result.Messages[0].Content.ShouldBe("Keep all user instructions.");
+        result.Sizes.ShouldNotBeNull().ShouldHaveSingleItem().Key.ShouldBe("user.rules");
+    }
+
+    [Fact]
     public void ShouldComposeHiddenInstructionsWithoutChangingOriginalContext()
     {
         var registry = new ModelInstructionRegistry();

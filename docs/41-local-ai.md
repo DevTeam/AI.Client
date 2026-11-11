@@ -183,3 +183,37 @@ work; no mobile release artifacts were created.
 When preparing a runtime for a different architecture, pass `-RuntimeIdentifier` explicitly.
 New package manifests record the target platform; release packaging checks it before publishing
 and rejects component sources inside the release directory that is cleaned by the build.
+
+## Mobile memory requirement
+
+Android and iPhone devices with 6 GB total physical RAM are the minimum target; 8 GB devices
+must also be covered. This is device RAM, not an inference allocation. Target peak memory for
+the complete mobile application, including UI, runtime, weights, caches, and buffers: at most
+2 GB, subject to measurement on physical devices and OS memory-pressure behavior. Passing a
+Windows working-set measurement does not certify this requirement.
+
+Desktop and mobile testing share the same 4096-token context baseline. A compact instruction
+profile and a small tool catalog are required to fit the agent within that budget. It must
+fit the agent request, output reserve, and safety allowance before dispatch; silently dropping
+safety reserves is not an acceptable way to fit. Inference should unload on memory pressure and
+when the OS requires background resources to be released. Increasing mobile context or changing
+KV-cache precision requires measured memory and tool-quality validation. No mobile executable
+or phone memory certification is delivered by the current desktop service.
+
+## Compact instruction integration (2026-11-11)
+
+Compact agent requests now use a short core and capability-specific instructions selected with
+the offered tool schemas. Runtime command-policy details are omitted when command/script tools
+are not offered. User/project instructions and existing output/safety reserves are preserved.
+See [capability-scoped instructions](21-tool-selection-and-adaptive-compaction.md#capability-scoped-instructions-in-compact-requests).
+
+An isolated production-agent greeting with the real Qwen model completed at context 4096.
+Its final input estimate was 830/1503 tokens, with 289 additional schema tokens; the core's
+per-layer estimate was 264 tokens. These are measurements of a fresh test project, not a promise
+that arbitrary project instructions or all tool schemas will fit. Instruction diagnostics now
+report individual block sizes without logging their contents. The live test uses a separate
+runtime port and does not change the running Desktop's settings.
+
+The complete server suite passed with 1588 tests and 4 environment-dependent skips. The isolated
+solution build passed without warnings or errors. Rebuild/restart Desktop to apply the source
+changes; an already running Desktop continues using the old assemblies.

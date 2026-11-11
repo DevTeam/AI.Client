@@ -38,7 +38,9 @@ public sealed record ModelInstruction(
     ModelInstructionLifetime Lifetime = ModelInstructionLifetime.Run,
     ModelInstructionPlacement Placement = ModelInstructionPlacement.Run,
     bool Required = false,
-    string? CompactContent = null);
+    string? CompactContent = null,
+    bool UsesCapabilityInstructions = false,
+    IReadOnlyList<string>? AppliesToTools = null);
 
 /// <summary>
 /// Run-local mailbox for application mechanisms which need to guide the next model request

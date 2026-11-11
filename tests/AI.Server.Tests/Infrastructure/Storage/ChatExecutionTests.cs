@@ -2069,7 +2069,10 @@ public sealed partial class ChatExecutionTests
         var tools = call.Request.Tools.ShouldNotBeNull();
         (estimator.EstimateMessages(messages) + estimator.EstimateTools(tools) + 1_000 + 1_280)
             .ShouldBeLessThanOrEqualTo(window);
-        messages.ShouldContain(message => message.Role == "system" && message.Content.Contains("Discover omitted capabilities", StringComparison.Ordinal));
+        if (tools.Any(tool => tool.Name == ToolRef.ToolSearchName))
+            messages.ShouldContain(message => message.Role == "system" && message.Content.Contains("Discover omitted capabilities", StringComparison.Ordinal));
+        else
+            messages.ShouldNotContain(message => message.Role == "system" && message.Content.Contains("Discover omitted capabilities", StringComparison.Ordinal));
         tools.ShouldNotBeEmpty();
         call.Answer.SetResult("Hello");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);

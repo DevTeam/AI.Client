@@ -17,10 +17,11 @@ public interface IAdaptiveContextPolicy
     void ObserveInputUsage(ChatCompletionRequest request, long reportedInputTokens);
     ModelContextPreview PrepareStanding(ModelContextPreview preview, ConnectionSettings? connection, bool appToolsAvailable);
     IReadOnlyList<ModelInstruction> SelectInstructions(IReadOnlyList<ModelInstruction> instructions, ConnectionSettings? connection);
+    IReadOnlyList<ModelInstruction> ToolInstructions(IReadOnlyList<AgentTool> tools);
     ToolSelection Choose(ConnectionSettings? connection, string request,
         IReadOnlyList<ChatCompletionMessage> context, IReadOnlyList<AgentTool> availableTools,
         IReadOnlySet<string>? pinnedTools = null, IReadOnlyList<AgentTool>? previousTools = null,
-        long trailingInstructionTokens = 0);
+        long trailingInstructionTokens = 0, IReadOnlyList<ModelInstruction>? scopedInstructions = null);
 }
 
 public sealed record AdaptiveContextBudget(long ContextWindowTokens, long ReservedOutputTokens,

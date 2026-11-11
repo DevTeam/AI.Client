@@ -20,6 +20,54 @@ public sealed class AdaptiveContextPolicyTests
 {
     private readonly ContextTokenEstimator _estimator = new();
     private AdaptiveContextPolicy Policy() => new(_estimator, new ConnectionContextLimitsResolver());
+
+    [Fact]
+    public void CompactCoreDoesNotPreloadInactiveCapabilityRules()
+    {
+        var preview = Policy().PrepareStanding(Preview(), Connection(4096, 1024), true);
+        var core = preview.Layers.Single(item => item.Key == StandingInstructions.BaseKey);
+        core.Tokens.ShouldBeLessThan(300);
+        core.Content.ShouldNotContain("operationId");
+        core.Content.ShouldNotContain("spawn_subtask");
+        core.Content.ShouldNotContain("AddDirectoryGrants");
+        preview.Layers.Single(item => item.Key == StandingInstructions.ProjectKey).Content.ShouldBe("Keep project rules.");
+    }
+
+    [Fact]
+    public void CapabilityContractsAreSelectedByTrustedToolIdentityAndDeduplicated()
+    {
+        var policy = Policy();
+        var security = Tool("app_security", "Security", app: true) with { ServerId = AppMcpServer.Id };
+        var projects = Tool("app_projects", "Projects", app: true) with { ServerId = AppMcpServer.Id };
+        policy.ToolInstructions([]).ShouldBeEmpty();
+        policy.ToolInstructions([security with { ServerId = Guid.NewGuid() }]).ShouldBeEmpty();
+        var modules = policy.ToolInstructions([security, projects]);
+        modules.Select(item => item.Key).ShouldBe(["capability.writes", "capability.security"]);
+        modules.ShouldAllBe(item => item.Required);
+        modules.Single(item => item.Key == "capability.security").Content.ShouldContain("Never infer approval");
+    }
+
+    [Fact]
+    public void ToolAndRequiredContractMustFitTogether()
+    {
+        var policy = Policy();
+        var connection = Connection(4096, 1500);
+        var security = Tool("app_security", "Security", app: true) with { ServerId = AppMcpServer.Id };
+        _estimator.EstimateTools([security.ModelDefinition]).ShouldBeLessThan(policy.Resolve(connection).ToolTokens);
+        policy.Choose(connection, "security", [new("user", new string('x', 2000))], [security]).Tools.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ScopedRunContractIsPartOfTheToolAdmissionCost()
+    {
+        var policy = Policy();
+        var connection = Connection(4096, 1024);
+        var execution = Tool("process_run", "Run a command");
+        policy.Choose(connection, "command", [], [execution]).Tools.ShouldContain(execution);
+        ModelInstruction[] scoped = [new("execution-policy", new string('x', 4000), Required: true,
+            AppliesToTools: ["process_run"])];
+        policy.Choose(connection, "command", [], [execution], scopedInstructions: scoped).Tools.ShouldBeEmpty();
+    }
     private static ConnectionSettings Connection(long window, long reserve = 1_000) =>
         new(Guid.NewGuid(), "Test", "https://example.test/v1", "model", true, true, false,
             ContextWindowTokens: window, ReservedOutputTokens: reserve);

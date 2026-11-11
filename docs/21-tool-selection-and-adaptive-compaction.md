@@ -423,7 +423,11 @@ sizes include per-message framing and therefore need not sum to the final serial
 system message's estimate. The request planner remains authoritative for total input cost.
 
 `LocalAgentGreetingLiveTests` runs a Russian greeting through the production Host, dispatcher,
-agent, instruction composer, budget planner, and real local Qwen, asserting the connection still
-uses 4096 tokens and the run completes. Opt in with `AI_LOCAL_AGENT_LIVE_TEST=1` and an isolated
-`AI_LOCAL_MODEL_DIRECTORY`; use a different runtime port from any active Desktop session.
-`AI_LOCAL_AGENT_REPORT_DIRECTORY` optionally retains only log files for inspection.
+agent, instruction composer, budget planner, and real local model, asserting the connection uses
+the package manifest's context window and the run completes. A second case grants a workspace
+with two files and continues the dialogue with "какие файлы у менят есть" and "в мой директории";
+it passes when the agent lists the directory and names both files. Opt in with
+`AI_LOCAL_AGENT_LIVE_TEST=1` and an isolated `AI_LOCAL_MODEL_DIRECTORY`; use a different runtime
+port from any active Desktop session. `AI_LOCAL_AGENT_ENGLISH_CONTROL=1` asks the same in English,
+`AI_LOCAL_AGENT_TIMEOUT_SECONDS` replaces the 180-second limit, and
+`AI_LOCAL_AGENT_REPORT_DIRECTORY` retains the logs and the chat transcript, also for a failed run.

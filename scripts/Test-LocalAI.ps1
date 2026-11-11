@@ -3,7 +3,7 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:52176/v1',
     [Parameter(Mandatory)][string]$ApiKey,
-    [string]$Model = 'qwen3-0.6b-local',
+    [string]$Model = 'qwen3.5-2b-local',
     [string]$Prompt = 'Use get_weather to get the weather in Moscow.',
     [ValidateSet('auto','required')][string]$ToolChoice = 'auto',
     [int]$Seed = 1

@@ -20,7 +20,7 @@ CloseApplications=yes
 [Components]
 Name: "main"; Description: "Application"; Types: full compact custom; Flags: fixed
 #if DirExists(SourceDir + "\local-ai")
-Name: "localai"; Description: "Offline Qwen3 0.6B model"; Types: full
+Name: "localai"; Description: "Offline Qwen3.5 2B model"; Types: full
 #endif
 
 [Files]

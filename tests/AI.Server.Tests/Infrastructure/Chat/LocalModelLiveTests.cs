@@ -27,7 +27,7 @@ public sealed class LocalModelLiveTests
             new AI.Infrastructure.Projects.SystemClock(), Mock.Of<IResourceAssetService>());
         var request = new ChatCompletionRequest(
             Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_URL") ?? "http://127.0.0.1:52176/v1",
-            Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_NAME") ?? "qwen3-0.6b-local",
+            Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_NAME") ?? "qwen3.5-2b-local",
             Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_KEY"), "Use get_weather to get the weather in Moscow.",
             Tools: [new ChatToolDefinition("get_weather", "Get weather for a city.",
                 JsonSerializer.SerializeToElement(new { type = "object", properties = new { city = new { type = "string" } }, required = (string[])["city"] }))]);

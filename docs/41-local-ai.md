@@ -2,6 +2,11 @@
 
 ## Automatic development launch
 
+The default local model is Qwen3.5-2B (Q4_K_M) with an 8192-token window. It replaced Qwen3-0.6B
+after the trial in [the Qwen3.5-2B report](analysis/qwen35-2b-trial.md): it makes genuine
+structured tool calls, answers Russian correctly, and completed the directory dialogue at 8192,
+where 4096 ran out of input budget and 16384 distracted it with more tools.
+
 Use the build application to download, verify, cache, and connect Qwen without setting environment
 variables or running preparation scripts manually:
 
@@ -25,7 +30,8 @@ dotnet run --project build -- run-both --local-ai
 
 `--local-ai` is opt-in, so ordinary Host/Web runs do not download model files. Preparation caches
 shared downloads in `artifacts/local-ai/downloads` and complete packages in
-`artifacts/local-ai/qwen3-q4-k-m-b12244/<runtime>`. Repeated preparation verifies and reuses the
+`artifacts/local-ai/qwen35-2b-q4-k-m-b12244/<runtime>`. A package prepared earlier for Qwen3-0.6B
+(`qwen3-q4-k-m-b12244`) is no longer used and can be deleted. Repeated preparation verifies and reuses the
 package without network access. Downloads use temporary files; the ready manifest is published
 last. Concurrent preparations share a file lock. The weights are pinned by SHA-256; the Windows
 x64 runtime archive is also pinned by SHA-256 to the artifact used in the live evaluation.
@@ -48,13 +54,15 @@ The Host and Desktop recognize `local-ai/manifest.json` next to the executable. 
 `AI_LOCAL_MODEL_DIRECTORY` environment variable selects a package outside the installation.
 Without a manifest, nothing is started or downloaded. With a package, the background service
 verifies the weights, starts its own llama-server on IPv4 loopback, and waits up to two minutes
-for its authenticated model catalog. It then registers `Local Qwen3 0.6B` for the existing local
-users through the normal settings and protected-secret services. Existing default connections
+for its authenticated model catalog. It then registers `Local Qwen3.5 2B` for the existing local
+users (a connection still named `Local Qwen3 0.6B` by the application is renamed; a name the user
+chose is kept) through the normal settings and protected-secret services. Existing default connections
 and the local connection's enabled state are preserved. The local service currently starts on
 Host startup when enabled, rather than on the first completion. Saving the connection as disabled
 unloads the runtime within approximately two seconds; enabling it starts the runtime again.
 
-The process uses a fresh API key on each launch, a single inference slot, a 4096-token context,
+The process uses a fresh API key on each launch, a single inference slot, the manifest's context
+window (8192 tokens for the default package),
 and the Qwen template's `enable_thinking=false` setting. The normal OpenAI Chat Completions
 client handles streaming and tool calls. Image input is disabled. A process failure is logged
 without stopping the application. Unexpected runtime failures receive at most three launch attempts
@@ -89,13 +97,15 @@ Run with PowerShell 7 on the target platform:
 
 The preparer downloads one GGUF, validates its pinned SHA-256, and writes the manifest last.
 It never overwrites an existing component. Preserve the runtime's original notices; the script
-also includes Qwen's license. Model: `bartowski/Qwen_Qwen3-0.6B-GGUF`,
-`Qwen_Qwen3-0.6B-Q4_K_M.gguf`, 484220320 bytes,
-SHA-256 `9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14`.
-The Host accepts a package whose weights are below 2 GB and whose manifest context is
-1024–32768 tokens, so that larger candidates such as Qwen3.5-2B can be run (see
-[the Qwen3.5-2B trial](analysis/qwen35-2b-trial.md)). The bundled Qwen3 weights stay below 500 MB.
-Total component size is reported separately.
+also includes Qwen's license. This PowerShell script still prepares the earlier Qwen3-0.6B preset
+(`bartowski/Qwen_Qwen3-0.6B-GGUF`, `Qwen_Qwen3-0.6B-Q4_K_M.gguf`, 484220320 bytes, SHA-256
+`9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14`).
+
+The build target prepares the default model: `unsloth/Qwen3.5-2B-GGUF` at revision
+`f6d5376be1edb4d416d56da11e5397a961aca8ae`, `Qwen3.5-2B-Q4_K_M.gguf`, 1280835840 bytes, SHA-256
+`aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223`, Apache 2.0 license from
+`Qwen/Qwen3.5-2B`. The Host accepts a package whose weights are below 2 GB and whose manifest
+context is 1024–32768 tokens. Total component size is reported separately.
 
 Set `AI_LOCAL_MODEL_PACKAGE` to the prepared directory before running the existing release
 packaging command. Both products receive the component. Windows installers expose an optional
@@ -195,7 +205,9 @@ the complete mobile application, including UI, runtime, weights, caches, and buf
 2 GB, subject to measurement on physical devices and OS memory-pressure behavior. Passing a
 Windows working-set measurement does not certify this requirement.
 
-Desktop and mobile testing share the same 4096-token context baseline. A compact instruction
+Desktop now defaults to Qwen3.5-2B with an 8192-token window. On desktop it used about
+0.9–1.7 GB of process memory; phones are not measured yet, and the mobile baseline below
+remains 4096 tokens until they are. A compact instruction
 profile and a small tool catalog are required to fit the agent within that budget. It must
 fit the agent request, output reserve, and safety allowance before dispatch; silently dropping
 safety reserves is not an acceptable way to fit. Inference should unload on memory pressure and

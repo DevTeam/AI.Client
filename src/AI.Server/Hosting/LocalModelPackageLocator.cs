@@ -26,7 +26,7 @@ public sealed class LocalModelPackageLocator(IFileSystem files, IPath paths) : I
             // Test hosts, installed products, and other executables must never opt into this cache.
             if (!output.StartsWith(desktopBin, paths.Comparison)) return installationDirectory;
             var package = paths.Combine(root, paths.Combine("artifacts", paths.Combine("local-ai",
-                paths.Combine("qwen3-q4-k-m-b12244", runtime))));
+                paths.Combine("qwen35-2b-q4-k-m-b12244", runtime))));
             return await files.FileExistsAsync(paths.Combine(package, "manifest.json"), cancellationToken)
                 ? package : installationDirectory;
         }

@@ -207,7 +207,8 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                     true, false, false, ContextWindowTokens: manifest.ContextTokens,
                     ReservedOutputTokens: 1024, ImageInput: ImageInputMode.Disabled)
                 : existing with { BaseUrl = baseUrl, Model = manifest.ModelAlias, ContextWindowTokens = manifest.ContextTokens,
-                    Name = existing.Name is "Local Qwen3 0.6B" or "Local MNN-Pocket 0.3B Q4_1 QAT"
+                    // A name the application gave follows the installed model; a name the user chose stays.
+                    Name = existing.Name is "Local Qwen3 0.6B" or "Local Qwen3.5 2B" or "Local MNN-Pocket 0.3B Q4_1 QAT"
                         ? manifest.ConnectionName : existing.Name };
             if (connection != existing) await settings.UpsertConnectionAsync(connection, existing, stoppingToken);
             if (key is not null) await settings.SetConnectionCredentialAsync(ConnectionId, key, stoppingToken);
@@ -235,8 +236,8 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
 }
 
 public sealed record LocalModelManifest(string Executable, string Model, string ModelSha256,
-    int Port = 52176, int ContextTokens = 4096, string ModelAlias = "qwen3-0.6b-local",
-    string ConnectionName = "Local Qwen3 0.6B", bool DisableThinking = true);
+    int Port = 52176, int ContextTokens = 8192, string ModelAlias = "qwen3.5-2b-local",
+    string ConnectionName = "Local Qwen3.5 2B", bool DisableThinking = true);
 
 public sealed record LocalModelOptions(string Directory, string? DevelopmentBaseDirectory = null);
 

@@ -145,7 +145,7 @@ internal sealed class BuildApplication(
 
     private void RegisterHost(RootCommand root)
     {
-        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3.5 2B automatically." };
         // `host` is the legacy name for the run target. Renamed to `run` everywhere else, but kept
         // here as an alias so existing `.run` files and muscle memory continue to work until they
         // get updated.
@@ -155,7 +155,7 @@ internal sealed class BuildApplication(
         root.Subcommands.Add(hostCommand);
 
         var runCommand = new Command("run", "Publish AI.Host to artifacts/host/ and run it. The frontend is started separately (see AI Backend.run.xml).");
-        var runLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        var runLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3.5 2B automatically." };
         runCommand.Options.Add(runLocalAi);
         runCommand.SetAction(parse => runTarget.RunAsync(cancellationToken, parse.GetValue(runLocalAi)));
         root.Subcommands.Add(runCommand);
@@ -194,7 +194,7 @@ internal sealed class BuildApplication(
         runBothCommand.Options.Add(corsOrigins);
         runBothCommand.Options.Add(environment);
         runBothCommand.Options.Add(publicWeb);
-        var bothLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        var bothLocalAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3.5 2B automatically." };
         runBothCommand.Options.Add(bothLocalAi);
         runBothCommand.SetAction(parseResult => runBothTarget.RunAsync(
             new RunBothOptions(
@@ -215,12 +215,12 @@ internal sealed class BuildApplication(
             DefaultValueFactory = _ => System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier
         };
         runtime.AcceptOnlyFromAmong("win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64");
-        var prepare = new Command("prepare-local-ai", "Download and verify the cached Qwen3 and llama.cpp package.");
+        var prepare = new Command("prepare-local-ai", "Download and verify the cached Qwen3.5 2B and llama.cpp package.");
         prepare.Options.Add(runtime);
         prepare.SetAction(async parse => { await prepareLocalAiTarget.RunAsync(parse.GetValue(runtime)!, cancellationToken); return 0; });
         root.Subcommands.Add(prepare);
 
-        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3 automatically." };
+        var localAi = new Option<bool>("--local-ai") { Description = "Prepare and enable local Qwen3.5 2B automatically." };
         var data = new Option<string?>("--data-dir") { Description = "Desktop data directory, relative to the solution or absolute." };
         var desktop = new Command("run-desktop", "Publish and run Desktop outside the source tree.");
         desktop.Options.Add(localAi);

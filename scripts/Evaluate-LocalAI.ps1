@@ -3,7 +3,7 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:52176/v1',
     [Parameter(Mandatory)][string]$ApiKey,
-    [string]$Model = 'qwen3-0.6b-local',
+    [string]$Model = 'qwen3.5-2b-local',
     [Parameter(Mandatory)][string]$ReportPath
 )
 $ErrorActionPreference = 'Stop'

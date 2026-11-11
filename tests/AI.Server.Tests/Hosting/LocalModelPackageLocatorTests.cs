@@ -20,7 +20,7 @@ public sealed class LocalModelPackageLocatorTests
         var root = Path.Combine(Path.GetTempPath(), "local-ai-location-tests");
         var output = Path.Combine(root, relativeOutput.Replace('/', Path.DirectorySeparatorChar));
         var installation = Path.Combine(output, "local-ai");
-        var cache = Path.Combine(root, "artifacts", "local-ai", "qwen3-q4-k-m-b12244", "win-x64");
+        var cache = Path.Combine(root, "artifacts", "local-ai", "qwen35-2b-q4-k-m-b12244", "win-x64");
         var known = new HashSet<string>(StringComparer.Ordinal) { Path.Combine(root, "AI.slnx") };
         if (installed) known.Add(Path.Combine(installation, "manifest.json"));
         if (cached) known.Add(Path.Combine(cache, "manifest.json"));

@@ -9,8 +9,14 @@ using System.Text.Json;
 internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) : IPrepareLocalAiTarget
 {
     private const string Version = "b12244";
-    private const string Model = "Qwen_Qwen3-0.6B-Q4_K_M.gguf";
-    private const string ModelHash = "9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14";
+    private const string Model = "Qwen3.5-2B-Q4_K_M.gguf";
+    private const string ModelHash = "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223";
+
+    /// <summary>The weights come from this pinned revision of unsloth/Qwen3.5-2B-GGUF.</summary>
+    private const string ModelRevision = "f6d5376be1edb4d416d56da11e5397a961aca8ae";
+
+    /// <summary>The package directory; it names the model, so another model never reuses an old package.</summary>
+    private const string PackageName = "qwen35-2b-q4-k-m-" + Version;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public async Task<string> RunAsync(string runtime, CancellationToken cancellationToken)
@@ -26,7 +32,7 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
         Directory.CreateDirectory(root);
         // Separate build invocations may prepare the same shared weights concurrently.
         await using var gate = await LockAsync(Path.Combine(root, ".prepare.lock"), cancellationToken);
-        var package = Path.Combine(root, $"qwen3-q4-k-m-{Version}", runtime);
+        var package = Path.Combine(root, PackageName, runtime);
         var executableName = runtime.StartsWith("win-", StringComparison.Ordinal) ? "llama-server.exe" : "llama-server";
         var manifestPath = Path.Combine(package, "manifest.json");
         if (File.Exists(manifestPath))
@@ -38,7 +44,7 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
                 && File.Exists(Path.Combine(package, data.GetProperty("Executable").GetString()!))
                 && await MatchesAsync(Path.Combine(package, Model), ModelHash, cancellationToken))
             {
-                Console.WriteLine($"Local Qwen3 is already prepared: {package}");
+                Console.WriteLine($"Local Qwen3.5 2B is already prepared: {package}");
                 return package;
             }
             // Do not let the Host see a partial repair as an installed component.
@@ -49,10 +55,10 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
         var weights = Path.Combine(downloads, Model);
         if (!await MatchesAsync(weights, ModelHash, cancellationToken))
         {
-            await DownloadAsync($"https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/{Model}?download=true",
+            await DownloadAsync($"https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/{ModelRevision}/{Model}?download=true",
                 weights, cancellationToken);
             if (!await MatchesAsync(weights, ModelHash, cancellationToken))
-                throw new InvalidDataException("Qwen3 checksum mismatch. Run preparation again to retry the download.");
+                throw new InvalidDataException("Qwen3.5 2B checksum mismatch. Run preparation again to retry the download.");
         }
         var runtimeArchive = Path.Combine(downloads, $"llama-{Version}-{archive}");
         // The Windows artifact is pinned to the checksum used in the live desktop evaluation.
@@ -80,20 +86,22 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         File.Copy(weights, Path.Combine(package, Model), overwrite: true);
-        var license = Path.Combine(downloads, "LICENSE-Qwen");
+        var license = Path.Combine(downloads, "LICENSE-Qwen3.5-2B");
         if (!File.Exists(license))
-            await DownloadAsync("https://huggingface.co/Qwen/Qwen3-0.6B/raw/main/LICENSE", license, cancellationToken);
+            await DownloadAsync("https://huggingface.co/Qwen/Qwen3.5-2B/raw/main/LICENSE", license, cancellationToken);
         File.Copy(license, Path.Combine(package, "LICENSE-Model"), overwrite: true);
         var json = JsonSerializer.Serialize(new
         {
             Executable = Path.GetRelativePath(package, executable), Model, ModelSha256 = ModelHash,
-            ModelAlias = "qwen3-0.6b-local", ConnectionName = "Local Qwen3 0.6B",
-            Port = 52176, ContextTokens = 4096, DisableThinking = true,
+            ModelAlias = "qwen3.5-2b-local", ConnectionName = "Local Qwen3.5 2B",
+            // 8192 is the window where the agent completed directory dialogues in the trial; 16384
+            // offered more tools and distracted the model, 4096 ran out of input budget.
+            Port = 52176, ContextTokens = 8192, DisableThinking = true,
             RuntimeVersion = Version, RuntimeIdentifier = runtime
         }, JsonOptions);
         await File.WriteAllTextAsync(manifestPath + ".tmp", json, cancellationToken);
         File.Move(manifestPath + ".tmp", manifestPath, overwrite: true);
-        Console.WriteLine($"Local Qwen3 is prepared: {package}");
+        Console.WriteLine($"Local Qwen3.5 2B is prepared: {package}");
         return package;
     }
 

@@ -52,6 +52,15 @@ foreach ($process in $processes) {
     }
 }
 
+# A Host stopped by force leaves its local inference runtime running from local-ai, and that runtime
+# would keep the component's files locked against an update or a deselected component's removal.
+$localAi = [IO.Path]::GetFullPath((Join-Path $InstallDirectory 'local-ai')) + [IO.Path]::DirectorySeparatorChar
+foreach ($runtime in @(Get-CimInstance Win32_Process | Where-Object {
+    $_.ExecutablePath -and $_.ExecutablePath.StartsWith($localAi, [StringComparison]::OrdinalIgnoreCase) })) {
+    Stop-Process -Id $runtime.ProcessId -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $runtime.ProcessId -Timeout 15 -ErrorAction SilentlyContinue
+}
+
 if ($TaskName -and $UnregisterTask -and $task) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }

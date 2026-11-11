@@ -20,7 +20,7 @@ CloseApplications=yes
 [Components]
 Name: "main"; Description: "Application"; Types: full compact custom; Flags: fixed
 #if DirExists(SourceDir + "\local-ai")
-Name: "localai"; Description: "Offline Qwen3.5 2B model"; Types: full
+Name: "localai"; Description: "Local AI: offline Qwen3.5 2B model"; Types: full
 #endif
 
 [Files]
@@ -31,6 +31,11 @@ Source: "{#SourceDir}\local-ai\*"; DestDir: "{app}\local-ai"; Components: locala
 #endif
 
 [InstallDelete]
+#if DirExists(SourceDir + "\local-ai")
+; Local AI is optional: clearing the component on a later install removes a copy an earlier one put there.
+; An installer built without the component leaves an installed one alone.
+Type: filesandordirs; Name: "{app}\local-ai"; Components: not localai
+#endif
 ; The retired optional C# scripting tools lived here; C# scripts now run in the built-in tools.
 Type: filesandordirs; Name: "{app}\mcp-csharp"
 

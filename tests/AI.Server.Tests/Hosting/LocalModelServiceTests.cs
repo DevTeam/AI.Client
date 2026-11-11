@@ -36,6 +36,39 @@ public sealed class LocalModelServiceTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ANewLocalConnectionIsFreeTextOnlyAndDefaultOnlyWhenAlone(bool alone)
+    {
+        var manifest = new LocalModelManifest("runtime/llama-server", "model.gguf", new string('0', 64));
+        AI.Contracts.Settings.ConnectionSettings[] others = alone ? []
+            : [new(Guid.NewGuid(), "Cloud", "https://example.test/v1", "model", true, true, true)];
+
+        var connection = LocalModelService.NewConnection(manifest, "http://127.0.0.1:52176/v1", others);
+
+        Assert.True(connection.Enabled);
+        Assert.Equal(alone, connection.IsDefault);
+        Assert.False(connection.ForSubtasks);
+        Assert.Equal(AI.Contracts.Settings.ImageInputMode.Disabled, connection.ImageInput);
+        Assert.Equal(new AI.Contracts.Usage.TokenPrices(0, 0, 0), connection.Prices);
+        Assert.Equal(1, connection.Capability);
+        Assert.Equal(8192, connection.ContextWindowTokens);
+        Assert.Equal(1024, connection.ReservedOutputTokens);
+        Assert.Equal("qwen3.5-2b-local", connection.Model);
+    }
+
+    [Fact]
+    public void DefaultsFillOnlyAProfileNobodyDescribed()
+    {
+        var bare = new AI.Contracts.Settings.ConnectionSettings(LocalModelService.ConnectionId, "Local Qwen3 0.6B",
+            "http://127.0.0.1:52176/v1", "qwen3-0.6b-local", true, false, true);
+        var described = bare with { Capability = 3, GoodFor = "Mine" };
+
+        Assert.Equal(new AI.Contracts.Usage.TokenPrices(0, 0, 0), LocalModelService.Defaulted(bare).Prices);
+        Assert.Same(described, LocalModelService.Defaulted(described));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task MissingOrCorruptedPackageDoesNotChangeConnections(bool corrupted)
@@ -65,6 +98,10 @@ public sealed class LocalModelServiceTests
             users.Verify(item => item.ListAsync(It.IsAny<CancellationToken>()), corrupted ? Times.Never() : Times.Once());
             users.VerifyNoOtherCalls();
             Assert.Equal(corrupted ? "failed" : "notInstalled", service.Status.State);
+            // Damaged files say how to repair them, never where they are, and are not retried.
+            if (corrupted) Assert.Contains("Reinstall AI Client", service.Status.Error);
+            Assert.False(service.Status.CanRetry);
+            Assert.False(service.Retry());
             Assert.Equal(corrupted ? 1 : 0, logger.Invocations.Count(invocation => invocation.Method.Name == "Log"));
             await service.StopAsync(TestContext.Current.CancellationToken);
         }

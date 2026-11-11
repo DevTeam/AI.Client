@@ -109,7 +109,13 @@ context is 1024–32768 tokens. Total component size is reported separately.
 
 Set `AI_LOCAL_MODEL_PACKAGE` to the prepared directory before running the existing release
 packaging command. Both products receive the component. Windows installers expose an optional
-Local AI component, selected for Full installations. Without the environment variable, existing
+"Local AI" component. It is selected by default (Full installation, the first setup type); the
+Compact type leaves it out and Custom lets the user clear it. A later install or update keeps the
+user's previous choice, and clearing the component on a later install removes the copy an earlier
+one installed. Before files are replaced the setup stops the product and any runtime still running
+from its `local-ai` folder, so a force-stopped Host cannot keep the component locked. Verified on
+2026-11-11 with a compiled test installer (separate AppId, fake payload): default install, install
+without the component, unattended reinstall and reinstall with it. Without the environment variable, existing
 release payloads remain small. Linux/macOS packages currently include the component when staged;
 separate optional native packages are still required. Do not place a component below the release
 output directories, which the packaging target cleans before publishing.
@@ -164,9 +170,48 @@ component registers its connection again. The existing default provider, name cu
 and enabled choice are preserved. A missing package disables its saved connection and clears
 its stale credential without removing other providers.
 
-The connection editor exposes Check local AI status. The backing read-only endpoint is
-`GET /api/settings/local-ai`, with states `notInstalled`, `verifying`, `starting`, `ready`,
-`disabled`, `failed`, and `stopped`. The response contains no credentials or package paths.
+### Settings
+
+Settings → Connections opens the local connection with its state first: a status dot (the Host's
+dot), a title and a line about the model, refreshed every 1.5 s while it loads and every 5 s
+otherwise, without a manual check. The list shows `On this computer` under its name, `Turned off`
+rather than `Unavailable` when it is switched off, and `Not installed` or `Not available`.
+
+| State | Shown as |
+| --- | --- |
+| `verifying`, `starting` | Pulsing accent dot, "Checking the model files…" / "Loading the model…" |
+| `ready` | Success dot, "Ready", model, "runs on this computer", context window |
+| `disabled` | Hollow dot, "Turned off": it uses no memory |
+| `failed` | Danger dot, "Not available", the reason as an inline error, and "Try again" when a retry can help |
+| `notInstalled` | Hollow dot, "Not installed": a neutral note (leaving the component out is a choice at installation), how to add it, and "Remove connection" |
+
+The Enabled switch takes effect when Settings closes and saves; until then the state says what
+will happen ("Turns off when Settings closes", "Loads when Settings closes"). It is disabled when
+the component is not installed. AI Client sets the address, key, model and context window on every
+start, so the form shows them as values instead of fields, and it has no image input, reasoning
+effort, prices or copy-as-JSON; the name, the default and subtask choices, the profile and the
+reserved output stay editable.
+
+Reasons are written for the person and never contain a path: damaged or incomplete files (reinstall
+with Local AI selected; not retried), a port used by another program, a runtime blocked by security
+software, a model that stopped while loading or did not load within two minutes (free memory). A
+busy port or a blocked runtime waits for a retry at once; other failures are retried up to three
+times first. `POST /api/settings/local-ai/retry` starts a failed runtime again and answers with the
+status (409 when there was nothing to retry).
+
+### Defaults
+
+The Host registers the local connection when it first finds an installed package: enabled, free
+(input, output and cached prices 0), without image input, reserved output 1024 tokens and the
+package's context window, capability "weak" and good for "Offline, private, short tasks", not for
+subtasks. It is the default connection only when there is no other connection, so a fresh
+installation can chat at once and an existing default is never taken over. A local connection an
+earlier version registered without a profile or prices receives these on its next start; a profile
+or price already set, by the user or not, is kept.
+
+The read-only status endpoint is `GET /api/settings/local-ai`, with states `notInstalled`,
+`verifying`, `starting`, `ready`, `disabled`, `failed`, and `stopped`, plus the model's name,
+context window and whether it can be retried. The response contains no credentials or package paths.
 Child output is drained separately so it cannot corrupt Host CLI/MCP/test protocol streams.
 
 The explicit `LocalModelLifecycleLiveTests` check launches the actual prepared runtime using

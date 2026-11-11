@@ -96,6 +96,11 @@
 .host-status-dot { flex: none; width: .45rem; height: .45rem; margin-left: auto; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-success) 18%, transparent); }
 .host-status-dot.is-offline { background: var(--color-warning); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-warning) 22%, transparent); animation: host-pulse 1.2s ease-in-out infinite alternate; }
 .host-status-dot.is-connecting { background: var(--color-text-faint); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-text-faint) 18%, transparent); }
+/* The local model's states reuse the Host dot: loading pulses in the accent, a failure is the danger
+   colour, turned off or not installed is a hollow ring, so off never reads as an error. */
+.host-status-dot.is-starting { background: var(--color-accent); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-accent) 20%, transparent); animation: host-pulse 1.2s ease-in-out infinite alternate; }
+.host-status-dot.is-failed { background: var(--color-danger); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--color-danger) 20%, transparent); }
+.host-status-dot.is-off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-text-faint); }
 .host-status-card { display: flex; align-items: center; gap: .75rem; padding: .75rem .85rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }
 .host-status-card .host-status-dot { margin-left: .2rem; }
 .settings-row > .host-status-dot { margin-left: .1rem; }
@@ -105,7 +110,7 @@
 .host-status-note { margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-md); line-height: 1.5; }
 .host-status-note a { color: var(--color-accent-text); }
 @keyframes host-pulse { to { opacity: .4; } }
-@media (prefers-reduced-motion: reduce) { .host-gate-waiting > span, .host-status-dot.is-offline { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .host-gate-waiting > span, .host-status-dot.is-offline, .host-status-dot.is-starting { animation: none; } }
 
 /* Selected text carries the accent too; a tint rather than a fill, so it reads in either theme. */
 ::selection { background: color-mix(in srgb, var(--color-accent-strong) 35%, transparent); }
@@ -1646,6 +1651,18 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .image-test-result.is-failed > .app-icon { color: var(--color-danger); }
 .image-test-result.is-failed { color: var(--color-danger-text); }
 .settings-note { margin: -.3rem .15rem 0; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+/* Settings → Connections, the local model: its state leads the form, and what AI Client manages for
+   it (model, address, window) is shown as values rather than fields. */
+.settings-row.local-ai-status { min-height: 3rem; }
+.settings-row.local-ai-status > .host-status-dot { margin-left: .1rem; }
+.settings-row.local-ai-status .settings-row-label { color: var(--color-text-strong); font-weight: 600; }
+.local-ai-status > .compact-action .app-icon { width: .95rem; height: .95rem; }
+.settings-card > .settings-row.local-ai-about { display: block; min-height: 0; margin: 0; padding-block: .55rem; border-top: 1px solid var(--color-border-subtle); color: var(--color-text-subtle); font-size: var(--font-size-sm); line-height: 1.5; }
+.settings-card > .settings-row.local-ai-note { display: flex; align-items: center; gap: .75rem; color: var(--color-text-secondary); }
+.local-ai-note > span { flex: 1; min-width: 0; }
+.local-ai-note > .compact-action, .local-ai-status > .compact-action { display: inline-flex; flex: none; align-items: center; gap: .4rem; }
+.local-ai-note > .compact-action .app-icon { width: .95rem; height: .95rem; }
+.settings-row-value.local-ai-value { overflow: hidden; max-width: 55%; color: var(--color-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 /* Settings → Appearance: every theme is a card that draws a miniature of itself, presets and saved
    themes alike, in one radio group. A preset card reads its colours from the --theme-swatch-* tokens;
    a saved theme's card gets the same --swatch-* properties from its stored palette (see the

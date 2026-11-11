@@ -236,7 +236,7 @@
                     <div class="global-editor-layout">
                         <div class="settings-list-column">
                             <SettingsFilterField @bind-Value="_connectionFilter" Placeholder="Filter connections" Shown="@ShownConnections.Count" Total="@_connections.Count" Submitted="() => SelectFirst(ShownConnections.Select(item => item.Id), SelectConnection)" />
-                            <nav class="settings-list">@if (_connections.Count > 0 && ShownConnections.Count == 0) { <p class="empty-hint">No connections match “@_connectionFilter.Trim()”.</p> }@foreach (var connectionItem in ShownConnections) { var itemProblems = ShownProblems(ConnectionProblems(connectionItem)).Count; <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span><SettingsFilterText Text="@connectionItem.Name" Query="@_connectionFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small><SettingsFilterText Text="@ConnectionStatus(connectionItem)" Query="@_connectionFilter" /></small> }</button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions"><button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button><button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
+                            <nav class="settings-list">@if (_connections.Count > 0 && ShownConnections.Count == 0) { <p class="empty-hint">No connections match “@_connectionFilter.Trim()”.</p> }@foreach (var connectionItem in ShownConnections) { var itemProblems = ShownProblems(ConnectionProblems(connectionItem)).Count; <div class="settings-list-item @(connectionItem.Id == _selectedConnectionId ? "selected" : string.Empty)"><button class="settings-list-select" type="button" @onclick="() => SelectConnection(connectionItem.Id)"><span><SettingsFilterText Text="@connectionItem.Name" Query="@_connectionFilter" /></span>@if (itemProblems > 0) { <small class="settings-list-problem"><AppIcon Name="error" />@FixFields(itemProblems)</small> } else { <small><SettingsFilterText Text="@ListStatus(connectionItem)" Query="@_connectionFilter" /></small> }</button>@if (connectionItem.Id == _selectedConnectionId) { <span class="settings-item-actions">@if (!IsLocal(connectionItem)) { <button class="icon-action settings-item-copy" type="button" title="Copy as JSON (without the key)" aria-label="Copy connection as JSON" @onclick="() => CopyConnectionAsync(connectionItem)"><AppIcon Name="copy" /></button> }<button class="icon-action settings-item-remove" type="button" title="Remove connection" aria-label="Remove connection" @onclick="RemoveConnection"><AppIcon Name="trash" /></button></span> }</div> }</nav>
                             <button @attributes="@(ControlHints.Attributes("settings.connections.add", "Add connection"))" class="icon-action settings-list-add" type="button" aria-label="Add connection" @onclick="AddConnection"><AppIcon Name="plus" /></button>
                         </div>
                         @if (_loaded && _connections.Count == 0)
@@ -252,24 +252,52 @@
                         {
                             var limits = EffectiveLimits(connection);
                             var problems = ShownProblems(ConnectionProblems(connection));
+                            var managed = IsLocal(connection);
                             <form class="global-form settings-form" autocomplete="off" @onsubmit:preventDefault="true">
-                                @if (connection.Id == LocalModelStatus.ConnectionId)
+                                @if (managed)
                                 {
-                                    <div class="settings-card">
-                                        <p>Compact offline model for simple commands. Disable this connection and save to unload it.</p>
-                                        <button type="button" @onclick="RefreshLocalModelStatusAsync">Check local AI status</button>
-                                        @if (_localModelStatus is { } localStatus)
-                                        {
-                                            <p role="status">@LocalModelStateText(localStatus.State)</p>
-                                            @if (localStatus.Error is { } localError) { <p>@localError</p> }
-                                        }
-                                    </div>
+                                    var local = DescribeLocalModel(connection);
+                                    <section class="settings-group" aria-label="Local AI">
+                                        <div class="settings-card">
+                                            <div class="settings-row local-ai-status" role="status" aria-live="polite">
+                                                <span class="host-status-dot @local.Dot" aria-hidden="true"></span>
+                                                <span class="settings-row-text"><span class="settings-row-label">@local.Title</span><span class="settings-row-hint" title="@local.Detail">@local.Detail</span></span>
+                                                @if (_localModelStatus is { CanRetry: true })
+                                                {
+                                                    <button class="compact-action" type="button" disabled="@_retryingLocalModel" @onclick="RetryLocalModelAsync"><AppIcon Name="@(_retryingLocalModel ? "spinner" : "refresh")" Class="@(_retryingLocalModel ? "tool-row-spinner" : null)" /><span>Try again</span></button>
+                                                }
+                                            </div>
+                                            @if (local.Error is { } localError)
+                                            {
+                                                <div class="settings-row settings-inline-error" role="alert"><AppIcon Name="error" /><span>@localError</span></div>
+                                            }
+                                            @if (local.Note is { } localNote)
+                                            {
+                                                <div class="settings-row local-ai-about local-ai-note"><span>@localNote</span><button class="compact-action" type="button" @onclick="RemoveConnection"><AppIcon Name="trash" /><span>Remove connection</span></button></div>
+                                            }
+                                            else
+                                            {
+                                                <p class="settings-row local-ai-about">Answers come from a model on this computer: nothing is sent over the network, and nothing is billed. It is small, so keep it for short tasks and choose a larger connection for complex work.</p>
+                                            }
+                                        </div>
+                                    </section>
                                 }
                                 <div class="settings-card">
-                                    <label @attributes="@(ControlHints.Attributes("settings.connection.enabled"))" class="settings-row">
-                                        <span class="settings-row-label">Enabled</span>
-                                        <input class="settings-switch" type="checkbox" role="switch" @bind="connection.Enabled" />
-                                    </label>
+                                    @if (managed)
+                                    {
+                                        var installed = _localModelStatus?.State != "notInstalled";
+                                        <label class="settings-row">
+                                            <span class="settings-row-text"><span class="settings-row-label">Enabled</span><span class="settings-row-hint">@(installed ? "Off frees the memory the model uses" : "Needs the Local AI component")</span></span>
+                                            <input class="settings-switch" type="checkbox" role="switch" disabled="@(!installed)" @bind="connection.Enabled" />
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <label @attributes="@(ControlHints.Attributes("settings.connection.enabled"))" class="settings-row">
+                                            <span class="settings-row-label">Enabled</span>
+                                            <input class="settings-switch" type="checkbox" role="switch" @bind="connection.Enabled" />
+                                        </label>
+                                    }
                                     <label @attributes="@(ControlHints.Attributes("settings.connection.default"))" class="settings-row">
                                         <span class="settings-row-text"><span class="settings-row-label">Default</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.connection.default")</span></span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@connection.IsDefault" @onchange="args => SetDefaultConnection(connection.Id, args)" />
@@ -280,9 +308,24 @@
                                     </label>
                                 </div>
                                 <section class="settings-group" aria-labelledby="connection-endpoint">
-                                    <h3 id="connection-endpoint">Endpoint</h3>
+                                    <h3 id="connection-endpoint">@(managed ? "Model" : "Endpoint")</h3>
                                     <div class="settings-card">
                                         <label class="settings-row settings-field @ErrorClass(problems, NameField)"><span class="settings-row-label">Name</span><InputText autocomplete="off" @bind-Value="connection.Name" aria-invalid="@Invalid(problems, NameField)" /><SettingsFieldError Message="@problems.GetValueOrDefault(NameField)" /></label>
+                                        @if (managed)
+                                        {
+                                            @* AI Client starts this model and sets its address, key and limits on every start;
+                                               an edit here would be overwritten, so these are shown, not offered. *@
+                                            <div class="settings-row">
+                                                <span class="settings-row-text"><span class="settings-row-label">Model</span><span class="settings-row-hint">Installed with AI Client</span></span>
+                                                <span class="settings-row-value local-ai-value">@(_localModelStatus?.Name is { Length: > 0 } modelName ? modelName.Replace("Local ", string.Empty, StringComparison.Ordinal) : connection.Model)</span>
+                                            </div>
+                                            <div class="settings-row">
+                                                <span class="settings-row-text"><span class="settings-row-label">Address</span><span class="settings-row-hint">Started and secured by AI Client; only this computer can reach it</span></span>
+                                                <span class="settings-row-value local-ai-value" title="@connection.BaseUrl">@LocalAddress(connection.BaseUrl)</span>
+                                            </div>
+                                        }
+                                        else
+                                        {
                                         <label @attributes="@(ControlHints.Attributes("settings.connection.url"))" class="settings-row settings-field @ErrorClass(problems, UrlField)"><span class="settings-row-label">Base URL</span><input type="url" autocomplete="url" class="text-input" placeholder="https://api.openai.com/v1" aria-invalid="@Invalid(problems, UrlField)" @bind="connection.BaseUrl" @bind:event="oninput" @bind:after="() => OnEndpointChanged(connection.Id)" /><SettingsFieldError Message="@problems.GetValueOrDefault(UrlField)" /></label>
                                         <label @attributes="@(ControlHints.Attributes("settings.connection.credential"))" class="settings-row settings-field"><span class="settings-row-label">API key</span><InputText type="password" autocomplete="new-password" @bind-Value="connection.Secret" @bind-Value:after="() => OnEndpointChanged(connection.Id)" placeholder="@(connection.HasCredential ? "Saved; enter to replace" : connection.KeyMissing ? "Needed: imported without its key" : "Optional")" class="@(connection.NeedsKey ? "needs-key" : null)" /></label>
                                         @* A div, not a label: a label refocuses the picker on any click inside it. *@
@@ -293,7 +336,7 @@
                                             <SettingsFieldError Message="@problems.GetValueOrDefault(ModelField)" />
                                         </div>
                                         <label class="settings-row settings-field"><span class="settings-row-text"><span class="settings-row-label">Reasoning effort</span><span class="settings-row-hint">Send only when this endpoint supports the Chat Completions parameter</span></span><select class="text-input" @bind="connection.ReasoningEffort"><option value="">Provider default</option><option value="none">None</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Maximum</option></select></label>
-                                        @{ var testingImage = _testingImageForId == connection.Id; }
+                                        var testingImage = _testingImageForId == connection.Id;
                                         <div class="settings-row settings-field image-input-row">
                                             <span class="settings-row-text"><span class="settings-row-label" id="connection-image-input">Image input</span><span class="settings-row-hint">@ImageInputHint(connection.ImageInput)</span></span>
                                             <span class="settings-field-control">
@@ -312,6 +355,7 @@
                                                 <AppIcon Name="@(imageTest.Supported switch { true => "check", false => "x", null => "error" })" />
                                                 <span>@imageTest.Detail</span>
                                             </div>
+                                        }
                                         }
                                     </div>
                                 </section>
@@ -333,9 +377,18 @@
                                                 <span class="settings-row-value" title="@($"Context window: {limits.ContextWindowTokens} tokens ({SourceLabel(limits.ContextWindowSource)}). Reserved output: {limits.ReservedOutputTokens} tokens ({SourceLabel(limits.ReservedOutputSource)})")">@FormatTokens(limits.ContextWindowTokens) / @FormatTokens(limits.ReservedOutputTokens)</span>
                                                 <AppIcon Name="chevron-right" Class="settings-disclosure-chevron" />
                                             </summary>
+                                            @if (managed)
+                                            {
+                                                <div class="settings-row"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">Set by the installed model</span></span><span class="settings-row-value local-ai-value">@limits.ContextWindowTokens tokens</span></div>
+                                            }
+                                            else
+                                            {
                                             <label @attributes="@(ControlHints.Attributes("settings.connection.context_window"))" class="settings-row settings-field @ErrorClass(problems, WindowField)"><span class="settings-row-text"><span class="settings-row-label">Context window</span><span class="settings-row-hint">@limits.ContextWindowTokens tokens, @SourceLabel(limits.ContextWindowSource)</span></span><input type="number" min="1024" max="4000000" step="1" title="@ControlHints.GetHint("settings.connection.context_window")" placeholder="@limits.ContextWindowTokens" aria-invalid="@Invalid(problems, WindowField)" @bind="connection.ContextWindowTokens" /><SettingsFieldError Message="@problems.GetValueOrDefault(WindowField)" /></label>
+                                            }
                                             <label @attributes="@(ControlHints.Attributes("settings.connection.reserved_output"))" class="settings-row settings-field @ErrorClass(problems, ReservedField)"><span class="settings-row-text"><span class="settings-row-label">Reserved output</span><span class="settings-row-hint">@limits.ReservedOutputTokens tokens, @SourceLabel(limits.ReservedOutputSource)</span></span><input type="number" min="256" max="1000000" step="1" title="@ControlHints.GetHint("settings.connection.reserved_output")" placeholder="@limits.ReservedOutputTokens" aria-invalid="@Invalid(problems, ReservedField)" @bind="connection.ReservedOutputTokens" /><SettingsFieldError Message="@problems.GetValueOrDefault(ReservedField)" /></label>
                                         </details>
+                                        @if (!managed)
+                                        {
                                         <details class="settings-disclosure">
                                             <summary class="settings-row">
                                                 <span class="settings-row-text"><span class="settings-row-label">Prices</span><span class="settings-row-hint">Per million tokens, for endpoints that do not price requests</span></span>
@@ -346,6 +399,7 @@
                                             <label @attributes="@(ControlHints.Attributes("settings.connection.output_price"))" class="settings-row settings-field @ErrorClass(problems, OutputPriceField)"><span class="settings-row-label">Output</span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.output_price")" aria-invalid="@Invalid(problems, OutputPriceField)" @bind="connection.OutputPrice" /><SettingsFieldError Message="@problems.GetValueOrDefault(OutputPriceField)" /></label>
                                             <label @attributes="@(ControlHints.Attributes("settings.connection.cached_price"))" class="settings-row settings-field @ErrorClass(problems, CachedPriceField)"><span class="settings-row-text"><span class="settings-row-label">Cached input</span><span class="settings-row-hint">@ControlHints.GetSummary("settings.connection.cached_price")</span></span><input type="number" min="0" max="10000" step="0.01" title="@ControlHints.GetHint("settings.connection.cached_price")" aria-invalid="@Invalid(problems, CachedPriceField)" @bind="connection.CachedInputPrice" /><SettingsFieldError Message="@problems.GetValueOrDefault(CachedPriceField)" /></label>
                                         </details>
+                                        }
                                     </div>
                                 </section>
                             </form>
@@ -541,28 +595,117 @@
 }
 @code {
     private LocalModelStatus? _localModelStatus;
+    private bool _localStatusUnreadable;
+    private bool _retryingLocalModel;
+    private bool _pollingLocalModel;
     private readonly CancellationTokenSource _localStatusCancellation = new();
+
+    private static bool IsLocal(ConnectionEditor connection) => connection.Id == LocalModelStatus.ConnectionId;
+
+    /// <summary>
+    /// Keeps the local model's state current while Settings is open on a list that has it. The Host
+    /// starts and stops the model on its own (on save, on a failure), so a status read once would go
+    /// stale; a load is followed closely, a settled state only now and then.
+    /// </summary>
+    private async Task PollLocalModelAsync()
+    {
+        if (_pollingLocalModel) return;
+        _pollingLocalModel = true;
+        try
+        {
+            while (!_localStatusCancellation.IsCancellationRequested)
+            {
+                if (_connections.Any(IsLocal))
+                {
+                    await RefreshLocalModelStatusAsync();
+                    StateHasChanged();
+                }
+                var loading = _localModelStatus?.State is "verifying" or "starting";
+                await Task.Delay(TimeSpan.FromSeconds(loading ? 1.5 : 5), _localStatusCancellation.Token);
+            }
+        }
+        catch (OperationCanceledException) when (_localStatusCancellation.IsCancellationRequested) { }
+        catch (ObjectDisposedException) { }
+        finally { _pollingLocalModel = false; }
+    }
 
     private async Task RefreshLocalModelStatusAsync()
     {
-        try { _localModelStatus = await GlobalSettingsApi.GetLocalModelStatusAsync(_localStatusCancellation.Token); }
+        try
+        {
+            _localModelStatus = await GlobalSettingsApi.GetLocalModelStatusAsync(_localStatusCancellation.Token);
+            _localStatusUnreadable = false;
+        }
         catch (OperationCanceledException) when (_localStatusCancellation.IsCancellationRequested) { }
         catch (Exception error) when (error is HttpRequestException or JsonException or InvalidOperationException)
         {
-            _localModelStatus = new("failed", Error: "Could not read local AI status. Check the Host connection.");
+            // Keep the last known state on screen; a Host that does not answer is said so separately.
+            _localStatusUnreadable = true;
         }
     }
 
-    private static string LocalModelStateText(string state) => state switch
+    private async Task RetryLocalModelAsync()
     {
-        "notInstalled" => "Local AI is not installed.",
-        "verifying" => "Checking the installed model.",
-        "starting" => "Starting local AI.",
-        "ready" => "Local AI is ready.",
-        "disabled" => "Local AI is disabled and unloaded.",
-        "stopped" => "Local AI is stopped.",
-        _ => "Local AI is unavailable."
-    };
+        _retryingLocalModel = true;
+        try { _localModelStatus = await GlobalSettingsApi.RetryLocalModelAsync(_localStatusCancellation.Token); }
+        catch (OperationCanceledException) when (_localStatusCancellation.IsCancellationRequested) { }
+        catch (Exception error) when (error is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            _localStatusUnreadable = true;
+        }
+        finally { _retryingLocalModel = false; }
+    }
+
+    private sealed record LocalModelView(string Dot, string Title, string Detail, string? Error = null, string? Note = null);
+
+    /// <summary>
+    /// The local model's state in words. The Enabled switch takes effect when Settings closes and is
+    /// saved, so a switch that differs from what runs says what will happen rather than what is.
+    /// </summary>
+    private LocalModelView DescribeLocalModel(ConnectionEditor connection)
+    {
+        if (_localStatusUnreadable)
+            return new("is-offline", "Status unavailable", "The Host is not answering; the last known state may be out of date");
+        var status = _localModelStatus;
+        var name = status?.Name is { Length: > 0 } installed ? installed.Replace("Local ", string.Empty, StringComparison.Ordinal) : connection.Model;
+        var window = status?.ContextTokens is { } tokens ? $" · {FormatTokens(tokens)} context" : string.Empty;
+        return status?.State switch
+        {
+            null => new("is-connecting", "Checking Local AI…", name),
+            // Leaving the component out is the person's choice at installation, so this is not an error.
+            "notInstalled" => new("is-off", "Not installed", "Local AI is an optional part of AI Client",
+                Note: "To use this model, run the AI Client installer again and keep Local AI selected. Otherwise this connection can be removed; other connections are not affected."),
+            "verifying" => new("is-starting", "Checking the model files…", $"{name} · this takes a few seconds"),
+            "starting" when !connection.Enabled => new("is-starting", "Turns off when Settings closes", $"{name} · its memory is freed then"),
+            "starting" => new("is-starting", "Loading the model…", $"{name} · usually under a minute"),
+            "ready" when !connection.Enabled => new("is-connected", "Turns off when Settings closes", $"{name} · its memory is freed then"),
+            "ready" => new("is-connected", "Ready", $"{name} · runs on this computer{window}"),
+            "disabled" when connection.Enabled => new("is-off", "Loads when Settings closes", $"{name} · turned on, not yet saved"),
+            "disabled" => new("is-off", "Turned off", $"{name} · uses no memory; turn on Enabled to load it"),
+            "failed" => new("is-failed", "Not available", "Other connections keep working",
+                status.Error ?? "Local AI could not start. Restart AI Client to try again."),
+            "stopped" => new("is-off", "Stopped", "AI Client is shutting down"),
+            _ => new("is-off", "Unknown state", name)
+        };
+    }
+
+    /// <summary>What the connection list says under the local model's name.</summary>
+    private string ListStatus(ConnectionEditor connection)
+    {
+        if (!IsLocal(connection)) return ConnectionStatus(connection);
+        return _localModelStatus?.State switch
+        {
+            "notInstalled" => "Not installed",
+            "failed" => "Not available",
+            "verifying" or "starting" when connection.Enabled => "Loading · On this computer",
+            // Off is a choice for this one, not a fault: it frees memory.
+            _ when !connection.Enabled => "Turned off · On this computer",
+            _ => ConnectionStatus(connection) + " · On this computer"
+        };
+    }
+
+    private static string LocalAddress(string baseUrl) =>
+        Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) ? $"This computer, port {uri.Port}" : "This computer";
     [Inject] private IToolDefaultDecision ToolDefaults { get; set; } = default!;
     [Parameter] public string Section { get; set; } = "Connections";
     [Parameter] public string? SkillToEdit { get; set; }
@@ -749,6 +892,7 @@
         _guideIdleMinutes = clientSettings.GuideIdleMinutes;
         _guideCompletedCount = clientSettings.CompletedGuideTopics.Count;
         await TryLoadGlobalSettingsAsync();
+        _ = PollLocalModelAsync();
         if (ClientMode.PublicWeb)
         {
             try { _desktopReleaseUrl = (await PublishedDownloads.LoadAsync()).DesktopReleaseUrl; }
@@ -1146,7 +1290,8 @@
     private async Task LoadModelsIfStaleAsync(Guid id, bool force = false)
     {
         var connection = _connections.SingleOrDefault(item => item.Id == id);
-        if (connection is null) return;
+        // The local model is the installed one; there is no catalog to choose from.
+        if (connection is null || IsLocal(connection)) return;
 
         var baseUrl = connection.BaseUrl.Trim();
         // Empty BaseUrl: nothing to call, and we should not flash a spinner. Drop the catalog and any
@@ -1376,7 +1521,7 @@
     private string _mcpFilter = string.Empty;
 
     private IReadOnlyList<ConnectionEditor> ShownConnections => _connections
-        .Where(item => ListFilter.Matches(_connectionFilter, item.Name, item.BaseUrl, item.Model, item.GoodFor, ConnectionStatus(item)))
+        .Where(item => ListFilter.Matches(_connectionFilter, item.Name, item.BaseUrl, item.Model, item.GoodFor, ListStatus(item)))
         .ToArray();
 
     /// <summary>A server is kept by its own fields or, for "which server has read_file", by one of its tools.</summary>

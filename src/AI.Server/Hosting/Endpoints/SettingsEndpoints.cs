@@ -15,6 +15,8 @@ public sealed class SettingsEndpoints : IEndpointModule
     public void Map(IEndpointRouteBuilder routes)
     {
         routes.MapGet("/api/settings/local-ai", ([FromServices] ILocalModelService service) => service.Status);
+        routes.MapPost("/api/settings/local-ai/retry", ([FromServices] ILocalModelService service) =>
+            service.Retry() ? Results.Ok(service.Status) : Results.Conflict(service.Status));
         routes.MapGet(
             "/api/settings",
             (IGlobalSettingsService service, CancellationToken cancellationToken) => service.GetAsync(cancellationToken));

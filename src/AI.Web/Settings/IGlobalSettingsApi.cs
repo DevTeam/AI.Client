@@ -5,6 +5,8 @@ using AI.Contracts.Settings;
 public interface IGlobalSettingsApi
 {
     Task<LocalModelStatus> GetLocalModelStatusAsync(CancellationToken cancellationToken);
+    /// <summary>Starts a failed local model again; the answer is its status either way.</summary>
+    Task<LocalModelStatus> RetryLocalModelAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<McpToolInfo>> DiscoverMcpToolsAsync(DiscoverMcpToolsRequest request, CancellationToken cancellationToken);
     Task<GlobalSettings> GetAsync(CancellationToken cancellationToken);

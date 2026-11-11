@@ -9,6 +9,15 @@ public sealed class GlobalSettingsApi(HttpClient httpClient) : IGlobalSettingsAp
     public async Task<LocalModelStatus> GetLocalModelStatusAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<LocalModelStatus>("api/settings/local-ai", cancellationToken)
         ?? throw new InvalidOperationException("Local AI status response is empty.");
+    public async Task<LocalModelStatus> RetryLocalModelAsync(CancellationToken cancellationToken)
+    {
+        // 409 means it could not be retried (it was no longer failed); the body is still the status.
+        using var response = await httpClient.PostAsync("api/settings/local-ai/retry", null, cancellationToken);
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.Conflict)
+            response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<LocalModelStatus>(cancellationToken)
+               ?? throw new InvalidOperationException("Local AI status response is empty.");
+    }
     public async Task<IReadOnlyList<McpToolInfo>> GetDefaultToolsAsync(CancellationToken cancellationToken) =>
         await httpClient.GetFromJsonAsync<McpToolInfo[]>("api/mcp/default/tools", cancellationToken) ?? [];
 

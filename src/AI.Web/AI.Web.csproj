@@ -20,4 +20,17 @@
     <PackageReference Include="Pure.DI.MS" />
     <PackageReference Include="Markdig" />
   </ItemGroup>
+  <!--
+    Since .NET 11 the package provides blazor.webassembly.js as a framework asset, which the SDK
+    copies into this project for this project only (AssetMode CurrentProject). AI.Host and
+    AI.Desktop serve this application from their own static assets, so without this target they
+    have no _framework/blazor.webassembly.js and the page never starts.
+  -->
+  <Target Name="ShareBlazorScriptWithHosts" AfterTargets="ReadPackageStaticWebAssetManifests">
+    <ItemGroup>
+      <StaticWebAsset Condition="'%(StaticWebAsset.AssetMode)' == 'CurrentProject' and $([System.String]::Copy('%(StaticWebAsset.RelativePath)').StartsWith('_framework/blazor.webassembly'))">
+        <AssetMode>All</AssetMode>
+      </StaticWebAsset>
+    </ItemGroup>
+  </Target>
 </Project>

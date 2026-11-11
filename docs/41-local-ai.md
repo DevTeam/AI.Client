@@ -92,7 +92,10 @@ It never overwrites an existing component. Preserve the runtime's original notic
 also includes Qwen's license. Model: `bartowski/Qwen_Qwen3-0.6B-GGUF`,
 `Qwen_Qwen3-0.6B-Q4_K_M.gguf`, 484220320 bytes,
 SHA-256 `9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14`.
-The 500 MB limit applies to weights. Total component size is reported separately.
+The Host accepts a package whose weights are below 2 GB and whose manifest context is
+1024–32768 tokens, so that larger candidates such as Qwen3.5-2B can be run (see
+[the Qwen3.5-2B trial](analysis/qwen35-2b-trial.md)). The bundled Qwen3 weights stay below 500 MB.
+Total component size is reported separately.
 
 Set `AI_LOCAL_MODEL_PACKAGE` to the prepared directory before running the existing release
 packaging command. Both products receive the component. Windows installers expose an optional

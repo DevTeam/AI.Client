@@ -40,11 +40,11 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                 ?? throw new InvalidDataException("The local model manifest is empty.");
             var executable = PackageFile(directory, manifest.Executable);
             var model = PackageFile(directory, manifest.Model);
-            if (manifest.Port is < 1024 or > 65535 || manifest.ContextTokens is < 1024 or > 8192)
+            if (manifest.Port is < 1024 or > 65535 || manifest.ContextTokens is < 1024 or > 32768)
                 throw new InvalidDataException("Invalid local model port or context size.");
             await using (var input = File.OpenRead(model))
             {
-                if (input.Length >= 500_000_000) throw new InvalidDataException("Local model weights must be smaller than 500 MB.");
+                if (input.Length >= 2_000_000_000) throw new InvalidDataException("Local model weights must be smaller than 2 GB.");
                 var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, stoppingToken));
                 if (!hash.Equals(manifest.ModelSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Local model checksum mismatch.");

@@ -2,7 +2,6 @@
   <!-- Scenarios and every port; it knows the domain and the Host-Web contract, never an adapter (ADR-015). -->
   <ItemGroup>
     <PackageReference Include="JsonSchema.Net" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Pure.DI" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>

@@ -8,11 +8,11 @@ using Xunit;
 public sealed class LocalModelPackageLocatorTests
 {
     [Theory]
-    [InlineData("src/AI.Desktop/bin/Debug/net10.0", true, false, true, true)]
-    [InlineData("src/AI.Desktop/bin/Debug/net10.0", true, true, true, false)]
-    [InlineData("src/AI.Desktop/bin/Debug/net10.0", false, false, true, false)]
-    [InlineData("src/AI.Desktop/bin/Debug/net10.0", true, false, false, false)]
-    [InlineData("tests/AI.Server.Tests/bin/Debug/net10.0", true, false, true, false)]
+    [InlineData("src/AI.Desktop/bin/Debug/net11.0", true, false, true, true)]
+    [InlineData("src/AI.Desktop/bin/Debug/net11.0", true, true, true, false)]
+    [InlineData("src/AI.Desktop/bin/Debug/net11.0", false, false, true, false)]
+    [InlineData("src/AI.Desktop/bin/Debug/net11.0", true, false, false, false)]
+    [InlineData("tests/AI.Server.Tests/bin/Debug/net11.0", true, false, true, false)]
     [InlineData("artifacts/run-desktop", true, false, true, false)]
     public async Task OnlySourceDesktopReusesAnExistingPreparedCache(string relativeOutput, bool allowDevelopment,
         bool installed, bool cached, bool usesCache)

@@ -69,7 +69,7 @@ The server must verify allowed roots, normalize paths, prevent path traversal an
 
 ## Non-functional requirements
 
-- Target framework: `net10.0`.
+- Target framework: `net11.0`.
 - UI: Client-Side Blazor WebAssembly.
 - Hosting: local ASP.NET Core Host serving WASM from the same origin.
 - DI: Pure.DI and Pure.DI.MS.

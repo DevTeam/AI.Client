@@ -2,6 +2,8 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Test doubles implement IJSRuntime and forward one InvokeAsync overload to another (BL0016). -->
+    <NoWarn>$(NoWarn);BL0016</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AI.Web\AI.Web.csproj" />

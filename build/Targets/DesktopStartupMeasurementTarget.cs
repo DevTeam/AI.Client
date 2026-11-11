@@ -34,13 +34,13 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
     {
         if (scenario is not ("embedded" or "shared"))
         {
-            await Console.Error.WriteLineAsync($"Unknown scenario '{scenario}'. Use embedded or shared.");
+            await Console.Error.WriteLineAsync($"Unknown scenario '{scenario}'. Use embedded or shared.", cancellationToken);
             return 1;
         }
 
         if (runs < 1)
         {
-            await Console.Error.WriteLineAsync("At least one measured run is required.");
+            await Console.Error.WriteLineAsync("At least one measured run is required.", cancellationToken);
             return 1;
         }
 
@@ -51,7 +51,7 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
         var source = ResolveSourceDirectory(dataDirectory);
         if (!Directory.Exists(source))
         {
-            await Console.Error.WriteLineAsync($"The data directory to copy does not exist: {source}");
+            await Console.Error.WriteLineAsync($"The data directory to copy does not exist: {source}", cancellationToken);
             return 1;
         }
 
@@ -65,7 +65,7 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
         if (measurementLock is null)
         {
             await Console.Error.WriteLineAsync(
-                $"Another desktop measurement is already running (lock: {Path.Combine(copyRoot, "measure-desktop.lock")}).");
+                $"Another desktop measurement is already running (lock: {Path.Combine(copyRoot, "measure-desktop.lock")}).", cancellationToken);
             return 1;
         }
 
@@ -81,7 +81,7 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
         var executable = Path.Combine(published, OperatingSystem.IsWindows() ? "AI.Desktop.exe" : "AI.Desktop");
         if (!File.Exists(executable))
         {
-            await Console.Error.WriteLineAsync($"Desktop executable was not produced at {executable}.");
+            await Console.Error.WriteLineAsync($"Desktop executable was not produced at {executable}.", cancellationToken);
             return 1;
         }
 
@@ -99,7 +99,7 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
 
             if (!File.Exists(hostExecutable))
             {
-                await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExecutable}.");
+                await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExecutable}.", cancellationToken);
                 return 1;
             }
         }
@@ -109,7 +109,7 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
             // run would reuse it instead of starting an embedded server and the numbers would
             // describe a different scenario than the one asked for.
             await Console.Error.WriteLineAsync(
-                $"Something answers on {EmbeddedAddress}: the embedded scenario needs that address free. Stop the running Host or measure the shared scenario.");
+                $"Something answers on {EmbeddedAddress}: the embedded scenario needs that address free. Stop the running Host or measure the shared scenario.", cancellationToken);
             return 1;
         }
 
@@ -179,13 +179,13 @@ internal sealed class DesktopStartupMeasurementTarget(IProcessRunner processRunn
         if (failure is not null)
         {
             await Console.Error.WriteLineAsync(
-                $"Run {failure.Index} failed: {failure.Error}");
+                $"Run {failure.Index} failed: {failure.Error}", cancellationToken);
             return 1;
         }
 
         if (!sourceUnchanged)
         {
-            await Console.Error.WriteLineAsync("The source data directory changed during the measurement; the numbers are not trustworthy.");
+            await Console.Error.WriteLineAsync("The source data directory changed during the measurement; the numbers are not trustworthy.", cancellationToken);
             return 1;
         }
 

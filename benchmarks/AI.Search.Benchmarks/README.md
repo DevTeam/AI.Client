@@ -50,7 +50,7 @@ dotnet run --project benchmarks/AI.Search.Benchmarks -c Release -- --filter "*En
 dotnet run --project benchmarks/AI.Search.Benchmarks -c Release -- --filter "*EngineBenchmarks*" --job Medium
 ```
 
-Reports land in `bin/Release/net10.0/benchmarks`, inside the build output, so a run leaves the
+Reports land in `bin/Release/net11.0/benchmarks`, inside the build output, so a run leaves the
 repository clean: the `-report-github.md` and `-report.csv` files are the tables to keep a record of.
 
 `EngineBenchmarks` measures `ISearchEngine.SearchAsync` alone with and without parallel scanning, on

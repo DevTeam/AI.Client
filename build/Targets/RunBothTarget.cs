@@ -24,7 +24,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         var hostExe = Path.Combine(hostOutput, OperatingSystem.IsWindows() ? "AI.Host.exe" : "AI.Host");
         if (!File.Exists(hostExe))
         {
-            await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExe}.");
+            await Console.Error.WriteLineAsync($"Host executable was not produced at {hostExe}.", cancellationToken);
             return 1;
         }
 
@@ -145,7 +145,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
         {
             if (hostProcess.HasExited)
             {
-                await Console.Error.WriteLineAsync($"Host exited before becoming ready (exit code {hostProcess.ExitCode}).");
+                await Console.Error.WriteLineAsync($"Host exited before becoming ready (exit code {hostProcess.ExitCode}).", cancellationToken);
                 return false;
             }
 
@@ -167,7 +167,7 @@ internal sealed class RunBothTarget(IProcessRunner processRunner, IBuildPaths bu
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
         }
 
-        await Console.Error.WriteLineAsync($"Host did not become ready at {healthUrl} within two minutes.");
+        await Console.Error.WriteLineAsync($"Host did not become ready at {healthUrl} within two minutes.", cancellationToken);
         return false;
     }
 

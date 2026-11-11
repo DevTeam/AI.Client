@@ -20,7 +20,7 @@ internal sealed class ServerRunner(IHostStatus status) : IServerRunner
             }
             catch (DataDirectoryInUseException error)
             {
-                await Console.Error.WriteLineAsync(error.Message);
+                await Console.Error.WriteLineAsync(error.Message, cancellationToken);
                 if (!options.PublicWeb) return 2;
                 status.Report(new HostState(HostPhase.WaitingForDataDirectory, Detail: error.Message));
                 try

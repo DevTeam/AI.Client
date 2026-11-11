@@ -114,7 +114,7 @@ $env:AI_ROUTING_EVAL = '1'
 $env:AI_ROUTING_EVAL_BASE_URL = 'http://localhost:8080/v1'
 $env:AI_ROUTING_EVAL_MODEL = 'your-model'
 dotnet build evals/AI.Routing.Evals/AI.Routing.Evals.csproj
-evals/AI.Routing.Evals/bin/Debug/net10.0/AI.Routing.Evals.exe -showLiveOutput
+evals/AI.Routing.Evals/bin/Debug/net11.0/AI.Routing.Evals.exe -showLiveOutput
 ```
 
 The xUnit v3 runner is the test executable itself; the report is printed as test output.

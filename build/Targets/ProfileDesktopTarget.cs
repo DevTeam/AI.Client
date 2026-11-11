@@ -20,7 +20,7 @@ internal sealed class ProfileDesktopTarget(IProcessRunner processRunner, IBuildP
         var executable = Path.Combine(published, OperatingSystem.IsWindows() ? "AI.Desktop.exe" : "AI.Desktop");
         if (!File.Exists(executable))
         {
-            await Console.Error.WriteLineAsync($"Desktop executable was not produced at {executable}.");
+            await Console.Error.WriteLineAsync($"Desktop executable was not produced at {executable}.", cancellationToken);
             return 1;
         }
 
@@ -94,13 +94,13 @@ internal sealed class ProfileDesktopTarget(IProcessRunner processRunner, IBuildP
             var trace = Path.Combine(runDirectory, "desktop.nettrace");
             if (!File.Exists(trace))
             {
-                await Console.Error.WriteLineAsync($"No trace was saved at {trace}.");
+                await Console.Error.WriteLineAsync($"No trace was saved at {trace}.", cancellationToken);
                 return 1;
             }
             var speedscope = Path.Combine(runDirectory, "desktop.speedscope.json");
             if (!File.Exists(speedscope))
             {
-                await Console.Error.WriteLineAsync($"No Speedscope JSON was saved at {speedscope}.");
+                await Console.Error.WriteLineAsync($"No Speedscope JSON was saved at {speedscope}.", cancellationToken);
                 return 1;
             }
             await WriteReportAsync(trace, Path.Combine(runDirectory, "top-exclusive.txt"), false);
@@ -111,7 +111,7 @@ internal sealed class ProfileDesktopTarget(IProcessRunner processRunner, IBuildP
             var snapshot = Path.Combine(runDirectory, profiler == "dottrace" ? "desktop.dtp" : "desktop.dtt");
             if (!File.Exists(snapshot))
             {
-                await Console.Error.WriteLineAsync($"No dotTrace snapshot was saved at {snapshot}.");
+                await Console.Error.WriteLineAsync($"No dotTrace snapshot was saved at {snapshot}.", cancellationToken);
                 return 1;
             }
         }

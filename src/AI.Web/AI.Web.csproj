@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
   <PropertyGroup>
     <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
+    <!-- Blazor analyzers added in .NET 11. BL0012 cannot tell whether a method runs from an event
+         handler, so it flags renders that loops, progress before long awaits and calls from other
+         components rely on. BL0016 asks for try/catch around every JS interop call; failures are
+         handled where they matter instead, and catching all of them would hide real errors. -->
+    <NoWarn>$(NoWarn);BL0012;BL0016</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AI.Contracts\AI.Contracts.csproj" />

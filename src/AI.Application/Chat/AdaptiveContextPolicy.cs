@@ -6,6 +6,7 @@ using Contracts.Instructions;
 using Contracts.Settings;
 using Contracts.Tools;
 using Instructions;
+using Search;
 using Skills;
 using Tools;
 
@@ -15,7 +16,7 @@ using Tools;
 /// </summary>
 public sealed partial class AdaptiveContextPolicy(
     IContextTokenEstimator tokenEstimator, IConnectionContextLimitsResolver limitsResolver,
-    IContextEstimateSamples? samples = null) :
+    IContextEstimateSamples? samples = null, IToolConcepts? concepts = null) :
     IAdaptiveContextPolicy
 {
     private const long ProtocolOverhead = 256;
@@ -185,10 +186,15 @@ public sealed partial class AdaptiveContextPolicy(
         var common = unique.SelectMany(item => item.Words).GroupBy(word => word, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() >= 3 && group.Count() * 3 >= unique.Length).Select(group => group.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Concepts are named in any supported language, so a request that matches no English
+        // description still ranks the tools that serve what it asks for. A concept counts twice: it
+        // is a deliberate synonym, while a shared description word is often incidental.
+        var requested = concepts?.Find(request) ?? new HashSet<string>(StringComparer.Ordinal);
         var candidates = unique
             .Select(item => new Candidate(item.Tool, estimator.EstimateTools([item.Tool.ModelDefinition]),
                 requiredNames.Contains(item.Tool.ModelDefinition.Name), Core(item.Tool), pinnedTools?.Contains(item.Tool.ModelDefinition.Name) == true,
-                item.Words.Count(word => query.Contains(word) && !common.Contains(word))))
+                item.Words.Count(word => query.Contains(word) && !common.Contains(word))
+                + (requested.Count == 0 ? 0 : 2 * concepts!.Of(item.Tool).Count(requested.Contains))))
             .OrderByDescending(item => item.Required)
             // Preserve discovery in small windows; explicit discoveries outrank the general core set.
             .ThenByDescending(item => item.Tool.ModelDefinition.Name == ToolRef.ToolSearchName)
@@ -234,8 +240,8 @@ public sealed partial class AdaptiveContextPolicy(
         var ordinary = 0;
         // When the request names what some tools do, an ordinary tool it does not name is left for
         // tool_search to find; filling the budget with them cost every step thousands of tokens.
-        // A request that matches no description at all — one in another language — ranks nothing,
-        // so it keeps the fill: the model would otherwise have only the core set to start from.
+        // A request that matches neither a description nor a concept ranks nothing, so it keeps the
+        // fill: the model would otherwise have only the core set to start from.
         var ranked = candidates.Any(item => item.Relevance > 0 && !item.Required && !item.Discovered && !item.Core);
         foreach (var item in candidates)
         {

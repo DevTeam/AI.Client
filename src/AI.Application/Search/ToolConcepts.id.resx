@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>file;berkas</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>folder;direktori</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>daftar;tampilkan;tunjukkan;apa saja;isi</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>baca;buka;isi</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>tulis;simpan</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>buat;baru;tambah</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>ubah;edit;ganti;perbaiki;perbarui</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>hapus</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>pindah;ganti nama</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>cari;temukan;di mana;dimana</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;arsip;ekstrak;kompres</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>gambar;foto;tangkapan layar</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>web;internet;situs;halaman;url;http;unduh</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>jalankan;eksekusi;perintah;build;kompilasi;tes;uji;skrip</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>obrolan;chat;percakapan</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>proyek</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>ingat;memori;lupakan</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>jadwal;ingatkan;setiap hari;harian;timer;nanti</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>tema;warna;mode gelap;mode terang</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>keterampilan;skill</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>instruksi;aturan</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>akses;izin</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>navigasi;pindah ke;beralih ke</value>
+    </data>
+</root>

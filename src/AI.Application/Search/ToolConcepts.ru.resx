@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>файл</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>папк;папок;каталог;директор;дериктор</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>список;спис;какие;какой;какая;перечисл;покаж;показ;что есть;что лежит</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>прочит;прочти;читай;чтени;открой;открыть;посмотр;содерж</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>запиш;запис;сохран</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>созда;нов;добав</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>измен;редактир;исправ;поправ;замен;обнов;отредакт</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>удал;стер;сотри</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>перемест;переимен;перенес;перенест</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>найд;найти;поиск;ищи;искать;где</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>архив;zip;распак;упаков;заархив</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>изображ;картинк;фото;скриншот;снимок экрана;рисун</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>сайт;интернет;ссылк;страниц;url;http;скача;веб</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>запуст;выполн;команд;сборк;собер;тест;скрипт;скомпил</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>чат;переписк;диалог;беседы;разговор</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>проект</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>запомн;помни;памят;забудь</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>расписан;напомн;каждый день;ежедневн;таймер;позже</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>оформлен;тёмн;темн;светл;цвет</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>навык;скилл</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>инструкц;правил</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>доступ;разреш</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>перейди;перейти;переключи</value>
+    </data>
+</root>

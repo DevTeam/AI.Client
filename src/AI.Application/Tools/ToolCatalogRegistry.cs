@@ -4,7 +4,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Search;
 
-public sealed class ToolCatalogRegistry : IToolCatalogRegistry
+public sealed class ToolCatalogRegistry(IToolConcepts? concepts = null) : IToolCatalogRegistry
 {
     /// <summary>How many of a search's best matches are prioritized for the next model step.</summary>
     public const int MaxPinned = 3;
@@ -39,9 +39,19 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
     public ToolCatalogSearch SearchAndPin(ToolRunContext run, string query, int limit, string? server = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
-        if (!SearchText.IsEnglish(query)) throw new ArgumentException(SearchText.EnglishOnly, nameof(query));
+        // A query in another language is still answered when it names a known concept; only one that
+        // names none is refused, so that the model translates it instead of concluding nothing exists.
+        var named = SearchText.IsEnglish(query) ? null : concepts?.Find(query);
+        if (!SearchText.IsEnglish(query) && named is not { Count: > 0 })
+            throw new ArgumentException(SearchText.EnglishOnly, nameof(query));
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new([], 0);
         var scoped = entry.Tools.Where(tool => server is null || OnServer(tool, server.Trim())).ToArray();
+        if (named is not null) return Pin(entry, scoped
+            .Select(tool => new { Tool = tool, Score = concepts!.Of(tool).Count(named.Contains) })
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score).ThenBy(item => concepts!.Of(item.Tool).Count)
+            .ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal)
+            .Select(item => item.Tool).ToArray(), limit);
         var name = query.Trim();
         var exact = scoped.FirstOrDefault(tool => tool.ModelDefinition.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
             || tool.ModelDefinition.Name.EndsWith("__" + name, StringComparison.OrdinalIgnoreCase));
@@ -54,6 +64,11 @@ public sealed class ToolCatalogRegistry : IToolCatalogRegistry
                 .ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal)
                 .Select(item => item.Tool)
                 .ToArray();
+        return Pin(entry, ranked, limit);
+    }
+
+    private static ToolCatalogSearch Pin(Entry entry, AgentTool[] ranked, int limit)
+    {
         var matches = ranked.Take(Math.Clamp(limit, 1, 8)).ToArray();
         // All searches in this step contribute to the next selection. Its consumer releases the
         // priorities; actual protocol calls are protected separately by the context policy. Only the

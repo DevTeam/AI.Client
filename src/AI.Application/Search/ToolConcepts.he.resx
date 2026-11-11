@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>קובץ;קבצים</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>תיקי;ספרייה</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>רשימה;הצג;הראה;אילו;מה יש;תוכן</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>קרא;קריאה;פתח;תוכן</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>כתוב;כתיבה;שמור</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>צור;יצירת;חדש;הוסף</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>ערוך;עריכה;שינוי;החלף;תקן;עדכן</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>מחק;מחיקה;הסר</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>העבר;שנה שם;שינוי שם</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>חפש;חיפוש;מצא;איפה</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;ארכיון;דחוס;חלץ</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>תמונה;תמונות;צילום מסך</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>אינטרנט;אתר;קישור;url;http;הורד</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>הרץ;הפעל;בצע;פקודה;בנה;בדיקה;סקריפט;קמפל</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>צ&apos;אט;שיחה;שיחות</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>פרויקט</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>זכור;זיכרון;שכח</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>תזמן;תזמון;הזכר לי;תזכורת;כל יום;יומי;טיימר;מאוחר יותר</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>ערכת נושא;צבע;מצב כהה;מצב בהיר</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>מיומנות;כישור</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>הוראות;כללים;כלל</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>גישה;הרשאה;הרשאות</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>נווט;עבור אל;עבור ל</value>
+    </data>
+</root>

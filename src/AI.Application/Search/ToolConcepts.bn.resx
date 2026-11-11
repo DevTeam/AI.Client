@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>ফাইল</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>ফোল্ডার;ডিরেক্টরি</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>তালিকা;দেখাও;দেখান;কী কী;কোন;বিষয়বস্তু</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>পড়;খোল;বিষয়বস্তু</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>লেখ;লিখ;সেভ;সংরক্ষণ</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>তৈরি;নতুন;যোগ</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>সম্পাদনা;পরিবর্তন;বদল;ঠিক কর;আপডেট</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>মুছ;ডিলিট</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>সরান;সরিয়ে;নাম পরিবর্তন;মুভ</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>খোঁজ;খুঁজ;অনুসন্ধান;কোথায়</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;জিপ;আর্কাইভ;সংকুচিত;এক্সট্র্যাক্ট</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>ছবি;চিত্র;স্ক্রিনশট</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>ওয়েব;ইন্টারনেট;সাইট;পৃষ্ঠা;পেজ;url;http;ডাউনলোড</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>চালাও;চালান;চালু;কমান্ড;বিল্ড;টেস্ট;পরীক্ষা;স্ক্রিপ্ট</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>চ্যাট;কথোপকথন</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>প্রকল্প;প্রজেক্ট</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>মনে রাখ;মেমরি;ভুলে যাও</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>সময়সূচি;মনে করিয়ে;প্রতিদিন;টাইমার</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>থিম;রং;রঙ;ডার্ক মোড;লাইট মোড</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>দক্ষতা;স্কিল</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>নির্দেশ;নিয়ম</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>অ্যাক্সেস;অনুমতি</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>যাও;নেভিগেট</value>
+    </data>
+</root>

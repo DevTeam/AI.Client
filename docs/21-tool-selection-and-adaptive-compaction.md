@@ -90,9 +90,16 @@ Core tools receive priority over ordinary relevance within the remaining schema 
 `plan_update`, `spawn_subtask`, `subtask_wait` and `subtask_stop` from the App server, `read_text_file`, `write_file`,
 `edit_file`, `grep_files`, `list_directory`, `search_files`, `directory_tree`, `process_run` and
 `cs_run` from the built-in server; without the navigation tools a model guessed paths and
-narrowed its way through a repository with dozens of greps. Relevance is word overlap with the English tool descriptions, so a request in another
-language ranks nothing and the shortest schemas would take the free places. Words that at least a
-third of the descriptions share (and at least three of them) do not count. When the request matches
+narrowed its way through a repository with dozens of greps. Relevance is word overlap with the English tool
+descriptions plus capability concepts. Words that at least a third of the descriptions share (and at least three of
+them) do not count. Concepts (`IToolConcepts`) make selection independent of the request's language: keyword stems
+for concepts such as File, Directory, List, Read or Delete are kept in `src/AI.Application/Search/ToolConcepts*.resx`
+for English and the 16 other supported languages (ar, bn, de, es, fr, he, hi, id, it, ja, ko, pt, ru, th, vi, zh),
+and `ToolConcepts` lists the concepts each built-in and App tool serves. A stem must begin a word, except in Chinese,
+Japanese, Thai, Arabic and Hebrew, where it matches anywhere. Each concept the request names adds 2 to a tool's
+relevance. `tool_search` answers a query in another language by its concepts and refuses only one that names no
+concept, so that the model translates it. A new concept is added to every language file at once; external MCP tools
+have no concepts and are matched by their descriptions only. When the request matches
 some ordinary tool, ordinary tools it matches nothing of are not offered at all and stay reachable
 through `tool_search`: filling the budget with them put schemas such as `app_schedule` into a bug fix
 and cost every step thousands of tokens. A request that matches no description keeps the fill. Core tools also

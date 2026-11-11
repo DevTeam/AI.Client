@@ -3,6 +3,7 @@ namespace AI.Application.Tests.Chat;
 using System.Text.Json;
 using AI.Application.Chat;
 using AI.Application.Instructions;
+using AI.Application.Search;
 using AI.Application.Skills;
 using AI.Application.Tools;
 using AI.Application.Usage;
@@ -303,6 +304,28 @@ public sealed class AdaptiveContextPolicyTests
         selection.Tools.ShouldNotContain(sandboxed);
         selection.Tools.Count.ShouldBeLessThan(others.Length + core.Length);
     }
+
+    [Theory]
+    [InlineData("какие файлы у менят есть")]
+    [InlineData("Welche Dateien habe ich?")]
+    [InlineData("我有哪些文件")]
+    public void ShouldRankToolsByTheConceptsARequestNamesInAnyLanguage(string request)
+    {
+        var policy = new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver(), concepts: new ToolConcepts());
+        var search = Tool("tool_search", "Search tools", app: true);
+        var app = AppNames.Select(name => Tool(name, new string('a', 400), app: true)).ToArray();
+        var listing = ListingNames.Select(name => Tool(name, new string('r', 400))).ToArray();
+        var theme = Tool("app_theme", new string('t', 100), app: true);
+
+        var selection = policy.Choose(Connection(8_192), request, [], [.. app, theme, .. listing, search]);
+
+        selection.Tools[0].ShouldBe(search);
+        selection.Tools.Skip(1).Take(listing.Length).ShouldBe(listing, ignoreOrder: true);
+        selection.Tools.ShouldNotContain(theme);
+    }
+
+    private static readonly string[] AppNames = ["ask_user", "plan_update", "skill_search", "run_skill", "spawn_subtask"];
+    private static readonly string[] ListingNames = ["directory_tree", "list_directory"];
 
     [Fact]
     public void ShouldKeepAFloorOfToolsWhenHistoryAloneExceedsTheWindow()

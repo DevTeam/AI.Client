@@ -12,6 +12,7 @@ using Application.Plans;
 using Application.Projects;
 using Application.Runs;
 using Application.Schedules;
+using Application.Search;
 using Application.Resources;
 using Application.Settings;
 using Application.Skills;
@@ -66,7 +67,7 @@ internal sealed class Composition
                 JsonProjectRepository, JsonProjectOrderRepository, ChatSynchronization, ChatTransportActivity,
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,
-                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, WorkspaceChangeTracker, ChatPlans,
+                ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, ToolConcepts, WorkspaceChangeTracker, ChatPlans,
                 WorkspaceUndoService, SubtaskRuns,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,

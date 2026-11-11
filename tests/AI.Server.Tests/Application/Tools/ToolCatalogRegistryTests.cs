@@ -1,6 +1,8 @@
 namespace AI.Application.Tests.Tools;
 
 using System.Text.Json;
+using AI.Application.Search;
+using AI.Application.Tests.Search;
 using AI.Application.Tools;
 using AI.Application.Chat;
 using Shouldly;
@@ -107,6 +109,22 @@ public sealed class ToolCatalogRegistryTests
 
         Should.Throw<ArgumentException>(() => registry.SearchAndPin(run, "прочитать файл", 5)).Message.ShouldContain("English");
         registry.GetPinned(run).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ShouldAnswerAQueryInAnotherLanguageByItsConcepts()
+    {
+        var registry = new ToolCatalogRegistry(new ToolConcepts());
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = registry.Begin(run);
+        registry.Update(run, [ToolConceptsTests.Tool("mcp_built_in__read_text_file", "read_text_file"),
+            ToolConceptsTests.Tool("mcp_built_in__list_directory", "list_directory"), ToolConceptsTests.Tool("mcp_app__app_theme", "app_theme")]);
+
+        var found = registry.SearchAndPin(run, "прочитать файл", 5).Tools;
+
+        found[0].Name.ShouldBe("mcp_built_in__read_text_file");
+        found.ShouldNotContain(match => match.Name == "mcp_app__app_theme");
+        Should.Throw<ArgumentException>(() => registry.SearchAndPin(run, "привет", 5)).Message.ShouldContain("English");
     }
 
     [Fact]

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>文件;档案;檔案</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>文件夹;文件夾;目录;目錄;資料夾</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>列表;列出;显示;顯示;哪些;有什么;有什麼</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>读;讀;打开;打開;查看;内容;內容</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>写;寫;保存;儲存</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>创建;創建;建立;新建;添加</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>编辑;編輯;修改;更改;替换;替換;修复;更新</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>删除;刪除;移除</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>移动;移動;重命名;改名</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>搜索;查找;找;在哪</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;压缩;壓縮;解压;解壓;归档;歸檔</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>图片;圖片;图像;圖像;照片;截图;截圖</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>网页;網頁;网站;網站;互联网;网络;網路;链接;連結;url;http;下载;下載</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>运行;運行;执行;執行;启动;命令;构建;编译;編譯;测试;測試;脚本;腳本</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>聊天;对话;對話;会话</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>项目;專案</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>记住;記住;记忆;記憶;忘记;忘記</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>日程;排程;提醒;每天;定时;稍后</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>主题;主題;颜色;顏色;深色模式;浅色模式</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>技能</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>指令;说明;规则;規則</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>访问;訪問;权限;權限;允许;允許</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>导航;導航;跳转;切换到;切換到</value>
+    </data>
+</root>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>archivo;fichero</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>carpeta;directorio</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>lista;listar;muestr;mostrar;cuáles;cuales;qué hay;contenido</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>lee;abre;abrir;contenido</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>escrib;guarda</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>crea;nuevo;nueva;añad;agreg</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>edit;cambi;modific;reemplaz;corrig;actualiz</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>elimin;borr;quit</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>mover;mueve;renombr</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>busc;encuentr;encontr;dónde;donde</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;comprim;descomprim;extrae</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>imagen;foto;captura;dibujo</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>web;internet;sitio;página;pagina;url;http;descarg</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>ejecut;comando;compil;prueba;script;lanza</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>chat;conversación;conversacion</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>proyecto</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>recuerda;memoria;olvida</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>program;recordator;recuérdame;cada día;diario;temporizador;más tarde</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>tema;color;modo oscuro;modo claro</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>habilidad;skill</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>instruccion;instrucción;regla</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>acceso;permiso;autoriz</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>navega;ve a;ir a;cambia a</value>
+    </data>
+</root>

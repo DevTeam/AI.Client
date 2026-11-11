@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>ملف;ملفات</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>مجلد;مجلدات;دليل</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>قائمة;اعرض;عرض;ما هي;محتويات</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>اقرأ;قراءة;افتح;محتوى</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>اكتب;كتابة;احفظ;حفظ</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>أنشئ;انشئ;إنشاء;جديد;أضف</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>عدل;عدّل;تعديل;غيّر;استبدل;صحح;حدّث;تحديث</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>احذف;حذف;أزل;إزالة</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>انقل;نقل;أعد تسمية;إعادة تسمية</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>ابحث;بحث;أين</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;أرشيف;ضغط;فك الضغط;استخرج</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>صورة;صور;لقطة شاشة</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>ويب;إنترنت;انترنت;موقع;صفحة;رابط;url;http;تنزيل</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>شغّل;شغل;تشغيل;نفّذ;نفذ;تنفيذ;بناء;اختبار;سكربت</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>محادثة;دردشة</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>مشروع</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>تذكر;ذاكرة</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>جدول;ذكرني;كل يوم;يومي;مؤقت;لاحقا</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>سمة;مظهر;لون;ألوان;الوضع الداكن;الوضع الفاتح</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>مهارة</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>تعليمات;قواعد;قاعدة</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>وصول;صلاحية;إذن;أذونات</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>انتقل;اذهب إلى</value>
+    </data>
+</root>

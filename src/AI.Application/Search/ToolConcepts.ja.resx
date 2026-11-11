@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    </resheader>
+    <data name="File" xml:space="preserve">
+        <value>ファイル</value>
+    </data>
+    <data name="Directory" xml:space="preserve">
+        <value>フォルダ;ディレクトリ</value>
+    </data>
+    <data name="List" xml:space="preserve">
+        <value>一覧;リスト;表示;どんな;何が;中身</value>
+    </data>
+    <data name="Read" xml:space="preserve">
+        <value>読;開;中身;内容</value>
+    </data>
+    <data name="Write" xml:space="preserve">
+        <value>書;保存</value>
+    </data>
+    <data name="Create" xml:space="preserve">
+        <value>作成;作って;新しい;新規;追加</value>
+    </data>
+    <data name="Edit" xml:space="preserve">
+        <value>編集;変更;修正;置き換;更新</value>
+    </data>
+    <data name="Delete" xml:space="preserve">
+        <value>削除;消</value>
+    </data>
+    <data name="Move" xml:space="preserve">
+        <value>移動;名前を変;名前変更;リネーム</value>
+    </data>
+    <data name="Search" xml:space="preserve">
+        <value>検索;探;見つけ;どこ</value>
+    </data>
+    <data name="Archive" xml:space="preserve">
+        <value>zip;アーカイブ;圧縮;解凍;展開</value>
+    </data>
+    <data name="Image" xml:space="preserve">
+        <value>画像;写真;スクリーンショット</value>
+    </data>
+    <data name="Web" xml:space="preserve">
+        <value>ウェブ;インターネット;サイト;ページ;url;http;ダウンロード</value>
+    </data>
+    <data name="Run" xml:space="preserve">
+        <value>実行;起動;コマンド;ビルド;テスト;スクリプト;コンパイル</value>
+    </data>
+    <data name="Chat" xml:space="preserve">
+        <value>チャット;会話</value>
+    </data>
+    <data name="Project" xml:space="preserve">
+        <value>プロジェクト</value>
+    </data>
+    <data name="Memory" xml:space="preserve">
+        <value>覚え;記憶;メモリ;忘れ</value>
+    </data>
+    <data name="Schedule" xml:space="preserve">
+        <value>スケジュール;予定;リマインド;毎日;タイマー;後で</value>
+    </data>
+    <data name="Theme" xml:space="preserve">
+        <value>テーマ;色;ダークモード;ライトモード</value>
+    </data>
+    <data name="Skill" xml:space="preserve">
+        <value>スキル</value>
+    </data>
+    <data name="Instructions" xml:space="preserve">
+        <value>指示;ルール</value>
+    </data>
+    <data name="Access" xml:space="preserve">
+        <value>アクセス;権限;許可</value>
+    </data>
+    <data name="Navigate" xml:space="preserve">
+        <value>切り替え;ナビゲート</value>
+    </data>
+</root>

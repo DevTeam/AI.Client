@@ -160,7 +160,7 @@ public sealed class ToolDefinitionSelectorTests
 
     private static AgentTool Tool(string name, string description, string? providerName = null)
     {
-        var schema = JsonDocument.Parse("""{"type":"object","properties":{}}""").RootElement.Clone();
+        var schema = JsonElement.Parse("""{"type":"object","properties":{}}""");
         var definition = new ChatToolDefinition(providerName ?? name, description, schema);
         return new AgentTool(definition, ToolDescriptor.Basic(name, name, description, schema),
             Guid.NewGuid(), name, name);

@@ -194,7 +194,7 @@ public sealed partial class AdaptiveContextPolicy(
             .Select(item => new Candidate(item.Tool, estimator.EstimateTools([item.Tool.ModelDefinition]),
                 requiredNames.Contains(item.Tool.ModelDefinition.Name), Core(item.Tool), pinnedTools?.Contains(item.Tool.ModelDefinition.Name) == true,
                 item.Words.Count(word => query.Contains(word) && !common.Contains(word))
-                + (requested.Count == 0 ? 0 : 2 * concepts!.Of(item.Tool).Count(requested.Contains))))
+                + (requested.Count == 0 ? 0 : 2 * concepts!.ServedBy(item.Tool).Count(requested.Contains))))
             .OrderByDescending(item => item.Required)
             // Preserve discovery in small windows; explicit discoveries outrank the general core set.
             .ThenByDescending(item => item.Tool.ModelDefinition.Name == ToolRef.ToolSearchName)

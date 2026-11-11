@@ -160,7 +160,7 @@ public sealed class ToolCatalogRegistryTests
 
     private static AgentTool Tool(string name, string description, string schemaJson = "{}")
     {
-        var schema = JsonDocument.Parse(schemaJson).RootElement.Clone();
+        var schema = JsonElement.Parse(schemaJson);
         return new AgentTool(new ChatToolDefinition(name, description, schema),
             ToolDescriptor.Basic(name, name, description, schema), Guid.NewGuid(), name, name);
     }

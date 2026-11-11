@@ -48,7 +48,7 @@ public sealed class WorkspaceUndoServiceTests : IDisposable
         string path, Func<Task> change)
     {
         var descriptor = ToolDescriptor.Basic(ToolRef.BuiltInPrefix + name, name, name,
-            JsonDocument.Parse("{}").RootElement.Clone());
+            JsonElement.Parse("{}"));
         var arguments = JsonSerializer.Serialize(new { path });
         await tracker.RecordIntentAsync(run, descriptor, arguments, TestContext.Current.CancellationToken);
         await change();

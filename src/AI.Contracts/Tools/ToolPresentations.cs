@@ -67,7 +67,7 @@ public sealed class ToolPresentations(
         if (string.IsNullOrWhiteSpace(arguments)) return null;
         try
         {
-            return JsonDocument.Parse(arguments).RootElement.Clone();
+            return JsonElement.Parse(arguments);
         }
         catch (JsonException)
         {

@@ -39,7 +39,7 @@ public class SkillRouteSkillTests
         route.Skills.Select(skill => skill.Id).ShouldBe(["project-create", "code-feature-implement"]);
         route.Tools.ShouldBe(["mcp_built_in__process_run"]);
         route.ContinuesActive.ShouldBeFalse();
-        var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
+        var input = JsonElement.Parse(_requests.Single().ContextMessages![^1].Content);
         input.GetProperty("message").GetString().ShouldBe("Создай проект с .NET приложением");
         input.GetProperty("tools")[0].GetString().ShouldBe("mcp_built_in__process_run: Run a program and wait for completion.");
         input.GetProperty("skills").EnumerateArray().Select(item => item.GetString()!)
@@ -62,7 +62,7 @@ public class SkillRouteSkillTests
             TestContext.Current.CancellationToken);
 
         // Naming a path the project already reaches is not a request for access to it.
-        var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
+        var input = JsonElement.Parse(_requests.Single().ContextMessages![^1].Content);
         input.GetProperty("directories").EnumerateArray().Select(item => item.GetString())
             .ShouldBe(["/work/repo: read, write, recursive"]);
     }
@@ -83,7 +83,7 @@ public class SkillRouteSkillTests
         ], [], TestContext.Current.CancellationToken);
 
         route.ShouldNotBeNull().ContinuesActive.ShouldBeTrue();
-        var input = JsonDocument.Parse(_requests.Single().ContextMessages![^1].Content).RootElement;
+        var input = JsonElement.Parse(_requests.Single().ContextMessages![^1].Content);
         input.GetProperty("active_skill").GetString().ShouldBe("code-feature-implement");
         input.GetProperty("previous").GetString().ShouldBe("Done. Should the file have a header row?");
     }
@@ -145,7 +145,7 @@ public class SkillRouteSkillTests
     private ToolRunContext Run => new(_projectId, _chatId, _chatId, true);
 
     private static AgentTool Tool(string name, string description) =>
-        new(new ChatToolDefinition(name, description, JsonDocument.Parse("{}").RootElement), null!, Guid.Empty, name, "");
+        new(new ChatToolDefinition(name, description, JsonElement.Parse("{}")), null!, Guid.Empty, name, "");
 
     private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null, string? subtaskModel = null,
         ProjectDetails? project = null)

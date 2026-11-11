@@ -53,7 +53,7 @@ public sealed partial class AppToolTests
         var answer = result.GetProperty("answers")[0];
         answer.GetProperty("selected")[0].GetString().ShouldBe("Weekdays at 9:00");
         var value = answer.GetProperty("values")[0].GetString()!;
-        JsonDocument.Parse(value).RootElement.GetProperty("frequency").GetString().ShouldBe("Daily");
+        JsonElement.Parse(value).GetProperty("frequency").GetString().ShouldBe("Daily");
         answer.GetProperty("valueDescriptions")[0].GetString().ShouldBe("Every weekday at 09:00");
         fixture.Broker.LastRequest!.Questions[0].Options[0].Value.ShouldNotBeNull();
     }
@@ -85,7 +85,7 @@ public sealed partial class AppToolTests
         var settings = new
         {
             task = "Summarize yesterday's commits",
-            recurrence = JsonDocument.Parse(WeekdaysAtNine).RootElement,
+            recurrence = JsonElement.Parse(WeekdaysAtNine),
             timeZone = "UTC"
         };
         await AppFixture.CallAsync(session, "app_schedule", new { operation = "Set", operationId = Guid.NewGuid(), settings });
@@ -119,7 +119,7 @@ public sealed partial class AppToolTests
         var settings = new
         {
             task = "Summarize yesterday's commits",
-            recurrence = JsonDocument.Parse(WeekdaysAtNine).RootElement,
+            recurrence = JsonElement.Parse(WeekdaysAtNine),
             timeZone = "UTC",
             successCriteria = "A summary was written"
         };

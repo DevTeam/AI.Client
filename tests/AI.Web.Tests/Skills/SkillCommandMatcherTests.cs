@@ -112,5 +112,5 @@ public sealed class SkillCommandMatcherTests
 
     private static SkillDefinition Skill(string id, string name, string description = "Description",
         string source = "User", bool enabled = true, string[]? aliases = null) =>
-        new(id, name, description, source, "---", enabled, JsonDocument.Parse("{}").RootElement, Aliases: aliases);
+        new(id, name, description, source, "---", enabled, JsonElement.Parse("{}"), Aliases: aliases);
 }

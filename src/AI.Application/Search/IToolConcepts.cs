@@ -15,5 +15,5 @@ public interface IToolConcepts
     IReadOnlySet<string> Find(string text);
 
     /// <summary>The concepts a built-in or application tool serves; empty for any other tool.</summary>
-    IReadOnlySet<string> Of(AgentTool tool);
+    IReadOnlySet<string> ServedBy(AgentTool tool);
 }

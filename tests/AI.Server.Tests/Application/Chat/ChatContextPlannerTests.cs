@@ -48,7 +48,7 @@ public sealed class ChatContextPlannerTests
         ChatToolDefinition[] tools =
         [
             new("read_file", new string('d', 2_000),
-                JsonDocument.Parse("""{"type":"object","properties":{"path":{"type":"string"}}}""").RootElement.Clone())
+                JsonElement.Parse("""{"type":"object","properties":{"path":{"type":"string"}}}"""))
         ];
 
         var withTools = planner.Plan(null, "unknown-model", [], tools);
@@ -75,7 +75,7 @@ public sealed class ChatContextPlannerTests
             new ConnectionContextLimitsResolver(), new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver()));
 
         var plan = planner.Plan(null, "unknown-model", [new ChatCompletionMessage("user", "large")],
-            [new ChatToolDefinition("tool", "large", JsonDocument.Parse("{}").RootElement.Clone())]);
+            [new ChatToolDefinition("tool", "large", JsonElement.Parse("{}"))]);
 
         plan.EstimatedInputTokens.ShouldBe(long.MaxValue);
         plan.ToolDefinitionTokens.ShouldBe(long.MaxValue);

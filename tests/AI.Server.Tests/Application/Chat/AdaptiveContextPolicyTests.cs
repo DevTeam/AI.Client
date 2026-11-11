@@ -458,7 +458,7 @@ public sealed class AdaptiveContextPolicyTests
 
     private static AgentTool Tool(string name, string description, bool app = false)
     {
-        var schema = JsonDocument.Parse("{}").RootElement.Clone();
+        var schema = JsonElement.Parse("{}");
         var definition = new ChatToolDefinition((app ? ToolRef.AppPrefix : ToolRef.BuiltInPrefix) + name, description, schema);
         return new(definition, ToolDescriptor.Basic(name, name, description, schema), Guid.NewGuid(), name, name);
     }

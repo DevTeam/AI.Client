@@ -24,7 +24,7 @@ public sealed class DefaultToolSessionFactoryTests
 
         var environment = factory.CreateEnvironment([new ToolDirectoryGrant(@"C:\work", true, ["read"])], run);
 
-        var grants = JsonDocument.Parse(environment[DefaultToolSessionFactory.DirectoryGrantsVariable]!).RootElement
+        var grants = JsonElement.Parse(environment[DefaultToolSessionFactory.DirectoryGrantsVariable]!)
             .EnumerateArray().Select(grant => (Root: grant.GetProperty("root").GetString(), Purpose: grant.GetProperty("purpose").GetString()))
             .ToArray();
         grants.ShouldBe([(@"C:\work", "project"), (@"C:\temp\chat", "chatTemporary")]);

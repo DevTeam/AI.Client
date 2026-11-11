@@ -68,7 +68,7 @@ public sealed class ToolDiscoveryGuidanceTests
 
     private static AgentTool Tool(string name, string original)
     {
-        var schema = JsonDocument.Parse("{}").RootElement.Clone();
+        var schema = JsonElement.Parse("{}");
         return new(new(name, original, schema), ToolDescriptor.Basic(name, original, original, schema),
             Guid.NewGuid(), original, "schema");
     }

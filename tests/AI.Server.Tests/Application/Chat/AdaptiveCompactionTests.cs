@@ -276,7 +276,7 @@ public sealed class AdaptiveCompactionTests
             ContextWindowTokens: window, ReservedOutputTokens: output);
     private static AgentTool Tool(string name)
     {
-        var schema = JsonDocument.Parse("{}").RootElement.Clone();
+        var schema = JsonElement.Parse("{}");
         return new(new ChatToolDefinition(name, new string('d', 120), schema),
             ToolDescriptor.Basic(name, name, "Operation", schema), Guid.NewGuid(), name, name);
     }

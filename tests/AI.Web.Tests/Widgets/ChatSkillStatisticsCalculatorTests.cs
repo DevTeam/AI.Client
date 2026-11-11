@@ -116,7 +116,7 @@ public class ChatSkillStatisticsCalculatorTests
             DateTimeOffset.UnixEpoch, ToolCallId: id);
 
     private static SkillDefinition Skill(string id, string name, string icon, string kind) =>
-        new(id, name, "", "BuiltIn", "", true, JsonDocument.Parse("{}").RootElement, Kind: kind, Icon: icon);
+        new(id, name, "", "BuiltIn", "", true, JsonElement.Parse("{}"), Kind: kind, Icon: icon);
 
     private static ChatRunSnapshot Snapshot(ChatMessageView user) => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
         ChatRunStatus.Generating, "", [], false, null, 1, ActiveMessageId: user.Id);

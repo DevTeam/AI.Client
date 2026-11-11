@@ -141,16 +141,16 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldSummariseDelegatedWorkAndKeepItsTranscriptOutOfTheSummary()
     {
-        var structured = JsonDocument.Parse("""
+        var structured = JsonElement.Parse("""
             {"results":[
               {"task":"count the files","answer":"There are 12.","connection":"Cheap","messages":3,"toolCalls":2,"filesChanged":0,"completed":true,"error":null,
                "checks":[{"name":"count","status":"Passed"}],"unresolved":[]},
               {"task":"break","answer":"","connection":"Cheap","messages":1,"toolCalls":0,"filesChanged":0,"completed":false,"error":"The endpoint refused."}],
              "error":null}
-            """).RootElement.Clone();
-        var meta = JsonDocument.Parse("""
+            """);
+        var meta = JsonElement.Parse("""
             {"transcript":[{"task":"count the files","role":"assistant","content":"Looking.","toolName":"mcp_built_in__list_directory"}]}
-            """).RootElement.Clone();
+            """);
         var result = new ToolCallResult([new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)],
             structured, meta, false, structured.GetRawText());
 
@@ -171,12 +171,12 @@ public sealed class AppToolPresentationTests
     [Fact]
     public void ShouldKeepASubtaskTranscriptThroughStorageAndOutOfTheModelProjection()
     {
-        var structured = JsonDocument.Parse("""
+        var structured = JsonElement.Parse("""
             {"results":[{"task":"count","answer":"12","connection":"Test","messages":2,"toolCalls":1,"filesChanged":0,"completed":true,"error":null}],"error":null}
-            """).RootElement.Clone();
-        var meta = JsonDocument.Parse("""
+            """);
+        var meta = JsonElement.Parse("""
             {"transcript":[{"task":"count","role":"assistant","content":"secret reasoning","toolName":null}]}
-            """).RootElement.Clone();
+            """);
         var live = new ToolCallResult([new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)],
             structured, meta, false, _tools.ModelProjector.Project(
                 [new ToolContent(ToolContentKind.Text, structured.GetRawText(), null, null, null)], structured, false));
@@ -283,7 +283,7 @@ public sealed class AppToolPresentationTests
 
     private static ToolCallResult Structured(string json, bool isError = false)
     {
-        var content = JsonDocument.Parse(json).RootElement.Clone();
+        var content = JsonElement.Parse(json);
         return new ToolCallResult([new ToolContent(ToolContentKind.Text, content.GetRawText(), null, null, null)],
             content, null, isError, content.GetRawText());
     }

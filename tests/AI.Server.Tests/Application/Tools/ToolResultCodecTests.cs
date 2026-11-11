@@ -10,7 +10,7 @@ public class ToolResultCodecTests
     private static readonly ToolResultModelProjector ModelProjector = new();
     private static readonly ToolResultCodec Codec = new(ModelProjector);
 
-    private static JsonElement Json(string raw) => JsonDocument.Parse(raw).RootElement.Clone();
+    private static JsonElement Json(string raw) => JsonElement.Parse(raw);
 
     [Fact]
     public void ShouldLeaveNullFieldsOutOfTheModelView()

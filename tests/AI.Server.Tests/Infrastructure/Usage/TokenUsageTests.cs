@@ -235,7 +235,7 @@ public class TokenUsageTests
     public async Task ShouldSayWhatChangedAtTheStartOfARequestSinceThePreviousOne()
     {
         var (meter, ledger) = CreateMeter();
-        var schema = System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone();
+        var schema = System.Text.Json.JsonElement.Parse("{}");
         ChatToolDefinition[] tools = [new("read", "Read a file", schema)];
         ChatCompletionMessage[] start = [new("system", "Base"), new("user", "Question " + new string('q', 2_000))];
         async Task SendAsync(IReadOnlyList<ChatCompletionMessage> messages, IReadOnlyList<ChatToolDefinition> sent)

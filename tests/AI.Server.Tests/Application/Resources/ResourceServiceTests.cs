@@ -406,7 +406,7 @@ public sealed class ResourceServiceTests
     }
 
     private static SkillDefinition Skill(string id, string name, bool enabled) =>
-        new(id, name, "Description", "User", "---", enabled, System.Text.Json.JsonDocument.Parse("{}").RootElement);
+        new(id, name, "Description", "User", "---", enabled, System.Text.Json.JsonElement.Parse("{}"));
 
     /// <summary>Supplies the file-system contract the service gained; these tests exercise the real disk.</summary>
     private static ResourceService NewService(IProjectService projects, IDirectoryBrowser browser,

@@ -57,9 +57,9 @@ public sealed class ToolConceptsTests
     [Fact]
     public void ShouldGiveConceptsOnlyToBuiltInAndApplicationTools()
     {
-        _concepts.Of(Tool(ToolRef.BuiltInPrefix + "list_directory", "list_directory")).ShouldContain("Directory");
-        _concepts.Of(Tool(ToolRef.AppPrefix + "app_theme", "app_theme")).ShouldBe(["Theme"]);
-        _concepts.Of(Tool("mcp_github__list_directory", "list_directory")).ShouldBeEmpty();
+        _concepts.ServedBy(Tool(ToolRef.BuiltInPrefix + "list_directory", "list_directory")).ShouldContain("Directory");
+        _concepts.ServedBy(Tool(ToolRef.AppPrefix + "app_theme", "app_theme")).ShouldBe(["Theme"]);
+        _concepts.ServedBy(Tool("mcp_github__list_directory", "list_directory")).ShouldBeEmpty();
     }
 
     private static string[] Keys(ResourceManager resources, CultureInfo culture) =>
@@ -68,7 +68,7 @@ public sealed class ToolConceptsTests
 
     internal static AgentTool Tool(string name, string original, string description = "Operation")
     {
-        var schema = JsonDocument.Parse("{}").RootElement.Clone();
+        var schema = JsonElement.Parse("{}");
         return new(new(name, description, schema), ToolDescriptor.Basic(name, original, description, schema),
             Guid.NewGuid(), original, original);
     }

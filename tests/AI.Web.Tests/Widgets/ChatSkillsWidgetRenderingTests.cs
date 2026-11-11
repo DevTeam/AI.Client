@@ -36,7 +36,7 @@ public sealed class ChatSkillsWidgetRenderingTests
             ]),
             new(Guid.NewGuid(), null, "Tool", "", T0, ToolCallId: "a", ContentOmitted: true, ToolResultIsError: true)
         ], [new SkillDefinition("commit", "Commit changes", "", "BuiltIn", "", true,
-            JsonDocument.Parse("{}").RootElement, Kind: SkillKinds.Playbook, Icon: "git-commit")]));
+            JsonElement.Parse("{}"), Kind: SkillKinds.Playbook, Icon: "git-commit")]));
 
         html.ShouldContain("Commit changes");
         html.ShouldContain("Playbook");

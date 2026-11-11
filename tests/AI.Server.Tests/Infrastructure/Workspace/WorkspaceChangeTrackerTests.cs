@@ -20,7 +20,7 @@ public sealed class WorkspaceChangeTrackerTests : IDisposable
     public void Dispose() => Directory.Delete(_root, true);
 
     private static ToolDescriptor BuiltIn(string name) => ToolDescriptor.Basic(
-        ToolRef.BuiltInPrefix + name, name, name, JsonDocument.Parse("{}").RootElement.Clone());
+        ToolRef.BuiltInPrefix + name, name, name, JsonElement.Parse("{}"));
 
     private async Task<WorkspaceChangeTracker> StartAsync(params string[] roots)
     {

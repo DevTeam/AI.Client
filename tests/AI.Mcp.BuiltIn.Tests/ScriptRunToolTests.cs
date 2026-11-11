@@ -105,7 +105,7 @@ public sealed class ScriptRunToolTests : IAsyncLifetime
         var result = await CallAsync(new { code = "new { Total = 3, Names = new[] { \"a\", \"b\" }, Kind = DayOfWeek.Monday }" });
 
         result.GetProperty("success").GetBoolean().ShouldBeTrue(result.ToString());
-        var value = JsonDocument.Parse(result.GetProperty("returnValue").GetString()!).RootElement;
+        var value = JsonElement.Parse(result.GetProperty("returnValue").GetString()!);
         value.GetProperty("Total").GetInt32().ShouldBe(3);
         value.GetProperty("Names").EnumerateArray().Select(item => item.GetString()).ShouldBe(["a", "b"]);
         value.GetProperty("Kind").GetString().ShouldBe("Monday");

@@ -62,7 +62,7 @@ public sealed class ToolConcepts : IToolConcepts
             .ToHashSet(StringComparer.Ordinal);
     }
 
-    public IReadOnlySet<string> Of(AgentTool tool)
+    public IReadOnlySet<string> ServedBy(AgentTool tool)
     {
         var name = tool.ModelDefinition.Name;
         var table = name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal) ? BuiltIn

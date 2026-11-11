@@ -57,7 +57,7 @@ public sealed class JsonLineFileLoggerProviderTests
 
         var entries = files.Files.Single(item => item.Key.EndsWith(".jsonl", StringComparison.Ordinal)).Value
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => JsonDocument.Parse(line).RootElement).ToArray();
+            .Select(line => JsonElement.Parse(line)).ToArray();
         entries[0].GetProperty("UserId").ValueKind.ShouldBe(JsonValueKind.Null);
         entries[1].GetProperty("UserId").GetString().ShouldBe(UserId.Local.ToString());
     }

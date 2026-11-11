@@ -27,7 +27,7 @@ public static class TraceReport
 
         var chatFile = Path.Combine(attemptDirectory, "chat.json");
         if (!File.Exists(chatFile)) return text.ToString();
-        var chat = EvalHost.ReadChat(JsonDocument.Parse(File.ReadAllText(chatFile)).RootElement);
+        var chat = EvalHost.ReadChat(JsonElement.Parse(File.ReadAllText(chatFile)));
         var names = (chat?.Messages ?? []).SelectMany(message => message.ToolCalls ?? []).ToDictionary(call => call.Id, call => call.Name);
         var step = 0;
         foreach (var message in chat?.Messages ?? [])

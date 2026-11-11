@@ -15,8 +15,8 @@ public class ToolUserInterfaceTests
 
     private static ToolDescriptor WithMeta(string? meta) => new(
         "mcp_other__edit_files", "edit_files", null, null,
-        JsonDocument.Parse("{}").RootElement.Clone(), null, null, [],
-        meta is null ? null : JsonDocument.Parse(meta).RootElement.Clone());
+        JsonElement.Parse("{}"), null, null, [],
+        meta is null ? null : JsonElement.Parse(meta));
 
     [Fact]
     public void ShouldReadTheDeclaredUiResource()

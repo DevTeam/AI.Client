@@ -56,7 +56,7 @@ public sealed class ContextTextTokenizerTests
         var fallback = new ContextTokenEstimator();
         ChatCompletionMessage[] messages = [new("user", "Ошибка 🚀 中文", [new("call", "read", "{\"path\":\"file.cs\"}")])];
         estimator.EstimateMessages(messages).ShouldBe(fallback.EstimateMessages(messages));
-        ChatToolDefinition[] tools = [new("read", "Read a file", JsonDocument.Parse("{}").RootElement.Clone())];
+        ChatToolDefinition[] tools = [new("read", "Read a file", JsonElement.Parse("{}"))];
         estimator.EstimateTools(tools).ShouldBe(fallback.EstimateTools(tools));
     }
 

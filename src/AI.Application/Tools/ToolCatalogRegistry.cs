@@ -47,9 +47,9 @@ public sealed class ToolCatalogRegistry(IToolConcepts? concepts = null) : IToolC
         if (!_entries.TryGetValue(Key.Of(run), out var entry)) return new([], 0);
         var scoped = entry.Tools.Where(tool => server is null || OnServer(tool, server.Trim())).ToArray();
         if (named is not null) return Pin(entry, scoped
-            .Select(tool => new { Tool = tool, Score = concepts!.Of(tool).Count(named.Contains) })
+            .Select(tool => new { Tool = tool, Score = concepts!.ServedBy(tool).Count(named.Contains) })
             .Where(item => item.Score > 0)
-            .OrderByDescending(item => item.Score).ThenBy(item => concepts!.Of(item.Tool).Count)
+            .OrderByDescending(item => item.Score).ThenBy(item => concepts!.ServedBy(item.Tool).Count)
             .ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal)
             .Select(item => item.Tool).ToArray(), limit);
         var name = query.Trim();

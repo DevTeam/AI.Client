@@ -37,6 +37,11 @@ jobs:
           dotnet-version: 11.0.x
       - name: Build
         run: dotnet build AI.slnx --nologo
+      # Installers ship THIRD-PARTY-NOTICES.md; a package update without regenerating it would ship
+      # notices for versions that are no longer inside. One runner is enough: the list is the same.
+      - name: Check third-party notices
+        if: runner.os == 'Linux'
+        run: dotnet run --project build --no-build -- third-party-notices --check
       - name: Point TMPDIR at a real directory on macOS
         if: runner.os == 'macOS'
         shell: bash

@@ -104,7 +104,13 @@ also includes Qwen's license. This PowerShell script still prepares the earlier 
 The build target prepares the default model: `unsloth/Qwen3.5-2B-GGUF` at revision
 `f6d5376be1edb4d416d56da11e5397a961aca8ae`, `Qwen3.5-2B-Q4_K_M.gguf`, 1280835840 bytes, SHA-256
 `aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223`, Apache 2.0 license from
-`Qwen/Qwen3.5-2B`. The Host accepts a package whose weights are below 2 GB and whose manifest
+`Qwen/Qwen3.5-2B` (`LICENSE-Model`). The llama.cpp release archives carry no license for llama.cpp
+itself or for the libraries built into `llama-server`, so the target copies the texts for release
+b12244 from `build/Packaging/local-ai-licenses` into every package, prepared or reused:
+`LICENSE-llama.cpp` (MIT, the ggml authors), `LICENSE-jsonhpp` (nlohmann/json, MIT),
+`LICENSE-cpp-httplib` (MIT) and `THIRD-PARTY-NOTICES.txt`, which lists them together with the
+model and the public-domain libraries (miniaudio, stb_image, subprocess.h). Update these files
+together with the runtime version. The Host accepts a package whose weights are below 2 GB and whose manifest
 context is 1024–32768 tokens. Total component size is reported separately.
 
 Set `AI_LOCAL_MODEL_PACKAGE` to the prepared directory before running the existing release

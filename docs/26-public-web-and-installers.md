@@ -53,6 +53,16 @@ All six runtime combinations are in `.github/workflows/release.yml`. A `v*` tag 
 
 The release workflow marks versions with a prerelease suffix, such as `v1.2.0-rc.1`, as Preview releases. After publishing all installers, it starts the Pages workflow on `master`. Every Pages deployment builds `updates/releases.json` from published GitHub Releases with an authenticated workflow token. Installed Host and Desktop clients read this static catalog at `https://ai.dev-team.org/updates/releases.json`; they do not call the GitHub API. The catalog includes package SHA-256 digests, which the updater checks after download. The Pages workflow also runs on every push to `master`, so a site deployment keeps the catalog current.
 
+### Licenses in packages
+
+Host and Desktop ship `LICENSE`, `NOTICE` and `THIRD-PARTY-NOTICES.md` next to their executables (`build/Notices.targets`), so every installer carries them. `THIRD-PARTY-NOTICES.md` lists each package with assemblies or native files in the Host, Desktop and built-in MCP server output, with its license and copyright, and the license texts and the packages' own third-party notices (Skia and HarfBuzz in SkiaSharp, the ML tokenizer data). What NuGet does not describe is listed by hand in `ThirdPartyNoticesTarget`: the .NET runtime of a self-contained build, mermaid and highlight.js in `wwwroot/js/vendor`, the Inter font inside Avalonia.Fonts.Inter, the spelling dictionaries and the MIT source license of json-everything; their texts are in `build/Packaging/notices`. Regenerate the file after any package change:
+
+```text
+dotnet run --project build -- third-party-notices
+```
+
+CI runs it with `--check` and fails while the file is out of date. JsonSchema.Net, JsonPointer.Net and Json.More.Net are MIT in source, but their NuGet binaries come under the json-everything Open Source Maintenance Fee agreement (`OSMFEULA.txt`, included in the notices): redistribution is allowed with the MIT notice, and a fee is asked from users who use the binaries in revenue-generating activities with an annual gross revenue of US$10,000 or more. The optional Local AI component carries its own notices (see [Local AI](41-local-ai.md)).
+
 For a normal release, push a new `v<version>` tag, wait for both the release and Pages workflows to succeed, and verify the GitHub Release files and the catalog URL before checking an update in the installed app. A manual release workflow run with a version input follows the same publication steps. Do not edit the catalog by hand. If Pages publication fails, repair and rerun the Pages workflow before announcing the release; installed clients will continue seeing the previous catalog.
 
 ## Web publishing

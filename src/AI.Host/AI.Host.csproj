@@ -29,4 +29,5 @@
     </ItemGroup>
   </Target>
   <Import Project="..\..\build\McpBuiltIn.targets" />
+  <Import Project="..\..\build\Notices.targets" />
 </Project>

@@ -19,6 +19,7 @@ internal sealed class BuildApplication(
     IProfileDesktopTarget profileDesktopTarget,
     IDesktopStartupMeasurementTarget desktopStartupMeasurementTarget,
     IReadmeTarget readmeTarget,
+    IThirdPartyNoticesTarget thirdPartyNoticesTarget,
     IPrepareTextCorrectionTarget prepareTextCorrectionTarget,
     CancellationToken cancellationToken)
 {
@@ -38,6 +39,7 @@ internal sealed class BuildApplication(
         RegisterProfileDesktop(root);
         RegisterMeasureDesktop(root);
         RegisterReadme(root);
+        RegisterThirdPartyNotices(root);
         RegisterTextCorrection(root);
         return root.Parse(args).InvokeAsync();
     }
@@ -53,6 +55,15 @@ internal sealed class BuildApplication(
     {
         var command = new Command("readme", "Generate README.md from its Razor template.");
         command.SetAction(_ => readmeTarget.RunAsync(cancellationToken));
+        root.Subcommands.Add(command);
+    }
+
+    private void RegisterThirdPartyNotices(RootCommand root)
+    {
+        var check = new Option<bool>("--check") { Description = "Fail instead of writing when the file is out of date." };
+        var command = new Command("third-party-notices",
+            "Generate THIRD-PARTY-NOTICES.md from the packages the Host and Desktop ship.") { check };
+        command.SetAction(parse => thirdPartyNoticesTarget.RunAsync(parse.GetValue(check), cancellationToken));
         root.Subcommands.Add(command);
     }
 

@@ -1,0 +1,19 @@
+AI Client Local AI component: third-party notices
+
+This folder holds the optional Local AI component of AI Client. It contains third-party software
+and a model, each under its own license.
+
+Model
+- Qwen3.5-2B (Q4_K_M GGUF from unsloth/Qwen3.5-2B-GGUF), by the Qwen team, Alibaba Cloud.
+  Apache License 2.0; see LICENSE-Model.
+
+Inference runtime (runtime folder): llama.cpp release b12244, https://github.com/ggml-org/llama.cpp
+- llama.cpp and ggml: MIT License, Copyright (c) 2023-2026 The ggml authors; see LICENSE-llama.cpp.
+- nlohmann/json, built into llama-server: MIT License, Copyright (c) 2013-2025 Niels Lohmann;
+  see LICENSE-jsonhpp.
+- cpp-httplib, built into llama-server: MIT License, Copyright (c) 2017 yhirose; see LICENSE-cpp-httplib.
+- LLVM OpenMP runtime (libomp), shipped in the Windows build: Apache License 2.0 with LLVM
+  Exceptions; see runtime/LICENSE-LLVM-OpenMP where present.
+- miniaudio (public domain or MIT-0), stb_image (public domain or MIT) and subprocess.h
+  (The Unlicense) are also built into the runtime. Under the public-domain terms chosen here they
+  require no notice; they are listed for completeness.

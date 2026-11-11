@@ -44,6 +44,8 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
                 && File.Exists(Path.Combine(package, data.GetProperty("Executable").GetString()!))
                 && await MatchesAsync(Path.Combine(package, Model), ModelHash, cancellationToken))
             {
+                // A package prepared before the notices were added receives them too.
+                CopyNotices(package);
                 Console.WriteLine($"Local Qwen3.5 2B is already prepared: {package}");
                 return package;
             }
@@ -90,6 +92,7 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
         if (!File.Exists(license))
             await DownloadAsync("https://huggingface.co/Qwen/Qwen3.5-2B/raw/main/LICENSE", license, cancellationToken);
         File.Copy(license, Path.Combine(package, "LICENSE-Model"), overwrite: true);
+        CopyNotices(package);
         var json = JsonSerializer.Serialize(new
         {
             Executable = Path.GetRelativePath(package, executable), Model, ModelSha256 = ModelHash,
@@ -103,6 +106,17 @@ internal sealed class PrepareLocalAiTarget(IBuildPaths paths, HttpClient http) :
         File.Move(manifestPath + ".tmp", manifestPath, overwrite: true);
         Console.WriteLine($"Local Qwen3.5 2B is prepared: {package}");
         return package;
+    }
+
+    /// <summary>
+    /// The llama.cpp release archives carry no license for llama.cpp itself or for the libraries built
+    /// into llama-server, so the texts for the pinned release are kept in the repository and copied in.
+    /// </summary>
+    private void CopyNotices(string package)
+    {
+        var notices = Path.Combine(paths.SolutionDirectory, "build", "Packaging", "local-ai-licenses");
+        foreach (var file in Directory.EnumerateFiles(notices))
+            File.Copy(file, Path.Combine(package, Path.GetFileName(file)), overwrite: true);
     }
 
     private async Task DownloadAsync(string url, string destination, CancellationToken token)

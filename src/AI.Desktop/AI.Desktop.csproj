@@ -32,4 +32,5 @@
     <PackageReference Include="Pure.DI.MS" />
   </ItemGroup>
   <Import Project="..\..\build\McpBuiltIn.targets" />
+  <Import Project="..\..\build\Notices.targets" />
 </Project>

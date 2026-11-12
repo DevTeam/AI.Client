@@ -11,7 +11,11 @@ import urllib.request
 REPOSITORY = "DevTeam/AI.Client"
 # Mcp.CSharp assets belong to older releases only: the retired C# scripting companion package.
 # They stay in the catalog because clients from those releases still look for them.
-ASSET_NAME = re.compile(r"^AI\.(?:Host|Desktop|Mcp\.CSharp)-(?:win|osx|linux)-(?:x64|arm64)\.(?:exe|pkg|deb)$")
+# Windows releases also carry "-local-ai" installers with the offline model, offered on the Web page;
+# the updater asks for the regular names only, so listing them changes nothing for installed clients.
+ASSET_NAME = re.compile(
+    r"^AI\.(?:Host|Desktop|Mcp\.CSharp)-(?:win|osx|linux)-(?:x64|arm64)\.(?:exe|pkg|deb)$"
+    r"|^AI\.(?:Host|Desktop)-win-(?:x64|arm64)-local-ai\.exe$")
 DIGEST = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 
 

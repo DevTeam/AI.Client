@@ -20,15 +20,25 @@ public sealed class PublishedDownloadLinks(NavigationManager navigation) : IPubl
 
 public sealed record PublishedDownloadCatalog(int SchemaVersion, PublishedDownloadRelease[] Releases)
 {
-    public string? AssetUrl(string product, string runtime)
+    public string? AssetUrl(string product, string runtime) => Asset(product, runtime)?.Url;
+
+    /// <summary>
+    /// The newest published installer of a product for a runtime. With <paramref name="localAi"/>, the
+    /// installer that also carries the offline model, taken from that same release so both choices on
+    /// the page are one version; null when that release has none (only Windows releases do).
+    /// </summary>
+    public PublishedDownloadAsset? Asset(string product, string runtime, bool localAi = false)
     {
         var extension = runtime.StartsWith("win-", StringComparison.Ordinal) ? "exe"
             : runtime.StartsWith("osx-", StringComparison.Ordinal) ? "pkg" : "deb";
         var name = $"{product}-{runtime}.{extension}";
         foreach (var release in Releases)
         {
-            var url = release.Assets.FirstOrDefault(asset => asset.Name == name)?.Url;
-            if (TrustedUrl(url)) return url;
+            var regular = release.Assets.FirstOrDefault(asset => asset.Name == name);
+            if (regular is null || !TrustedUrl(regular.Url)) continue;
+            if (!localAi) return regular;
+            var withModel = release.Assets.FirstOrDefault(asset => asset.Name == $"{product}-{runtime}-local-ai.{extension}");
+            return withModel is not null && TrustedUrl(withModel.Url) ? withModel : null;
         }
         return null;
     }
@@ -57,4 +67,4 @@ public sealed record PublishedDownloadRelease(
     PublishedDownloadAsset[] Assets);
 
 public sealed record PublishedDownloadAsset(string Name,
-    [property: JsonPropertyName("browser_download_url")] string Url);
+    [property: JsonPropertyName("browser_download_url")] string Url, long Size = 0);

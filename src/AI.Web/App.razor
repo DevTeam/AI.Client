@@ -71,8 +71,32 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
                     Stage.Update => "This Web app and the Host on this computer speak different versions. Install the latest Host; your projects and chats stay where they are.",
                     Stage.OtherApp => $"Another application answers at {HostAuthority}. Close it and AI Client Host can start.",
                     _ when _workspaceOpened => "Start AI Client Host on this computer. Your workspace will return automatically when the connection is restored.",
-                    _ => "A small background Host keeps your projects, chats and credentials on this computer. Install it once, and this page connects by itself."
+                    _ => "Your projects, chats and keys stay on this computer, kept by a small background Host. Install it once; after that, this page is all you need."
                 })</p>
+                var choosing = _stage == Stage.Install && !_workspaceOpened && _downloads is not null;
+                @if (choosing && Download("AI.Host", _runtime, localAi: true) is { } withModel && Download("AI.Host", _runtime) is { } regular)
+                {
+                    @* The model is a choice made before downloading: the installer that carries it is a
+                       separate, larger file, and updates later use the regular one and keep the model. *@
+                    <div class="host-gate-editions" role="radiogroup" aria-label="What to install">
+                        <label class="host-gate-edition @(_withLocalAi ? null : "selected")">
+                            <input type="radio" name="host-edition" checked="@(!_withLocalAi)" @onchange="() => _withLocalAi = false" />
+                            <span class="host-gate-edition-text">
+                                <strong>AI Client</strong>
+                                <span>Works with the AI services you connect, such as any OpenAI-compatible provider.</span>
+                            </span>
+                            <span class="host-gate-edition-size">@FormatSize(regular.Size)</span>
+                        </label>
+                        <label class="host-gate-edition @(_withLocalAi ? "selected" : null)">
+                            <input type="radio" name="host-edition" checked="@_withLocalAi" @onchange="() => _withLocalAi = true" />
+                            <span class="host-gate-edition-text">
+                                <strong>AI Client with Local AI <span class="host-gate-badge">Offline</span></strong>
+                                <span>Adds a small model that runs on this computer: it works without internet, and nothing you ask leaves it. You can leave it out during setup.</span>
+                            </span>
+                            <span class="host-gate-edition-size">@FormatSize(withModel.Size)</span>
+                        </label>
+                    </div>
+                }
                 @if (_stage != Stage.OtherApp)
                 {
                     <div class="host-gate-actions">
@@ -80,32 +104,51 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
                         {
                             <button class="host-gate-primary" type="button" disabled="@_updatingHost" @onclick="UpdateHostAsync">@(_updatingHost ? "Scheduling update…" : "Update Host")</button>
                         }
-                        @if (AssetUrl("AI.Host", _runtime) is { } hostUrl)
+                        @if (Download("AI.Host", _runtime, choosing && _withLocalAi) is { } host)
                         {
-                            <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@hostUrl"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
-                            <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)</span>
+                            <a class="@(_workspaceOpened && _stage == Stage.Install ? "host-gate-download" : "host-gate-primary")" href="@host.Url"><AppIcon Name="download" />@(_workspaceOpened && _stage == Stage.Install ? "Install Host" : $"Download for {OsName(_runtime)}")</a>
+                            <span class="host-gate-meta">@ArchitectureName(_runtime) · @Extension(_runtime)@(host.Size > 0 ? $" · {FormatSize(host.Size)}" : null)</span>
                         }
                     </div>
                 }
-                <p class="host-gate-waiting" role="status"><span aria-hidden="true"></span>@(_stage == Stage.OtherApp ? "Waiting for the address to free up…" : "Waiting for Host on this computer…")</p>
+                @if (_stage == Stage.Install && !_workspaceOpened)
+                {
+                    <ol class="host-gate-steps">
+                        <li><span class="host-gate-step-number" aria-hidden="true">1</span><span>Run the downloaded installer. From then on the Host starts when you sign in.</span></li>
+                        <li class="host-gate-step-waiting" role="status"><span class="host-gate-step-number" aria-hidden="true">2</span><span>This page connects by itself.<span class="host-gate-step-hint"><span class="host-gate-pulse" aria-hidden="true"></span>Waiting for Host on this computer…</span></span></li>
+                    </ol>
+                }
+                else
+                {
+                    <p class="host-gate-waiting" role="status"><span aria-hidden="true"></span>@(_stage == Stage.OtherApp ? "Waiting for the address to free up…" : "Waiting for Host on this computer…")</p>
+                }
                 @if (_stage != Stage.OtherApp && _downloads is not null)
                 {
+                    var localAi = choosing && _withLocalAi;
+                    @if (Download("AI.Desktop", _runtime, localAi) is { } desktop)
+                    {
+                        <p class="host-gate-note">Prefer a separate window? <a href="@desktop.Url">Get the Desktop app@(localAi ? " with Local AI" : null)</a>@(desktop.Size > 0 ? $" ({FormatSize(desktop.Size)})" : null). It shares projects and chats with the Host.</p>
+                    }
                     <details class="host-gate-more">
                         <summary><AppIcon Name="chevron-right" /><span>Other platforms</span></summary>
                         <ul>
                             @foreach (var runtime in Runtimes)
                             {
-                                @if (AssetUrl("AI.Host", runtime) is { } platformUrl)
+                                @if (Download("AI.Host", runtime) is { } platform)
                                 {
-                                    <li><a href="@platformUrl">@OsName(runtime) · @ArchitectureName(runtime)</a><span>@Extension(runtime)</span></li>
+                                    <li>
+                                        <a href="@platform.Url">@OsName(runtime) · @ArchitectureName(runtime)</a>
+                                        @if (Download("AI.Host", runtime, localAi: true) is { } platformModel)
+                                        {
+                                            <a class="host-gate-more-variant" href="@platformModel.Url">with Local AI</a>
+                                        }
+                                        <span>@Extension(runtime)@(platform.Size > 0 ? $" · {FormatSize(platform.Size)}" : null)</span>
+                                    </li>
                                 }
                             }
                         </ul>
+                        <p class="host-gate-note">Local AI is offered for Windows for now.</p>
                     </details>
-                    @if (AssetUrl("AI.Desktop", _runtime) is { } desktopUrl)
-                    {
-                        <p class="host-gate-note">Prefer a separate window? <a href="@desktopUrl">Get the Desktop app</a>. It shares projects and chats with the Host.</p>
-                    }
                     <p class="host-gate-note">If the browser asks to access devices on your local network, allow it.</p>
                 }
                 else if (_stage != Stage.OtherApp)
@@ -390,6 +433,19 @@ else if (ClientMode.PublicWeb && _stage != Stage.Ready)
     private void Reload() => Navigation.Refresh(forceReload: true);
 
     private string? AssetUrl(string product, string runtime) => _downloads?.AssetUrl(product, runtime);
+
+    /// <summary>Whether the visitor chose the installer that also carries the offline model.</summary>
+    private bool _withLocalAi;
+
+    private AI.Web.Updates.PublishedDownloadAsset? Download(string product, string runtime, bool localAi = false) =>
+        _downloads?.Asset(product, runtime, localAi);
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        <= 0 => string.Empty,
+        >= 1_000_000_000 => (bytes / 1_073_741_824d).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " GB",
+        _ => Math.Max(1, bytes / 1_048_576).ToString(System.Globalization.CultureInfo.InvariantCulture) + " MB"
+    };
 
     private string Extension(string runtime) => runtime.Split('-')[0] switch
     {

@@ -86,6 +86,27 @@
 .host-gate a:not(.host-gate-primary):hover { text-decoration: underline; }
 .host-gate-note { margin: .9rem 0 0; color: var(--color-text-subtle); font-size: var(--font-size-md); line-height: 1.5; }
 .host-gate-note + .host-gate-note { margin-top: .35rem; }
+/* What to install: two cards in one radio group, chosen before the download button they feed. */
+.host-gate-editions { display: grid; gap: .55rem; margin-top: 1.75rem; }
+.host-gate-edition { display: flex; align-items: flex-start; gap: .75rem; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); cursor: pointer; transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease; }
+.host-gate-edition:hover { border-color: var(--color-border-stronger); }
+.host-gate-edition.selected { border-color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent-strong) 8%, var(--color-surface)); }
+.host-gate-edition:focus-within { outline: 2px solid var(--color-accent-strong); outline-offset: 2px; }
+.host-gate-edition input { flex: none; width: 1rem; height: 1rem; min-height: 0; margin: .2rem 0 0; padding: 0; accent-color: var(--color-accent-strong); }
+.host-gate-edition input:focus-visible { outline: none; }
+.host-gate-edition-text { display: grid; flex: 1; gap: .2rem; min-width: 0; }
+.host-gate-edition-text strong { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; color: var(--color-text-strong); font-size: var(--font-size-lg); font-weight: 600; }
+.host-gate-edition-text > span { color: var(--color-text-secondary); font-size: var(--font-size-base); line-height: 1.45; }
+.host-gate-edition-size { flex: none; padding-top: .1rem; color: var(--color-text-subtle); font-size: var(--font-size-md); white-space: nowrap; }
+.host-gate-badge { padding: .05rem .45rem; border-radius: var(--radius-pill); background: var(--color-accent-bg); color: var(--color-accent-text); font-size: var(--font-size-xs); font-weight: 600; }
+/* After downloading: two numbered steps, the second one live while the page waits for the Host. */
+.host-gate-steps { display: grid; gap: .6rem; margin: 1.6rem 0 0; padding: .9rem 1rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); list-style: none; }
+.host-gate-steps li { display: flex; align-items: flex-start; gap: .7rem; color: var(--color-text-secondary); font-size: var(--font-size-base); line-height: 1.5; }
+.host-gate-step-number { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--color-fill-strong); color: var(--color-text-strong); font-size: var(--font-size-sm); font-weight: 600; }
+.host-gate-step-hint { display: flex; align-items: center; gap: .5rem; margin-top: .15rem; color: var(--color-text-subtle); font-size: var(--font-size-md); }
+.host-gate-pulse { flex: none; width: .5rem; height: .5rem; border-radius: 50%; background: var(--color-accent-strong); animation: host-pulse 1.2s ease-in-out infinite alternate; }
+.host-gate-more li .host-gate-more-variant { margin-left: auto; font-size: var(--font-size-md); }
+.host-gate-more .host-gate-note { margin-top: .6rem; }
 .host-gate-error { margin: 1.2rem 0 0; padding: .7rem .9rem; border-radius: var(--radius-md); background: var(--color-danger-bg-hover); color: var(--color-danger-text); font-size: var(--font-size-base); }
 @media (width <= 560px) {
     .host-gate { margin-top: 2.5rem; padding: 0 1rem; }
@@ -110,7 +131,7 @@
 .host-status-note { margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-md); line-height: 1.5; }
 .host-status-note a { color: var(--color-accent-text); }
 @keyframes host-pulse { to { opacity: .4; } }
-@media (prefers-reduced-motion: reduce) { .host-gate-waiting > span, .host-status-dot.is-offline, .host-status-dot.is-starting { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .host-gate-waiting > span, .host-gate-pulse, .host-status-dot.is-offline, .host-status-dot.is-starting { animation: none; } }
 
 /* Selected text carries the accent too; a tint rather than a fill, so it reads in either theme. */
 ::selection { background: color-mix(in srgb, var(--color-accent-strong) 35%, transparent); }

@@ -328,6 +328,29 @@ public sealed class AdaptiveContextPolicyTests
     private static readonly string[] ListingNames = ["directory_tree", "list_directory"];
 
     [Fact]
+    public void ACompactWindowKeepsItsWholeSchemaShareUnderHistoryPressure()
+    {
+        // A local model at 8K with a loaded playbook in its history got 588 schema tokens, one tool, and
+        // could only call that one. The planner shortens the history instead.
+        var policy = new AdaptiveContextPolicy(_estimator, new ConnectionContextLimitsResolver(), concepts: new ToolConcepts());
+        var connection = Connection(8_192);
+        var search = Tool("tool_search", "Search tools", app: true);
+        var runSkill = Tool("run_skill", new string('s', 1_200), app: true);
+        var files = FileToolNames.Select(name => Tool(name, new string('f', 600))).ToArray();
+        ChatCompletionMessage[] messages = [new("user", "Тестируем редактирование нескольких файлов"),
+            new("tool", new string('p', 40_000), ToolCallId: "skill")];
+
+        var selection = policy.Choose(connection, "Тестируем редактирование нескольких файлов", messages, [runSkill, .. files, search]);
+
+        selection.BudgetTokens.ShouldBe(policy.Resolve(connection).ToolTokens);
+        selection.Tools.Count.ShouldBeGreaterThan(2);
+        selection.Tools.ShouldContain(search);
+        selection.Tools.ShouldContain(files.Single(tool => tool.OriginalName == "edit_file"));
+    }
+
+    private static readonly string[] FileToolNames = ["edit_file", "read_text_file", "list_directory"];
+
+    [Fact]
     public void ShouldKeepAFloorOfToolsWhenHistoryAloneExceedsTheWindow()
     {
         var search = Tool("tool_search", "Find capabilities", app: true);
@@ -366,12 +389,14 @@ public sealed class AdaptiveContextPolicyTests
     [Fact]
     public void ShouldReserveSpaceForCurrentTextAndTrailingGuidanceBeforeSelectingTools()
     {
-        var tools = Enumerable.Range(0, 20).Select(index => Tool($"tool_{index}", new string('x', 600))).ToArray();
+        // A compact window keeps its schema share whatever the history (see the compact test above);
+        // a larger one gives schema room to the history it has to carry.
+        var tools = Enumerable.Range(0, 20).Select(index => Tool($"tool_{index}", new string('x', 4_000))).ToArray();
         var policy = Policy();
-        var connection = Connection(8_192);
+        var connection = Connection(65_536);
         var ordinary = policy.Choose(connection, "request", [], tools);
-        var pressured = policy.Choose(connection, "request", [new("system", new string('s', 7_000)), new("user", new string('u', 2_000))],
-            tools, trailingInstructionTokens: 1_000);
+        var pressured = policy.Choose(connection, "request", [new("system", new string('s', 180_000)), new("user", new string('u', 20_000))],
+            tools, trailingInstructionTokens: 8_000);
         pressured.SelectedTokens.ShouldBeLessThan(ordinary.SelectedTokens);
         pressured.BudgetTokens.ShouldBeLessThan(ordinary.BudgetTokens);
     }
@@ -417,10 +442,10 @@ public sealed class AdaptiveContextPolicyTests
     public void ShouldEvictOptionalToolsUnderPressureAndKeepSurvivorsInOrder()
     {
         var policy = Policy();
-        var connection = Connection(8_192);
-        var tools = Enumerable.Range(0, 30).Select(index => Tool($"tool_{index}", new string('x', 500))).ToArray();
+        var connection = Connection(65_536);
+        var tools = Enumerable.Range(0, 30).Select(index => Tool($"tool_{index}", new string('x', 4_000))).ToArray();
         var first = policy.Choose(connection, "request", [], tools);
-        var next = policy.Choose(connection, "request", [new("system", new string('s', 10_800)), new("user", "request")],
+        var next = policy.Choose(connection, "request", [new("system", new string('s', 200_000)), new("user", "request")],
             tools, previousTools: first.Tools);
         next.Tools.Count.ShouldBeLessThan(first.Tools.Count);
         next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
@@ -538,11 +563,11 @@ public sealed class AdaptiveContextPolicyTests
     public void ShouldReduceTheSchemaBudgetWhenConversationHistoryConsumesHeadroom()
     {
         var policy = Policy();
-        var connection = Connection(32_768);
-        var tools = Enumerable.Range(0, 30).Select(index => Tool($"operation_{index}", new string('x', 1_000))).ToArray();
+        var connection = Connection(131_072);
+        var tools = Enumerable.Range(0, 30).Select(index => Tool($"operation_{index}", new string('x', 3_000))).ToArray();
         ChatCompletionMessage[] start = [new("system", "Stable"), new("user", "request")];
         var first = policy.Choose(connection, "request", start, tools);
-        ChatCompletionMessage[] history = [.. start, new("assistant", new string('h', 57_000))];
+        ChatCompletionMessage[] history = [.. start, new("assistant", new string('h', 470_000))];
         var next = policy.Choose(connection, "request", history, tools, previousTools: first.Tools);
         next.BudgetTokens.ShouldBeLessThan(first.BudgetTokens);
         next.Reason.ShouldBe("pressure");

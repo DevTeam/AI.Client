@@ -158,6 +158,20 @@ public sealed class ToolCatalogRegistryTests
             registry.TryRecordPlaybook(run, "directory-analyze", "{}").ShouldBeTrue();
     }
 
+    [Fact]
+    public void ShouldTreatNoArgumentsAndTheSameValuesDifferentlySpacedAsOneLoad()
+    {
+        var registry = new ToolCatalogRegistry();
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = registry.Begin(run);
+
+        registry.TryRecordPlaybook(run, "app-guide-projects", "{}").ShouldBeTrue();
+        registry.TryRecordPlaybook(run, "app-guide-projects", "").ShouldBeFalse();
+        registry.TryRecordPlaybook(run, "app-guide-projects", " { } ").ShouldBeFalse();
+        registry.TryRecordPlaybook(run, "directory-analyze", """{"path":"D:\\Work"}""").ShouldBeTrue();
+        registry.TryRecordPlaybook(run, "directory-analyze", """{ "path" : "D:\\Work" }""").ShouldBeFalse();
+    }
+
     private static AgentTool Tool(string name, string description, string schemaJson = "{}")
     {
         var schema = JsonElement.Parse(schemaJson);

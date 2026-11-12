@@ -162,8 +162,10 @@ public sealed partial class AdaptiveContextPolicy(
         // Reserve the complete projected history and guidance, with at least a quarter of the
         // usable window for messages. History pressure can shrink the schema allowance, but not
         // below a floor: history that does not fit is summarized by the planner after this choice,
-        // and a turn left without its working tools cannot carry on once it is.
-        var floor = Math.Min(profile.ToolTokens, profile.UsableTokens / 10);
+        // and a turn left without its working tools cannot carry on once it is. A compact window keeps
+        // its whole schema share as the floor: a tenth of a small window holds one schema, and a model
+        // left with one tool calls only that one.
+        var floor = profile.Compact ? profile.ToolTokens : Math.Min(profile.ToolTokens, profile.UsableTokens / 10);
         var retainedTokens = previousTools is { Count: > 0 }
             ? estimator.EstimateTools(previousTools.Select(tool => tool.ModelDefinition).ToArray()) : 0;
         // A discovered capability must have room to join the request. Preserve that larger share

@@ -66,6 +66,21 @@
                 <button class="compact-action" type="button" @onclick="ToggleMenu">Choose widgets</button>
             </div>
         }
+        else if (GetHidden() is { Count: > 0 } hidden)
+        {
+            @* A hidden widget left no trace in the column, so it read as missing rather than hidden;
+               each one waits here to be brought back with one click. *@
+            <div class="chat-widgets-hidden" role="group" aria-label="Hidden widgets">
+                <span class="chat-widgets-hidden-label">Hidden</span>
+                @foreach (var definition in hidden)
+                {
+                    var id = definition.Id;
+                    <button @key="id" class="chat-widgets-hidden-item" type="button" title="Show @definition.Title" @onclick="() => ShowAsync(id)">
+                        <AppIcon Name="@definition.Icon" /><span>@definition.Title</span>
+                    </button>
+                }
+            </div>
+        }
     </div>
 </aside>
 
@@ -129,6 +144,13 @@
         if (id == GuideExpandedWidgetId) await GuideExpansionDismissed.InvokeAsync();
         await ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = true }));
     }
+
+    /// <summary>Shows a hidden widget again, open, in the place it had.</summary>
+    private Task ShowAsync(string id) =>
+        ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = false, Collapsed = false }));
+
+    private List<ChatWidgetDefinition> GetHidden() =>
+        Widgets.Where(item => item.Hidden).Select(item => Catalog.Find(item.Id)).OfType<ChatWidgetDefinition>().ToList();
 
     private Task SetShownAsync(string id, ChangeEventArgs args) =>
         ChangeAsync(Layout.Update(Widgets, id, item => item with { Hidden = args.Value is not true, Collapsed = false }));

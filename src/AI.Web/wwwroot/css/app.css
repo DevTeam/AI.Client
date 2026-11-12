@@ -9559,6 +9559,13 @@ button.is-auto-pressed { filter: brightness(1.15); }
 }
 .chat-widgets-empty { display: grid; justify-items: start; gap: .5rem; padding: .6rem .3rem; color: var(--color-text-subtle); font-size: var(--font-size-md); }
 .chat-widgets-empty p { margin: 0; }
+/* Hidden widgets, after the shown ones: quiet chips that bring one back. */
+.chat-widgets-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .5rem .3rem .2rem; }
+.chat-widgets-hidden-label { margin-right: .15rem; color: var(--color-text-faint); font-size: var(--font-size-sm); }
+.chat-widgets-hidden-item { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .55rem; border: 1px dashed var(--color-border); border-radius: var(--radius-pill); background: transparent; color: var(--color-text-muted); font: inherit; font-size: var(--font-size-sm); cursor: pointer; transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease, background-color var(--duration-fast) ease; }
+.chat-widgets-hidden-item:hover { border-color: var(--color-border-stronger); background: var(--color-fill-hover); color: var(--color-text); }
+.chat-widgets-hidden-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.chat-widgets-hidden-item .app-icon { width: .8rem; height: .8rem; }
 
 .chat-widget {
     position: relative;

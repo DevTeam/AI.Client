@@ -126,8 +126,28 @@ public sealed class ToolCatalogRegistry(IToolConcepts? concepts = null) : IToolC
         return pinned;
     }
 
+    /// <summary>
+    /// Arguments are compared as data, so an empty object, nothing and the same values differently
+    /// spaced are one load. The runner passes only the parameters the playbook declares, so a key a
+    /// model made up does not make a repeat look new either.
+    /// </summary>
     public bool TryRecordPlaybook(ToolRunContext run, string skillId, string arguments) =>
-        !_entries.TryGetValue(Key.Of(run), out var entry) || entry.Playbooks.TryAdd((skillId, arguments), 0);
+        !_entries.TryGetValue(Key.Of(run), out var entry) || entry.Playbooks.TryAdd((skillId, Canonical(arguments)), 0);
+
+    private static string Canonical(string arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments)) return string.Empty;
+        try
+        {
+            var root = JsonElement.Parse(arguments);
+            return root.ValueKind is JsonValueKind.Null || root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any()
+                ? string.Empty : JsonSerializer.Serialize(root);
+        }
+        catch (JsonException)
+        {
+            return arguments.Trim();
+        }
+    }
 
     private static string Short(string value) => value.Length <= 240 ? value : value[..240] + "…";
 

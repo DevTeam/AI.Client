@@ -164,13 +164,29 @@ public sealed class SkillRunner(ISkillCatalog catalog, [Tag("chat-rename")] ISki
     /// back the instructions with the ids the caller cannot otherwise see. Every step the
     /// instructions describe goes through the caller's ordinary permission-checked tools.
     /// </summary>
+    /// <summary>
+    /// The arguments the playbook declares. A key it does not declare is accepted by the schema but
+    /// means nothing to the instructions, and echoed back it made a repeated load look like a new one.
+    /// </summary>
+    private static JsonElement Declared(JsonElement parameters, JsonElement schema)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object) return parameters;
+        var declared = schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out var properties)
+                                                                && properties.ValueKind == JsonValueKind.Object
+            ? properties.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal)
+            : [];
+        return JsonSerializer.SerializeToElement(parameters.EnumerateObject()
+            .Where(property => declared.Contains(property.Name))
+            .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal));
+    }
+
     private static SkillExecutionResult Playbook(SkillDefinition skill, SkillInvocation invocation)
     {
         var output = JsonSerializer.SerializeToElement(new
         {
             kind = SkillKinds.Playbook,
             instructions = SkillMarkdown.Body(skill.Content),
-            arguments = invocation.Parameters,
+            arguments = Declared(invocation.Parameters, skill.ParametersSchema),
             tools = skill.AllowedTools ?? [],
             context = new
             {

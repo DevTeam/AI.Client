@@ -50,9 +50,10 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
                     return reply.Reply(result with
                     {
                         Status = "Skipped",
-                        Message = "This playbook was already loaded in this turn with the same parameters; its instructions "
-                                  + "are in the earlier result. Do not start it over or repeat questions already answered: "
-                                  + "continue from the last step you finished, or give your final answer if every step is done.",
+                        Message = "This playbook was already loaded in this turn; its instructions are in the earlier result "
+                                  + "and apply whatever the parameters. Do not start it over or repeat questions already answered: "
+                                  + "continue from the last step you finished with your other tools, or give your final answer "
+                                  + "if every step is done.",
                         Output = null
                     }, false);
                 if (output.TryGetProperty("tools", out var tools))

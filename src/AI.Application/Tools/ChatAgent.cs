@@ -377,7 +377,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             if (!routed)
             {
                 routed = true;
+                // Not in a compact window. A routed playbook is written for large models and takes much of
+                // a small window; its pinned tools then crowd out the ones the request needs, and a
+                // small model obeys "run this skill first" even when the route is wrong. A local model
+                // given a file request was left with run_skill alone and loaded skill after skill.
+                // The skills stay reachable through skill_search and run_skill.
                 if (!subtask && interactive && behavior.RouteSkills && servers.Contains(AppMcpServer.Id)
+                    && !contextPolicy.Resolve(configuredConnection).Compact
                     && await RouteAsync(run, context, permitted, token) is { } route)
                 {
                     var runSkill = permitted.FirstOrDefault(tool =>

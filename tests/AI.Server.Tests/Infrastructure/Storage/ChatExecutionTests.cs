@@ -199,6 +199,8 @@ public sealed partial class ChatExecutionTests
     public async Task RoutedPlaybookShouldBeLoadedBeforeTheModelsFirstStep()
     {
         await using var fixture = await Fixture.CreateAsync();
+        // Routing is for windows large enough to hold a playbook; a compact one does without it.
+        await fixture.SetConnectionLimitsAsync(131_072, 4_096);
         fixture.Tools.OfferRunSkill = true;
         fixture.Completion.RouteAnswer = "{\"skills\":[\"chat-summary\"],\"tools\":[]}";
         await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What did we decide?"));
@@ -222,6 +224,26 @@ public sealed partial class ChatExecutionTests
         var chat = await fixture.Chats.GetAsync(fixture.ProjectId, fixture.ChatId, CancellationToken.None);
         chat!.Messages.ShouldContain(message => message.Role == "Tool");
         chat.Messages[^1].Content.ShouldBe("We decided to ship on Friday.");
+    }
+
+    [Fact]
+    public async Task ACompactWindowShouldNeitherRouteNorLoadAPlaybook()
+    {
+        // A local model at 8K was handed a wrongly routed playbook, which filled its window and left
+        // it run_skill alone. In a compact window the model starts from the request itself.
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(8_192, 1_024);
+        fixture.Tools.OfferRunSkill = true;
+        fixture.Completion.RouteAnswer = "{\"skills\":[\"chat-summary\"],\"tools\":[]}";
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What did we decide?"));
+
+        var first = await fixture.NextCallAsync();
+        var context = first.Request.ContextMessages!;
+        context.ShouldNotContain(message => message.ToolCalls != null && message.ToolCalls.Any(call => call.Name == "mcp_app__run_skill"));
+        context.ShouldNotContain(message => message.ForModel.Contains("Skill routing:", StringComparison.Ordinal));
+        fixture.Tools.SkillRuns.ShouldBeEmpty();
+        first.Answer.SetResult("We decided to ship on Friday.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }
 
     [Fact]

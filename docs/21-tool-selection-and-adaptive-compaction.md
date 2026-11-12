@@ -80,6 +80,21 @@ that token budget. Under pressure or a necessary discovery, the set is
 chosen again within the hard share and surviving tools retain their order. A stalled run keeps
 its fitting tools offered and receives trailing guidance to stop calling them.
 
+History pressure lowers the schema budget, but not below a floor: a tenth of the usable window,
+or in a compact window the whole schema share (a fifth). The compact floor came from a local model
+at 8,192 tokens whose history, filled by a routed playbook, left it 588 schema tokens: one tool,
+`run_skill`, which it then called twelve times. History that does not fit beside the tools is
+summarized or omitted by the planner instead.
+
+A compact window does not route skills at all: no routing request, no automatically loaded
+playbook, no pinned skill tools and no "run this skill first" guidance. Playbooks are written for
+large models and fill a small window, and a small model follows a wrong route faithfully. Skills
+stay reachable through `skill_search` and `run_skill`. A playbook is loaded once per turn for the
+same arguments: the runner echoes only the parameters the playbook declares, and the comparison
+treats an empty object, no arguments and the same values differently spaced as one load, so a
+model that starts it over with `{}`, nothing or a made-up key gets "Skipped" instead of the
+instructions again.
+
 Protocol-required schemas come first, followed by `tool_search`, explicitly discovered schemas
 and the general core set. This keeps discovery reachable in small windows without letting the
 expanded core set crowd out a requested capability. If collection was omitted under schema

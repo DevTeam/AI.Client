@@ -28,6 +28,8 @@ First-release browser support is Chrome and Edge. Installer targets are Windows 
 | macOS Intel, Apple silicon | `.pkg` | `.pkg` | Host per-user LaunchAgent at login |
 | Ubuntu/Debian x64, ARM64 | `.deb` | `.deb` | Host systemd user service at login |
 
+Windows releases also carry `AI.<Product>-<runtime>-local-ai.exe`, the same product with the optional offline model; updates keep using the regular installer and leave an installed model in place (see [Local AI](41-local-ai.md#release-installers)).
+
 Install a newer package of the same product and architecture over the existing one to update it. The installer stops the running product before replacing its files, and the Host starts again after installation. The Web app offers Host and Desktop downloads from the published update catalog when the Host is missing or incompatible; Preview releases remain available when no stable release is published. Project, chat, credential and preference data live outside the installation directory and are retained by update and uninstall.
 
 Uninstall Host or Desktop through Windows Installed Apps or the Linux package manager. On macOS, run the included uninstaller from Terminal:

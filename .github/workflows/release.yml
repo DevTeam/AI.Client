@@ -41,9 +41,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: choco install innosetup --yes --no-progress
+      # Windows releases also offer installers with the Local AI component. Its pinned model and
+      # runtime are downloaded once and reused; the preparation verifies their SHA-256 either way.
+      - name: Cache Local AI downloads
+        if: runner.os == 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: artifacts/local-ai/downloads
+          key: local-ai-${{ matrix.runtime }}-${{ hashFiles('build/Targets/PrepareLocalAiTarget.cs') }}
       - name: Build installers
         shell: pwsh
-        run: dotnet run --project ./build -- package-release --runtime "${{ matrix.runtime }}" --version "${{ inputs.version || github.ref_name }}"
+        run: dotnet run --project ./build -- package-release --runtime "${{ matrix.runtime }}" --version "${{ inputs.version || github.ref_name }}" --local-ai
       - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.runtime }}

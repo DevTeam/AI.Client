@@ -113,18 +113,34 @@ model and the public-domain libraries (miniaudio, stb_image, subprocess.h). Upda
 together with the runtime version. The Host accepts a package whose weights are below 2 GB and whose manifest
 context is 1024–32768 tokens. Total component size is reported separately.
 
-Set `AI_LOCAL_MODEL_PACKAGE` to the prepared directory before running the existing release
-packaging command. Both products receive the component. Windows installers expose an optional
-"Local AI" component. It is selected by default (Full installation, the first setup type); the
-Compact type leaves it out and Custom lets the user clear it. A later install or update keeps the
-user's previous choice, and clearing the component on a later install removes the copy an earlier
-one installed. Before files are replaced the setup stops the product and any runtime still running
-from its `local-ai` folder, so a force-stopped Host cannot keep the component locked. Verified on
-2026-11-11 with a compiled test installer (separate AppId, fake payload): default install, install
-without the component, unattended reinstall and reinstall with it. Without the environment variable, existing
-release payloads remain small. Linux/macOS packages currently include the component when staged;
-separate optional native packages are still required. Do not place a component below the release
-output directories, which the packaging target cleans before publishing.
+### Release installers
+
+A Windows release has two installers per product and architecture:
+
+| Installer | Contains | Used by |
+| --- | --- | --- |
+| `AI.Desktop-win-x64.exe`, `AI.Host-win-x64.exe` | The application only | First installs without the model, and every automatic update |
+| `AI.Desktop-win-x64-local-ai.exe`, `AI.Host-win-x64-local-ai.exe` | The application and the optional "Local AI" component (about 1.3 GB more) | People who want the offline model |
+
+The Local AI installer selects the component by default (Full installation); Compact leaves it
+out and Custom lets the user clear it. It always opens on that default rather than on a choice
+remembered from the regular installer. Clearing the component removes a copy installed earlier.
+The regular installer has no component: it neither carries nor removes the model, so updates stay
+small and an installed model survives them. The updater and the update catalog ask for the regular
+names only. Before files are replaced, setup stops the product and any runtime still running from
+its `local-ai` folder, so a force-stopped Host cannot keep the component locked.
+
+`package-release --local-ai` prepares the pinned package for the runtime (or reuses
+`AI_LOCAL_MODEL_PACKAGE`) and compiles the second installer from the same payload with
+`/DLocalAiDir`. The release workflow passes it and caches the downloads. Verified on 2026-11-12
+with compiled test installers (separate AppId, fake payload): regular install, Local AI install
+by default, regular update (model kept), Local AI install without the component (model removed),
+regular update (not restored), Local AI install again, uninstall.
+
+macOS and Linux packages are built without the component: a `.deb` or `.pkg` update that lacks
+the model's files would remove or orphan it, so those platforms need a package of the component's
+own. Do not place a component below the release output directories, which the packaging target
+cleans before publishing.
 
 For development, set `AI_LOCAL_MODEL_DIRECTORY` before launching the Host. Select the new
 connection in the existing Connections editor after it becomes ready. The Host owns the runtime;

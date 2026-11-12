@@ -15,24 +15,30 @@ SetupIconFile=..\..\..\src\AI.Desktop\Assets\app-icon.ico
 WizardImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 WizardSmallImageFile=..\..\..\src\AI.Desktop\Assets\app-icon.png
 CloseApplications=yes
+#ifdef LocalAiDir
+; Built only into the Local AI installer. It is run to get the model, so it opens on the default that
+; installs it, not on the setup type and components remembered from the regular installer, which never
+; offers it.
+UsePreviousSetupType=no
+#endif
 
 [Components]
 Name: "main"; Description: "Application"; Types: full compact custom; Flags: fixed
-#if DirExists(SourceDir + "\local-ai")
+#ifdef LocalAiDir
 Name: "localai"; Description: "Local AI: offline Qwen3.5 2B model"; Types: full
 #endif
 
 [Files]
 Source: "{#SourceDir}\stop-installed-app.ps1"; Flags: dontcopy noencryption
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "local-ai\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-#if DirExists(SourceDir + "\local-ai")
-Source: "{#SourceDir}\local-ai\*"; DestDir: "{app}\local-ai"; Components: localai; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef LocalAiDir
+Source: "{#LocalAiDir}\*"; DestDir: "{app}\local-ai"; Components: localai; Flags: ignoreversion recursesubdirs createallsubdirs
 #endif
 
 [InstallDelete]
-#if DirExists(SourceDir + "\local-ai")
+#ifdef LocalAiDir
 ; Local AI is optional: clearing the component on a later install removes a copy an earlier one put there.
-; An installer built without the component leaves an installed one alone.
+; The regular installer, which updates use, has no component and leaves an installed one alone.
 Type: filesandordirs; Name: "{app}\local-ai"; Components: not localai
 #endif
 ; The retired optional C# scripting tools lived here; C# scripts now run in the built-in tools.

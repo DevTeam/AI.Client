@@ -3,9 +3,10 @@ namespace Build.Targets;
 using System.Xml.Linq;
 
 /// <summary>Builds both self-contained products and their native packages on the target OS runner.</summary>
-internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths paths) : IPackageReleaseTarget
+internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths paths, IPrepareLocalAiTarget prepareLocalAi)
+    : IPackageReleaseTarget
 {
-    public async Task<int> RunAsync(string runtime, string version, CancellationToken cancellationToken)
+    public async Task<int> RunAsync(string runtime, string version, bool localAi, CancellationToken cancellationToken)
     {
         if (runtime is not ("win-x64" or "win-arm64" or "osx-x64" or "osx-arm64" or "linux-x64" or "linux-arm64"))
             throw new ArgumentException($"Unsupported runtime: {runtime}", nameof(runtime));
@@ -22,7 +23,17 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
             throw new PlatformNotSupportedException($"Package {runtime} on a runner with the matching operating system.");
 
         var output = Path.Combine(paths.SolutionDirectory, "artifacts", "release");
+        // An explicit package wins; --local-ai prepares (or reuses) the pinned one for this runtime.
         var localModelPackage = Environment.GetEnvironmentVariable("AI_LOCAL_MODEL_PACKAGE");
+        if (string.IsNullOrWhiteSpace(localModelPackage) && localAi && prefix == "win")
+            localModelPackage = await prepareLocalAi.RunAsync(runtime, cancellationToken);
+        // A .deb or .pkg update without the model's files would remove or orphan it; those platforms
+        // need a package of the component's own, which does not exist yet.
+        if (!string.IsNullOrWhiteSpace(localModelPackage) && prefix != "win")
+        {
+            Console.WriteLine($"Local AI installers are built for Windows only; {runtime} packages are built without it.");
+            localModelPackage = null;
+        }
         if (!string.IsNullOrWhiteSpace(localModelPackage))
         {
             localModelPackage = Path.GetFullPath(localModelPackage);
@@ -64,11 +75,6 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
 
         foreach (var (product, directory) in new[] { ("Host", host), ("Desktop", desktop) })
         {
-            // A platform-matched, prepared component is supplied explicitly by the release runner.
-            if (!string.IsNullOrWhiteSpace(localModelPackage))
-            {
-                CopyTree(localModelPackage, Path.Combine(directory, "local-ai"));
-            }
             await File.WriteAllTextAsync(Path.Combine(directory, "update-installation.json"),
                 System.Text.Json.JsonSerializer.Serialize(new { product, runtime, version }), cancellationToken);
             if (!File.Exists(Path.Combine(directory, "wwwroot", "index.html"))
@@ -78,15 +84,20 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
 
         return prefix switch
         {
-            "win" => await PackageWindowsAsync(runtime, version, host, desktop, packages, cancellationToken),
+            "win" => await PackageWindowsAsync(runtime, version, host, desktop, packages, localModelPackage, cancellationToken),
             "osx" => await PackageMacAsync(runtime, version, host, desktop, packages, cancellationToken),
             "linux" => await PackageLinuxAsync(runtime, version, host, desktop, packages, cancellationToken),
             _ => throw new ArgumentException($"Unsupported runtime: {runtime}", nameof(runtime))
         };
     }
 
+    /// <summary>
+    /// Builds the regular installers and, given a model package, a second pair named <c>-local-ai</c>
+    /// from the same payload. The updater asks for the regular names only, so the model is downloaded
+    /// once, by choice, and an update neither carries nor removes it.
+    /// </summary>
     private async Task<int> PackageWindowsAsync(string runtime, string version, string host, string desktop,
-        string packages, CancellationToken token)
+        string packages, string? localModelPackage, CancellationToken token)
     {
         var compiler = Environment.GetEnvironmentVariable("INNO_SETUP_COMPILER")
             ?? new[]
@@ -109,6 +120,11 @@ internal sealed class PackageReleaseTarget(IProcessRunner processes, IBuildPaths
             var result = await processes.RunAsync($"Package {product} {runtime}", compiler,
                 [$"/DSourceDir={source}", $"/DOutputDir={packages}", $"/DBaseName=AI.{product}-{runtime}",
                     $"/DVersion={version}", $"/DArchitecture={architecture}", script], token);
+            if (result != 0) return result;
+            if (string.IsNullOrWhiteSpace(localModelPackage)) continue;
+            result = await processes.RunAsync($"Package {product} {runtime} with Local AI", compiler,
+                [$"/DSourceDir={source}", $"/DOutputDir={packages}", $"/DBaseName=AI.{product}-{runtime}-local-ai",
+                    $"/DVersion={version}", $"/DArchitecture={architecture}", $"/DLocalAiDir={localModelPackage}", script], token);
             if (result != 0) return result;
         }
         return 0;

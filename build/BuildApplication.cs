@@ -132,10 +132,15 @@ internal sealed class BuildApplication(
         runtime.AcceptOnlyFromAmong("win-x64", "win-arm64", "osx-x64", "osx-arm64", "linux-x64", "linux-arm64");
         var version = new Option<string>("--version") { Required = true };
         var command = new Command("package-release", "Publish self-contained Host and Desktop installers for one runtime.");
+        var localAi = new Option<bool>("--local-ai")
+        {
+            Description = "Also build Windows installers with the Local AI component (AI.<Product>-<runtime>-local-ai.exe)."
+        };
         command.Options.Add(runtime);
         command.Options.Add(version);
+        command.Options.Add(localAi);
         command.SetAction(parse => packageReleaseTarget.RunAsync(
-            parse.GetValue(runtime)!, parse.GetValue(version)!, cancellationToken));
+            parse.GetValue(runtime)!, parse.GetValue(version)!, parse.GetValue(localAi), cancellationToken));
         root.Subcommands.Add(command);
     }
 

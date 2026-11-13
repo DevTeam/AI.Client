@@ -2,7 +2,8 @@
    user bubble on the user's side of the feed instead of hiding in the tool row that asked it, and
    it stays when the turn's steps are folded away, like anything else the person added to a turn.
    With no answer it keeps the bubble's place drawn dashed, as an aside is: something was decided
-   at that point, but not in their words. *@
+   at that point, but not in their words — and where the assistant's default stood in, the bubble
+   says what that default was, so "left to the assistant" never hides what it went on with. *@
 @using AI.Contracts.Tools
 
 <article class="workspace-message user user-answer @OutcomeClass" aria-label="Your answer">
@@ -11,7 +12,7 @@
         {
             <p class="user-answer-status"><AppIcon Name="@status.Icon" />@status.Text</p>
         }
-        else
+        @if (Answered || Assumed)
         {
             @foreach (var item in Answer.Answers)
             {
@@ -27,9 +28,20 @@
                     {
                         <p class="user-answer-value is-open">Left to the assistant</p>
                     }
+                    else if (item.Assumed)
+                    {
+                        <p class="user-answer-value is-assumed">
+                            <AppIcon Name="sparkles" /><span class="user-answer-assumed-label">Assistant chose</span>
+                            <span class="@(item.IsPath ? "is-path" : null)">@item.Answer</span>
+                        </p>
+                    }
                     else
                     {
                         <p class="user-answer-value @(item.IsPath ? "is-path" : string.Empty)">@item.Answer</p>
+                    }
+                    @if (item.Remember)
+                    {
+                        <p class="user-answer-remember"><AppIcon Name="memory" />Asked to remember</p>
                     }
                 </div>
             }
@@ -40,14 +52,17 @@
 @code {
     [Parameter] [EditorRequired] public AskUserAnswer Answer { get; set; } = default!;
 
-    private bool Answered => Answer.Answers.Any(item => item.Answer.Length > 0);
+    private bool Answered => Answer.Answers.Any(item => item.Answer.Length > 0 && !item.Assumed);
 
-    // Only a reply with nothing in it collapses to one line; a partial answer is still an answer.
+    private bool Assumed => Answer.Answers.Any(item => item.Assumed);
+
+    // Only a reply with nothing of the person's in it gets the status line; a partial answer is
+    // still an answer.
     private (string Icon, string Text)? Status => Answered ? null : Answer.Outcome switch
     {
         "declined" => ("x", "You declined the question; the assistant stopped"),
-        "expired" => ("clock", "No answer in time; the assistant decided"),
-        _ => ("sparkles", "You left it to the assistant"),
+        "expired" => ("clock", Assumed ? "No answer in time; the assistant went on with its defaults" : "No answer in time; the assistant decided"),
+        _ => ("sparkles", Assumed ? "You left it to the assistant; it went on with its defaults" : "You left it to the assistant"),
     };
 
     private string OutcomeClass => Answered ? string.Empty : Answer.Outcome switch

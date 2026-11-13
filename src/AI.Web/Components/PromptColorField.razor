@@ -1,0 +1,59 @@
+@* A colour: the model's swatches first, because they are the colours it means, then the system
+   colour picker and the hex code for anything else. The swatch colours are the model's data, not
+   the application's palette, so they travel as the --swatch property and nowhere else. *@
+@using AI.Contracts.Runs
+@inject IUserPromptInputs Inputs
+
+<div class="user-prompt-color">
+    @if (Question.Options.Count > 0)
+    {
+        <div class="user-prompt-color-swatches" role="radiogroup" aria-label="@(Question.Label ?? "Colour")">
+            @for (var option = 0; option < Question.Options.Count; option++)
+            {
+                var choice = Question.Options[option];
+                var value = Inputs.Normalize(Question, choice.Value);
+                var chosen = value is not null && Current == value;
+                <button class="@($"user-prompt-color-swatch{(chosen ? " is-chosen" : null)}{(choice.Recommended ? " is-recommended" : null)}")"
+                        type="button" role="radio" aria-checked="@(chosen ? "true" : "false")" disabled="@Disabled"
+                        title="@($"{choice.Label} {value}")" @onclick="() => SetAsync(value)">
+                    <span class="user-prompt-color-chip" style="@($"--swatch: {value}")" aria-hidden="true"></span>
+                    <span class="user-prompt-color-name">@choice.Label</span>
+                </button>
+            }
+        </div>
+    }
+    <div class="user-prompt-color-custom">
+        <label class="user-prompt-color-well">
+            <span class="visually-hidden">Pick a colour</span>
+            <input type="color" value="@(Current ?? "#808080")" disabled="@Disabled" @oninput="args => SetAsync(args.Value?.ToString())" />
+        </label>
+        <label class="user-prompt-color-hex">
+            <span class="visually-hidden">Colour code</span>
+            <input class="user-prompt-other-input" type="text" spellcheck="false" maxlength="7" placeholder="#rrggbb"
+                   value="@Current" disabled="@Disabled"
+                   @onfocus="() => TypingChanged.InvokeAsync(true)" @onblur="() => TypingChanged.InvokeAsync(false)"
+                   @onchange="args => SetAsync(args.Value?.ToString())" />
+        </label>
+        @if (Current is null)
+        {
+            <span class="user-prompt-color-unset">No colour chosen</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UserPromptQuestion Question { get; set; } = default!;
+
+    [Parameter, EditorRequired] public IReadOnlyList<string> Values { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+
+    [Parameter] public EventCallback<bool> TypingChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private string? Current => Values.Count > 0 ? Values[0] : null;
+
+    private Task SetAsync(string? value) =>
+        Inputs.Normalize(Question, value) is { } color ? ValuesChanged.InvokeAsync([color]) : Task.CompletedTask;
+}

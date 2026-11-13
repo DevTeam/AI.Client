@@ -1,0 +1,94 @@
+@* The options put in order. Three ways to move one, because each suits a different hand: drag it by
+   its row, press the arrows on its edge, or focus it and use Alt+Up / Alt+Down. The row that just
+   moved flashes where it landed, and a polite announcement says where it went. *@
+@using AI.Contracts.Runs
+
+<ol class="user-prompt-rank" aria-label="@(Question.Label ?? "Order")">
+    @for (var position = 0; position < Order.Count; position++)
+    {
+        var at = position;
+        var index = Order[at];
+        var option = Question.Options[index];
+        <li @key="index" class="@ItemClass(index, at)" tabindex="@(Disabled ? -1 : 0)" draggable="@(Disabled ? "false" : "true")"
+            aria-label="@($"{at + 1}. {option.Label}")" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+            @ondragstart="() => _dragged = at" @ondragend="() => { _dragged = null; _over = null; }"
+            @ondragenter="() => _over = at" @ondragover:preventDefault="true" @ondrop="() => DropAsync(at)"
+            @onkeydown="args => KeyAsync(at, args)">
+            <span class="user-prompt-rank-grip" aria-hidden="true"><AppIcon Name="drag" /></span>
+            <span class="user-prompt-rank-position" aria-hidden="true">@(at + 1)</span>
+            <span class="user-prompt-rank-text">
+                <span class="user-prompt-option-label">@option.Label</span>
+                @if (option.Description is { Length: > 0 } description)
+                {
+                    <span class="user-prompt-option-description">@description</span>
+                }
+            </span>
+            <span class="user-prompt-rank-moves">
+                <button class="icon-action" type="button" title="Move up" aria-label="@($"Move {option.Label} up")"
+                        disabled="@(Disabled || at == 0)" @onclick="() => MoveAsync(at, at - 1)" @onkeydown:stopPropagation="true">
+                    <AppIcon Name="chevron-up" />
+                </button>
+                <button class="icon-action" type="button" title="Move down" aria-label="@($"Move {option.Label} down")"
+                        disabled="@(Disabled || at == Order.Count - 1)" @onclick="() => MoveAsync(at, at + 1)" @onkeydown:stopPropagation="true">
+                    <AppIcon Name="chevron-down" />
+                </button>
+            </span>
+        </li>
+    }
+</ol>
+<p class="visually-hidden" aria-live="polite">@_announcement</p>
+
+@code {
+    [Parameter, EditorRequired] public UserPromptQuestion Question { get; set; } = default!;
+
+    /// <summary>Option indices, first to last.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<int> Order { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<int>> OrderChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private int? _dragged;
+    private int? _over;
+    private int? _moved;
+    private int _generation;
+    private string? _announcement;
+
+    // The landing flash restarts on every move: the class alternates, so the same row moving twice
+    // in a row still plays it again.
+    private string ItemClass(int index, int position) =>
+        $"user-prompt-rank-item{(_moved == index ? (_generation % 2 == 0 ? " is-moved" : " is-moved-again") : null)}"
+        + $"{(_dragged == position ? " is-dragged" : null)}{(_over == position && _dragged is { } from && from != position ? (from < position ? " is-drop-after" : " is-drop-before") : null)}";
+
+    private Task DropAsync(int to)
+    {
+        var from = _dragged;
+        _dragged = null;
+        _over = null;
+        return from is { } source ? MoveAsync(source, to) : Task.CompletedTask;
+    }
+
+    private Task KeyAsync(int position, KeyboardEventArgs args)
+    {
+        if (!args.AltKey || args.CtrlKey || args.MetaKey || Disabled) return Task.CompletedTask;
+        return args.Key switch
+        {
+            "ArrowUp" when position > 0 => MoveAsync(position, position - 1),
+            "ArrowDown" when position < Order.Count - 1 => MoveAsync(position, position + 1),
+            _ => Task.CompletedTask
+        };
+    }
+
+    private Task MoveAsync(int from, int to)
+    {
+        if (Disabled || from == to || from < 0 || to < 0 || from >= Order.Count || to >= Order.Count) return Task.CompletedTask;
+        var order = Order.ToList();
+        var index = order[from];
+        order.RemoveAt(from);
+        order.Insert(to, index);
+        _moved = index;
+        _generation++;
+        _announcement = $"{Question.Options[index].Label} moved to position {to + 1} of {order.Count}.";
+        return OrderChanged.InvokeAsync(order);
+    }
+}

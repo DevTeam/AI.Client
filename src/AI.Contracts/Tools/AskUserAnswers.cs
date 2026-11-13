@@ -14,7 +14,9 @@ public sealed record AskUserAnswer(string Outcome, IReadOnlyList<AskUserAnswerIt
 /// <param name="Question">The question as it was put.</param>
 /// <param name="Answer">The chosen options, picked values and free text as one answer; empty when left open.</param>
 /// <param name="IsPath">Whether the answer is only picked paths or values, which read best in monospace.</param>
-public sealed record AskUserAnswerItem(string? Label, string Question, string Answer, bool IsPath);
+/// <param name="Assumed">The person left the question open and the answer is the assistant's default.</param>
+/// <param name="Remember">The person asked the assistant to remember this answer.</param>
+public sealed record AskUserAnswerItem(string? Label, string Question, string Answer, bool IsPath, bool Assumed = false, bool Remember = false);
 
 public static class AskUserAnswers
 {
@@ -58,7 +60,7 @@ public static class AskUserAnswers
                 var answer = answers.FirstOrDefault(item => id is not null && Text(item, "id") == id);
                 var chosen = answer.ValueKind == JsonValueKind.Object ? Chosen(answer) : (Text: string.Empty, IsPath: false);
                 items.Add(new AskUserAnswerItem(Text(question, "label"), Text(question, "text") ?? Text(question, "label") ?? "Question",
-                    chosen.Text, chosen.IsPath));
+                    chosen.Text, chosen.IsPath, Flag(answer, "assumed"), Flag(answer, "remember")));
             }
             return items.Count == 0 ? null : new AskUserAnswer(outcome, items);
         }
@@ -88,8 +90,13 @@ public static class AskUserAnswers
                     .Select(item => item.GetString()!).Where(item => item.Length > 0)
                     // An option's value that its label already spells out says it a second time.
                     .Where(item => !labels.Any(label => label.Contains(item, StringComparison.Ordinal))));
-        return (string.Join(", ", parts), worded == 0 && parts.Count > 0 && !described);
+        // A rank is one answer read in order, not a list of separate choices.
+        return (string.Join(Flag(answer, "ranked") ? " → " : ", ", parts), worded == 0 && parts.Count > 0 && !described);
     }
+
+    internal static bool Flag(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var found)
+                                                  && found.ValueKind == JsonValueKind.True;
 
     private static string? Text(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var found)

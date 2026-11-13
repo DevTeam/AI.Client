@@ -3538,6 +3538,15 @@ div.chat-tip-head { cursor: default; }
 .user-answer-value { margin: 0; color: var(--color-text-strong); font-size: var(--message-font-size); font-weight: 600; overflow-wrap: anywhere; }
 .user-answer-value.is-path { font-family: var(--font-mono); font-size: var(--font-size-md); font-weight: 400; }
 .user-answer-value.is-open { color: var(--color-text-subtle); font-weight: 400; }
+/* The assistant's default standing in for a question left open: its words, not the person's, so it
+   is muted and marked, but readable, because it is what the work went on with. */
+.user-answer-value.is-assumed { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem; color: var(--color-text); font-weight: 500; }
+.user-answer-value.is-assumed .app-icon { flex: none; align-self: center; width: 0.85rem; height: 0.85rem; color: var(--color-accent-text); }
+.user-answer-assumed-label { color: var(--color-text-subtle); font-size: var(--font-size-sm); font-weight: 400; }
+.user-answer-value.is-assumed .is-path { font-family: var(--font-mono); font-size: var(--font-size-md); font-weight: 400; }
+.user-answer-value { white-space: pre-wrap; }
+.user-answer-remember { display: flex; align-items: center; gap: 0.3rem; margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
+.user-answer-remember .app-icon { flex: none; width: 0.75rem; height: 0.75rem; }
 
 /* Nothing was said: the bubble's place stays, dashed and empty like an aside, with what happened
    instead in one line. */
@@ -6331,6 +6340,177 @@ textarea {
 .user-prompt-reply-other .user-prompt-other-input { margin-top: 0; padding: .45rem .6rem; border-radius: var(--chat-card-action-radius); }
 .user-prompt-reply-hint { display: inline-flex; align-items: center; gap: .35rem; }
 .user-prompt-reply-hint .app-icon { width: .85rem; height: .85rem; flex: none; color: var(--color-accent-text); }
+/* Value-like answers to a question (UserPromptCard: input kinds). Their motion is feedback on the
+   person's own hand — a handle that grows under the pointer, a row that flashes where it landed —
+   and is deliberately kept under prefers-reduced-motion, like the animated counts: nothing travels
+   across the screen, and Windows reports reduced motion for everyone who turns off its animations,
+   which hid the cue entirely. Settings → Appearance → Animations still turns it off. */
+.user-prompt-presets { display: flex; flex-wrap: wrap; gap: .35rem; }
+.user-prompt-preset {
+    padding: .25rem .6rem; border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+    background: var(--color-surface); color: var(--color-text-secondary); font-size: var(--font-size-sm);
+    transition: border-color var(--duration-fast) ease-out, background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+}
+.user-prompt-preset:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-fill-hover); color: var(--color-text); }
+.user-prompt-preset.is-recommended { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
+.user-prompt-preset.is-chosen { border-color: var(--color-accent); background: var(--color-accent-bg); color: var(--color-accent-text); }
+
+.user-prompt-option-key { flex: none; align-self: center; margin-left: auto; color: var(--color-text-muted); }
+
+.user-prompt-slider { --from: 0%; --to: 0%; display: grid; gap: .35rem; padding: .2rem .15rem 0; }
+.user-prompt-slider-track { position: relative; height: 1.4rem; }
+.user-prompt-slider-track::before,
+.user-prompt-slider-fill { content: ""; position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: var(--radius-pill); }
+.user-prompt-slider-track::before { left: 0; right: 0; background: var(--color-fill-strong); }
+.user-prompt-slider-fill { left: var(--from); width: calc(var(--to) - var(--from)); background: var(--color-accent); transition: background-color var(--duration-fast) ease-out; }
+.user-prompt-slider.is-unset .user-prompt-slider-fill { background: transparent; }
+.user-prompt-slider-input {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
+    background: transparent; appearance: none; -webkit-appearance: none; pointer-events: none;
+}
+.user-prompt-slider-input:focus-visible { outline: none; }
+.user-prompt-slider-input::-webkit-slider-runnable-track { height: 100%; background: transparent; border: 0; }
+.user-prompt-slider-input::-moz-range-track { height: 100%; background: transparent; border: 0; }
+.user-prompt-slider-input::-webkit-slider-thumb {
+    width: 1.05rem; height: 1.05rem; margin-top: .175rem; border: 2px solid var(--color-accent); border-radius: 50%;
+    background: var(--color-surface); box-shadow: var(--shadow-sm); appearance: none; -webkit-appearance: none;
+    cursor: grab; pointer-events: auto; transition: transform var(--duration-base) var(--ease-emphasized), border-color var(--duration-fast) ease-out;
+}
+.user-prompt-slider-input::-moz-range-thumb {
+    width: .85rem; height: .85rem; border: 2px solid var(--color-accent); border-radius: 50%;
+    background: var(--color-surface); box-shadow: var(--shadow-sm); cursor: grab; pointer-events: auto;
+    transition: transform var(--duration-base) var(--ease-emphasized), border-color var(--duration-fast) ease-out;
+}
+.user-prompt-slider-input:hover:not(:disabled)::-webkit-slider-thumb { transform: scale(1.18); }
+.user-prompt-slider-input:hover:not(:disabled)::-moz-range-thumb { transform: scale(1.18); }
+.user-prompt-slider-input:active:not(:disabled)::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.3); background: var(--color-accent-bg); }
+.user-prompt-slider-input:active:not(:disabled)::-moz-range-thumb { cursor: grabbing; transform: scale(1.3); background: var(--color-accent-bg); }
+.user-prompt-slider-input:focus-visible::-webkit-slider-thumb { box-shadow: var(--shadow-sm), 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+.user-prompt-slider-input:focus-visible::-moz-range-thumb { box-shadow: var(--shadow-sm), 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+.user-prompt-slider.is-unset .user-prompt-slider-input::-webkit-slider-thumb { border-color: var(--color-border-stronger); }
+.user-prompt-slider.is-unset .user-prompt-slider-input::-moz-range-thumb { border-color: var(--color-border-stronger); }
+.user-prompt-slider-input:disabled::-webkit-slider-thumb { cursor: default; }
+/* The two handles of a range share one track; the upper one sits on top so that, when both meet at
+   the top end, the lower one can still be pulled back down from under it. */
+.user-prompt-slider-input.is-to { z-index: 2; }
+.user-prompt-slider-input.is-from { z-index: 3; }
+.user-prompt-slider-scale { position: relative; display: flex; justify-content: space-between; min-height: 1.1rem; color: var(--color-text-subtle); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.user-prompt-slider-mark { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; color: var(--color-text-muted); }
+.user-prompt-slider-mark::before { content: ""; position: absolute; top: -.55rem; left: 50%; width: 1px; height: .3rem; background: var(--color-border-strong); }
+.user-prompt-slider-values { display: flex; align-items: center; gap: .4rem; }
+.user-prompt-number {
+    width: 7rem; padding: .3rem .45rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    background: var(--color-input-bg); color: inherit; font-size: var(--font-size-md); font-variant-numeric: tabular-nums;
+}
+.user-prompt-slider-dash, .user-prompt-slider-unit { color: var(--color-text-subtle); font-size: var(--font-size-md); }
+
+.user-prompt-scale { display: grid; gap: .3rem; }
+.user-prompt-scale-steps, .user-prompt-scale-marks { display: grid; grid-template-columns: repeat(var(--steps), minmax(0, 1fr)); gap: .3rem; }
+.user-prompt-scale-step {
+    min-width: 0; padding: .45rem 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    background: var(--color-surface); color: var(--color-text-secondary); font-size: var(--font-size-md); font-variant-numeric: tabular-nums;
+    transition: border-color var(--duration-fast) ease-out, background-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out, transform var(--duration-base) var(--ease-emphasized);
+}
+.user-prompt-scale-step:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-text); }
+.user-prompt-scale-step.is-under { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-accent-bg) 60%, var(--color-surface)); }
+.user-prompt-scale-step.is-chosen { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; animation: user-prompt-pop var(--duration-slow) var(--ease-emphasized); }
+.user-prompt-scale-marks { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.user-prompt-scale-mark { grid-column: var(--column); text-align: center; overflow-wrap: anywhere; }
+.user-prompt-scale-mark.is-start { text-align: left; }
+.user-prompt-scale-mark.is-end { text-align: right; }
+@keyframes user-prompt-pop { from { transform: scale(.9); } }
+
+.user-prompt-rank { display: grid; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.user-prompt-rank-item {
+    position: relative; display: flex; align-items: center; gap: .5rem; padding: .35rem .4rem .35rem .3rem;
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: grab;
+    transition: border-color var(--duration-fast) ease-out, background-color var(--duration-fast) ease-out, opacity var(--duration-fast) ease-out;
+}
+.user-prompt-rank-item:hover { border-color: var(--color-border-strong); background: var(--color-surface-raised); }
+.user-prompt-rank-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.user-prompt-rank-item.is-dragged { opacity: .45; cursor: grabbing; }
+.user-prompt-rank-item.is-drop-before { border-top-color: var(--color-accent); background: var(--color-accent-bg); }
+.user-prompt-rank-item.is-drop-after { border-bottom-color: var(--color-accent); background: var(--color-accent-bg); }
+.user-prompt-rank-item.is-moved { animation: user-prompt-rank-moved calc(var(--duration-slow) * 3) ease-out; }
+.user-prompt-rank-item.is-moved-again { animation: user-prompt-rank-moved-again calc(var(--duration-slow) * 3) ease-out; }
+@keyframes user-prompt-rank-moved { from { border-color: var(--color-accent); background: var(--color-accent-bg); } }
+@keyframes user-prompt-rank-moved-again { from { border-color: var(--color-accent); background: var(--color-accent-bg); } }
+.user-prompt-rank-grip { display: inline-flex; flex: none; color: var(--color-text-faint); }
+.user-prompt-rank-grip .app-icon { width: .9rem; height: .9rem; }
+.user-prompt-rank-position { flex: none; min-width: 1.3rem; color: var(--color-accent-text); font-size: var(--font-size-sm); font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; }
+.user-prompt-rank-text { display: grid; flex: 1; gap: .1rem; min-width: 0; }
+.user-prompt-rank-moves { display: inline-flex; flex: none; gap: .1rem; }
+.user-prompt-rank-moves .icon-action { cursor: pointer; }
+
+.user-prompt-search { display: grid; gap: .4rem; }
+.user-prompt-search-box {
+    display: flex; align-items: center; gap: .4rem; padding: 0 .5rem; border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); background: var(--color-input-bg);
+}
+.user-prompt-search-box:focus-within { border-color: var(--color-accent); }
+.user-prompt-search-box > .app-icon { flex: none; width: .9rem; height: .9rem; color: var(--color-text-subtle); }
+.user-prompt-search-box > input { flex: 1; min-width: 0; padding: .35rem 0; border: 0; outline: none; background: transparent; color: inherit; font-size: var(--font-size-md); }
+.user-prompt-search-count { flex: none; color: var(--color-text-faint); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.user-prompt-search-list { display: grid; max-height: 15rem; margin: 0; padding: .2rem; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); list-style: none; }
+.user-prompt-search-item { display: flex; align-items: start; gap: .5rem; padding: .35rem .45rem; border-radius: var(--radius-xs); cursor: pointer; transition: background-color var(--duration-fast) ease-out; }
+.user-prompt-search-item:hover, .user-prompt-search-item.is-active { background: var(--color-fill-hover); }
+.user-prompt-search-item.is-chosen { background: var(--color-accent-bg); }
+.user-prompt-search-item.is-chosen.is-active { background: var(--color-accent-bg-hover); }
+.user-prompt-search-check { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1rem; height: 1rem; margin-top: .1rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-xs); color: var(--color-on-accent); }
+.user-prompt-search-item.is-chosen .user-prompt-search-check { border-color: var(--color-accent); background: var(--color-accent); }
+.user-prompt-search-check .app-icon { width: .7rem; height: .7rem; }
+.user-prompt-search-text { display: grid; flex: 1; gap: .1rem; min-width: 0; }
+.user-prompt-search-badge { flex: none; color: var(--color-accent-text); font-size: var(--font-size-xs); }
+.user-prompt-search-empty { padding: .5rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+.user-prompt-search-chosen { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0; padding: 0; list-style: none; }
+.user-prompt-search-chosen li { display: inline-flex; align-items: center; gap: .15rem; max-width: 100%; padding: .1rem .15rem .1rem .5rem; border: 1px solid var(--color-accent); border-radius: var(--radius-pill); background: var(--color-accent-bg); color: var(--color-accent-text); font-size: var(--font-size-sm); }
+.user-prompt-search-chosen li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-prompt-search-chosen .icon-action { padding: .1rem; }
+
+.user-prompt-color { display: grid; gap: .5rem; }
+.user-prompt-color-swatches { display: flex; flex-wrap: wrap; gap: .4rem; }
+.user-prompt-color-swatch {
+    display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .55rem .25rem .3rem; border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill); background: var(--color-surface); color: var(--color-text-secondary); font-size: var(--font-size-sm);
+    transition: border-color var(--duration-fast) ease-out, background-color var(--duration-fast) ease-out;
+}
+.user-prompt-color-swatch:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-fill-hover); }
+.user-prompt-color-swatch.is-recommended { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
+.user-prompt-color-swatch.is-chosen { border-color: var(--color-accent); background: var(--color-accent-bg); color: var(--color-text); }
+.user-prompt-color-chip { flex: none; width: 1.1rem; height: 1.1rem; border: 1px solid var(--color-border-translucent); border-radius: 50%; background: var(--swatch); transition: transform var(--duration-base) var(--ease-emphasized); }
+.user-prompt-color-swatch.is-chosen .user-prompt-color-chip { transform: scale(1.15); box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 3px var(--color-accent); }
+.user-prompt-color-custom { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.user-prompt-color-well input { width: 2.2rem; height: 1.9rem; padding: .1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; }
+.user-prompt-color-hex .user-prompt-other-input { width: 7rem; margin: 0; font-family: var(--font-mono); }
+.user-prompt-color-unset { color: var(--color-text-subtle); font-size: var(--font-size-sm); }
+
+.user-prompt-text { display: grid; gap: .25rem; }
+.user-prompt-textarea {
+    width: 100%; min-height: 4.5rem; padding: .4rem .5rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    background: var(--color-input-bg); color: inherit; font-size: var(--font-size-md); line-height: 1.45; resize: vertical;
+}
+.user-prompt-text.is-code .user-prompt-textarea,
+.user-prompt-text.is-code .user-prompt-other-input { font-family: var(--font-mono); font-size: var(--font-size-sm); tab-size: 4; }
+.user-prompt-text.is-invalid .user-prompt-textarea,
+.user-prompt-text.is-invalid .user-prompt-other-input { border-color: var(--color-danger-border-strong); }
+.user-prompt-text-meta { display: flex; justify-content: space-between; gap: .5rem; color: var(--color-text-faint); font-size: var(--font-size-xs); }
+.user-prompt-text-language { font-family: var(--font-mono); text-transform: lowercase; }
+.user-prompt-field-error { color: var(--color-danger-text); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.user-prompt-field-error code { font-family: var(--font-mono); font-size: var(--font-size-xs); }
+
+/* The consequence of the answer as it stands, rewritten as it changes. */
+.user-prompt-preview {
+    display: flex; align-items: center; gap: .4rem; margin: .1rem 0 0; padding: .35rem .55rem; border-radius: var(--radius-sm);
+    background: var(--color-fill); color: var(--color-text-secondary); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums;
+    animation: user-prompt-preview-in var(--duration-base) ease-out;
+}
+.user-prompt-preview .app-icon { flex: none; width: .85rem; height: .85rem; color: var(--color-accent-text); }
+@keyframes user-prompt-preview-in { from { opacity: 0; transform: translateY(-2px); } }
+
+.user-prompt-remember { display: inline-flex; align-items: center; gap: .4rem; justify-self: start; margin-top: .1rem; color: var(--color-text-subtle); font-size: var(--font-size-sm); cursor: pointer; }
+.user-prompt-remember > input { width: auto; margin: 0; }
+.user-prompt-remember:hover { color: var(--color-text); }
+
 /* A question on a timer counts down like a guide step: timer line, a bar draining along the bottom
    edge, and the last seconds warn — amber before it closes, accent and a glowing Continue before
    the recommended answers are sent. */

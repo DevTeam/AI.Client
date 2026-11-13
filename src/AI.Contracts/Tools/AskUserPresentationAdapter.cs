@@ -36,13 +36,15 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
             : [];
 
         var answerFacts = new List<ToolFact>();
+        var assumedFacts = new List<ToolFact>();
         foreach (var answer in answers)
         {
             var id = Text(answer, "id");
             var question = Question(questions, id);
             var chosen = Chosen(answer);
-            if (chosen is { Length: > 0 })
-                answerFacts.Add(new ToolFact(Clip(Label(question) ?? id, 40) ?? "Answer", chosen));
+            if (chosen is not { Length: > 0 }) continue;
+            (AskUserAnswers.Flag(answer, "assumed") ? assumedFacts : answerFacts)
+                .Add(new ToolFact(Clip(Label(question) ?? id, 40) ?? "Answer", chosen));
         }
 
         var facts = questions is { ValueKind: JsonValueKind.Array } list
@@ -52,20 +54,24 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
                 var answer = answers.FirstOrDefault(item => Text(item, "id") == id);
                 var chosen = answer.ValueKind == JsonValueKind.Object ? Chosen(answer) : string.Empty;
                 return new ToolFact(Text(question, "text") ?? Label(question) ?? "Question",
-                    chosen.Length > 0 ? chosen : "No answer");
+                    chosen.Length == 0 ? "No answer"
+                    : AskUserAnswers.Flag(answer, "assumed") ? $"Default: {chosen}" : chosen);
             }).ToList()
-            : answerFacts;
+            : answerFacts.Concat(assumedFacts).ToList();
 
         // Nothing chosen is a real answer with a real consequence — the model decided by itself
-        // from here on — so it is a warning the person can find later, not a silent Ok row.
+        // from here on — so it is a warning the person can find later, not a silent Ok row. Where
+        // the model's defaults stood in, the row says what they were.
         if (answerFacts.Count == 0)
             return new ToolResultPresentation(
                 outcome switch
                 {
+                    "expired" when assumedFacts.Count > 0 => $"No answer in time; the model chose {Decided(assumedFacts)}",
                     "expired" => "No answer in time; the model decided",
                     "interrupted" => "Nobody could be asked; the model decided",
                     "invalid" => Text(structured, "error") ?? "The question could not be asked",
                     "declined" => "Declined by the user; the model stopped",
+                    _ when assumedFacts.Count > 0 => $"Left to the model: {Decided(assumedFacts)}",
                     _ => "Left to the model"
                 },
                 outcome == "invalid" ? ToolResultSeverity.Error : ToolResultSeverity.Warning,
@@ -82,6 +88,9 @@ public sealed class AskUserPresentationAdapter : BuiltInToolPresentationAdapter
             // is the person's reply card.
             null);
     }
+
+    private static string Decided(List<ToolFact> facts) =>
+        facts.Count == 1 ? Clip(facts[0].Value, 60) ?? facts[0].Value : Plural(facts.Count, "default", "defaults");
 
     private static JsonElement? Question(JsonElement? questions, string? id)
     {

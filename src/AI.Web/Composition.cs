@@ -129,6 +129,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IChatScheduleApi>()
             .Root<AI.Contracts.Schedules.IScheduleCalendar>()
             .Root<AI.Contracts.Schedules.IScheduleDescriptions>()
+            .Root<AI.Contracts.Runs.IUserPromptInputs>()
             .Root<IChatUsageStore>()
             .Root<IHistoryCheckpointApi>()
             .Root<IDelayedBusyIndicatorFactory>()

@@ -4,6 +4,7 @@
 @using AI.Contracts.Runs
 @using AI.Contracts.Schedules
 @inject IScheduleCalendar ScheduleCalendar
+@inject IUserPromptInputs Inputs
 @using AI.Web.FileSystem
 @using AI.Web.Markdown
 @inject IJSRuntime JsRuntime
@@ -19,7 +20,7 @@
     {
         var questionIndex = index;
         var question = Prompt.Questions[questionIndex];
-        <fieldset class="user-prompt-question">
+        <fieldset class="user-prompt-question" @onfocusin="() => _active = questionIndex">
             <legend>
                 @if (question.Label is { Length: > 0 } label)
                 {
@@ -66,9 +67,14 @@
                                placeholder="Or type your own answer and press Enter"
                                value="@_other[questionIndex]"
                                @oninput="args => TypeOther(questionIndex, args)"
+                               @onfocus="() => _typing = true" @onblur="() => _typing = false"
                                @onkeydown="args => TypeReplyKeyAsync(questionIndex, args)" @onkeydown:stopPropagation="true" />
                     </label>
                 }
+            }
+            else if (question.Input is { } input)
+            {
+                @InputField(questionIndex, question, input)
             }
             else
             {
@@ -89,6 +95,10 @@
                             <span class="user-prompt-option-description">@description</span>
                         }
                     </span>
+                    @if (DigitTarget == questionIndex && optionIndex < 9)
+                    {
+                        <kbd class="user-prompt-option-key" aria-hidden="true">@(optionIndex + 1)</kbd>
+                    }
                 </label>
             }
             @if (SchedulePickers.IsSchedulePicker(question.PickerKind))
@@ -157,7 +167,8 @@
                                    placeholder="@(mode == DirectoryPickerMode.File ? "Path to a file" : "Path to a directory")"
                                    aria-label="@(mode == DirectoryPickerMode.File ? "File path" : "Directory path")"
                                    value="@_other[questionIndex]"
-                                   @oninput="args => TypeOther(questionIndex, args)" />
+                                   @onfocus="() => _typing = true" @onblur="() => _typing = false"
+                               @oninput="args => TypeOther(questionIndex, args)" />
                             <button class="secondary-action compact-action" type="button" disabled="@_sending"
                                     @onclick="() => OpenPicker(questionIndex, mode)" @onkeydown:stopPropagation="true">Browse…</button>
                         </span>
@@ -178,10 +189,23 @@
                         <input class="user-prompt-other-input" type="text" disabled="@_sending"
                                placeholder="Type your answer"
                                value="@_other[questionIndex]"
+                               @onfocus="() => _typing = true" @onblur="() => _typing = false"
                                @oninput="args => TypeOther(questionIndex, args)" />
                     </span>
                 </label>
             }
+            }
+            @if (question.Preview is { } template && Inputs.RenderPreview(template, PreviewValues(questionIndex)) is { Length: > 0 } preview)
+            {
+                <p class="user-prompt-preview" aria-live="polite"><AppIcon Name="eye" /><span>@preview</span></p>
+            }
+            @if (question.Rememberable && !Prompt.ReplyButtons)
+            {
+                <label class="user-prompt-remember" title="The assistant saves your answer to memory and does not ask this again">
+                    <input type="checkbox" checked="@_remember[questionIndex]" disabled="@_sending"
+                           @onchange="args => _remember[questionIndex] = args.Value is true" />
+                    <span>Remember my answer</span>
+                </label>
             }
         </fieldset>
     }
@@ -201,7 +225,10 @@
         }
         else
         {
-            <span>Answer what matters to you — anything you leave blank is left to the assistant to decide.</span>
+            <span>Answer what matters to you — anything you leave blank is left to the assistant to decide.@if (DigitCount(DigitTarget) is > 1 and var digits)
+                {
+                    <text> Press <kbd>1</kbd>–<kbd>@digits</kbd> to pick in the question you are on.</text>
+                }</span>
         }
     </p>
     @* The countdown reads like the guide step's: a timer line, a bar that drains along the bottom
@@ -274,6 +301,10 @@
     private readonly Dictionary<int, string> _other = [];
     private readonly Dictionary<int, List<string>> _paths = [];
     private readonly Dictionary<int, List<string>> _values = [];
+    private readonly Dictionary<int, List<int>> _order = [];
+    private readonly Dictionary<int, bool> _remember = [];
+    private int? _active;
+    private bool _typing;
     private bool _sending;
     private int? _chosen;
     private string? _error;
@@ -416,12 +447,21 @@
     private void RemovePath(int question, string path) =>
         _paths[question].RemoveAll(item => string.Equals(item, path, StringComparison.OrdinalIgnoreCase));
 
-    private bool IsReady => Prompt.Questions
-        .Select((_, index) => _selected.GetValueOrDefault(index)?.Count > 0
-            || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
-            || _paths.GetValueOrDefault(index)?.Count > 0
-            || _values.GetValueOrDefault(index)?.Count > 0)
-        .All(answered => answered);
+    private bool IsReady => Prompt.Questions.Select((_, index) => HasAnswer(index)).All(answered => answered)
+        && Prompt.Questions.Select((_, index) => index).All(index => !IsInvalidText(index));
+
+    private bool HasAnswer(int index) =>
+        _selected.GetValueOrDefault(index)?.Count > 0
+        || !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
+        || _paths.GetValueOrDefault(index)?.Count > 0
+        || _values.GetValueOrDefault(index)?.Count > 0
+        || _order.GetValueOrDefault(index)?.Count > 0;
+
+    /// <summary>Typed text the question's pattern or length refuses: it cannot be sent as it is.</summary>
+    private bool IsInvalidText(int index) =>
+        Prompt.Questions[index].Input?.Kind == UserPromptInputKind.Text
+        && !string.IsNullOrWhiteSpace(_other.GetValueOrDefault(index))
+        && Inputs.Normalize(Prompt.Questions[index], _other[index]) is null;
 
     protected override void OnParametersSet()
     {
@@ -440,6 +480,10 @@
         _other.Clear();
         _paths.Clear();
         _values.Clear();
+        _order.Clear();
+        _remember.Clear();
+        _active = null;
+        _typing = false;
         for (var index = 0; index < Prompt.Questions.Count; index++)
         {
             _selected[index] = Prompt.Questions[index].Options.Select((option, position) => (option, position))
@@ -447,7 +491,10 @@
             _other[index] = string.Empty;
             _paths[index] = [];
             _values[index] = [];
+            _order[index] = [];
+            _remember[index] = false;
             SyncPreset(index);
+            Prefill(index);
         }
 
         _sending = false;
@@ -460,6 +507,143 @@
             _timer = new CancellationTokenSource();
             _ = CountDownAsync(Prompt.Id, _timer.Token);
         }
+    }
+
+    /// <summary>
+    /// What the model said it would go on with is on the card from the start, ready to keep or
+    /// change: a default fills its control, a rank starts in the order offered, and a recommended
+    /// preset sets its slider or swatch. Keeping it is an answer like any other.
+    /// </summary>
+    private void Prefill(int index)
+    {
+        var question = Prompt.Questions[index];
+        var defaults = question.Defaults ?? [];
+        var kind = question.Input?.Kind;
+        switch (kind)
+        {
+            case UserPromptInputKind.Rank:
+                _selected[index].Clear();
+                _order[index] = Enumerable.Range(0, question.Options.Count).ToList();
+                return;
+            case UserPromptInputKind.Number or UserPromptInputKind.Range or UserPromptInputKind.Scale or UserPromptInputKind.Color:
+            {
+                var preset = question.Options.FirstOrDefault(option => option.Recommended)?.Value;
+                _selected[index].Clear();
+                _values[index] = (defaults.Count > 0
+                    ? kind == UserPromptInputKind.Range
+                        ? defaults.Count == 2 && Inputs.PresetValues(question, $"{defaults[0]}..{defaults[1]}") is { } ends ? ends.ToList() : []
+                        : defaults.Select(value => Inputs.Normalize(question, value)).OfType<string>().Take(1).ToList()
+                    : Inputs.PresetValues(question, preset)?.ToList()) ?? [];
+                return;
+            }
+            case UserPromptInputKind.Text:
+                _selected[index].Clear();
+                _other[index] = defaults.Count > 0 ? defaults[0] : string.Empty;
+                return;
+            case UserPromptInputKind.Search:
+                return;
+        }
+        if (defaults.Count == 0) return;
+        if (question.PathKind == "directories") _paths[index] = defaults.ToList();
+        else if (question.PathKind is not null || question.PickerKind is null && question.Options.Count == 0) _other[index] = defaults[0];
+        else if (_values[index].Count == 0)
+            _values[index] = defaults.Select(value => Inputs.Normalize(question, value)).OfType<string>()
+                .Take(question.MultiSelect ? 200 : 1).ToList();
+    }
+
+    private void SetValues(int question, IReadOnlyList<string> values)
+    {
+        _values[question] = values.ToList();
+        _selected[question].Clear();
+    }
+
+    private void SetOrder(int question, IReadOnlyList<int> order) => _order[question] = order.ToList();
+
+    /// <summary>A preset under a slider or a text box sets it, ready to adjust.</summary>
+    private void ApplyPreset(int question, UserPromptOption option)
+    {
+        var prompt = Prompt.Questions[question];
+        if (prompt.Input?.Kind == UserPromptInputKind.Text)
+        {
+            _other[question] = option.Value ?? option.Label;
+            return;
+        }
+        if (Inputs.PresetValues(prompt, option.Value) is { } values) _values[question] = values.ToList();
+    }
+
+    private bool IsPreset(int question, UserPromptOption option)
+    {
+        var prompt = Prompt.Questions[question];
+        if (prompt.Input?.Kind == UserPromptInputKind.Text) return _other[question] == (option.Value ?? option.Label);
+        return Inputs.PresetValues(prompt, option.Value) is { } values && values.SequenceEqual(_values[question]);
+    }
+
+    private void ToggleSearch(int question, int option)
+    {
+        var prompt = Prompt.Questions[question];
+        if (prompt.MultiSelect)
+        {
+            if (!_selected[question].Remove(option)) _selected[question].Add(option);
+            return;
+        }
+        var on = !_selected[question].Contains(option);
+        _selected[question].Clear();
+        _other[question] = string.Empty;
+        if (on) _selected[question].Add(option);
+    }
+
+    private Task TextKeyAsync(KeyboardEventArgs args) =>
+        args.Key == "Enter" && (args.CtrlKey || args.MetaKey) && !_sending ? AnswerAsync() : Task.CompletedTask;
+
+    private Task SubmitIfReadyAsync() => IsReady && !_sending ? AnswerAsync() : Task.CompletedTask;
+
+    /// <summary>What the preview line reads: the values, the chosen labels, the text and how many things are chosen.</summary>
+    private UserPromptPreviewValues PreviewValues(int index)
+    {
+        var question = Prompt.Questions[index];
+        var chosen = question.Input?.Kind == UserPromptInputKind.Rank ? _order[index] : _selected[index].Order().ToList();
+        var labels = chosen.Select(option => question.Options[option].Label).ToList();
+        var values = chosen.Select(option => question.Options[option].Value).OfType<string>().Concat(_values[index]).ToList();
+        var text = string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim();
+        return new UserPromptPreviewValues(values, labels, text,
+            chosen.Count + _values[index].Count + _paths[index].Count + (text is null ? 0 : 1));
+    }
+
+    /// <summary>
+    /// The question digits pick in: the one holding focus, otherwise the first that has something
+    /// to pick by number — a list of options or a scale.
+    /// </summary>
+    private int? DigitTarget => _active is { } active && DigitCount(active) > 0 ? active
+        : Enumerable.Range(0, Prompt.Questions.Count).Select(index => (int?)index).FirstOrDefault(index => DigitCount(index) > 0);
+
+    private int DigitCount(int? index)
+    {
+        if (index is not { } at || at >= Prompt.Questions.Count || Prompt.ReplyButtons) return 0;
+        var question = Prompt.Questions[at];
+        return question.Input?.Kind switch
+        {
+            null => Math.Min(9, question.Options.Count),
+            UserPromptInputKind.Scale => (int)Math.Min(9, question.Input.Max ?? 5),
+            _ => 0
+        };
+    }
+
+    private bool PickByDigit(char digit)
+    {
+        if (DigitTarget is not { } target) return false;
+        var question = Prompt.Questions[target];
+        var number = digit - '0';
+        if (question.Input?.Kind == UserPromptInputKind.Scale)
+        {
+            if (Inputs.Normalize(question, number.ToString(System.Globalization.CultureInfo.InvariantCulture)) is not { } value) return false;
+            _values[target] = [value];
+            return true;
+        }
+        var option = number - 1;
+        if (option < 0 || option >= question.Options.Count) return false;
+        var on = !(question.MultiSelect && _selected[target].Contains(option));
+        Select(target, option, question.MultiSelect, new ChangeEventArgs { Value = on });
+        return true;
     }
 
     private bool IsSelected(int question, int option) => _selected[question].Contains(option);
@@ -563,6 +747,12 @@
                 && args.Key[0] - '1' < Prompt.Questions[0].Options.Count
                     ? ReplyAsync(args.Key[0] - '1')
                     : Task.CompletedTask;
+        if (args.Key is [>= '0' and <= '9'] && !args.AltKey && !args.CtrlKey && !args.MetaKey && !args.ShiftKey
+            && !_typing && !_sending)
+        {
+            PickByDigit(args.Key[0]);
+            return Task.CompletedTask;
+        }
         return args.Key == "Enter" && !args.AltKey && !args.CtrlKey && !args.MetaKey && !args.ShiftKey
             && !args.IsComposing && IsReady && !_sending
                 ? AnswerAsync()
@@ -572,18 +762,27 @@
     private async Task SendAsync(UserPromptOutcome outcome)
     {
         if (_sending) return;
+        _error = null;
+        if (outcome == UserPromptOutcome.Answered
+            && Prompt.Questions.Select((_, index) => index).FirstOrDefault(IsInvalidText, -1) is var invalid and >= 0)
+        {
+            _error = $"The answer to “{Prompt.Questions[invalid].Label ?? Prompt.Questions[invalid].Text}” is not in the expected form.";
+            return;
+        }
         _sending = true;
         var accepted = false;
-        _error = null;
         try
         {
             var answers = outcome == UserPromptOutcome.Answered
                 ? Prompt.Questions
                     .Select((question, index) => new UserPromptAnswer(question.Id,
-                        _selected[index].Order().ToArray(),
-                        string.IsNullOrWhiteSpace(_other[index]) ? null : _other[index].Trim(),
+                        question.Input?.Kind == UserPromptInputKind.Rank ? _order[index].ToArray() : _selected[index].Order().ToArray(),
+                        string.IsNullOrWhiteSpace(_other[index]) ? null
+                            // Several lines may be code, whose leading spaces are part of it.
+                            : question.Input is { Kind: UserPromptInputKind.Text, Multiline: true } ? _other[index].TrimEnd() : _other[index].Trim(),
                         _paths[index].Count == 0 ? null : _paths[index].ToArray(),
-                        _values[index].Count == 0 ? null : _values[index].ToArray()))
+                        _values[index].Count == 0 ? null : _values[index].ToArray(),
+                        _remember[index]))
                     .Where(answer => answer.Selected.Count > 0 || answer.Other is not null || answer.Paths is { Count: > 0 } || answer.Values is { Count: > 0 })
                     .ToArray()
                 : [];
@@ -608,4 +807,102 @@
             }
         }
     }
+
+    /// <summary>The control of a value-like question; see <see cref="UserPromptInput"/>.</summary>
+    private RenderFragment InputField(int index, UserPromptQuestion question, UserPromptInput input) => __builder =>
+    {
+        var presets = input.Kind is UserPromptInputKind.Number or UserPromptInputKind.Range or UserPromptInputKind.Text
+            ? question.Options : [];
+        if (presets.Count > 0)
+        {
+            <div class="user-prompt-presets" role="group" aria-label="Presets">
+                @foreach (var option in presets)
+                {
+                    var preset = option;
+                    <button class="@($"user-prompt-preset{(IsPreset(index, preset) ? " is-chosen" : null)}{(preset.Recommended ? " is-recommended" : null)}")"
+                            type="button" disabled="@_sending" title="@preset.Description" aria-pressed="@(IsPreset(index, preset) ? "true" : "false")"
+                            @onclick="() => ApplyPreset(index, preset)">@preset.Label</button>
+                }
+            </div>
+        }
+        switch (input.Kind)
+        {
+            case UserPromptInputKind.Number or UserPromptInputKind.Range:
+                <PromptSliderField Question="@question" Values="@_values[index]" Disabled="@_sending"
+                                   ValuesChanged="values => SetValues(index, values)" TypingChanged="typing => _typing = typing" />
+                break;
+            case UserPromptInputKind.Scale:
+                <PromptScaleField Question="@question" Values="@_values[index]" Disabled="@_sending"
+                                  ValuesChanged="values => SetValues(index, values)" />
+                break;
+            case UserPromptInputKind.Rank:
+                <PromptRankField Question="@question" Order="@_order[index]" Disabled="@_sending"
+                                 OrderChanged="order => SetOrder(index, order)" />
+                break;
+            case UserPromptInputKind.Search:
+                <PromptSearchField Question="@question" ListId="@($"{Prompt.Id:N}-{index}")" Selected="@_selected[index]" Disabled="@_sending"
+                                   Toggle="option => ToggleSearch(index, option)" Submit="SubmitIfReadyAsync" TypingChanged="typing => _typing = typing" />
+                @if (question.AllowOther)
+                {
+                    <label class="user-prompt-option user-prompt-other">
+                        <span>
+                            <span class="user-prompt-option-label">Not in the list</span>
+                            <input class="user-prompt-other-input" type="text" disabled="@_sending" placeholder="Type your answer"
+                                   value="@_other[index]" @onfocus="() => _typing = true" @onblur="() => _typing = false"
+                                   @oninput="args => TypeOther(index, args)" />
+                        </span>
+                    </label>
+                }
+                break;
+            case UserPromptInputKind.Color:
+                <PromptColorField Question="@question" Values="@_values[index]" Disabled="@_sending"
+                                  ValuesChanged="values => SetValues(index, values)" TypingChanged="typing => _typing = typing" />
+                break;
+            case UserPromptInputKind.Text:
+                var code = input.Language is { Length: > 0 };
+                var invalid = IsInvalidText(index);
+                <div class="@($"user-prompt-text{(code ? " is-code" : null)}{(invalid ? " is-invalid" : null)}")">
+                    @if (input.Multiline)
+                    {
+                        <textarea class="user-prompt-textarea" rows="@(code ? 8 : 4)" maxlength="@(input.MaxLength ?? 4000)"
+                                  placeholder="@(input.Placeholder ?? "Type your answer")" spellcheck="@(code ? "false" : "true")"
+                                  aria-label="@(question.Label ?? "Your answer")" aria-invalid="@(invalid ? "true" : "false")"
+                                  disabled="@_sending" value="@_other[index]"
+                                  @onfocus="() => _typing = true" @onblur="() => _typing = false"
+                                  @oninput="args => _other[index] = args.Value?.ToString() ?? string.Empty"
+                                  @onkeydown="TextKeyAsync" @onkeydown:stopPropagation="true"></textarea>
+                    }
+                    else
+                    {
+                        <input class="user-prompt-other-input" type="text" maxlength="@(input.MaxLength ?? 4000)"
+                               placeholder="@(input.Placeholder ?? "Type your answer")" spellcheck="@(code ? "false" : "true")"
+                               aria-label="@(question.Label ?? "Your answer")" aria-invalid="@(invalid ? "true" : "false")"
+                               disabled="@_sending" value="@_other[index]"
+                               @onfocus="() => _typing = true" @onblur="() => _typing = false"
+                               @oninput="args => _other[index] = args.Value?.ToString() ?? string.Empty" />
+                    }
+                    <span class="user-prompt-text-meta">
+                        @if (code)
+                        {
+                            <span class="user-prompt-text-language">@input.Language</span>
+                        }
+                        @if (input.Multiline)
+                        {
+                            <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to answer</span>
+                        }
+                    </span>
+                    @if (invalid)
+                    {
+                        <span class="user-prompt-field-error" role="alert">
+                            @(input.Pattern is { } pattern ? "Expected the form " : "Too long.")
+                            @if (input.Pattern is { } shown)
+                            {
+                                <code>@shown</code>
+                            }
+                        </span>
+                    }
+                </div>
+                break;
+        }
+    };
 }

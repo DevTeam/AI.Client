@@ -27,6 +27,6 @@ internal sealed class Composition
                 AppReadPresentationAdapter, AppWritePresentationAdapter, AppSubtaskPresentationAdapter, AppSkillPresentationAdapter, AskUserPresentationAdapter,
                 AppNavigatePresentationAdapter, AppThemePresentationAdapter, AppPlanPresentationAdapter>()
             .Transient<ToolPresentations, ToolResultModelProjector, ToolResultCodec, ConnectionContextLimitsResolver, ToolDefaultDecision, UnifiedDiff,
-                Chats.ChatTeamRosterCalculator, Schedules.ScheduleCalendar, Schedules.ScheduleDescriptions, SystemFileSystem, SystemPath, AtomicFileWriter,
+                Chats.ChatTeamRosterCalculator, Schedules.ScheduleCalendar, Schedules.ScheduleDescriptions, Runs.UserPromptInputs, SystemFileSystem, SystemPath, AtomicFileWriter,
                 GenericToolPresentationAdapter>();
 }

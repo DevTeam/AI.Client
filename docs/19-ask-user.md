@@ -68,7 +68,7 @@ In `spawn_subtask` nobody is watching the run, and it has no card of its own. Th
 | Constraint | Value |
 |---|---|
 | questions per call | 1–5, `id` is unique and non-empty |
-| options per question | 0–8; zero is allowed with `allowOther: true`, a path picker, a Git picker or a schedule picker |
+| options per question | 0–8 (`search` 200, `rank` 20); zero is allowed with `allowOther: true`, a path, Git or schedule picker, or a slider, scale or colour input |
 | lengths | `text` ≤ 500, `label` ≤ 24, option ≤ 80, option description ≤ 160 |
 | `allowOther` | defaults to `true` |
 
@@ -131,6 +131,64 @@ Both the UI response and the tool result carry `values`: full, case-sensitive re
 as Git arguments. The model must still validate the selected refs/objects before mutation,
 because repository state can change while a question is open. Old clients/questions remain
 compatible: these fields are optional, and `selected`, `other` and `paths` keep their meanings.
+
+### Value inputs
+
+A question whose answer is a value rather than a choice sets `input` — one object for every kind, with `kind`
+deciding which fields count. `pathKind` and `pickerKind` stay as they are; `input` cannot be combined with them.
+
+| `kind` | Control | Fields | Answer |
+|---|---|---|---|
+| `number` | Slider with a box for the exact figure; options are presets with `value` `"42"` | `min`, `max` (required), `step`, `unit`, `marks` | `number`, `values: ["42"]`, `valueDescriptions: ["42 ms"]` |
+| `range` | Slider with two handles and two boxes; presets `"10..20"` | as `number` | `range: {from, to}`, `values` (ordered), `valueDescriptions: ["10–20 h"]` |
+| `scale` | A row of whole steps (1–5 by default), mark labels under their steps; no options | `min`, `max` (at most 10 apart), `marks` | `number`, `valueDescriptions: ["5 — Critical"]` |
+| `rank` | The options in order: drag a row, its arrows, or Alt+Up / Alt+Down | — (2–20 options) | `selected` holds every option first to last, `ranked: true` |
+| `search` | A filter box over up to 200 options; Up/Down/Enter in the box; chosen options of a multiple choice stay as chips | `placeholder` | as options |
+| `color` | Swatches (options with `value` `#rrggbb`), the system colour picker and the hex code | — | `values: ["#3b82f6"]` |
+| `text` | A text box, or several lines; with `language` it is a monospace code box; `pattern` must match the whole text and the card will not send text that does not | `multiline`, `language`, `pattern`, `placeholder`, `maxLength` (4000) | `other` |
+
+`multiSelect` is only for `search`; `allowOther` is ignored for the slider, scale, rank and colour kinds, which are
+the whole answer (so the composer does not answer them), and is always on for `text`. The Host checks every value
+again with the same rules the card uses (`IUserPromptInputs`, shared by Host and Web): a number off its slider or step,
+a colour that is not one, or text the pattern refuses is dropped, like a schedule value the picker could not return.
+
+### Defaults and decisions left to the model
+
+Every question should carry the answer the model would choose: `recommended: true` on options, or `default` for an
+input, picker, path or free-text question — a number, `[from, to]`, `"#rrggbb"`, text, a date, a ref or paths. The
+card starts from it (a slider is set, a rank starts in the order offered, a picker is filled), so keeping it is an
+answer like any other. A question the person leaves open — `Decide yourself`, an expired chat question, or a partial
+answer — takes that default: it comes back in `answers` with `assumed: true`, the guidance names it, and the reply
+bubble shows it as "Assistant chose …" under "You left it to the assistant; it went on with its defaults". A
+question with no default is still "Left to the assistant", and the guidance tells the model to decide and say so.
+Declined questions and unanswered overlay questions take no defaults. `timeoutBehavior: "submit_defaults"` accepts
+any question with a recommended option or a `default`, pickers included.
+
+### Preview
+
+`preview` is a line under the control that follows the answer as it changes, so the consequence is read before it is
+sent: `"≈ {value * 12} files"`, `"{to - from} hours a day"`, `"{count} chosen: {label}"`. Names: `value` (the first
+value, else the text, else the labels), `from`, `to`, `count`, `label`, `text`; numbers, `+ - * /` and brackets;
+`{expression:N}` shows N decimals. While the answer cannot be worked out the line is hidden. An unknown name or a
+broken expression makes the call `invalid` with the reason.
+
+### Remembering an answer
+
+`rememberable: true` marks a lasting preference ("where do tests go"). The card then offers "Remember my answer"; when
+it is ticked the reply carries `remember: true` and the guidance asks the model to save it with `app_memory`, following
+the memory-save playbook. The application stores nothing itself: the model decides how to word and scope the memory.
+
+### Keys
+
+Digits 1–9 pick an option in the question that holds focus (or the first one that has options or a scale): a radio is
+chosen, a checkbox toggled, a scale set. The options of that question show their digit, and the note under the card
+says so. Digits typed into a text, number, search or colour box stay text. Enter answers once every question has an
+answer; in a multiline box Enter is a new line and Ctrl+Enter answers.
+
+The motion of these controls — a handle growing under the pointer, a rank row flashing where it landed, a step that
+pops when chosen, the preview line appearing — is feedback on the person's own hand and is not switched off by
+`prefers-reduced-motion` (Windows reports it for everyone who turns its animations off). Settings → Appearance →
+Animations still turns it off.
 
 ### Option values
 
@@ -213,6 +271,8 @@ Symmetric to `awaiting_approval` / `session approve`.
 | File | Contents |
 |---|---|
 | `Contracts/Runs/UserPrompt.cs` | `UserPrompt`, `UserPromptQuestion`, `UserPromptOption`, `UserPromptAnswer`, `UserPromptResponse`, `UserPromptOutcome` |
+| `Contracts/Runs/UserPromptInputs.cs` | `UserPromptInput`, input kinds, `IUserPromptInputs`: validation, normalized values, words, preview |
+| `Web/Components/Prompt*Field.razor` | slider, scale, rank, search and colour controls |
 | `Contracts/Runs/ChatRunSnapshot.cs` | `PendingPrompt` |
 | `Server/Application/Runs/IUserPromptBroker.cs` | `AskAsync`, `UserPromptRequest` |
 | `Server/Application/Runs/ChatRunDispatcher.cs` | broker implementation, `AnswerPromptAsync`, releasing the question together with the turn |

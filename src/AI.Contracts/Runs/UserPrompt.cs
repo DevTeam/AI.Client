@@ -46,6 +46,24 @@ public sealed record UserPrompt(
 /// </param>
 /// <param name="RepositoryPath">Absolute repository directory on the host for a Git picker.</param>
 /// <param name="Revision">Optional branch or revision to limit the commit history.</param>
+/// <param name="Input">
+/// The control a value is entered with — a slider, a scale, an order, a searchable list, a colour or
+/// a text box — or null for options, paths and pickers. See <see cref="UserPromptInputKind"/>.
+/// </param>
+/// <param name="Defaults">
+/// What the question holds before anyone touches it, in the spelling its answer comes back in: a
+/// number, the two ends of a range, a colour, text, picked values or paths. It is also what the
+/// model goes on with when the question is left to it. Recommended options are the default of a
+/// choice and are not repeated here.
+/// </param>
+/// <param name="Preview">
+/// A line shown under the control that follows the answer as it changes — "≈ {value * 12} files" —
+/// so the consequence is read before it is sent. See <see cref="IUserPromptInputs.RenderPreview"/>.
+/// </param>
+/// <param name="Rememberable">
+/// The answer is a lasting preference; the card offers "Remember my answer", and the model is
+/// asked to save what the person chose instead of asking again next time.
+/// </param>
 public sealed record UserPromptQuestion(
     string Id,
     string Text,
@@ -56,7 +74,11 @@ public sealed record UserPromptQuestion(
     string? PathKind = null,
     string? PickerKind = null,
     string? RepositoryPath = null,
-    string? Revision = null);
+    string? Revision = null,
+    UserPromptInput? Input = null,
+    IReadOnlyList<string>? Defaults = null,
+    string? Preview = null,
+    bool Rememberable = false);
 
 /// <summary>One choice. Plain text in both fields: these are captions on controls, never markup.</summary>
 /// <param name="Value">
@@ -70,19 +92,25 @@ public sealed record UserPromptOption(string Label, string? Description, bool Re
 /// name a choice that was never offered; the tool turns them back into their labels before the
 /// model sees them, which is what leaves a readable trace in the transcript.
 /// </summary>
-/// <param name="Selected">Indices into the question's options. Empty means the question was left to the model.</param>
+/// <param name="Selected">
+/// Indices into the question's options. Empty means the question was left to the model. For a
+/// rank question they are every option, in the order the person put them.
+/// </param>
 /// <param name="Other">Free text, or one selected path.</param>
 /// <param name="Paths">Several selected directory paths for a "directories" question.</param>
 /// <param name="Values">
 /// Picked values in selection order: full Git ref names or commit hashes, dates (yyyy-MM-dd), times
-/// (HH:mm) or recurrences (JSON), and the values of chosen options.
+/// (HH:mm) or recurrences (JSON), and the values of chosen options. A number or scale answers with
+/// one number, a range with its two ends and a colour with <c>#rrggbb</c>, all in invariant spelling.
 /// </param>
+/// <param name="Remember">The person ticked "Remember my answer" on a rememberable question.</param>
 public sealed record UserPromptAnswer(
     string QuestionId,
     IReadOnlyList<int> Selected,
     string? Other,
     IReadOnlyList<string>? Paths = null,
-    IReadOnlyList<string>? Values = null);
+    IReadOnlyList<string>? Values = null,
+    bool Remember = false);
 
 public enum UserPromptOutcome
 {

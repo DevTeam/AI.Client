@@ -1,0 +1,51 @@
+@* A rating: a row of whole steps, each a radio, with the model's words under the steps they name.
+   Digits pick a step while the question has focus, which the card handles for every question. *@
+@using System.Globalization
+@using AI.Contracts.Runs
+
+<div class="user-prompt-scale" style="@($"--steps: {Count}")">
+    <div class="user-prompt-scale-steps" role="radiogroup" aria-label="@(Question.Label ?? "Rating")">
+        @for (var step = Min; step <= Max; step++)
+        {
+            var value = step;
+            var text = value.ToString(CultureInfo.InvariantCulture);
+            var chosen = Values.Count == 1 && Values[0] == text;
+            <button class="user-prompt-scale-step @(chosen ? "is-chosen" : null) @(Selected is { } at && value <= at ? "is-under" : null)"
+                    type="button" role="radio" aria-checked="@(chosen ? "true" : "false")" disabled="@Disabled"
+                    aria-label="@Describe(value)" @onclick="() => ValuesChanged.InvokeAsync([text])">@text</button>
+        }
+    </div>
+    @if (Question.Input!.Marks is { Count: > 0 } marks)
+    {
+        <div class="user-prompt-scale-marks" aria-hidden="true">
+            @foreach (var mark in marks)
+            {
+                <span class="@MarkClass(mark.Value)" style="@($"--column: {(int)(mark.Value - Min) + 1}")">@mark.Label</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UserPromptQuestion Question { get; set; } = default!;
+
+    [Parameter, EditorRequired] public IReadOnlyList<string> Values { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private int Min => (int)(Question.Input!.Min ?? 1);
+    private int Max => (int)(Question.Input!.Max ?? 5);
+    private int Count => Max - Min + 1;
+
+    private int? Selected => Values.Count == 1 && int.TryParse(Values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    // A mark at either end reads from that end; one in between is centred under its step.
+    private string MarkClass(double value) =>
+        $"user-prompt-scale-mark{((int)value == Min ? " is-start" : (int)value == Max ? " is-end" : null)}";
+
+    private string Describe(int value) =>
+        Question.Input!.Marks?.FirstOrDefault(mark => (int)mark.Value == value) is { } mark
+            ? $"{value}, {mark.Label}" : value.ToString(CultureInfo.InvariantCulture);
+}

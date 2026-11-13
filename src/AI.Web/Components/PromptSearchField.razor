@@ -1,0 +1,120 @@
+@* A long list of options, narrowed by typing. The box keeps focus while Up and Down walk the matches
+   and Enter takes the highlighted one; with nothing highlighted Enter is the card's, and answers.
+   Chosen options of a multiple choice stay above the list as chips, so filtering never hides them. *@
+@using AI.Contracts.Runs
+
+<div class="user-prompt-search">
+    @if (MultiSelect && Selected.Count > 0)
+    {
+        <ul class="user-prompt-search-chosen" aria-label="Chosen">
+            @foreach (var index in Selected.Order())
+            {
+                var chosen = index;
+                <li>
+                    <span title="@Question.Options[chosen].Label">@Question.Options[chosen].Label</span>
+                    <button class="icon-action" type="button" aria-label="@($"Remove {Question.Options[chosen].Label}")" disabled="@Disabled"
+                            @onclick="() => ToggleAsync(chosen)" @onkeydown:stopPropagation="true"><AppIcon Name="x" /></button>
+                </li>
+            }
+        </ul>
+    }
+    <label class="user-prompt-search-box">
+        <AppIcon Name="search" />
+        <span class="visually-hidden">Filter the options</span>
+        <input type="search" role="combobox" aria-expanded="true" aria-controls="@ListId" aria-autocomplete="list"
+               aria-activedescendant="@(_highlight is { } active ? $"{ListId}-{active}" : null)"
+               placeholder="@(Question.Input?.Placeholder ?? "Type to filter")" value="@_filter" disabled="@Disabled"
+               @oninput="Filter" @onkeydown="KeyAsync" @onkeydown:stopPropagation="true"
+               @onfocus="() => TypingChanged.InvokeAsync(true)" @onblur="() => TypingChanged.InvokeAsync(false)" />
+        <span class="user-prompt-search-count" aria-live="polite">@Matches.Count of @Question.Options.Count</span>
+    </label>
+    <ul class="user-prompt-search-list" id="@ListId" role="listbox" aria-multiselectable="@(MultiSelect ? "true" : "false")">
+        @foreach (var index in Matches)
+        {
+            var option = index;
+            var choice = Question.Options[option];
+            var chosen = Selected.Contains(option);
+            <li id="@($"{ListId}-{option}")" role="option" aria-selected="@(chosen ? "true" : "false")"
+                class="@($"user-prompt-search-item{(chosen ? " is-chosen" : null)}{(_highlight == option ? " is-active" : null)}")"
+                @onclick="() => ToggleAsync(option)" @onmousedown:preventDefault="true">
+                <span class="user-prompt-search-check" aria-hidden="true">@if (chosen) { <AppIcon Name="check" /> }</span>
+                <span class="user-prompt-search-text">
+                    <span class="user-prompt-option-label">@choice.Label</span>
+                    @if (choice.Description is { Length: > 0 } description)
+                    {
+                        <span class="user-prompt-option-description">@description</span>
+                    }
+                </span>
+                @if (choice.Recommended)
+                {
+                    <span class="user-prompt-search-badge">Recommended</span>
+                }
+            </li>
+        }
+        @if (Matches.Count == 0)
+        {
+            <li class="user-prompt-search-empty" role="presentation">Nothing matches “@_filter”.</li>
+        }
+    </ul>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UserPromptQuestion Question { get; set; } = default!;
+
+    [Parameter, EditorRequired] public string ListId { get; set; } = default!;
+
+    [Parameter, EditorRequired] public IReadOnlySet<int> Selected { get; set; } = new HashSet<int>();
+
+    [Parameter] public EventCallback<int> Toggle { get; set; }
+
+    /// <summary>Enter with nothing highlighted: the card answers, as Enter anywhere else on it does.</summary>
+    [Parameter] public EventCallback Submit { get; set; }
+
+    [Parameter] public EventCallback<bool> TypingChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool MultiSelect => Question.MultiSelect;
+    private string _filter = string.Empty;
+    private int? _highlight;
+
+    private List<int> Matches => Question.Options.Select((option, index) => (option, index))
+        .Where(item => _filter.Length == 0
+            || item.option.Label.Contains(_filter, StringComparison.CurrentCultureIgnoreCase)
+            || item.option.Description?.Contains(_filter, StringComparison.CurrentCultureIgnoreCase) == true
+            || item.option.Value?.Contains(_filter, StringComparison.CurrentCultureIgnoreCase) == true)
+        .Select(item => item.index).ToList();
+
+    private void Filter(ChangeEventArgs args)
+    {
+        _filter = args.Value?.ToString()?.Trim() ?? string.Empty;
+        var matches = Matches;
+        // Typing narrows to the best match, so Enter after a few letters takes it.
+        _highlight = _filter.Length > 0 && matches.Count > 0 ? matches[0] : null;
+    }
+
+    private Task ToggleAsync(int option) => Disabled ? Task.CompletedTask : Toggle.InvokeAsync(option);
+
+    private Task KeyAsync(KeyboardEventArgs args)
+    {
+        var matches = Matches;
+        switch (args.Key)
+        {
+            case "ArrowDown" or "ArrowUp" when matches.Count > 0:
+            {
+                var at = _highlight is { } current ? matches.IndexOf(current) : -1;
+                at = args.Key == "ArrowDown" ? Math.Min(matches.Count - 1, at + 1) : Math.Max(0, at < 0 ? 0 : at - 1);
+                _highlight = matches[at];
+                return Task.CompletedTask;
+            }
+            case "Escape" when _filter.Length > 0:
+                _filter = string.Empty;
+                _highlight = null;
+                return Task.CompletedTask;
+            case "Enter" when !args.IsComposing && !args.ShiftKey:
+                return _highlight is { } chosen && matches.Contains(chosen) ? ToggleAsync(chosen) : Submit.InvokeAsync();
+            default:
+                return Task.CompletedTask;
+        }
+    }
+}

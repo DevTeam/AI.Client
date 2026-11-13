@@ -1,0 +1,123 @@
+@* A number or a span of numbers asked of the person: a slider to find it by feel and a box beside it
+   for the exact figure, both one value. Until it is touched (and when the model gave no default) the
+   handle rests in the middle, dimmed, and the box is empty: a position nobody chose is no answer. *@
+@using System.Globalization
+@using AI.Contracts.Runs
+@inject IUserPromptInputs Inputs
+
+<div class="@CssClass" style="@FillStyle">
+    <div class="user-prompt-slider-track">
+        <span class="user-prompt-slider-fill" aria-hidden="true"></span>
+        @if (IsRange)
+        {
+            <input class="user-prompt-slider-input is-from" type="range" min="@Text(Min)" max="@Text(Max)" step="@Text(Step)"
+                   value="@Text(From)" disabled="@Disabled" aria-label="@($"{Label} from")"
+                   aria-valuetext="@Inputs.Format(Input, From)" @oninput="args => Slide(0, args)" />
+            <input class="user-prompt-slider-input is-to" type="range" min="@Text(Min)" max="@Text(Max)" step="@Text(Step)"
+                   value="@Text(To)" disabled="@Disabled" aria-label="@($"{Label} to")"
+                   aria-valuetext="@Inputs.Format(Input, To)" @oninput="args => Slide(1, args)" />
+        }
+        else
+        {
+            <input class="user-prompt-slider-input" type="range" min="@Text(Min)" max="@Text(Max)" step="@Text(Step)"
+                   value="@Text(From)" disabled="@Disabled" aria-label="@Label"
+                   aria-valuetext="@(IsSet ? Inputs.Format(Input, From) : "Not set")" @oninput="args => Slide(0, args)" />
+        }
+    </div>
+    <div class="user-prompt-slider-scale" aria-hidden="true">
+        <span>@Inputs.Format(Input, Min)</span>
+        @foreach (var mark in Input.Marks ?? [])
+        {
+            <span class="user-prompt-slider-mark" style="@MarkStyle(mark.Value)">@mark.Label</span>
+        }
+        <span>@Inputs.Format(Input, Max)</span>
+    </div>
+    <div class="user-prompt-slider-values">
+        <label>
+            <span class="visually-hidden">@(IsRange ? "From" : Label)</span>
+            <input class="user-prompt-number" type="number" inputmode="decimal" min="@Text(Min)" max="@Text(Max)" step="@Text(Step)"
+                   value="@(IsSet ? Values[0] : null)" placeholder="@(IsRange ? "From" : "Value")" disabled="@Disabled"
+                   @onfocus="() => TypingChanged.InvokeAsync(true)" @onblur="() => TypingChanged.InvokeAsync(false)"
+                   @onchange="args => Type(0, args)" />
+        </label>
+        @if (IsRange)
+        {
+            <span class="user-prompt-slider-dash" aria-hidden="true">–</span>
+            <label>
+                <span class="visually-hidden">To</span>
+                <input class="user-prompt-number" type="number" inputmode="decimal" min="@Text(Min)" max="@Text(Max)" step="@Text(Step)"
+                       value="@(IsSet ? Values[1] : null)" placeholder="To" disabled="@Disabled"
+                       @onfocus="() => TypingChanged.InvokeAsync(true)" @onblur="() => TypingChanged.InvokeAsync(false)"
+                       @onchange="args => Type(1, args)" />
+            </label>
+        }
+        @if (Input.Unit is { Length: > 0 } unit)
+        {
+            <span class="user-prompt-slider-unit">@unit</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UserPromptQuestion Question { get; set; } = default!;
+
+    /// <summary>The answer: one value, or the two ends of a range; empty while nothing is chosen.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<string> Values { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+
+    /// <summary>Raised while a box takes typing, so digits typed into it are not taken as shortcuts.</summary>
+    [Parameter] public EventCallback<bool> TypingChanged { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    private UserPromptInput Input => Question.Input!;
+    private bool IsRange => Input.Kind == UserPromptInputKind.Range;
+    private double Min => Input.Min ?? 0;
+    private double Max => Input.Max ?? 100;
+    private double Step => Inputs.StepOf(Input);
+    private string Label => Question.Label ?? "Value";
+    private bool IsSet => Values.Count == (IsRange ? 2 : 1);
+    private double Middle => Snap(Min + (Max - Min) / 2) ?? Min;
+    private double From => IsSet ? Parse(Values[0]) ?? Middle : IsRange ? Min : Middle;
+    private double To => IsSet && IsRange ? Parse(Values[1]) ?? Max : Max;
+
+    private string CssClass => $"user-prompt-slider{(IsRange ? " is-range" : null)}{(IsSet ? null : " is-unset")}";
+
+    private string FillStyle => IsRange
+        ? $"--from: {Percent(From)}%; --to: {Percent(To)}%"
+        : $"--from: 0%; --to: {Percent(From)}%";
+
+    private string MarkStyle(double value) => $"left: {Percent(value)}%";
+
+    private string Percent(double value) =>
+        (Max <= Min ? 0 : Math.Clamp((value - Min) / (Max - Min) * 100, 0, 100)).ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string Text(double value) => value.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    private static double? Parse(string? text) =>
+        double.TryParse(text?.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && double.IsFinite(value)
+            ? value : null;
+
+    /// <summary>The nearest value the slider can return: inside its ends and on its step.</summary>
+    private double? Snap(double value)
+    {
+        var clamped = Math.Clamp(value, Min, Max);
+        var snapped = Math.Clamp(Min + Math.Round((clamped - Min) / Step) * Step, Min, Max);
+        return Inputs.Normalize(Question, Text(snapped)) is { } normal ? Parse(normal) : null;
+    }
+
+    private Task Slide(int end, ChangeEventArgs args) => Set(end, Parse(args.Value?.ToString()));
+
+    private Task Type(int end, ChangeEventArgs args) => Set(end, Parse(args.Value?.ToString()));
+
+    private Task Set(int end, double? typed)
+    {
+        if (typed is not { } raw || Snap(raw) is not { } value) return Task.CompletedTask;
+        if (!IsRange) return ValuesChanged.InvokeAsync([Text(value)]);
+        // The ends cannot pass each other: dragging one into the other stops it there.
+        var from = end == 0 ? Math.Min(value, To) : From;
+        var to = end == 1 ? Math.Max(value, From) : To;
+        return ValuesChanged.InvokeAsync([Text(from), Text(to)]);
+    }
+}

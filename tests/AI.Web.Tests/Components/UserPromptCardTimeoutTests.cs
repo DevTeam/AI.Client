@@ -82,6 +82,7 @@ public sealed class UserPromptCardTimeoutTests
             .AddSingleton<IJSRuntime, NoJsRuntime>()
             .AddSingleton<AI.Contracts.Schedules.IScheduleCalendar, AI.Contracts.Schedules.ScheduleCalendar>()
             .AddSingleton<AI.Contracts.Schedules.IScheduleDescriptions, AI.Contracts.Schedules.ScheduleDescriptions>()
+            .AddSingleton<AI.Contracts.Runs.IUserPromptInputs, AI.Contracts.Runs.UserPromptInputs>()
             .BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
         return await renderer.Dispatcher.InvokeAsync(async () =>

@@ -215,10 +215,13 @@ effort, prices or copy-as-JSON; the name, the default and subtask choices, the p
 reserved output stay editable.
 
 Reasons are written for the person and never contain a path: damaged or incomplete files (reinstall
-with Local AI selected; not retried), a port used by another program, a runtime blocked by security
-software, a model that stopped while loading or did not load within two minutes (free memory). A
-busy port or a blocked runtime waits for a retry at once; other failures are retried up to three
-times first. `POST /api/settings/local-ai/retry` starts a failed runtime again and answers with the
+with Local AI selected; not retried), no free port, a runtime blocked by security software, a model
+that stopped while loading or did not load within two minutes (free memory). The runtime listens on
+the manifest's port (52176) when it is free; when another program or another AI Client window holds
+it, the Host reuses the port of its previous start when that is free, otherwise takes a free port
+from the system, and registers the address it used, so two
+copies of the model can run side by side, each using its own memory. A missing free port or a
+blocked runtime waits for a retry at once; other failures are retried up to three times first. `POST /api/settings/local-ai/retry` starts a failed runtime again and answers with the
 status (409 when there was nothing to retry).
 
 ### Defaults

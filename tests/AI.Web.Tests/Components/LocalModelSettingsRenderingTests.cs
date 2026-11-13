@@ -41,7 +41,7 @@ public sealed class LocalModelSettingsRenderingTests
     [Fact]
     public async Task AFailedModelExplainsWhyAndOffersARetry()
     {
-        const string reason = "Port 52176 is used by another program, so the local model cannot start.";
+        const string reason = "No free network port was found on this computer, so the local model cannot start.";
         var html = await RenderAsync(new LocalModelStatus("failed", "qwen3.5-2b-local", reason, "Local Qwen3.5 2B", 8192, CanRetry: true));
 
         html.ShouldContain("host-status-dot is-failed");

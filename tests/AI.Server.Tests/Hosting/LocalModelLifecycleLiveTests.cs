@@ -65,6 +65,8 @@ public sealed class LocalModelLifecycleLiveTests
             await WaitForStateAsync(service, "ready", token);
             Assert.NotEqual(firstKey, Volatile.Read(ref key));
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Volatile.Read(ref key));
+            // The port may change when another program took it in the meantime.
+            url = Assert.Single(Volatile.Read(ref state).Connections).BaseUrl + "/models";
             using (var response = await http.GetAsync(url, token)) response.EnsureSuccessStatusCode();
         }
         finally { await service.StopAsync(token); }

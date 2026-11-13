@@ -32,6 +32,7 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
     private volatile LocalModelStatus _status = new("notInstalled");
     private readonly SemaphoreSlim _retry = new(0, 1);
     private volatile bool _retryable;
+    private int _lastPort;
     public LocalModelStatus Status => _retryable && _status.State == "failed" ? _status with { CanRetry = true } : _status;
 
     public bool Retry()
@@ -84,8 +85,7 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                     return;
                 }
             }
-            var baseUrl = $"http://127.0.0.1:{manifest.Port}/v1";
-            await RegisterAsync(manifest, baseUrl, null, stoppingToken);
+            await RegisterAsync(manifest, BaseUrl(manifest.Port), null, stoppingToken);
             var failures = 0;
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -104,7 +104,7 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                 }
                 try
                 {
-                    await RunAsync(manifest, executable, model, baseUrl, directory, stoppingToken);
+                    await RunAsync(manifest, executable, model, directory, stoppingToken);
                     failures = 0;
                 }
                 catch (Exception error) when (IsComponentFailure(error) && !stoppingToken.IsCancellationRequested)
@@ -113,7 +113,7 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                     var reason = error is LocalModelStartException start ? start.Message
                         : "The local model stopped unexpectedly. Other connections keep working.";
                     _status = Describe(manifest, "failed", reason);
-                    // A busy port or a blocked runtime will not clear up by itself within seconds.
+                    // A blocked runtime or a missing free port will not clear up by itself within seconds.
                     if (++failures >= 3 || error is LocalModelStartException { Final: true })
                     {
                         _retryable = true;
@@ -141,7 +141,9 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
     private static LocalModelStatus Describe(LocalModelManifest manifest, string state, string? error = null) =>
         new(state, manifest.ModelAlias, error, manifest.ConnectionName, manifest.ContextTokens);
 
-    private async Task RunAsync(LocalModelManifest manifest, string executable, string model, string baseUrl, string packageDirectory,
+    private static string BaseUrl(int port) => $"http://127.0.0.1:{port}/v1";
+
+    private async Task RunAsync(LocalModelManifest manifest, string executable, string model, string packageDirectory,
         CancellationToken stoppingToken)
     {
         Process? process = null;
@@ -150,9 +152,11 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
         try
         {
             _status = Describe(manifest, "starting");
-            if (PortInUse(manifest.Port))
-                throw new LocalModelStartException($"Port {manifest.Port} is used by another program, so the local model cannot start. "
-                    + "Close the other AI Client window or the program that uses it, then try again.", final: true);
+            var port = ChoosePort(manifest.Port, _lastPort) ?? throw new LocalModelStartException(
+                "No free network port was found on this computer, so the local model cannot start. "
+                + "Close programs you do not need, then try again.", final: true);
+            _lastPort = port;
+            var baseUrl = BaseUrl(port);
             // A separate key for each launch prevents accidentally trusting another process on this port.
             var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             var start = new ProcessStartInfo(executable)
@@ -161,7 +165,7 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
                 RedirectStandardOutput = true, RedirectStandardError = true
             };
             foreach (var argument in new[] { "--model", model, "--alias", manifest.ModelAlias, "--host", "127.0.0.1",
-                         "--port", manifest.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                         "--port", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
                          "--ctx-size", manifest.ContextTokens.ToString(System.Globalization.CultureInfo.InvariantCulture),
                          "--parallel", "1", "--jinja",
                          "--api-key", key }) start.ArgumentList.Add(argument);
@@ -236,17 +240,27 @@ public sealed partial class LocalModelService(LocalModelOptions options, IGlobal
         }
     }
 
-    private static bool PortInUse(int port)
+    /// <summary>
+    /// The manifest's port when it is free, so the address stays the same between starts; otherwise the
+    /// port of the previous start, then a port the system picks. Another program may take the port before the runtime binds it: the
+    /// runtime then exits while loading and the next attempt picks again. The per-launch key keeps
+    /// the readiness check from trusting that program.
+    /// </summary>
+    private static int? ChoosePort(int preferred, int previous) =>
+        TryBind(preferred) ?? (previous > 0 ? TryBind(previous) : null) ?? TryBind(0);
+
+    private static int? TryBind(int port)
     {
         try
         {
-            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
             listener.Start();
-            return false;
+            try { return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port; }
+            finally { listener.Stop(); }
         }
         catch (System.Net.Sockets.SocketException)
         {
-            return true;
+            return null;
         }
     }
 

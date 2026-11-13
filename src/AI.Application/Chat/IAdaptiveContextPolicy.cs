@@ -8,6 +8,12 @@ using Tools;
 public interface IAdaptiveContextPolicy
 {
     AdaptiveContextBudget Resolve(ConnectionSettings? connection);
+
+    /// <summary>
+    /// Whether the model is offered skills it did not ask for: the skill catalog, skill_search and
+    /// run_skill. A small window is not; a skill the person invokes is still run.
+    /// </summary>
+    bool OffersSkills(ConnectionSettings? connection);
     AdaptiveSummaryBudget ResolveSummary(ConnectionSettings? connection, int requestedTargetTokens);
     AdaptiveCompactionBudget ResolveCompaction(ConnectionSettings? connection, long toolTokens = 0,
         long trailingInstructionTokens = 0, bool keepMemory = true);

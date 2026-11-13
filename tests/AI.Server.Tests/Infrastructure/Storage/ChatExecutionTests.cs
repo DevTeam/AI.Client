@@ -242,6 +242,25 @@ public sealed partial class ChatExecutionTests
         context.ShouldNotContain(message => message.ToolCalls != null && message.ToolCalls.Any(call => call.Name == "mcp_app__run_skill"));
         context.ShouldNotContain(message => message.ForModel.Contains("Skill routing:", StringComparison.Ordinal));
         fixture.Tools.SkillRuns.ShouldBeEmpty();
+        // No skill tools either: a small model called run_skill for whatever came to mind.
+        first.Request.Tools!.ShouldNotContain(tool => tool.Name == "mcp_app__run_skill");
+        first.Answer.SetResult("We decided to ship on Friday.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
+    [Fact]
+    public async Task ACompactWindowShouldOfferRunSkillWhenThePersonInvokesASkill()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SetConnectionLimitsAsync(8_192, 1_024);
+        fixture.Tools.OfferRunSkill = true;
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "What did we decide?",
+            Resources: [new AI.Contracts.Resources.ChatResource(Guid.NewGuid(), AI.Contracts.Resources.ChatResourceKind.Skill, "chat-summary", "Chat summary")]));
+
+        var first = await fixture.NextCallAsync();
+        first.Request.Tools!.ShouldContain(tool => tool.Name == "mcp_app__run_skill");
+        first.Request.ContextMessages!.ShouldContain(message =>
+            message.ForModel.Contains(AI.Application.Resources.ResourceModelProjection.InvokedSkillLead, StringComparison.Ordinal));
         first.Answer.SetResult("We decided to ship on Friday.");
         await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
     }

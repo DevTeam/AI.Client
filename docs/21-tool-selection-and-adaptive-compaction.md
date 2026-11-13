@@ -86,10 +86,18 @@ at 8,192 tokens whose history, filled by a routed playbook, left it 588 schema t
 `run_skill`, which it then called twelve times. History that does not fit beside the tools is
 summarized or omitted by the planner instead.
 
-A compact window does not route skills at all: no routing request, no automatically loaded
-playbook, no pinned skill tools and no "run this skill first" guidance. Playbooks are written for
-large models and fill a small window, and a small model follows a wrong route faithfully. Skills
-stay reachable through `skill_search` and `run_skill`. A playbook is loaded once per turn for the
+A compact window does not route skills: no routing request, no automatically loaded playbook, no
+pinned skill tools and no "run this skill first" guidance. Below 16,384 usable tokens
+(`AdaptiveContextPolicy.OffersSkills`, the local model's 8,192-token window among them) there are
+no skills at all unless the person invokes one for the turn (a skill chip in the message, whose
+text then says "The user invoked the skill …"): `skill_search` and `run_skill` are not permitted,
+so neither the request nor `tool_search` offers them and the `capability.skills` rule goes with
+them; the standing skill catalog is empty and the "active skill" reminder is not given. The
+default window of a connection whose window is unknown (32,768) keeps them. The compact base text
+no longer mentions skills. Playbooks are written for large models and fill a small window, and small models
+used `run_skill` for skills that did not fit the task, and even for tool names such as
+`plan-update`, again and again. The application's own skills (titles, reply suggestions, tool
+risk) run as separate model calls and are unaffected. A playbook is loaded once per turn for the
 same arguments: the runner echoes only the parameters the playbook declares, and the comparison
 treats an empty object, no arguments and the same values differently spaced as one load, so a
 model that starts it over with `{}`, nothing or a made-up key gets "Skipped" instead of the

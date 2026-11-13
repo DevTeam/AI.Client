@@ -368,6 +368,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 instructions.Upsert(run, new ModelInstruction("run.subtask-step-warning",
                     "Only five model steps remain. Stop exploring and complete the requested output now; verify only the essential result.",
                     995, ModelInstructionLifetime.UntilAcknowledged, Required: true));
+            // A small window has no skills unless the person invoked one for this turn. Small models
+            // called run_skill for skills that did not fit the task, with names of tools, and again and
+            // again; each playbook then filled the window the task needed. Without the tools, the skill
+            // rules and the "active skill" reminder go too.
+            var withoutSkills = !contextPolicy.OffersSkills(configuredConnection) && !InvokesSkill(context);
+            if (withoutSkills)
+                permitted.RemoveAll(tool => tool.ServerId == AppMcpServer.Id && tool.OriginalName is "skill_search" or RunSkillTool);
             if (behavior.PinnedTools is { Count: > 0 } pinnedTools) toolCatalog.Pin(run, pinnedTools);
             // Execution and basic file tools are core in the selector, so they are offered without
             // a pin: a pin every step would narrow the rest of the selection to a handful of tools.
@@ -403,8 +410,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     "Several tool calls produced no new information. Do not call another tool. Answer now: what you "
                     + "found and did, and what is missing or blocking the rest.",
                     970, ModelInstructionLifetime.Request));
-            if (!subtask && behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id))
+            if (!subtask && behavior.UseActiveSkills && servers.Contains(AppMcpServer.Id) && !withoutSkills)
                 await UpsertActiveSkillAsync(run, context, token);
+            else if (withoutSkills)
+                instructions.Remove(run, ActiveSkillKey);
             if (subtaskRuns.Outstanding(run) is { Count: > 0 } pendingSubtasks)
                 instructions.Upsert(run, new ModelInstruction("run.subtasks",
                     "Delegated work remains uncollected. Continue independent work, then call subtask_wait for these taskIds "
@@ -1238,6 +1247,11 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     }
 
     private const string RouteKey = "run.skill-route";
+
+    /// <summary>Whether the message that opened this turn carries a skill the person invoked.</summary>
+    private static bool InvokesSkill(IReadOnlyList<ChatCompletionMessage> context) =>
+        context.LastOrDefault(message => message.StartsTurn) is { } opening
+        && opening.ForModel.Contains(AI.Application.Resources.ResourceModelProjection.InvokedSkillLead, StringComparison.Ordinal);
 
     private const string RunSkillTool = "run_skill";
 

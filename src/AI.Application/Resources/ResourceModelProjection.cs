@@ -5,6 +5,12 @@ using System.Text.Json;
 
 public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAssetService? assets) : IResourceModelProjection
 {
+    /// <summary>
+    /// Opens the line a message gets when the person invoked a skill with it. The agent reads it to
+    /// keep the skill tools in a compact window, where a skill is used only when the person asks.
+    /// </summary>
+    public const string InvokedSkillLead = "The user invoked the skill ";
+
     // The sync projection remains useful for simple file references and tests. Running chat
     // requests use ProjectAsync so mutable review comments are resolved at request time.
     public ResourceModelProjection() : this(null, null) { }
@@ -169,7 +175,7 @@ public sealed class ResourceModelProjection(IReviewService? reviews, IResourceAs
     private static string WithInvokedSkill(string content, IReadOnlyList<ChatResource> references)
     {
         if (references.FirstOrDefault(item => item.Kind == ChatResourceKind.Skill) is not { } skill) return content;
-        var line = $"The user invoked the skill {JsonSerializer.Serialize(skill.Path)}"
+        var line = $"{InvokedSkillLead}{JsonSerializer.Serialize(skill.Path)}"
                    + (skill.Name is { Length: > 0 } name ? $" ({JsonSerializer.Serialize(name)})" : string.Empty)
                    + " for this message. Run it now with mcp_app__run_skill, taking its parameters from the message; use "
                    + "mcp_app__skill_search for its schema if you do not have it. A playbook returns instructions: follow them in this turn.";

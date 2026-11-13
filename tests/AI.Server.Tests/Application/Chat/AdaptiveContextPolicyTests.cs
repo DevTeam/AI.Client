@@ -128,7 +128,8 @@ public sealed class AdaptiveContextPolicyTests
         small.Profile.ShouldBe("Compact");
         large.Profile.ShouldBe("Full");
         small.TotalTokens.ShouldBeLessThan(large.TotalTokens);
-        small.Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey).Content.ShouldContain("mcp_app__skill_search");
+        // A small window has no skills unless the person invokes one, so it lists none.
+        small.Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey).Content.ShouldBeEmpty();
         large.Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey).Content.ShouldBe(source.Layers[^1].Content);
         var tools = Enumerable.Range(0, 100).Select(index => Tool($"tool_{index}", new string('x', 500))).ToArray();
         var smallTools = policy.Choose(Connection(8_192), "request", [], tools);
@@ -144,7 +145,6 @@ public sealed class AdaptiveContextPolicyTests
     [InlineData(65_536, SkillCatalogForm.Brief)]
     [InlineData(49_152, SkillCatalogForm.Ids)]
     [InlineData(32_768, SkillCatalogForm.Families)]
-    [InlineData(16_384, SkillCatalogForm.Families)]
     public void ShouldShowTheWholeSkillCatalogInTheMostDetailedFormTheWindowAllows(long window, SkillCatalogForm expected)
     {
         var skills = new BuiltInSkillCatalog().List().Where(skill => skill.Enabled && skill.Kind != SkillKinds.Executor)
@@ -158,14 +158,25 @@ public sealed class AdaptiveContextPolicyTests
         prepared.Tokens.ShouldBeLessThanOrEqualTo(prepared.BudgetTokens);
     }
 
-    [Fact]
-    public void ShouldKeepOnlyTheSkillRulesWhenNoCatalogFormFits()
+    [Theory]
+    [InlineData(16_384)]
+    [InlineData(8_192)]
+    [InlineData(4_096)]
+    public void ASmallWindowListsNoSkills(long window)
     {
-        var prepared = Policy().PrepareStanding(Preview(), Connection(4_096, 100), true)
+        Policy().OffersSkills(Connection(window)).ShouldBeFalse();
+        // The default window of a connection whose window is unknown keeps them.
+        Policy().OffersSkills(Connection(32_768)).ShouldBeTrue();
+        var skills = new BuiltInSkillCatalog().List().Where(skill => skill.Enabled && skill.Kind != SkillKinds.Executor)
+            .Select(SkillCatalogEntry.Of).ToArray();
+
+        var prepared = Policy().PrepareStanding(Preview(skills: skills), Connection(window), true)
             .Layers.Single(layer => layer.Key == StandingInstructions.SkillsKey);
 
-        prepared.Content.ShouldBeOneOf(SkillCatalogText.RulesOnly, string.Empty);
+        prepared.Content.ShouldBeEmpty();
+        prepared.Tokens.ShouldBe(0);
         prepared.Truncated.ShouldBeTrue();
+        prepared.Sources.ShouldAllBe(source => !source.Included);
     }
 
     [Fact]

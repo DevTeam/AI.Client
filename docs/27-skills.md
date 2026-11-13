@@ -423,8 +423,15 @@ When the App tools are available and a skill can start, the standing `skills.cat
 holds the rules (check before acting and when the user changes task, run a fitting skill before
 other tools, never guess an id) and every enabled skill except the executors, which run on their
 own. `SkillCatalogText` writes it in one of four forms, and `AdaptiveContextPolicy` keeps the most
-detailed that fits the layer's share of the usable context: 10%, or 5% in a compact context,
-where every token the catalog takes is one a tool schema loses.
+detailed that fits the layer's share of the usable context, 10%.
+
+A small context (below 16,384 usable tokens, such as the local model at 8,192) has no skills
+unless the person invokes one with the message: the catalog layer is empty, `skill_search` and
+`run_skill` are not offered, nothing is routed and no "active skill" reminder is given. Routing
+alone is also off in any compact context (below 32,768 usable tokens). A playbook takes much
+of a small window, and small models ran skills that did not fit the task, or tool names as skills,
+again and again. An invoked skill keeps `run_skill` for that turn, and the message says which skill
+to run. See [Tool selection](21-tool-selection-and-adaptive-compaction.md).
 
 | Form | Each skill as | Built-in catalog, estimated |
 |---|---|---|
@@ -436,7 +443,8 @@ where every token the catalog takes is one a tool schema loses.
 A form is never cut part way, because a model that sees some skills takes the rest for absent.
 When not even the families fit, only a two-sentence rule pointing to `skill_search` remains. The
 estimates are the conservative estimator's; with the default 32,768-token window the catalog is
-shown by family, with 65,536 in brief and from about 128,000 in full. Full schemas are retrieved
+shown by family, with 49,152 by id, 65,536 in brief and from about 128,000 in full; 16,384 and
+below list none. Full schemas are retrieved
 only by exact-id search.
 
 The layer is left out when no skill could start: `ChatAgent` resolves the policy of `run_skill`

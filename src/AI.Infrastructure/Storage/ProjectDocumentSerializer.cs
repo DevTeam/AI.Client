@@ -72,16 +72,16 @@ public sealed class ProjectDocumentSerializer : IProjectDocumentSerializer
             project.UpdateDetails(document.Name, document.Description, document.UpdatedAt);
         }
 
-        foreach (var grant in document.DirectoryGrants)
+        // Older saves could hold two grants over one directory; they load as one with the wider access.
+        var grants = Project.MergeGrantsWithSameRoot(document.DirectoryGrants.Select(grant => new DirectoryGrant(
+            new DirectoryGrantId(grant.Id),
+            grant.DisplayName,
+            grant.CanonicalRoot,
+            grant.Recursive,
+            grant.ToolNames)));
+        foreach (var grant in grants)
         {
-            project.AddDirectoryGrant(
-                new DirectoryGrant(
-                    new DirectoryGrantId(grant.Id),
-                    grant.DisplayName,
-                    grant.CanonicalRoot,
-                    grant.Recursive,
-                    grant.ToolNames),
-                document.UpdatedAt);
+            project.AddDirectoryGrant(grant, document.UpdatedAt);
         }
 
         // The retired C# scripting server's binding goes; whether it was switched off for this

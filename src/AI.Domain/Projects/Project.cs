@@ -75,11 +75,13 @@ public sealed class Project
         ArgumentNullException.ThrowIfNull(grant);
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
 
-        if (!_directoryGrants.TryAdd(grant.Id, grant))
+        if (_directoryGrants.ContainsKey(grant.Id))
         {
             throw new DomainException($"Directory grant '{grant.Id}' already exists.");
         }
 
+        EnsureRootIsFree(_directoryGrants.Values, grant);
+        _directoryGrants.Add(grant.Id, grant);
         UpdatedAt = updatedAt;
     }
 
@@ -115,7 +117,11 @@ public sealed class Project
                 continue;
             }
 
-            if (!pending.Values.Any(item => SameAccess(item, grant))) pending.Add(grant.Id, grant);
+            // The same access asked for again is already in force; another access over a granted
+            // root would be a second row for one directory, so it is refused like a single add.
+            if (pending.Values.Any(item => SameAccess(item, grant))) continue;
+            EnsureRootIsFree(pending.Values, grant);
+            pending.Add(grant.Id, grant);
         }
 
         foreach (var grant in pending.Values)
@@ -124,8 +130,37 @@ public sealed class Project
     }
 
     private static bool SameAccess(DirectoryGrant left, DirectoryGrant right) =>
-        string.Equals(left.CanonicalRoot, right.CanonicalRoot, StringComparison.Ordinal)
-        && left.Recursive == right.Recursive && left.ToolNames.SetEquals(right.ToolNames);
+        left.HasSameRoot(right) && left.Recursive == right.Recursive && left.ToolNames.SetEquals(right.ToolNames);
+
+    /// <summary>
+    /// One directory has one grant: two would show as two rows, and revoking the one you see would
+    /// leave the other in force.
+    /// </summary>
+    private static void EnsureRootIsFree(IEnumerable<DirectoryGrant> existing, DirectoryGrant grant)
+    {
+        if (existing.FirstOrDefault(item => item.Id != grant.Id && item.HasSameRoot(grant)) is { } granted)
+        {
+            throw new DomainException(
+                $"Directory '{grant.CanonicalRoot}' is already granted as '{granted.Id}'; change that grant instead of adding another.");
+        }
+    }
+
+    /// <summary>
+    /// Folds grants over one directory into one with the widest access. Projects saved before roots
+    /// were unique may hold such pairs, and refusing them would leave the project unloadable.
+    /// </summary>
+    public static IReadOnlyList<DirectoryGrant> MergeGrantsWithSameRoot(IEnumerable<DirectoryGrant> grants)
+    {
+        ArgumentNullException.ThrowIfNull(grants);
+        var merged = new List<DirectoryGrant>();
+        foreach (var grant in grants)
+        {
+            var index = merged.FindIndex(item => item.HasSameRoot(grant));
+            if (index < 0) merged.Add(grant);
+            else merged[index] = merged[index].MergedWith(grant);
+        }
+        return merged;
+    }
 
     public void AddMcpServer(McpServerBinding server, DateTimeOffset updatedAt)
     {
@@ -183,6 +218,12 @@ public sealed class Project
         EnsureTimestampDoesNotMoveBackwards(updatedAt);
 
         var grants = directoryGrants.ToDictionary(grant => grant.Id);
+        var checkedGrants = new List<DirectoryGrant>();
+        foreach (var grant in grants.Values)
+        {
+            EnsureRootIsFree(checkedGrants, grant);
+            checkedGrants.Add(grant);
+        }
         var servers = mcpServers.ToDictionary(server => server.Id);
         var policies = toolPolicies.ToDictionary(policy => policy.Tool);
         // ReSharper disable once ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator

@@ -85,21 +85,74 @@ public sealed class ProjectTests
     }
 
     [Fact]
-    public void AddingDirectoryGrantsSkipsEquivalentAccessWithoutReplacingNamesOrMergingRights()
+    public void AddingDirectoryGrantsSkipsEquivalentAccessWithoutReplacingNames()
     {
         var project = CreateProject();
         var existing = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "original", "/config", true, ["read"]);
         project.AddDirectoryGrant(existing, _createdAt);
-        var equivalent = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "renamed", "/config", true, ["read"]);
-        var writable = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "writable", "/config", true, ["read", "write"]);
+        var equivalent = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "renamed", "/config/", true, ["read"]);
+        var other = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "other", "/other", true, ["read"]);
 
-        project.AddDirectoryGrants([existing, equivalent, writable, writable], _createdAt.AddMinutes(1));
+        project.AddDirectoryGrants([existing, equivalent, other], _createdAt.AddMinutes(1));
 
         project.DirectoryGrants.Count.ShouldBe(2);
         project.DirectoryGrants.ShouldContain(existing);
-        project.DirectoryGrants.ShouldContain(writable);
+        project.DirectoryGrants.ShouldContain(other);
         existing.DisplayName.ShouldBe("original");
-        existing.ToolNames.ShouldBe(["read"]);
+    }
+
+    [Fact]
+    public void AddingDirectoryGrantsRefusesOtherAccessOverAGrantedRoot()
+    {
+        var project = CreateProject();
+        var existing = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "original", "/config", true, ["read"]);
+        project.AddDirectoryGrant(existing, _createdAt);
+        var writable = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "writable", "/config", true, ["read", "write"]);
+        var other = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "other", "/other", true, ["read"]);
+
+        Should.Throw<DomainException>(() => project.AddDirectoryGrants([other, writable], _createdAt.AddMinutes(1)));
+
+        project.DirectoryGrants.ShouldHaveSingleItem().ShouldBeSameAs(existing);
+    }
+
+    [Fact]
+    public void AddDirectoryGrantRefusesASecondGrantOverOneDirectory()
+    {
+        var project = CreateProject();
+        project.AddDirectoryGrant(new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src", "/project/src", true, ["read"]), _createdAt);
+        var again = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src", "/project/src/", false, ["read", "write"]);
+
+        Should.Throw<DomainException>(() => project.AddDirectoryGrant(again, _createdAt));
+
+        project.DirectoryGrants.ShouldHaveSingleItem().ToolNames.ShouldBe(["read"]);
+    }
+
+    [Fact]
+    public void ReplaceSecuritySettingsRefusesTwoGrantsOverOneDirectory()
+    {
+        var project = CreateProject();
+        var first = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src", "/project/src", true, ["read"]);
+        var second = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src", "/project/src", true, ["read", "write"]);
+
+        Should.Throw<DomainException>(() => project.ReplaceSecuritySettings([first, second], [], [], _createdAt));
+
+        project.DirectoryGrants.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MergeGrantsWithSameRootKeepsOneGrantWithTheWiderAccess()
+    {
+        var first = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src", "/project/src", false, ["read"]);
+        var second = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "src again", "/project/src/", true, ["read", "write"]);
+        var other = new DirectoryGrant(new DirectoryGrantId(Guid.NewGuid()), "docs", "/project/docs", false, ["read"]);
+
+        var merged = Project.MergeGrantsWithSameRoot([first, second, other]);
+
+        merged.Count.ShouldBe(2);
+        merged[0].Id.ShouldBe(first.Id);
+        merged[0].Recursive.ShouldBeTrue();
+        merged[0].ToolNames.ShouldBe(["read", "write"], ignoreOrder: true);
+        merged[1].ShouldBeSameAs(other);
     }
 
     [Fact]

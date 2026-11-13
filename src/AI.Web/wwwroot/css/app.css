@@ -987,11 +987,11 @@ body {
     pointer-events: none;
 }
 
-/* A directory's access mode is still shown at all times, and it sits in the first of the three
-   action slots rather than the last — so clearing it means clearing all three (3 x 1.6rem plus
-   the gaps), not one button's width. Reserving less is what let an indicator land on the text. */
+/* A directory's access mode is still shown at all times, and it sits in the first of the two
+   action slots rather than the last — so clearing it means clearing both (2 x 1.6rem plus the
+   gap), not one button's width. Reserving less is what let an indicator land on the text. */
 .directory-nav-row > .directory-row-main {
-    padding-right: 5.2rem;
+    padding-right: 3.5rem;
 }
 
 /* Shared chrome for every dropdown-style menu in the app (project/chat/branch/endpoint) —
@@ -2233,11 +2233,10 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
    keeps the rest: in the first track it covered the directory count in a narrow sidebar. */
 .directory-nav-row-header > .directory-add-button { grid-column: 4; }
 .directory-nav-row-header > .directory-row-main { padding-right: 1.9rem; }
-.directory-nav-row > .directory-edit-button { grid-column: 3; }
 .directory-nav-row > .directory-menu-button { grid-column: 4; }
 
 .directory-lock-indicator {
-    grid-column: 2;
+    grid-column: 3;
     display: inline-grid;
     width: 1.6rem;
     height: 1.6rem;
@@ -2252,6 +2251,32 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
 .directory-lock-indicator .app-icon {
     width: 1rem;
     height: 1rem;
+}
+
+/* Write access is the exception worth noticing: the lock and a bar at the row's start edge take the
+   warning colour, the same bar shape that marks the open chat. */
+.directory-lock-indicator.directory-lock-rw { color: var(--color-warning); }
+
+.directory-nav-row.is-writable::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    left: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-warning);
+    pointer-events: none;
+}
+
+/* Headings of the popover's access groups: quieter than the names under them. */
+.directory-group-label {
+    margin: 0.3rem 0 0;
+    padding: 0 0.55rem;
+    margin-left: var(--sidebar-row-indent);
+    color: var(--color-text-faint);
+    font-size: var(--font-size-sm);
 }
 
 .directory-nav-row-child > .directory-row-main > .app-icon {

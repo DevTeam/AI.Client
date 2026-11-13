@@ -49,4 +49,32 @@ public sealed class DirectoryGrant
     public bool Recursive { get; }
 
     public IReadOnlySet<string> ToolNames => _toolNames;
+
+    /// <summary>
+    /// True when both grants cover one directory. A trailing separator does not count, and case does
+    /// not count where the host's file system ignores it, so <c>C:\Work</c> and <c>c:\work\</c> match.
+    /// </summary>
+    public bool HasSameRoot(DirectoryGrant other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(TrimSeparators(CanonicalRoot), TrimSeparators(other.CanonicalRoot), comparison);
+    }
+
+    /// <summary>One grant over this root with the wider access of both: every tool and subdirectories if either had them.</summary>
+    public DirectoryGrant MergedWith(DirectoryGrant other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (!HasSameRoot(other)) throw new DomainException("Only grants over one directory can be merged.");
+        return new DirectoryGrant(Id, DisplayName, CanonicalRoot, Recursive || other.Recursive, _toolNames.Union(other.ToolNames));
+    }
+
+    // A bare root such as "C:\" or "/" keeps its last character so it never compares as empty.
+    private static string TrimSeparators(string path)
+    {
+        var trimmed = path.TrimEnd('\\', '/');
+        return trimmed.Length == 0 || trimmed.EndsWith(':') ? path : trimmed;
+    }
 }

@@ -725,16 +725,22 @@
                                         <span class="nav-item-label">Add a directory the assistant may use</span>
                                     </button>
                                 }
-                                @foreach (var directory in _security.DirectoryGrants)
+                                @* Directories the assistant may change come first under their own heading, with a
+                                   warning bar and lock, so the exception stands out from the read-only rest. *@
+                                @foreach (var (groupTitle, writable) in DirectoryAccessGroups)
                                 {
-                                    <div class="directory-nav-row directory-nav-row-child" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
+                                    var groupGrants = _security.DirectoryGrants.Where(item => (item.Mode == "Read/write") == writable).ToList();
+                                    if (groupGrants.Count == 0) continue;
+                                    <div class="directory-group-label">@groupTitle</div>
+                                    @foreach (var directory in groupGrants)
+                                    {
+                                    <div class="directory-nav-row directory-nav-row-child @(writable ? "is-writable" : null)" draggable="true" data-drag-path="@directory.CanonicalRoot" data-drag-kind="Directory">
                                         <button class="directory-row-main directory-row-open" type="button" title="@directory.CanonicalRoot" @onclick="() => OpenDirectoryPreviewAsync(directory.CanonicalRoot)">
                                             <AppIcon Name="folder" />
                                             <span class="nav-item-label directory-name">@GetDirectoryDisplayNameSuggestion(directory.CanonicalRoot)</span>
                                         </button>
                                         @* The lock always shows the access mode: open for read and write, closed for read only. *@
-                                        <button class="directory-lock-indicator @(directory.Mode == "Read/write" ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(directory.Mode == "Read/write" ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(directory.Mode == "Read/write" ? "unlock" : "lock")" /></button>
-                                        <button class="icon-action directory-row-action directory-edit-button" type="button" title="Change directory" aria-label="Change directory" @onclick="() => OpenDirectoryPicker(directory)"><AppIcon Name="edit" /></button>
+                                        <button class="directory-lock-indicator @(writable ? "directory-lock-rw" : "directory-lock-ro")" type="button" title="@(writable ? "Read/write — click to make read only" : "Read only — click to allow write")" aria-label="Toggle directory access mode" @onclick="() => ToggleDirectoryModeAsync(directory)"><AppIcon Name="@(writable ? "unlock" : "lock")" /></button>
                                         <button class="icon-action directory-row-action directory-menu-button @(_directoryMenuId == directory.Id ? "menu-open" : string.Empty)" type="button" title="Directory menu" aria-label="Directory menu" @onclick="() => ToggleDirectoryMenu(directory.Id)"><AppIcon Name="more" /></button>
                                         @if (_directoryMenuId == directory.Id)
                                         {
@@ -749,11 +755,12 @@
                                                     <button type="button" role="menuitem" @onclick="() => OpenDirectoryInFileManagerAsync(directory.CanonicalRoot)"><AppIcon Name="folder" />Open in file manager</button>
                                                     <button type="button" role="menuitem" @onclick="() => CopyDirectoryPathAsync(directory.CanonicalRoot)"><AppIcon Name="copy" />Copy path</button>
                                                     <button type="button" role="menuitem" @onclick="ConfirmDirectoryDelete"><AppIcon Name="folder-minus" />Remove access</button>
-                                                    <p class="directory-menu-note">@(directory.Mode == "Read/write" ? "Read and write for the assistant." : "Read only for the assistant.")</p>
+                                                    <p class="directory-menu-note">@(writable ? "Read and write for the assistant." : "Read only for the assistant.")</p>
                                                 }
                                             </div>
                                         }
                                     </div>
+                                    }
                                 }
                                 @if (_selectedChat is not null)
                                 {
@@ -1263,7 +1270,7 @@
     @if (_isDirectoryPickerOpen && _selectedProject is not null)
     {
         <DirectoryPickerDialog StartPath="@_directoryPickerStartPath"
-                               Subtitle="@(_directoryPickerGrantId is null ? "New directory grant" : "Change directory grant")"
+                               Subtitle="New directory grant"
                                Selected="OnDirectoryPickedAsync" Cancelled="CloseDirectoryPicker" />
     }
     @if (_resourcePickerMode is { } resourceMode && _selectedProject is not null)
@@ -1892,7 +1899,6 @@ else if (_guideInvitation is { } guideInvitation)
     private string? _reviewStartPath;
     private int _reviewPanelKey;
     private int _reviewVersion;
-    private Guid? _directoryPickerGrantId;
     private string? _directoryPickerStartPath;
     private Guid? _directoryMenuId;
     private bool _isConfirmingDirectoryDelete;
@@ -4202,26 +4208,21 @@ else if (_guideInvitation is { } guideInvitation)
         _ => $"{directoryCount} project directories and the chat's files"
     };
 
-    private void OpenDirectoryPickerForNewGrant() => OpenDirectoryPicker(null, WorkspaceStateService.LastBrowsedDirectory);
+    /// <summary>The popover's groups in display order: the writable exception first.</summary>
+    private static readonly (string Title, bool Writable)[] DirectoryAccessGroups =
+        [("Read and write", true), ("Read only", false)];
 
-    private void OpenDirectoryPicker(DirectoryGrantEditor grant) =>
-        OpenDirectoryPicker(
-            grant.Id,
-            grant.CanonicalRoot.Length > 0 ? grant.CanonicalRoot : WorkspaceStateService.LastBrowsedDirectory);
-
-    private void OpenDirectoryPicker(Guid? grantId, string? startPath)
+    private void OpenDirectoryPickerForNewGrant()
     {
         CancelInlineEdit();
         CloseContextMenus();
-        _directoryPickerGrantId = grantId;
-        _directoryPickerStartPath = startPath;
+        _directoryPickerStartPath = WorkspaceStateService.LastBrowsedDirectory;
         _isDirectoryPickerOpen = true;
     }
 
     private void CloseDirectoryPicker()
     {
         _isDirectoryPickerOpen = false;
-        _directoryPickerGrantId = null;
         _directoryPickerStartPath = null;
     }
 
@@ -4231,21 +4232,9 @@ else if (_guideInvitation is { } guideInvitation)
     /// </summary>
     private async Task OnDirectoryPickedAsync(string path)
     {
-        var grantId = _directoryPickerGrantId;
         CloseDirectoryPicker();
         await WorkspaceStateService.SetLastBrowsedDirectoryAsync(path);
-
-        var grant = grantId is { } id ? _security.DirectoryGrants.SingleOrDefault(item => item.Id == id) : null;
-        if (grant is null)
-        {
-            await AddDirectoryGrantAsync(path);
-            return;
-        }
-        if (string.Equals(grant.CanonicalRoot, path, StringComparison.Ordinal)) return;
-
-        grant.CanonicalRoot = path;
-        grant.DisplayName = GetDirectoryDisplayNameSuggestion(path);
-        await PersistDirectoryGrantsAsync();
+        await AddDirectoryGrantAsync(path);
     }
 
     /// <summary>Adds a read-only grant over <paramref name="path"/>; true once it is saved.</summary>
@@ -4253,7 +4242,8 @@ else if (_guideInvitation is { } guideInvitation)
     {
         // Paths are canonicalised by the host, so two grants over one directory would be two
         // identical rows — and revoking the one you can see would leave the other in force.
-        if (_security.DirectoryGrants.Exists(item => string.Equals(item.CanonicalRoot, path, StringComparison.OrdinalIgnoreCase)))
+        if (_security.DirectoryGrants.Exists(item => string.Equals(
+                item.CanonicalRoot.TrimEnd('\\', '/'), path.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)))
         {
             Notifications.ShowInfo("That directory is already granted.");
             return false;

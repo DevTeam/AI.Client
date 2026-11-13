@@ -26,6 +26,10 @@ public sealed class ChatRenameSkill(
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1601, "ChatRenameSkillFailed"),
             "Chat title skill failed for chat {ChatId}");
+    // The chat goes to the model as written, not as \u escapes a small model cannot read.
+    private static readonly JsonSerializerOptions PromptJson =
+        new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     private static readonly ChatToolDefinition ReadChatTool = new("read_chat",
         "Read user and assistant messages from this chat. Choose the start index and count needed to name it.",
         JsonSerializer.SerializeToElement(new
@@ -109,7 +113,7 @@ public sealed class ChatRenameSkill(
             .Skip(start).Take(count)
             .Select(message => new { message.Role, Content = Short(message.Content) }).ToArray();
         conversation.Add(new ChatCompletionMessage("assistant", first.Content, first.Calls));
-        conversation.Add(new ChatCompletionMessage("tool", JsonSerializer.Serialize(messages), ToolCallId: call.Id));
+        conversation.Add(new ChatCompletionMessage("tool", JsonSerializer.Serialize(messages, PromptJson), ToolCallId: call.Id));
         var second = await AnswerAsync(request with { ContextMessages = conversation, Tools = null }, token);
         if (second.Calls.Count > 0) return new("Failed", "The model returned an unexpected tool call.", chatId);
         var title = CleanTitle(second.Content);

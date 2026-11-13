@@ -151,7 +151,13 @@ public sealed class ChatToolRiskAssessSkill(
     private const int RequestCount = 3;
 
     private static readonly JsonSerializerOptions InputOptions =
-        new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+        new()
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            // The user's requests reach the model as written: escaped as \u codes, non-Latin text
+            // costs more tokens and a small model can no longer read it.
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
 
     /// <summary>The branch's messages from its first one to its head, the call's own steps included.</summary>
     private static List<ChatMessageView> BranchPath(ChatDetails chat, Guid branchId)

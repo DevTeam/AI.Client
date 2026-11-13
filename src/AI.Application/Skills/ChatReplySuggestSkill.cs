@@ -26,6 +26,10 @@ public sealed class ChatReplySuggestSkill(
 
     private const int MaxLength = 300;
 
+    // The conversation goes to the model as written, not as \u escapes a small model cannot read.
+    private static readonly JsonSerializerOptions PromptJson =
+        new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1602, "ChatReplySuggestSkillFailed"),
             "Reply suggestion skill failed for chat {ChatId}");
@@ -94,7 +98,7 @@ public sealed class ChatReplySuggestSkill(
             {
                 user_message = question is null ? null : Tail(question.Content, 2_000),
                 assistant_answer = Tail(answer.Content, 6_000)
-            }))
+            }, PromptJson))
         };
         var request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
             await secrets.GetAsync("connection", connection.Id, token),

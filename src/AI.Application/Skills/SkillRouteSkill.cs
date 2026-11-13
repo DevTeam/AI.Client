@@ -41,6 +41,14 @@ public sealed class SkillRouteSkill(
     /// <summary>The user is waiting on this before the first step of every turn; past it the turn goes on without a route.</summary>
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(12);
 
+    /// <summary>
+    /// The message goes to the router as written. Escaped as \u codes, a message in Russian was
+    /// unreadable to the small router model, which then picked from the top of the catalogue: the
+    /// app-guide playbooks, loaded for a commit or a multiplication table.
+    /// </summary>
+    private static readonly JsonSerializerOptions PromptJson =
+        new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1603, "SkillRouteSkillFailed"),
             "Skill routing failed for project {ProjectId}");
@@ -112,7 +120,7 @@ public sealed class SkillRouteSkill(
                     directories = project?.DirectoryGrants.Select(GrantText) ?? [],
                     skills = offer.Lines,
                     tools
-                }))
+                }, PromptJson))
             };
             var plan = contextPlanner.Plan(connection, connection.Model, conversation, []);
             if (!plan.Fits) continue;

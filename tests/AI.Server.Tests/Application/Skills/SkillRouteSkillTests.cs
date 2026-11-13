@@ -41,6 +41,8 @@ public class SkillRouteSkillTests
         route.ContinuesActive.ShouldBeFalse();
         var input = JsonElement.Parse(_requests.Single().ContextMessages![^1].Content);
         input.GetProperty("message").GetString().ShouldBe("Создай проект с .NET приложением");
+        // As written, not as \u escapes: a small router could not read those and picked the first skills listed.
+        _requests.Single().ContextMessages![^1].Content.ShouldContain("Создай проект с .NET приложением");
         input.GetProperty("tools")[0].GetString().ShouldBe("mcp_built_in__process_run: Run a program and wait for completion.");
         input.GetProperty("skills").EnumerateArray().Select(item => item.GetString()!)
             .ShouldContain(line => line.StartsWith("project-create: ", StringComparison.Ordinal));

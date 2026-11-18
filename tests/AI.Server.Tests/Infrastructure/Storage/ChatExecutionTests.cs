@@ -1243,6 +1243,36 @@ public sealed partial class ChatExecutionTests
     }
 
     [Fact]
+    public async Task ANewChatShouldBeNamedFromItsFirstMessageBeforeTheAnswerEnds()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var chat = await fixture.Chats.CreateAsync(fixture.ProjectId,
+            new CreateChatRequest("Explain dependency inj", AutoTitlePending: true), CancellationToken.None);
+        await fixture.Dispatcher.SubmitAsync(fixture.ProjectId, chat.Id,
+            new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Explain dependency injection in C#"),
+            CancellationToken.None);
+
+        Call[] calls = [await fixture.NextCallAsync(), await fixture.NextCallAsync()];
+        var title = calls.Single(call => call.Request.Message == "Name this chat");
+        var answer = calls.Single(call => call.Request.Message != "Name this chat");
+        title.Request.Tools.ShouldBeNull();
+        title.Request.ContextMessages![^1].Content.ShouldContain("Explain dependency injection in C#");
+        title.Answer.SetResult("Dependency injection in C#");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        ChatDetails? named;
+        while ((named = await fixture.Chats.GetAsync(fixture.ProjectId, chat.Id, CancellationToken.None))!.AutoTitlePending)
+            await Task.Delay(10, timeout.Token);
+        named.Title.ShouldBe("Dependency injection in C#");
+        named.Messages.ShouldNotContain(message => message.Role == "Assistant");
+
+        answer.Answer.SetResult("It supplies dependencies to an object.");
+        await fixture.WaitAsync(run => run.ChatId == chat.Id && run.Status == ChatRunStatus.Completed);
+        // Named already, the chat costs no second naming request after the answer.
+        fixture.Completion.Calls.Reader.TryRead(out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task ABranchShouldBeRenamedWhateverChangedInTheChatMeanwhile()
     {
         await using var fixture = await Fixture.CreateAsync();

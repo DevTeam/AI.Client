@@ -81,7 +81,7 @@ deletes a chat the user asked for by name.
 
 | id | What it does | Tools |
 |---|---|---|
-| `chat-rename` | Names a new chat after its first answer, or renames one on request (executor) | — |
+| `chat-rename` | Names a new chat from its first message, or renames one on request (executor) | — |
 | `chat-reply-suggest` | Drafts the user's next message to the last answer of a branch for the composer (executor) | — |
 | `skill-route` | Picks the skills and first tools for the message that starts a turn (executor); Settings → Chat turns it off | — |
 | `chat-tool-risk-assess` | Judges one pending tool call for the chat's "Approve for me" mode (executor); see [security](06-security.md#chat-approval-mode) | — |
@@ -365,8 +365,12 @@ retry, cleanup and pause changes skip that check. Each has its own stopwatch ico
 [Scheduled chats](35-scheduled-chats.md).
 
 `chat-rename` has a dedicated executor because it changes the chat title under the chat mutation
-lock. Automatic naming starts after the first main-branch answer; explicit requests can rename
-an existing chat. `chat_id=current` resolves from the trusted tool-run context, and a UUID is
+lock. Automatic naming starts as soon as the first main-branch message is in the chat, beside the
+turn rather than after its answer, and sends that message (and the answer, if one exists) in a
+single request without `read_chat`. It runs on the connection marked for subtasks when there is
+one, with reasoning lowered to `low` where the connection sends an effort at all. A chat still
+unnamed after its first answer gets one more try. Explicit requests can rename
+an existing chat, reading it through `read_chat`. `chat_id=current` resolves from the trusted tool-run context, and a UUID is
 looked up only inside that project. Manual renames prevent a late automatic result from applying.
 
 `chat-reply-suggest` is an executor so that it can run after every answer without a turn of its

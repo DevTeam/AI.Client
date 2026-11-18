@@ -165,7 +165,7 @@
                                         </div>
                                     }
                                     <label @attributes="@(ControlHints.Attributes("settings.chat.auto_title"))" class="settings-row">
-                                        <span class="settings-row-label">Name new chats after the first answer</span>
+                                        <span class="settings-row-label">Name new chats from the first message</span>
                                         <input class="settings-switch" type="checkbox" role="switch" checked="@_chatAutomation.AutoTitle" disabled="@(!_loaded)" @onchange="args => SetChatAutomationAsync(_chatAutomation with { AutoTitle = args.Value is true })" />
                                     </label>
                                     <label @attributes="@(ControlHints.Attributes("settings.chat.reply_suggestions"))" class="settings-row">

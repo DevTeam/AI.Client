@@ -19,17 +19,22 @@ using Xunit;
 
 public class ChatRenameSkillTests
 {
-    [Fact]
-    public async Task ShouldReadChatThroughToolBeforeApplyingTitle()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ShouldNameNewChatInOneRequestOnSubtaskConnection(bool answered)
     {
         var projectId = Guid.CreateVersion7();
         var chatId = Guid.CreateVersion7();
         var connectionId = Guid.CreateVersion7();
+        var fastId = Guid.CreateVersion7();
         var now = DateTimeOffset.UtcNow;
+        ChatMessageView[] messages = answered
+            ? [new(Guid.CreateVersion7(), null, "User", "Explain dependency injection in C#", now),
+               new(Guid.CreateVersion7(), null, "Assistant", "It supplies dependencies to an object.", now)]
+            : [new(Guid.CreateVersion7(), null, "User", "Explain dependency injection in C#", now)];
         var chat = new ChatDetails(chatId, projectId, "Explain dependency injection", now, now, 3, connectionId,
-            [new ChatMessageView(Guid.CreateVersion7(), null, "User", "Explain dependency injection in C#", now),
-             new ChatMessageView(Guid.CreateVersion7(), null, "Assistant", "It supplies dependencies to an object.", now)],
-            AutoTitlePending: true);
+            messages, AutoTitlePending: true);
         var chats = new Mock<IChatService>(MockBehavior.Strict);
         chats.Setup(item => item.GetAsync(projectId, chatId, It.IsAny<CancellationToken>())).ReturnsAsync(chat);
         chats.Setup(item => item.ApplyAutomaticTitleAsync(projectId, chatId, "Dependency injection in C#",
@@ -38,13 +43,21 @@ public class ChatRenameSkillTests
         projects.Setup(item => item.GetAsync(projectId, It.IsAny<CancellationToken>())).ReturnsAsync((ProjectDetails?)null);
         var settings = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GlobalSettings([new ConnectionSettings(connectionId, "Main", "https://example.test/v1",
-                "test-model", true, true, false)], [], []));
+            .ReturnsAsync(new GlobalSettings([
+                new ConnectionSettings(connectionId, "Main", "https://example.test/v1", "main-model", true, true, false,
+                    ReasoningEffort: "high"),
+                new ConnectionSettings(fastId, "Fast", "https://example.test/v1", "fast-model", true, false, false,
+                    ReasoningEffort: "medium", ForSubtasks: true)], [], []));
         var secrets = new Mock<IGlobalSecretStore>(MockBehavior.Strict);
-        secrets.Setup(item => item.GetAsync("connection", connectionId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        secrets.Setup(item => item.GetAsync("connection", fastId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        var requests = new List<ChatCompletionRequest>();
         var completion = new Mock<IChatCompletionClient>(MockBehavior.Strict);
         completion.Setup(item => item.StreamAsync(It.IsAny<ChatCompletionRequest>(), It.IsAny<CancellationToken>()))
-            .Returns((ChatCompletionRequest request, CancellationToken token) => Respond(request, token));
+            .Returns((ChatCompletionRequest request, CancellationToken token) =>
+            {
+                requests.Add(request);
+                return Respond(request, token);
+            });
         var changes = new Mock<IAppDataChangeSignal>(MockBehavior.Strict);
         changes.Setup(item => item.Notify());
         var skill = new ChatRenameSkill(new BuiltInSkillCatalog(), chats.Object, projects.Object, settings.Object,
@@ -56,6 +69,12 @@ public class ChatRenameSkillTests
 
         result.Status.ShouldBe("Completed");
         result.ChatId.ShouldBe(chatId);
+        var request = requests.ShouldHaveSingleItem();
+        request.Tools.ShouldBeNull();
+        request.Model.ShouldBe("fast-model");
+        request.ReasoningEffort.ShouldBe("low");
+        request.ContextMessages![^1].Content.ShouldContain("Explain dependency injection in C#");
+        request.ContextMessages![^1].Content.Contains("It supplies dependencies").ShouldBe(answered);
         chats.Verify(item => item.ApplyAutomaticTitleAsync(projectId, chatId, "Dependency injection in C#",
             It.IsAny<CancellationToken>()), Times.Once);
         changes.Verify(item => item.Notify(), Times.Once);

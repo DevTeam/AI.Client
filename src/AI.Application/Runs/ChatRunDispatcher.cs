@@ -634,6 +634,7 @@ public sealed class ChatRunDispatcher(
                 QueuedRunMessage queued;
                 ChatCompletionRequest request;
                 CancellationToken token;
+                var nameChat = false;
                 using (await synchronization.EnterAsync(runtime.State.ChatId, CancellationToken.None))
                 {
                     if (runtime.State.Queue.Count == 0 || runtime.State.Status is RunStatus.Paused or RunStatus.Interrupted or RunStatus.Failed) return;
@@ -712,6 +713,10 @@ public sealed class ChatRunDispatcher(
                         TrackMessage(runtime, baseRevision, chat, queued.Id);
                     }
                     runtime.State.MarkUserCommitted(queued.Id);
+                    // The first message says what the chat is about, so naming starts beside the
+                    // turn instead of waiting for its answer, which may take minutes of tool work.
+                    nameChat = IsFirstTurnOfUnnamedChat(runtime, chat)
+                        && (global.ChatAutomation ?? new ChatAutomationSettings()).AutoTitle;
                     var connection = connectionChoice.Choose(global.Connections,
                         branchSettings.ConnectionId(chat, runtime.State.BranchId), project.ConnectionId);
                     if (connection is null)
@@ -749,6 +754,8 @@ public sealed class ChatRunDispatcher(
                     runtime.ToolHead = ResumeHead(chat, runtime.State.BranchId, queued.Id);
                     await SaveAsync(runtime, chat, token);
                 }
+                // Started outside the turn's usage scope below: the title is the chat's request.
+                if (nameChat) StartTitleSkill(runtime.User, runtime.State.ProjectId, runtime.State.ChatId);
 
                 // Every request below is this turn's, including those of its subtasks, its routing
                 // and its compaction; the scope ends with the agent so the title and reply
@@ -799,8 +806,9 @@ public sealed class ChatRunDispatcher(
                     chat = await chatMutations.PruneMessagesCoreAsync(chat.ProjectId, chat.Id,
                         RetainedMessageIds(chat.Id), token) ?? chat;
                     await SaveAsync(runtime, chat, token);
-                    suggestTitle = runtime.State.BranchId == chat.Id && chat.AutoTitlePending
-                        && chat.Messages.Count(message => message.Role == "User" && message.Delivery == MessageDelivery.Turn) == 1;
+                    // Still unnamed after the answer means naming from the first message failed or
+                    // is still running; one more try then also sees the answer.
+                    suggestTitle = IsFirstTurnOfUnnamedChat(runtime, chat);
                     // A reply is drafted only for the answer the user is left with: with more
                     // messages queued behind it, the next one is already the reply, and an aside
                     // written under it is not an answer to reply to.
@@ -914,6 +922,10 @@ public sealed class ChatRunDispatcher(
             StartWorker(runtime);
         }
     }
+
+    private static bool IsFirstTurnOfUnnamedChat(Runtime runtime, ChatDetails chat) =>
+        runtime.State.BranchId == chat.Id && chat.AutoTitlePending
+        && chat.Messages.Count(message => message.Role == "User" && message.Delivery == MessageDelivery.Turn) == 1;
 
     private void StartTitleSkill(UserId user, Guid projectId, Guid chatId)
     {

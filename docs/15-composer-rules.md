@@ -30,8 +30,8 @@ finished answer the composer would reply to: not while the branch generates, has
 waits for an approval or an `ask_user` answer, or while a fork or replacement is being prepared. When
 the head changes the draft is dropped. The Host keeps the latest draft per branch in memory, so
 switching chats and back shows it again; a Host restart forgets it. **Settings → Chat → Suggest a
-reply after each answer** switches the automatic draft off, next to **Name new chats after the first
-answer** for `chat-rename`. Both are stored on the Host, which makes the calls whether or not a
+reply after each answer** switches the automatic draft off, next to **Name new chats from the first
+message** for `chat-rename`. Both are stored on the Host, which makes the calls whether or not a
 window is open.
 
 ## Skills from the slash list

@@ -1599,6 +1599,9 @@ else if (_guideInvitation is { } guideInvitation)
         </div>
     }
 
+    // Deeper rows keep this indent: at half a step past level 3 it is already 7.5rem of the sidebar.
+    private const int MaxSidebarBranchDepth = 12;
+
     /// <summary>The open chat's branch rows under its chat row: forks first, then the scheduled runs.</summary>
     private void RenderChatBranchRows(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, ChatSummary chat)
     {
@@ -1611,7 +1614,11 @@ else if (_guideInvitation is { } guideInvitation)
                 runsHeaderShown = true;
                 __builder.AddContent(0, RunsGroupHeader(runRows));
             }
-            <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, 3)">
+            <div class="chat-nav-row branch-nav-row @(branch.Run is not null ? "branch-run-row" : null) @(GetSelectedBranchId() == branch.RootId ? "selected" : string.Empty)" data-branch-id="@branch.RootId" title="@(branch.RunTooltip ?? GetRunTitle(chat.Id, branch.RootId, GetBranchRun(chat.Id, branch)))" style="--branch-depth: @Math.Min(branch.Depth, MaxSidebarBranchDepth)">
+                @for (var level = 1; level < Math.Min(branch.Depth, MaxSidebarBranchDepth); level++)
+                {
+                    <span class="branch-guide" style="--guide-depth: @level" aria-hidden="true"></span>
+                }
                 <span class="branch-tree-line" aria-hidden="true"></span>
                 @if (_editingBranchId == branch.RootId)
                 {

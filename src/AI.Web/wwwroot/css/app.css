@@ -2064,9 +2064,23 @@ label.settings-row.settings-field:hover, label.settings-row.is-stacked:hover { b
     font-size: var(--font-size-lg);
 }
 
+/* Indent per branch level: a full step for the first three levels, then half a step, so a deep
+   branch still sits right of its parent without pushing the title out of the narrow sidebar. */
 .branch-nav-row {
-    margin-left: calc(min(var(--branch-depth), 3) * 1rem);
-    width: calc(100% - (min(var(--branch-depth), 3) * 1rem));
+    --branch-indent: calc((min(var(--branch-depth), 3) + max(var(--branch-depth) - 3, 0) * .5) * 1rem);
+    margin-left: var(--branch-indent);
+    width: calc(100% - var(--branch-indent));
+}
+
+/* One vertical guide per ancestor level, in line with that level's elbow, so the number of lines
+   left of a row reads as its depth even where the half steps are hard to tell apart. */
+.branch-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc((min(var(--guide-depth), 3) + max(var(--guide-depth) - 3, 0) * .5) * 1rem - var(--branch-indent) - .5rem);
+    border-left: 1px solid var(--color-border-strong);
+    pointer-events: none;
 }
 
 .branch-tree-line {

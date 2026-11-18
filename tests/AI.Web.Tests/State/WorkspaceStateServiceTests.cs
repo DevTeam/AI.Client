@@ -127,7 +127,7 @@ public class WorkspaceStateServiceTests
         service.QueueComposerDraftSave($"new:{projectA}", "Привет");
         await service.FlushPendingComposerDraftAsync();
 
-        // CreateChatAsync queues an empty save to drop the draft before navigating away.
+        // Clearing the composer queues an empty save, which must drop the key, not keep "".
         service.QueueComposerDraftSave($"new:{projectA}", string.Empty);
         await service.FlushPendingComposerDraftAsync();
 

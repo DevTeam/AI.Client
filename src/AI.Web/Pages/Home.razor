@@ -4349,16 +4349,12 @@ else if (_guideInvitation is { } guideInvitation)
         {
             await SelectChatProfileAsync(new ChangeEventArgs { Value = endpointId.ToString() });
         }
-        // Drop any previously-typed "new chat" draft for this project. The user just clicked
-        // "+", they want a fresh composer — if we only cleared _chat.Message here, the draft
-        // would still be in localStorage and reappear the next time they navigate away and
-        // back (RestoreComposerDraft in SelectProjectAsync would find it again). The flush
-        // makes the deletion land in localStorage before that navigation can happen.
-        WorkspaceStateService.QueueComposerDraftSave($"new:{_selectedProject.Id}", string.Empty);
+        // "+" is also the way back to a new chat the user left for another chat or branch, so
+        // the unsent "new:{projectId}" draft and its resource links come back instead of being
+        // dropped; clearing the text is the way to discard it.
         await WorkspaceStateService.FlushPendingComposerDraftAsync();
-        _chat.Message = string.Empty;
-        _draftResources.Clear();
-        _resourceDrafts.Remove(GetComposerDraftKey());
+        RestoreComposerDraft();
+        _composerNeedsResize = true;
         if (_composerHandle is not null) await _composerHandle.InvokeVoidAsync("focus");
     }
 

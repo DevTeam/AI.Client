@@ -24,9 +24,13 @@ public sealed class HomeBranchSelectionTests
         var chatId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         var workspace = new Mock<IWorkspaceStateService>();
+        workspace.Setup(value => value.GetComposerDraft(It.IsAny<string>())).Returns(string.Empty);
         SetField(page, "_selectedProject", new ProjectSummary(projectId, "Project", string.Empty, now, 1));
         SetField(page, "_selectedChat", new ChatDetails(chatId, projectId, "Chat", now, now, 1, null, []));
         Inject(page, "WorkspaceStateService", workspace.Object);
+        // The new chat button restores the project's unsent draft, which goes through the
+        // composer history navigator.
+        Inject(page, "_composerHistoryNavigator", Mock.Of<IComposerHistoryNavigator>());
 
         await (Task)Invoke(page, "CreateChatAsync")!;
 

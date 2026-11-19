@@ -33,7 +33,12 @@ public sealed class AppToolSearchTool(IToolCatalogRegistry catalog) : IAppTool
                 var found = catalog.SearchAndPin(run, query, limit, server);
                 return reply.Reply(new ToolSearchResult(found.Tools,
                     found.Tools.Count > 0
-                        ? "Matches are listed best first. Those with prioritized=true are prioritized for the next model step within "
+                        ? found.Deferred
+                            ? $"Matches are listed best first. Call one that has an inputSchema through {ToolRef.CallToolName} with its exact "
+                              + "name and an arguments object matching that inputSchema; the visible tool list does not change. "
+                              + "Search another listed name exactly to get its inputSchema."
+                              + (found.Remaining > 0 ? $" {found.Remaining} more match; search more narrowly." : string.Empty)
+                            : "Matches are listed best first. Those with prioritized=true are prioritized for the next model step within "
                           + "its schema budget; search another listed name exactly to prioritize it."
                           + (found.Remaining > 0 ? $" {found.Remaining} more match; search more narrowly." : string.Empty)
                         : AsksForDrawing(query)

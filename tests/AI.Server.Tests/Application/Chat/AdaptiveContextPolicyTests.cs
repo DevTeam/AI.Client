@@ -637,6 +637,71 @@ public sealed class AdaptiveContextPolicyTests
         memory.Recall(chatId, branchId, "model", [alpha, beta]).ShouldBeNull();
     }
 
+    [Fact]
+    public void ShouldHandBackSchemasInsteadOfPinningWhenSearchIsDeferred()
+    {
+        var catalog = new ToolCatalogRegistry();
+        var run = new ToolRunContext(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), true);
+        using var scope = catalog.Begin(run);
+        var schema = JsonElement.Parse("{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}");
+        var read = Tool("read_text_file", "Read a text file") with { };
+        read = read with { ModelDefinition = read.ModelDefinition with { InputSchema = schema } };
+        catalog.Update(run, [read]);
+        catalog.SetDeferred(run, true);
+
+        var found = catalog.SearchAndPin(run, "read text file", 5);
+
+        found.Deferred.ShouldBeTrue();
+        var match = found.Tools.ShouldHaveSingleItem();
+        match.InputSchema.ShouldNotBeNull().GetRawText().ShouldBe(schema.GetRawText());
+        match.Prioritized.ShouldBeFalse();
+        catalog.ConsumePinned(run).ShouldBeEmpty();
+        catalog.SetDeferred(run, false);
+        catalog.SearchAndPin(run, "read text file", 5).Tools.Single().InputSchema.ShouldBeNull();
+        catalog.ConsumePinned(run).ShouldContain(read.ModelDefinition.Name);
+    }
+
+    [Theory]
+    [InlineData("{\"name\":\"mcp_built_in__read\",\"arguments\":{\"path\":\"a.txt\"}}")]
+    [InlineData("{\"name\":\"read\",\"arguments\":{\"path\":\"a.txt\"}}")]
+    [InlineData("{\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}")]
+    [InlineData("{\"name\":\"read\",\"path\":\"a.txt\"}")]
+    public void ShouldTakeAStandInCallApartIntoTheToolItNames(string arguments)
+    {
+        var read = Tool("read", "Read files");
+        var resolved = new ToolCallStandIn().Resolve(new ChatToolCall("call-1", ToolRef.CallToolName, arguments), [read]);
+        resolved.Id.ShouldBe("call-1");
+        resolved.Name.ShouldBe(read.ModelDefinition.Name);
+        JsonElement.Parse(resolved.Arguments).GetProperty("path").GetString().ShouldBe("a.txt");
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("{\"arguments\":{}}")]
+    [InlineData("{\"name\":\"mcp_app__call_tool\"}")]
+    public void ShouldLeaveAnUnreadableStandInCallForItsServerToRefuse(string arguments)
+    {
+        var call = new ChatToolCall("call-1", ToolRef.CallToolName, arguments);
+        new ToolCallStandIn().Resolve(call, [Tool("read", "Read files")]).ShouldBe(call);
+        var ordinary = new ChatToolCall("call-2", "mcp_built_in__read", "{}");
+        new ToolCallStandIn().Resolve(ordinary, [Tool("read", "Read files")]).ShouldBe(ordinary);
+    }
+
+    [Fact]
+    public void ShouldOfferTheStandInOnlyOutsideACompactWindow()
+    {
+        var policy = Policy();
+        var standIn = Tool("call_tool", "Call a discovered tool", app: true) with { ServerId = AppMcpServer.Id };
+        var search = Tool("tool_search", "Find a tool", app: true) with { ServerId = AppMcpServer.Id };
+        var large = policy.Choose(Connection(400_000, 10_000), "request", [], [search, standIn]);
+        large.Tools.ShouldContain(standIn);
+        policy.ToolInstructions(large.Tools).Single(item => item.Key == "capability.discovery").Content.ShouldContain("call_tool");
+        var compact = policy.Choose(Connection(8_192), "request", [], [search, standIn]);
+        policy.Resolve(Connection(8_192)).Compact.ShouldBeTrue();
+        compact.Tools.ShouldNotContain(standIn);
+        policy.ToolInstructions(compact.Tools).Single(item => item.Key == "capability.discovery").Content.ShouldNotContain("call_tool");
+    }
+
     private sealed class TestClock : AI.Application.Projects.IClock
     {
         public DateTimeOffset UtcNow { get; set; } = new(2026, 11, 19, 12, 0, 0, TimeSpan.Zero);

@@ -44,7 +44,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
     IConnectionContextWindowDetector contextWindows, IExecutableLocator executables,
-    Func<IToolAutoApprover> autoApprover, ISubtaskRuns subtaskRuns, IToolSetMemory toolSets) : IAgentHarness
+    Func<IToolAutoApprover> autoApprover, ISubtaskRuns subtaskRuns, IToolSetMemory toolSets,
+    IToolCallStandIn standIn) : IAgentHarness
 {
     public Task<WorkspaceChangeSet> RunAsync(AgentRunRequest request, IAgentRunSink sink, CancellationToken cancellationToken) =>
         RunCoreAsync(request.ProjectId, request.ChatId, request.BranchId, request.Completion, sink.PersistAsync, sink.TextAsync,
@@ -487,6 +488,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             selectedTools = selection.Tools;
             sentTools = selectedTools;
             toolSets.Remember(chatId, branchId, request.Model, selectedTools);
+            // With the stand-in offered, discovery hands schemas back instead of adding definitions, and
+            // any permitted tool can be called: through the stand-in, or by name if the model does so.
+            var deferred = selectedTools.Any(tool => tool.ModelDefinition.Name == ToolRef.CallToolName);
+            toolCatalog.SetDeferred(run, deferred);
+            IReadOnlyList<AgentTool> callable = deferred
+                ? [.. selectedTools, .. permitted.Where(tool => !selectedTools.Any(item => item.ModelDefinition.Name == tool.ModelDefinition.Name))]
+                : selectedTools;
             available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             // Check discovery against the final schemas after checkpoints and guidance changed
             // the budget. Never direct the model to a control tool that was itself omitted.
@@ -670,6 +678,8 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
             await persist(assistant, token); // Durable intent before any side effect.
             context.Add(assistant);
             checkpoints.Update(run, context);
+            // The history keeps the calls as the model wrote them; what runs is the tool each one means.
+            var meant = calls.Select(call => standIn.Resolve(call, permitted)).ToList();
             var toolImages = new List<string>();
             // A step is stalled only when none of its calls told the model anything new. An error
             // is information too, unless it is the same error for the same call again.
@@ -684,10 +694,10 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 for (var index = 0; index < calls.Count; index++)
                 {
                     if (!reads.ContainsKey(index))
-                        foreach (var read in await StartReadsAsync(calls, index, selectedTools, session, counts,
+                        foreach (var read in await StartReadsAsync(meant, index, callable, session, counts,
                                      projectId, chatId, branchId, runKey, alongside.Token, token))
                             reads.Add(read.Key, read.Value);
-                    var call = calls[index];
+                    var call = meant[index];
                     ToolCallResult result;
                     try
                     {
@@ -701,7 +711,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                         }
                         else
                         {
-                            var tool = selectedTools.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
+                            var tool = callable.SingleOrDefault(item => item.ModelDefinition.Name == call.Name)
                                 ?? throw new ArgumentException(toolGuidance.ForUnavailableCall(call.Name, selectedTools, permitted));
                             var arguments = session!.ValidateArguments(tool, call.Arguments);
                             var policy = await PolicyAsync(projectId, chatId, branchId, tool, arguments, token);
@@ -835,13 +845,13 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     }
                     var seen = (call.Name, call.Arguments, result.ModelContent);
                     var repeated = !result.IsError
-                                   && selectedTools.FirstOrDefault(item => item.ModelDefinition.Name == call.Name) is { } used
+                                   && callable.FirstOrDefault(item => item.ModelDefinition.Name == call.Name) is { } used
                                    && RunsAlongside(used) && !firstReads.TryAdd(seen, call.Id);
                     var message = ToolMessage(call.Id, repeated ? result with { ModelContent = RepeatedRead(firstReads[seen]) } : result);
                     await persist(message, token);
                     context.Add(message);
                     if (!result.IsError
-                        && selectedTools.Any(tool => tool.ModelDefinition.Name == call.Name && tool.ServerId == AppMcpServer.Id
+                        && callable.Any(tool => tool.ModelDefinition.Name == call.Name && tool.ServerId == AppMcpServer.Id
                             && tool.OriginalName is "subtask_wait" or "subtask_stop"))
                         subtaskRuns.Acknowledge(run, result.StructuredContent);
                     toolImages.AddRange(result.Content.Where(item => item.Kind == ToolContentKind.Image)
@@ -850,7 +860,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     learned |= observedResults.Add((call.Name, call.Arguments, result.ModelContent));
                     // A bounded wait timing out is expected while work continues. Repeated snapshots
                     // and replayed terminal results still participate in the normal stall detector.
-                    if (!result.IsError && selectedTools.Any(tool => tool.ModelDefinition.Name == call.Name
+                    if (!result.IsError && callable.Any(tool => tool.ModelDefinition.Name == call.Name
                             && tool.ServerId == AppMcpServer.Id && tool.OriginalName == "subtask_wait")
                         && result.StructuredContent is { ValueKind: JsonValueKind.Object } waitResult
                         && waitResult.TryGetProperty("timedOut", out var timedOut) && timedOut.ValueKind == JsonValueKind.True)

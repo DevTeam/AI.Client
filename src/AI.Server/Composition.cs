@@ -126,7 +126,7 @@ internal sealed class Composition
             // call because the generator declares a limited number of type parameters per overload.
             .Transient<ChatAgent, ContextTokenEstimator,
                 ChatContextCompactor, ChatContextPlanner, KeyringOrFileMasterKeyStore, ModelInstructionComposer,
-                AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance,
+                AdaptiveContextPolicy, ToolResultContextProjector, ToolDiscoveryGuidance, ToolCallStandIn,
                 ToolPolicyResolver, LineDiff, MasterKeyFormat, ProcessCommandRunner, AppWrites, AppMcpServerHost,
                 ExternalToolSessionFactory, ExternalMcpConnector, LocalToolEnvironment, ChatBranchIds, ToolUserInterface, GitWorkspaceDiffReader, GitBrowser,
                 FileExcerptReader, ChatCompletionUsageReader, TokenUsageAggregator, TokenUsageService,
@@ -157,7 +157,7 @@ internal sealed class Composition
                 ChatCompletionEndpoints, FileSystemEndpoints, FilePreviewEndpoints, GitEndpoints, MemoryEndpoints,
                 SkillEndpoints, BrowserAccessEndpoints, UsageEndpoints, HistoryCheckpointEndpoints, UpdateEndpoints,
                 AppGuideEndpoints, ScheduleEndpoints, AppReadTool, AppChatsTool, AppRunsTool, AppProjectsTool, AppSecurityTool, AppSubtaskTool, AppSubtaskWaitTool, AppSubtaskStopTool,
-                AppAskUserTool, AppToolSearchTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
+                AppAskUserTool, AppToolSearchTool, AppCallToolTool, AppContextCompactTool, AppResourcesTool, AppMemoryTool,
                 AppInstructionsTool, AppSkillSearchTool, AppSkillRunTool, AppSkillsTool, AppNavigateTool, AppThemeTool, AppScheduleTool, AppPlanTool,
                 DefaultToolSessionFactory, DirectoryFilePreviewFormat, ArchiveFilePreviewFormat, MediaFilePreviewFormat,
                 MarkupFilePreviewFormat>(Tag.Unique)

@@ -26,6 +26,12 @@ public sealed record ToolRef(
     public const string ToolSearchName = AppPrefix + "tool_search";
 
     /// <summary>
+    /// The provider-facing name of the stand-in through which a tool found by discovery is called
+    /// without its definition joining the request's tool list.
+    /// </summary>
+    public const string CallToolName = AppPrefix + "call_tool";
+
+    /// <summary>
     /// Prefix of the retired optional C# scripting server. Its <c>cs_run</c> now lives in the built-in
     /// server; the prefix is kept only so that calls in older chat history still parse and present.
     /// </summary>

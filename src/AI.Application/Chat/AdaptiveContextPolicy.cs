@@ -203,7 +203,10 @@ public sealed partial class AdaptiveContextPolicy(
             ? Math.Min(profile.MaximumTools, Math.Max(8 - pinnedTools.Count, 2))
             : profile.MaximumTools;
         var query = Words(request).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A compact window cannot afford schemas in its history, which the stand-in relies on: there a
+        // discovered tool joins the list, as before, and the stand-in is not offered.
         var unique = availableTools.GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal).Select(group => group.First())
+            .Where(tool => !profile.Compact || tool.ModelDefinition.Name != ToolRef.CallToolName)
             .Select(tool => (Tool: tool, Words: Words(tool.ModelDefinition.Name).Concat(Words(tool.ModelDefinition.Description))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase))).ToArray();
         // A word most descriptions share ("the", "file", "run") says nothing about which tool a request
@@ -370,7 +373,7 @@ public sealed partial class AdaptiveContextPolicy(
     {
         var name = tool.ModelDefinition.Name;
         if (name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
-            return tool.OriginalName is "ask_user" or "tool_search" or "plan_update" or "spawn_subtask"
+            return tool.OriginalName is "ask_user" or "tool_search" or "call_tool" or "plan_update" or "spawn_subtask"
                 or "skill_search" or "run_skill" or "subtask_wait" or "subtask_stop";
         return name.StartsWith(ToolRef.BuiltInPrefix, StringComparison.Ordinal)
             && tool.OriginalName is "read_text_file" or "write_file" or "edit_file" or "grep_files" or "list_directory"
@@ -389,16 +392,22 @@ public sealed partial class AdaptiveContextPolicy(
     {
         var names = tools.Where(tool => tool.ServerId == AppMcpServer.Id)
             .Select(tool => tool.OriginalName).ToHashSet(StringComparer.Ordinal);
+        // With the stand-in offered, what discovery finds is called through it rather than added.
+        var deferred = names.Contains("call_tool") && names.Contains("tool_search");
         return Modules.Where(module => module.Tools.Any(names.Contains))
-            .Select(module => new ModelInstruction(module.Key, module.Content, 950,
+            .Select(module => new ModelInstruction(module.Key,
+                deferred && module.Key == DiscoveryKey ? DeferredDiscovery : module.Content, 950,
                 ModelInstructionLifetime.Run, Required: true)).ToArray();
     }
 
     // One short contract per capability. Schemas and their contracts share the admission budget.
     private sealed record InstructionModule(string Key, string Content, params string[] Tools);
+    private const string DiscoveryKey = "capability.discovery";
+    private const string DeferredDiscovery = "Discover omitted capabilities with tool_search. Its matches come with inputSchema and do not join the tool list: "
+        + "call one through call_tool with its exact name and an arguments object matching that inputSchema.";
     private static readonly InstructionModule[] Modules =
     [
-        new("capability.discovery", "Discover omitted capabilities with tool_search; returned schemas are callable only when offered.", "tool_search"),
+        new(DiscoveryKey,"Discover omitted capabilities with tool_search; returned schemas are callable only when offered.", "tool_search"),
         new("capability.writes", "Writes require a fresh operationId and the revision just read. On conflict re-read before retrying. Rename or delete chats only when requested; batch archive needs its preview and confirmation.",
             "app_chats", "app_runs", "app_projects", "app_security", "app_memory", "app_instructions", "app_skills", "app_schedule"),
         new("capability.security", "Never infer approval. Outside-grant access needs ask_user for directories (pathKind directories) and access level, then app_read and AddDirectoryGrants if approved. SetProjectSecurity replaces whole sections; preserve fields read. For CLI setup load code-cli-configure before requesting grants.", "app_security"),

@@ -3265,6 +3265,35 @@ public sealed partial class ChatExecutionTests
         public ValueTask DisposeAsync() => _composition.DisposeAsync();
     }
 
+    [Fact]
+    public async Task ACallThroughTheStandInShouldRunTheNamedToolAndLeaveTheToolListAsItWas()
+    {
+        // Adding a discovered tool to the list changes the request's start, and the provider's cache
+        // misses on everything after it; the stand-in runs it with the list unchanged.
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Tools.OfferProcessRun = true;
+        fixture.Tools.OfferCallTool = true;
+        await fixture.SetPolicyAsync("Allow", toolName: "process_run");
+        // The stand-in is offered only outside a compact window.
+        await fixture.SetConnectionLimitsAsync(400_000, 10_000);
+        await fixture.SubmitAsync(new SubmitChatMessageRequest(Guid.NewGuid(), Guid.NewGuid(), "Run command"));
+        var first = await fixture.NextCallAsync();
+        first.Request.Tools!.ShouldContain(tool => tool.Name == ToolRef.CallToolName);
+        first.ToolCalls = [new ChatToolCall("call-1", ToolRef.CallToolName,
+            "{\"name\":\"process_run\",\"arguments\":{\"command\":\"git status\"}}")];
+        first.Answer.SetResult("");
+
+        var second = await fixture.NextCallAsync();
+
+        JsonElement.Parse(fixture.Tools.LastExecutionArguments!).GetProperty("command").GetString().ShouldBe("git status");
+        second.Request.Tools!.Select(tool => tool.Name).ShouldBe(first.Request.Tools!.Select(tool => tool.Name));
+        second.Request.ContextMessages!.ShouldContain(message => message.ToolCalls != null
+            && message.ToolCalls.Any(call => call.Id == "call-1" && call.Name == ToolRef.CallToolName));
+        second.Request.ContextMessages!.Single(message => message.ToolCallId == "call-1").ForModel.ShouldNotContain("could not be called");
+        second.Answer.SetResult("Done.");
+        await fixture.WaitAsync(run => run.Status == ChatRunStatus.Completed);
+    }
+
     private sealed class TestWorkspaceChangeTracker : IWorkspaceChangeTracker
     {
         private readonly Queue<WorkspaceChangeSet> _queued = new();
@@ -3423,6 +3452,12 @@ public sealed partial class ChatExecutionTests
             ToolDescriptor.Basic("mcp_app__plan_update", "plan_update", "Plan", JsonSerializer.Deserialize<JsonElement>("{}")),
             AppMcpServer.Id, "plan_update", "schema");
         public bool OfferToolSearch { get; set; }
+        public bool OfferCallTool { get; set; }
+
+        private static readonly AgentTool CallTool = new(
+            new(ToolRef.CallToolName, "Call a discovered tool", JsonSerializer.Deserialize<JsonElement>("{}")),
+            ToolDescriptor.Basic(ToolRef.CallToolName, "call_tool", "Call a discovered tool", JsonSerializer.Deserialize<JsonElement>("{}")),
+            AppMcpServer.Id, "call_tool", "schema");
 
         private static readonly AgentTool ToolSearch = new(
             new(ToolRef.ToolSearchName, "Discover permitted tools", JsonSerializer.Deserialize<JsonElement>("{}")),
@@ -3438,7 +3473,7 @@ public sealed partial class ChatExecutionTests
                 .. OfferProcessWait ? [ProcessWait] : Array.Empty<AgentTool>(),
                 .. OfferSubtasks ? [SubtaskTool("spawn_subtask", false), SubtaskTool("subtask_wait", true), SubtaskTool("subtask_stop", false)] : Array.Empty<AgentTool>(),
                 .. Broker is null ? Array.Empty<AgentTool>() : [AskUser], .. OfferRunSkill ? [RunSkill] : Array.Empty<AgentTool>(),
-                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
+                .. OfferToolSearch ? [ToolSearch] : Array.Empty<AgentTool>(), .. OfferCallTool ? [CallTool] : Array.Empty<AgentTool>(), .. OfferPlan ? [PlanUpdate] : Array.Empty<AgentTool>(),
                 .. OfferReads ? [ReadTextFile] : Array.Empty<AgentTool>()];
 
         /// <summary>Set to route an ask_user call to the run that is waiting on it.</summary>

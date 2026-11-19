@@ -14,6 +14,12 @@ public interface IToolCatalogRegistry
     ToolCatalogSearch SearchAndPin(ToolRunContext run, string query, int limit, string? server = null);
 
     /// <summary>
+    /// Whether the run's next searches hand back the best matches' schemas, to be called through
+    /// <see cref="AI.Contracts.Tools.ToolRef.CallToolName"/>, instead of pinning them into the tool list.
+    /// </summary>
+    void SetDeferred(ToolRunContext run, bool deferred);
+
+    /// <summary>
     /// Pins the run's tools with these names, given with or without their server prefix, so they
     /// are prioritized for the next model step's schema budget. Returns the full names that were pinned.
     /// </summary>
@@ -27,7 +33,10 @@ public interface IToolCatalogRegistry
 }
 
 /// <param name="Prioritized">Whether the match is pinned for the next model step; others can be pinned by searching their exact name.</param>
-public sealed record ToolCatalogMatch(string Name, string Description, string ServerId, bool Prioritized);
+/// <param name="InputSchema">The match's full input schema when it is to be called through the stand-in rather than pinned.</param>
+public sealed record ToolCatalogMatch(string Name, string Description, string ServerId, bool Prioritized,
+    System.Text.Json.JsonElement? InputSchema = null);
 
 /// <param name="Remaining">How many further tools match beyond the ones returned.</param>
-public sealed record ToolCatalogSearch(IReadOnlyList<ToolCatalogMatch> Tools, int Remaining);
+/// <param name="Deferred">Whether the matches with a schema are called through the stand-in instead of joining the tool list.</param>
+public sealed record ToolCatalogSearch(IReadOnlyList<ToolCatalogMatch> Tools, int Remaining, bool Deferred = false);

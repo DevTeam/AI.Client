@@ -23,6 +23,10 @@ public sealed class ToolDefaultDecision : IToolDefaultDecision
             or "spawn_subtask" or "subtask_wait" or "subtask_stop")
             return "Allow";
 
+        // The stand-in does nothing itself: the tool it names runs under that tool's own policy.
+        if (serverId == AppMcpServer.Id && name == "call_tool")
+            return "Allow";
+
         return "Ask";
     }
 }

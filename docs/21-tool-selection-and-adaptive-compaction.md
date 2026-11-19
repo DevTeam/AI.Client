@@ -110,7 +110,7 @@ pressure, the parent pins `subtask_wait` for the next model step before finishin
 is never restored through discovery.
 
 Core tools receive priority over ordinary relevance within the remaining schema budget: `ask_user`, `tool_search`,
-`plan_update`, `spawn_subtask`, `subtask_wait` and `subtask_stop` from the App server, `read_text_file`, `write_file`,
+`call_tool` (outside compact windows), `plan_update`, `spawn_subtask`, `subtask_wait` and `subtask_stop` from the App server, `read_text_file`, `write_file`,
 `edit_file`, `grep_files`, `list_directory`, `search_files`, `directory_tree`, `process_run` and
 `cs_run` from the built-in server; without the navigation tools a model guessed paths and
 narrowed its way through a repository with dozens of greps. Relevance is word overlap with the English tool
@@ -151,6 +151,31 @@ they do not accumulate permanent pins. A fitting carried tool set still retains 
 Its reply explicitly says that admission depends on the schema budget. The registry is keyed by
 project, chat and branch and is removed when the agent run ends. Search schemas do not contain a
 changing index of omitted names; search results carry those names without changing definitions.
+
+### Calling discovered tools through the stand-in
+
+Outside a compact window the selection also offers the core App tool `mcp_app__call_tool`
+(`ToolRef.CallToolName`), and discovery then leaves the tool list alone. Providers serialize the
+tool definitions near the start of the prompt, so a pinned definition joining the list moved the
+start of every later request and the provider's cache missed on the whole history: in a measured
+DeepSeek run each such addition sent 140–170k tokens uncached against about 22k cached. With the
+stand-in selected, the agent marks the run deferred (`IToolCatalogRegistry.SetDeferred`), and
+`tool_search` pins nothing: its best three matches come back with their full description and
+`inputSchema`, which stay in the history like any other result. The model calls one as
+`call_tool {name, arguments}`. `IToolCallStandIn` takes the call apart before it runs: the assistant
+message keeps the call as written, and the call id, policy, approval, limits and activity are those
+of the named tool, resolved by exact provider-facing name or by the bare name after its server
+prefix; an `arguments` string holding JSON and fields spread beside `name` are accepted. A call that
+cannot be read reaches the stand-in's own server, which refuses it with guidance to search again.
+In a deferred run any permitted tool can be called, through the stand-in or by its own name. The
+`capability.discovery` rule and the discovery guidance describe the stand-in whenever it is
+offered. A compact window does not offer it: there a schema in the history costs as much as one
+in the list, and summaries drop it, so discovery pins definitions as before.
+
+A branch's last tool list is also remembered between turns (`IToolSetMemory`, per chat, branch and
+model, for an hour), so a new turn starts from the list the previous one ended with instead of
+ranking afresh, and a carried list grows into the window's headroom rather than being reselected
+when a required call does not fit the schema share.
 
 ### Current names and recovery after summaries
 

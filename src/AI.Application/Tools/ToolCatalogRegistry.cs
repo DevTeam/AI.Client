@@ -67,9 +67,25 @@ public sealed class ToolCatalogRegistry(IToolConcepts? concepts = null) : IToolC
         return Pin(entry, ranked, limit);
     }
 
+    public void SetDeferred(ToolRunContext run, bool deferred)
+    {
+        if (_entries.TryGetValue(Key.Of(run), out var entry)) entry.Deferred = deferred;
+    }
+
     private static ToolCatalogSearch Pin(Entry entry, AgentTool[] ranked, int limit)
     {
         var matches = ranked.Take(Math.Clamp(limit, 1, 8)).ToArray();
+        if (entry.Deferred)
+        {
+            // The best few come with their whole definition, which stays in the history: the tool list
+            // the request starts with is left as it was, so the provider's cached prefix still holds.
+            var described = matches.Take(MaxPinned).Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
+            return new(matches.Select(tool => described.Contains(tool.ModelDefinition.Name)
+                    ? new ToolCatalogMatch(tool.ModelDefinition.Name, tool.ModelDefinition.Description, tool.ServerId.ToString(), false,
+                        tool.ModelDefinition.InputSchema)
+                    : new ToolCatalogMatch(tool.ModelDefinition.Name, Short(tool.ModelDefinition.Description), tool.ServerId.ToString(), false))
+                .ToArray(), ranked.Length - matches.Length, true);
+        }
         // All searches in this step contribute to the next selection. Its consumer releases the
         // priorities; actual protocol calls are protected separately by the context policy. Only the
         // best few are pinned, because pins narrow the rest of the selection.
@@ -159,6 +175,7 @@ public sealed class ToolCatalogRegistry(IToolConcepts? concepts = null) : IToolC
     private sealed class Entry
     {
         public IReadOnlyList<AgentTool> Tools { get; set; } = [];
+        public bool Deferred { get; set; }
         public ConcurrentDictionary<string, byte> Pinned { get; } = new(StringComparer.Ordinal);
         public ConcurrentDictionary<(string SkillId, string Arguments), byte> Playbooks { get; } = new();
     }

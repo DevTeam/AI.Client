@@ -189,8 +189,14 @@ public sealed partial class AdaptiveContextPolicy(
         // on later steps while it still fits, so consuming the discovery pin cannot evict it.
         var schemaShare = pinnedTools is { Count: > 0 }
             ? profile.UsableTokens / 2 : Math.Max(profile.ToolTokens, retainedTokens);
-        var budget = Math.Min(Math.Min(profile.UsableTokens / 2, schemaShare), Math.Max(floor, profile.UsableTokens
+        var headroom = Math.Min(profile.UsableTokens / 2, Math.Max(floor, profile.UsableTokens
             - Math.Max(profile.UsableTokens / 4, estimator.EstimateMessages(context) + Math.Max(0, trailingInstructionTokens))));
+        var budget = Math.Min(schemaShare, headroom);
+        // A carried set grows into the window's headroom rather than being reselected: a reselection
+        // changes the tool definitions at the very start of the request, so the provider cache misses
+        // on the whole input, which in a large window costs far more than the added schemas do.
+        // A compact window keeps its schema share, where every schema token is history lost.
+        var growthBudget = profile.Compact ? budget : Math.Max(budget, headroom);
         // Prioritized tools, especially those pinned by a routed skill, need only a few unrelated
         // schemas beside them. An omitted capability can be added through tool_search when needed.
         var ordinaryToolLimit = pinnedTools is { Count: > 0 }
@@ -222,7 +228,7 @@ public sealed partial class AdaptiveContextPolicy(
             .ThenByDescending(item => item.Tool.ModelDefinition.Name.StartsWith(ToolRef.AppPrefix, StringComparison.Ordinal))
             .ThenBy(item => item.Tokens).ThenBy(item => item.Tool.ModelDefinition.Name, StringComparer.Ordinal).ToArray();
         var availableTokens = estimator.EstimateTools(availableTools.Select(tool => tool.ModelDefinition).ToArray());
-        ToolSelection Selection(IReadOnlyList<AgentTool> tools, long selectedTokens, string reason)
+        ToolSelection Selection(IReadOnlyList<AgentTool> tools, long selectedTokens, string reason, long? selectionBudget = null)
         {
             var previous = (previousTools ?? []).GroupBy(tool => tool.ModelDefinition.Name, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First().ModelDefinition, StringComparer.Ordinal);
@@ -236,7 +242,7 @@ public sealed partial class AdaptiveContextPolicy(
                 .SequenceEqual(tools.Select(tool => tool.ModelDefinition.Name).Where(previous.ContainsKey));
             if (changed > 0 || previous.Keys.Any(name => !candidates.Any(item => item.Tool.ModelDefinition.Name == name)))
                 reason = "catalog_changed";
-            return new(tools, availableTools.Count, availableTokens, selectedTokens, budget,
+            return new(tools, availableTools.Count, availableTokens, selectedTokens, selectionBudget ?? budget,
                 reason, added, removed, changed, reordered);
         }
         var selected = new List<AgentTool>();
@@ -284,11 +290,11 @@ public sealed partial class AdaptiveContextPolicy(
             var additions = candidates.Where(item => item.Required || item.Discovered || item.Core)
                 .Where(item => !names.Contains(item.Tool.ModelDefinition.Name)).ToArray();
             var carriedTokens = estimator.EstimateTools(carried.Select(tool => tool.ModelDefinition).ToArray());
-            if (carriedTokens <= budget && carriedTokens + GuidanceCost(carried) <= guidanceAllowance)
+            if (carriedTokens <= growthBudget && carriedTokens + GuidanceCost(carried) <= guidanceAllowance)
             {
                 foreach (var item in additions)
                 {
-                    if (item.Tokens > budget - carriedTokens
+                    if (item.Tokens > growthBudget - carriedTokens
                         || carriedTokens + item.Tokens + GuidanceCost(carried.Append(item.Tool)) > guidanceAllowance) continue;
                     carried.Add(item.Tool);
                     carriedTokens += item.Tokens;
@@ -296,9 +302,10 @@ public sealed partial class AdaptiveContextPolicy(
                 // A newly required call must not disappear because the carried set used the space.
                 if (requiredNames.All(name => !byName.ContainsKey(name) || carried.Any(tool => tool.ModelDefinition.Name == name))
                     && additions.Where(item => (item.Discovered || item.Core) && selected.Contains(item.Tool)).All(item => carried.Contains(item.Tool)))
-                    return Selection(carried, carriedTokens, carried.Count > names.Count ? "expanded" : "retained");
+                    return Selection(carried, carriedTokens, carried.Count > names.Count ? "expanded" : "retained",
+                        Math.Max(budget, carriedTokens));
             }
-            selectionReason = carriedTokens > budget ? "pressure" : "discovery";
+            selectionReason = carriedTokens > growthBudget ? "pressure" : "discovery";
             // One deliberate prefix change under pressure. Surviving tools keep their previous order.
             var chosen = selected.Select(tool => tool.ModelDefinition.Name).ToHashSet(StringComparer.Ordinal);
             var ordered = carried.Where(tool => chosen.Remove(tool.ModelDefinition.Name)).ToList();

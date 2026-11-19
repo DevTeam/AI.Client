@@ -590,6 +590,59 @@ public sealed class AdaptiveContextPolicyTests
     }
 
     [Fact]
+    public void ShouldGrowTheCarriedSetIntoLargeWindowHeadroomInsteadOfEvicting()
+    {
+        // A call to a tool the set lacks used to reselect the whole set once the schema share was
+        // full, changing the request's start and missing the provider cache on all of it.
+        var policy = Policy();
+        var connection = Connection(400_000, 10_000);
+        var tools = Enumerable.Range(0, 40).Select(index => Tool($"operation_{index}", new string('x', 4_000))).ToArray();
+        var large = Tool("large", new string('y', 60_000));
+        ChatCompletionMessage[] start = [new("user", "request")];
+        var first = policy.Choose(connection, "request", start, [.. tools, large]);
+        first.Tools.ShouldNotContain(large);
+        ChatCompletionMessage[] called = [.. start,
+            new("assistant", "", [new ChatToolCall("call-1", large.ModelDefinition.Name, "{}")]),
+            new("tool", "Done", ToolCallId: "call-1")];
+        (first.SelectedTokens + _estimator.EstimateTools([large.ModelDefinition])).ShouldBeGreaterThan(first.BudgetTokens);
+
+        var next = policy.Choose(connection, "request", called, [.. tools, large], previousTools: first.Tools);
+
+        next.Tools.ShouldBe([.. first.Tools, large]);
+        next.Reason.ShouldBe("expanded");
+        next.RemovedCount.ShouldBe(0);
+        next.SelectedTokens.ShouldBeLessThanOrEqualTo(next.BudgetTokens);
+        policy.Choose(connection, "request", called, [.. tools, large], previousTools: next.Tools).Tools.ShouldBe(next.Tools);
+    }
+
+    [Fact]
+    public void ShouldStartATurnFromTheToolsItsBranchLastSent()
+    {
+        var clock = new TestClock();
+        var memory = new ToolSetMemory(clock);
+        var chatId = Guid.NewGuid();
+        var branchId = Guid.NewGuid();
+        var alpha = Tool("alpha", "Alpha");
+        var beta = Tool("beta", "Beta");
+        var gamma = Tool("gamma", "Gamma");
+        memory.Recall(chatId, branchId, "model", [alpha, beta]).ShouldBeNull();
+
+        memory.Remember(chatId, branchId, "model", [beta, gamma, alpha]);
+
+        // Sent order is kept, and a tool no longer offered is left out.
+        memory.Recall(chatId, branchId, "model", [alpha, beta]).ShouldBe([beta, alpha]);
+        memory.Recall(chatId, branchId, "other-model", [alpha, beta]).ShouldBeNull();
+        memory.Recall(chatId, Guid.NewGuid(), "model", [alpha, beta]).ShouldBeNull();
+        clock.UtcNow += ToolSetMemory.Lifetime + TimeSpan.FromSeconds(1);
+        memory.Recall(chatId, branchId, "model", [alpha, beta]).ShouldBeNull();
+    }
+
+    private sealed class TestClock : AI.Application.Projects.IClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = new(2026, 11, 19, 12, 0, 0, TimeSpan.Zero);
+    }
+
+    [Fact]
     public void ShouldReportPermissionRemovalAndSchemaChangesWithoutKeepingStaleDefinitions()
     {
         var policy = Policy();

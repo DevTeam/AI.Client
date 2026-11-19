@@ -68,7 +68,7 @@ internal sealed class Composition
                 JsonGlobalSettingsRepository, JsonResourceRepository, JsonReviewRepository, JsonMemoryRepository,
                 JsonProjectInstructionsRepository, ChatRunDispatcher,
                 ModelContentCheckpointService, ModelInstructionRegistry, ToolCatalogRegistry, ToolConcepts, WorkspaceChangeTracker, ChatPlans,
-                WorkspaceUndoService, SubtaskRuns,
+                WorkspaceUndoService, SubtaskRuns, ToolSetMemory,
                 ContextEstimateSamples, AppDataChangeSignal, AppNavigationSignal, AppOperationLog, WorkspaceFileSearch,
                 TokenUsageMeter, JsonLinesTokenUsageLedger, PromptPrefixTracker, UsageCostEstimator, ConnectionRateLimits,
                 JsonHistoryCheckpointRepository, SkillCatalog, SkillRunner, ContextTextTokenizer, ChatScheduler, JsonCommandRuleRepository,

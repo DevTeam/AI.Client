@@ -44,7 +44,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
     ISkillRouting skillRouting, ITokenUsageMeter usageMeter, IHistoryCheckpointService historyCheckpoints,
     IClock clock, IIdGenerator ids, Func<IChatKindPolicyRegistry> kindPolicies, IChatPlans plans,
     IConnectionContextWindowDetector contextWindows, IExecutableLocator executables,
-    Func<IToolAutoApprover> autoApprover, ISubtaskRuns subtaskRuns) : IAgentHarness
+    Func<IToolAutoApprover> autoApprover, ISubtaskRuns subtaskRuns, IToolSetMemory toolSets) : IAgentHarness
 {
     public Task<WorkspaceChangeSet> RunAsync(AgentRunRequest request, IAgentRunSink sink, CancellationToken cancellationToken) =>
         RunCoreAsync(request.ProjectId, request.ChatId, request.BranchId, request.Completion, sink.PersistAsync, sink.TextAsync,
@@ -431,6 +431,9 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                 instructions.Upsert(run, new ModelInstruction(CriteriaKey, CriteriaGate(unsettled), 960,
                     ModelInstructionLifetime.UntilAcknowledged));
             }
+            // The turn starts from the tools its branch's previous turn ended with, so its requests
+            // begin as that turn's did and the provider's cached prefix still applies.
+            sentTools ??= toolSets.Recall(chatId, branchId, request.Model, permitted);
             var composition = instructionComposer.Compose(run, modelContext, configuredConnection);
             var pendingTools = toolCatalog.ConsumePinned(run);
             var selection = contextPolicy.Choose(configuredConnection, request.Message, composition.Messages, permitted,
@@ -483,6 +486,7 @@ public sealed class ChatAgent(IChatCompletionClient completion, Func<IToolSessio
                     : estimator.EstimateMessages([new ChatCompletionMessage("user", composition.Trailing)]), instructions.List(run));
             selectedTools = selection.Tools;
             sentTools = selectedTools;
+            toolSets.Remember(chatId, branchId, request.Model, selectedTools);
             available = selectedTools.Select(item => item.ModelDefinition).ToArray();
             // Check discovery against the final schemas after checkpoints and guidance changed
             // the budget. Never direct the model to a control tool that was itself omitted.

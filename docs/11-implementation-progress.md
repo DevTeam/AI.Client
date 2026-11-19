@@ -939,3 +939,23 @@ types in file previews (now `IMediaTypes`), and Infrastructure reading `ServerOp
 
 Commits: `b5fe8f5f`, `a81bd1c9`, `5da971a6`, `81ea6185`. Checks: `dotnet run --project build -- test-all`
 after each step (2371 passed, 1 skipped); the three eval projects outside the solution build.
+
+## 2026-11-19 — Release tags named by the version
+
+The release now starts from a tag whose name is the version itself: `1.2.3` publishes a release and
+`1.2.3-rc.1` a preview, so the `v` prefix is no longer a part of the convention. Legacy `v1.2.3` tags
+keep starting the same run, and the prefix is dropped from the version the packages, the Release and
+the update catalog carry. The application needed nothing: `UpdateVersion` and `PublishedUpdateFeed`
+already read a tag with or without the prefix.
+
+`.github/workflows/release.yml` gets a `prepare` job ahead of packaging. It parses the name once
+(pushed tag or the manual run's input), rejects anything that is not `<major>.<minor>.<patch>` with an
+optional `-<suffix>`, and refuses a pushed tag whose commit is not on `master`. Both checks fail in
+seconds instead of after six platforms have packaged installers; the parsed version, tag and
+prerelease flag then feed the build and the Release, instead of each job reading the tag again.
+
+Checks: the workflow parses as YAML with the expected jobs and inputs; the `prepare` step was
+extracted from the file and run against a throwaway repository with a bare origin in eight cases —
+`1.2.3`, `1.2.3-rc.1`, legacy `v0.0.70-rc` and manual inputs accepted, `1.2`, `latest` and a tag on a
+side branch rejected — all as expected. A real release run was not started: it publishes a GitHub
+Release and needs a tag.

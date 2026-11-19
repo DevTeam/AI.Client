@@ -1,12 +1,16 @@
 name: Package AI Client
 
+# A release is a tag whose name is the version itself: 1.2.3 publishes a release and 1.2.3-rc.1 a
+# preview. The legacy v-prefixed names (v1.2.3) keep working, so old habits and existing tags are
+# not broken. The name is parsed once in the prepare job, and the same version names the
+# installers, the GitHub Release and the entries of the public update catalog.
 on:
   push:
-    tags: ['v*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v[0-9]*.[0-9]*.[0-9]*']
   workflow_dispatch:
     inputs:
       version:
-        description: Release version (for example 1.0.0)
+        description: Release version (for example 1.2.3 or 1.2.3-rc.1)
         required: true
 
 permissions:
@@ -14,7 +18,63 @@ permissions:
   actions: write
 
 jobs:
+  # Runs before anything is built, so a mistyped tag or a tag on a side branch fails in twenty
+  # seconds instead of after six platforms have packaged installers.
+  prepare:
+    name: Prepare version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The ancestry check below needs the history of master, not only the tagged commit.
+          fetch-depth: 0
+      - name: Read and check the version
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # 1.2.3 and 1.2.3-rc.1; the legacy v prefix is stripped from either before use.
+          pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            ref_name="$GITHUB_REF_NAME"
+          else
+            ref_name="$INPUT_VERSION"
+          fi
+          version="${ref_name#v}"
+          if [[ ! "$version" =~ $pattern ]]; then
+            echo "::error title=Unsupported release name::$ref_name is not a release version. Tag a commit as 1.2.3 or 1.2.3-rc.1; a v prefix is accepted but no longer needed."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # A release publishes what master holds: a tag on a side branch would ship installers
+            # the main line never had.
+            git fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master; then
+              echo "::error title=Not on master::The tag $GITHUB_REF_NAME points at a commit that is not on master. Tag a commit on master instead."
+              exit 1
+            fi
+          fi
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
+          # A pushed tag keeps its exact name, so a legacy v1.2.3 stays the Release's tag; a manual
+          # run names its Release by the version alone.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
   package:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -51,7 +111,7 @@ jobs:
           key: local-ai-${{ matrix.runtime }}-${{ hashFiles('build/Targets/PrepareLocalAiTarget.cs') }}
       - name: Build installers
         shell: pwsh
-        run: dotnet run --project ./build -- package-release --runtime "${{ matrix.runtime }}" --version "${{ inputs.version || github.ref_name }}" --local-ai
+        run: dotnet run --project ./build -- package-release --runtime "${{ matrix.runtime }}" --version "${{ needs.prepare.outputs.version }}" --local-ai
       - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.runtime }}
@@ -59,8 +119,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: package
+    needs: [prepare, package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7
@@ -71,20 +130,17 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_VERSION: ${{ inputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tag="$GITHUB_REF_NAME"
-          else
-            tag="v${INPUT_VERSION#v}"
-          fi
-          prerelease=false
-          if [[ "$tag" == *-* ]]; then prerelease=true; fi
+          # A pushed tag keeps its exact name as the Release's tag, so a legacy v1.2.3 stays v1.2.3;
+          # a manual run names its Release by the version alone, without a v prefix.
+          tag="$TAG"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease="$prerelease"
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease="$PRERELEASE"
           else
-            gh release create "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --generate-notes --prerelease="$prerelease"
+            gh release create "$tag" artifacts/release-packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --generate-notes --prerelease="$PRERELEASE"
           fi
       - name: Refresh public update catalog
         env:

@@ -9,7 +9,7 @@
     <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="3.0.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.4.0" />
-    <PackageVersion Include="JsonSchema.Net" Version="9.6.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.7.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="11.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="11.0.0" />
     <PackageVersion Include="Avalonia" Version="12.1.6" />
@@ -17,12 +17,12 @@
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.6" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.6" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.6" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="Markdig" Version="1.6.0" />
     <PackageVersion Include="Moq" Version="4.21.0" />
-    <PackageVersion Include="Pure.DI" Version="2.5.7" />
-    <PackageVersion Include="Pure.DI.MS" Version="2.5.7" />
+    <PackageVersion Include="Pure.DI" Version="2.5.9" />
+    <PackageVersion Include="Pure.DI.MS" Version="2.5.9" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="WeCantSpell.Hunspell" Version="7.0.1" />
     <PackageVersion Include="System.CommandLine" Version="3.0.0" />

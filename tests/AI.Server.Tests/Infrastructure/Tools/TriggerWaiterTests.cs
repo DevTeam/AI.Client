@@ -128,7 +128,12 @@ public sealed class TriggerWaiterTests
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             var pending = waiter.WaitAsync([new TriggerCondition("file_exists", Path: path)], 3000, null, cancel.Token);
-            await File.WriteAllTextAsync(path, "done", TestContext.Current.CancellationToken);
+            // Written under another name and moved into place: a file created empty and filled
+            // afterwards can be observed in between, and the condition would then report the zero
+            // length it saw instead of the content that arrived a moment later.
+            var staged = Path.Combine(root, "result.staged");
+            await File.WriteAllTextAsync(staged, "done", TestContext.Current.CancellationToken);
+            File.Move(staged, path);
             var result = await pending;
 
             result.Outcome.ShouldBe("triggered");

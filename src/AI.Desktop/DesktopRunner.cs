@@ -46,8 +46,9 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator, ISingl
         }
 
         // The server graph depends on the options, so it gets a container of its own, which is
-        // also ASP.NET's service provider factory and lives exactly as long as the server.
-        using var server = new ServerComposition(options);
+        // also ASP.NET's service provider factory and lives exactly as long as the server. It is
+        // disposed in the last finally below, off the UI thread, never by a using here.
+        var server = new ServerComposition(options);
         IRunningServer? running = null;
         string? error = null;
         try
@@ -80,11 +81,24 @@ internal sealed class DesktopRunner(ISharedHostLocator sharedHostLocator, ISingl
         finally
         {
             // Off the UI thread: once the UI has shut down, a continuation posted back to its
-            // dispatcher would never run and stopping the server would hang the exit.
-            if (running is not null)
+            // dispatcher would never run and the exit would hang with no window left. That holds
+            // for the container too: it waits on its singletons' DisposeAsync synchronously, and
+            // one that still has work to await (an idle MCP server, a pending reply suggestion)
+            // would resume on the dead dispatcher.
+            Task.Run(async () =>
             {
-                Task.Run(() => running.DisposeAsync().AsTask()).GetAwaiter().GetResult();
-            }
+                try
+                {
+                    if (running is not null)
+                    {
+                        await running.DisposeAsync().ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    server.Dispose();
+                }
+            }).GetAwaiter().GetResult();
         }
     }
 

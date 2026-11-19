@@ -38,8 +38,12 @@ public sealed class SkillRouteSkill(
     /// <summary>The catalog forms the router can choose from; a family alone names no id it could return.</summary>
     private static readonly SkillCatalogForm[] RoutedForms = [SkillCatalogForm.Full, SkillCatalogForm.Brief, SkillCatalogForm.Ids];
 
-    /// <summary>The user is waiting on this before the first step of every turn; past it the turn goes on without a route.</summary>
-    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(12);
+    /// <summary>
+    /// The user is waiting on this before the first step of every turn; past it the turn goes on without a route.
+    /// A reasoning model that thinks by default took 3 to 12 seconds here, several calls ended at the former
+    /// 12-second limit, and the turns past it lost the playbook routing would have loaded, team-assemble among them.
+    /// </summary>
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(25);
 
     /// <summary>
     /// The message goes to the router as written. Escaped as \u codes, a message in Russian was
@@ -52,6 +56,10 @@ public sealed class SkillRouteSkill(
     private static readonly Action<ILogger, Guid, Exception?> SkillFailed =
         LoggerMessage.Define<Guid>(LogLevel.Warning, new EventId(1603, "SkillRouteSkillFailed"),
             "Skill routing failed for project {ProjectId}");
+
+    private static readonly Action<ILogger, Guid, double, Exception?> TimedOut =
+        LoggerMessage.Define<Guid, double>(LogLevel.Warning, new EventId(1605, "SkillRouteTimedOut"),
+            "Skill routing for project {ProjectId} timed out after {Seconds} s; the turn goes on without a route");
 
     private static readonly Action<ILogger, string, int, Exception?> CatalogForm =
         LoggerMessage.Define<string, int>(LogLevel.Debug, new EventId(1604, "SkillRouteCatalogForm"),
@@ -71,6 +79,7 @@ public sealed class SkillRouteSkill(
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
+            TimedOut(logger, invocation.ProjectId, Deadline.TotalSeconds, null);
             return new SkillExecutionResult("Failed", "Skill routing timed out.", invocation.CurrentChatId);
         }
         catch (Exception error)
@@ -127,7 +136,7 @@ public sealed class SkillRouteSkill(
             CatalogForm(logger, offer.Form, offer.Skills.Count, null);
             request = new ChatCompletionRequest(connection.BaseUrl, connection.Model,
                 await secrets.GetAsync("connection", connection.Id, token), "Route the request", connection.Id, conversation,
-                ReasoningEffort: connection.ReasoningEffort) { ContextMessages = plan.Messages };
+                ReasoningEffort: Effort(connection.ReasoningEffort)) { ContextMessages = plan.Messages };
             offered = offer.Skills;
             break;
         }
@@ -170,6 +179,17 @@ public sealed class SkillRouteSkill(
             ? items.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
                 .Select(item => item.GetString()!.Trim()).Where(known.Contains).Distinct(StringComparer.Ordinal).Take(limit).ToArray()
             : [];
+
+    /// <summary>
+    /// Picking ids from a list needs no deliberation, and the person waits for it. The effort is lowered
+    /// only where the connection already sends one, so an endpoint that rejects the parameter never receives it.
+    /// </summary>
+    private static string? Effort(string? configured) => configured switch
+    {
+        "none" or "minimal" => configured,
+        { Length: > 0 } => "low",
+        _ => null
+    };
 
     /// <summary>A tool is offered as "name: description"; the name is the part the answer repeats.</summary>
     private static string ToolName(string tool) => tool.Split(':', 2)[0].Trim();

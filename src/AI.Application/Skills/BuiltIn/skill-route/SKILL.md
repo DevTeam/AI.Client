@@ -41,7 +41,9 @@ Choose:
   shared policy. When no working skill fits substantial independently executable work, choose
   chat-execution-select to apply that policy and continue the requested task. Choose team-assemble first for substantial independent
   areas that need continuing coordination and fixed contracts — for example an API and its UI,
-  or independent repairs across several services — or an explicit request for a team. A bounded
+  or independent repairs across several services — or an explicit request for a team, in any
+  language: a request to use a team ("команда", "командой") to split or parallelize the work asks
+  for team-assemble, not for a shell command. A bounded
   comparison, independent lookups or sections of one output normally use spawn_subtask from the
   working skill. Mentioning parallel work alone does not require a team. Small edits, localized
   bugs and explanations stay with their working skill; a broad bug is not excluded just because

@@ -135,6 +135,18 @@ public class SkillRouteSkillTests
         _requests.Single().Model.ShouldBe("fast-model");
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("high", "low")]
+    [InlineData("minimal", "minimal")]
+    public async Task ShouldLowerTheReasoningEffortOnlyWhereTheConnectionSendsOne(string? configured, string? sent)
+    {
+        await CreateRouting("{\"skills\":[],\"tools\":[]}", effort: configured)
+            .RouteAsync(Run, [new ChatCompletionMessage("user", "Create a project")], [], TestContext.Current.CancellationToken);
+
+        _requests.Single().ReasoningEffort.ShouldBe(sent);
+    }
+
     [Fact]
     public async Task ShouldSkipAnOversizedRoutingCatalogueOnASmallConnection()
     {
@@ -150,7 +162,7 @@ public class SkillRouteSkillTests
         new(new ChatToolDefinition(name, description, JsonElement.Parse("{}")), null!, Guid.Empty, name, "");
 
     private SkillRouting CreateRouting(string answer, bool routeSkills = true, long? window = null, string? subtaskModel = null,
-        ProjectDetails? project = null)
+        ProjectDetails? project = null, string? effort = null)
     {
         var now = DateTimeOffset.UtcNow;
         var chats = new Mock<IChatService>(MockBehavior.Strict);
@@ -161,7 +173,7 @@ public class SkillRouteSkillTests
         var settings = new Mock<IGlobalSettingsRepository>(MockBehavior.Strict);
         settings.Setup(item => item.LoadAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GlobalSettings([new ConnectionSettings(_connectionId, "Main", "https://example.test/v1",
-                    "test-model", true, true, false, ContextWindowTokens: window),
+                    "test-model", true, true, false, ContextWindowTokens: window, ReasoningEffort: effort),
                 .. subtaskModel is null ? Array.Empty<ConnectionSettings>() : [new ConnectionSettings(Guid.CreateVersion7(), "Fast",
                     "https://example.test/v1", subtaskModel, true, false, false, ForSubtasks: true, ContextWindowTokens: window)]],
                 [], []) { ChatAutomation = new ChatAutomationSettings(RouteSkills: routeSkills) });

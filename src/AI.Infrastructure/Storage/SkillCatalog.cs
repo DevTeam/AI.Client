@@ -4,12 +4,17 @@ using AI.Application.Projects;
 using AI.Application.Skills;
 using AI.Contracts.FileSystem;
 using AI.Contracts.Skills;
+using Microsoft.Extensions.Logging;
 using Pure.DI;
 
 /// <summary>Built-in, user and project SKILL.md files. Writes replace one file atomically.</summary>
 public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IUserStorageLocation location,
-    IFileSystem files, IProjectService projects) : ISkillCatalog, IDisposable
+    IFileSystem files, IProjectService projects, ILogger<SkillCatalog> logger) : ISkillCatalog, IDisposable
 {
+    private static readonly Action<ILogger, string, string, Exception?> Skipped =
+        LoggerMessage.Define<string, string>(LogLevel.Warning, new EventId(1301, "SkillFileSkipped"),
+            "SkillFileSkipped Path={Path} Reason={Reason}");
+
     private readonly AsyncGate _gate = new();
 
     public void Dispose() => _gate.Dispose();
@@ -97,7 +102,12 @@ public sealed class SkillCatalog([Tag("built-in")] ISkillCatalog builtIns, IUser
             if (string.IsNullOrEmpty(id)) continue;
             if (path != PathFor(scope, projectId, id)) continue;
             var content = await files.ReadTextAsync(path, cancellationToken);
-            if (content is not null) skills.Add(SkillMarkdown.Parse(content, scope, projectId));
+            if (content is null) continue;
+            // A file edited outside the app may break the rules a save enforces; skipping it keeps
+            // every other skill, and every run that lists them, working.
+            try { skills.Add(SkillMarkdown.Parse(content, scope, projectId)); }
+            catch (Exception error) when (error is ArgumentException or FormatException or System.Text.Json.JsonException)
+            { Skipped(logger, path, error.Message, null); }
         }
         return skills.OrderBy(skill => skill.Name, StringComparer.Ordinal).ToArray();
     }

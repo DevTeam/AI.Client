@@ -16,8 +16,8 @@ the `id` saves a new skill and deletes the old one. Built-in skills stay read-on
 are deleted with their project.
 
 Frontmatter requires `id`, `name` (up to 120 characters), `description` (up to 1000, so it can
-list the phrasings routing matches) and a JSON Schema object on the `parameters` line. Optional `aliases` is a JSON array of up to 8 short commands spelled like an id, for example
-`aliases: ["compact"]`: typing one in full after `/` puts the skill first in the list. A row found
+list the phrasings routing matches) and a JSON Schema object on the `parameters` line. Optional `aliases` is a JSON array of up to 8 short commands spelled like an id, except that an alias
+may also start with a digit (`1c-code`) or end in `#` (`c#`), for example `aliases: ["compact"]`: typing one in full after `/` puts the skill first in the list. A row found
 by an alias (in full, by its start, or by its letters in order, so `/coma` still finds it) leads with
 the best matching `/alias`, highlighted, and names the skill after it; the chip keeps the name. Also,
 `mcp_app__skill_search` and `app_read resource=Skills` find the skill by it. An alias never replaces the id,

@@ -27,7 +27,7 @@ public static class SkillMarkdown
             ? JsonSerializer.Deserialize<string[]>(aliasesText) ?? [] : [];
         if (aliases.Length > 8 || aliases.Any(alias => !IsAlias(alias) || alias == id)
             || aliases.Distinct(StringComparer.Ordinal).Count() != aliases.Length)
-            throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id, optionally ending in #, and different from it.");
+            throw new ArgumentException("Skill aliases are up to 8 distinct commands spelled like an id, which may also start with a digit and end in #, and different from it.");
         var icon = Field("icon");
         if (icon is not null && !SkillIcons.IsValid(icon))
             throw new ArgumentException($"Skill icon must be one of: {string.Join(", ", SkillIcons.Names)}; "
@@ -81,11 +81,13 @@ public static class SkillMarkdown
         return string.Join('\n', lines.Skip(end + 1)).Trim();
     }
 
+    // An alias is only ever compared as text, so unlike an id it may start with a digit, as "1c-code" does.
     private static bool IsAlias(string text) =>
-        IsCommand(text) || text.Length is >= 2 and <= 64 && text[^1] == '#' && IsCommand(text[..^1]);
+        IsCommand(text, true) || text.Length is >= 2 and <= 64 && text[^1] == '#' && IsCommand(text[..^1], true);
 
-    private static bool IsCommand(string text) =>
-        text.Length is >= 1 and <= 64 && text[0] is >= 'a' and <= 'z' && text[^1] != '-'
+    private static bool IsCommand(string text, bool digitFirst = false) =>
+        text.Length is >= 1 and <= 64 && (text[0] is >= 'a' and <= 'z' || digitFirst && text[0] is >= '0' and <= '9')
+        && text[^1] != '-'
         && text.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
     private static JsonElement Schema(string text, string field)

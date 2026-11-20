@@ -7,6 +7,7 @@ using AI.Contracts.Skills;
 using AI.Infrastructure.Storage;
 using AI.Infrastructure.Tests.Storage;
 using AI.Server.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shouldly;
 using Xunit;
@@ -36,7 +37,7 @@ public sealed class SkillCatalogTests
             .ReturnsAsync(Project(projectId));
         using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),
             Mock.Of<IUserStorageLocation>(location => location.RootDirectory == "skills-test"),
-            new MemoryFileSystem(), projects.Object);
+            new MemoryFileSystem(), projects.Object, NullLogger<SkillCatalog>.Instance);
 
         var user = await catalog.SaveAsync(new SkillWriteRequest("User", null, Document), CancellationToken.None);
         user.Status.ShouldBe("Saved");
@@ -67,12 +68,31 @@ public sealed class SkillCatalogTests
     {
         using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),
             Mock.Of<IUserStorageLocation>(location => location.RootDirectory == "skills-test"),
-            new MemoryFileSystem(), Mock.Of<IProjectService>());
+            new MemoryFileSystem(), Mock.Of<IProjectService>(), NullLogger<SkillCatalog>.Instance);
         var content = Document.Replace("explain-project", id, StringComparison.Ordinal);
 
         var result = await catalog.SaveAsync(new SkillWriteRequest("User", null, content), CancellationToken.None);
 
         result.Status.ShouldBe("Rejected");
+    }
+
+    [Fact]
+    public async Task ShouldSkipAnInvalidFileAndKeepTheOtherSkills()
+    {
+        var files = new MemoryFileSystem();
+        using var catalog = new SkillCatalog(new BuiltInSkillCatalog(),
+            Mock.Of<IUserStorageLocation>(location => location.RootDirectory == "skills-test"),
+            files, Mock.Of<IProjectService>(), NullLogger<SkillCatalog>.Instance);
+        (await catalog.SaveAsync(new SkillWriteRequest("User", null, Document), CancellationToken.None)).Status.ShouldBe("Saved");
+        var broken = Document.Replace("explain-project", "broken-aliases", StringComparison.Ordinal)
+            .Replace("tools: []", "tools: []\naliases: [\"Bad Alias\"]", StringComparison.Ordinal);
+        await files.WriteTextAsync(Path.Combine("skills-test", "skills", "user", "broken-aliases", "SKILL.md"), broken,
+            CancellationToken.None);
+
+        var skills = await catalog.ListAsync(null, CancellationToken.None);
+
+        skills.ShouldContain(skill => skill.Id == "explain-project");
+        skills.ShouldNotContain(skill => skill.Id == "broken-aliases");
     }
 
     private static ProjectDetails Project(Guid id) => new(id, "Test", "", DateTimeOffset.UtcNow,

@@ -57,6 +57,15 @@ public class SkillMarkdownTests
     }
 
     [Fact]
+    public void ShouldAllowDigitFirstAliasesWithoutChangingIdSyntax()
+    {
+        SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", "kind: playbook\naliases: [\"1c-code\", \"1c\", \"1c#\"]\n"), "User")
+            .Aliases.ShouldBe(["1c-code", "1c", "1c#"]);
+        Should.Throw<ArgumentException>(() =>
+            SkillMarkdown.Parse(Playbook.Replace("id: project-describe-short", "id: 1c-code"), "User"));
+    }
+
+    [Fact]
     public void ShouldReadIcon()
     {
         SkillMarkdown.Parse(Playbook, "User").Icon.ShouldBeNull();
@@ -86,6 +95,8 @@ public class SkillMarkdownTests
     [InlineData("[\"#\"]")]
     [InlineData("[\"c##\"]")]
     [InlineData("[\"c#script\"]")]
+    [InlineData("[\"1c-\"]")]
+    [InlineData("[\"1C\"]")]
     public void ShouldRejectInvalidAliases(string aliases) =>
         Should.Throw<ArgumentException>(() =>
             SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", $"kind: playbook\naliases: {aliases}\n"), "User"));

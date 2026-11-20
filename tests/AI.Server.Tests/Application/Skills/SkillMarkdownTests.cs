@@ -101,11 +101,20 @@ public class SkillMarkdownTests
         Should.Throw<ArgumentException>(() =>
             SkillMarkdown.Parse(Playbook.Replace("kind: playbook\n", $"kind: playbook\naliases: {aliases}\n"), "User"));
 
+    [Fact]
+    public void ShouldKeepAnMcpToolNameAsTheServerSpellsIt()
+    {
+        var skill = SkillMarkdown.Parse(Playbook.Replace("tools: [\"app_read\"]", "tools: [\"1C_EditMetadata\",\"get-file\"]"), "User");
+
+        skill.AllowedTools.ShouldBe(["1C_EditMetadata", "get-file"]);
+    }
+
     [Theory]
     [InlineData("kind: playbook", "kind: script")]
     [InlineData("kind: playbook", "kind: executor")]
     [InlineData("tools: [\"app_read\"]", "tools: [\"app_read\"]\nresult: {\"type\":\"object\"}")]
-    [InlineData("tools: [\"app_read\"]", "tools: [\"App-Read\"]")]
+    [InlineData("tools: [\"app_read\"]", "tools: [\"app.read\"]")]
+    [InlineData("tools: [\"app_read\"]", "tools: [\"app read\"]")]
     [InlineData("kind: playbook\n", "")]
     public void ShouldRejectInconsistentKinds(string from, string to)
     {

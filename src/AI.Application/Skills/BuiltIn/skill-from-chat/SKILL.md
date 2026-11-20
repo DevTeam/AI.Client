@@ -21,7 +21,9 @@ When naming a skill in visible answers, link its name with
 [Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
 When naming a tool, use
 [Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
-Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+Use real skill ids and real tool names from the catalog; for an MCP tool use its name without
+the `mcp_<server id>__` prefix (`toolName=1C_EditMetadata`), since that prefix changes when the
+server is added again or settings are imported;
 URL-encode query values. Skill links use the effective current-project catalog. For another
 project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
 The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the

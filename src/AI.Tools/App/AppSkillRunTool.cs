@@ -6,11 +6,29 @@ using AI.Contracts.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 [McpServerToolType]
 public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry catalog) : IAppTool
 {
     public McpServerTool Create(ToolRunContext run, IAppToolReply reply) => new Session(runner, catalog, run, reply).Create();
+
+    /// <summary>
+    /// A playbook names an MCP tool without its mcp_&lt;server id&gt;__ prefix, which differs per
+    /// installation, so the model is handed the names it calls the tools by in this run. A name
+    /// no tool here carries is kept as written, so the model can still tell it is missing.
+    /// </summary>
+    public static JsonElement WithCallNames(JsonElement output, IReadOnlyList<string> declared, IReadOnlyList<string> pinned)
+    {
+        var names = declared
+            .SelectMany(name => pinned.Where(call => call == name || call.EndsWith("__" + name, StringComparison.Ordinal))
+                .DefaultIfEmpty(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var node = JsonNode.Parse(output.GetRawText())!.AsObject();
+        node["tools"] = new JsonArray(names.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray());
+        return JsonSerializer.SerializeToElement(node);
+    }
 
     private sealed class Session(ISkillRunner runner, IToolCatalogRegistry catalog, ToolRunContext run, IAppToolReply reply)
     {
@@ -57,7 +75,10 @@ public sealed class AppSkillRunTool(ISkillRunner runner, IToolCatalogRegistry ca
                         Output = null
                     }, false);
                 if (output.TryGetProperty("tools", out var tools))
-                    catalog.Pin(run, tools.EnumerateArray().Select(tool => tool.GetString() ?? string.Empty));
+                {
+                    var declared = tools.EnumerateArray().Select(tool => tool.GetString() ?? string.Empty).ToArray();
+                    result = result with { Output = WithCallNames(output, declared, catalog.Pin(run, declared)) };
+                }
             }
             return reply.Reply(result, result.Status is "Failed" or "Cancelled");
         }

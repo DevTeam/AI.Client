@@ -87,8 +87,8 @@ reads at most 5 MiB and does not crawl sites. Follow API pagination separately f
 6. Read the conventions with `app_read` resource=Skills query=skill-create. Produce a valid local
    SKILL.md with id, name, icon, kind, description and a one-line parameters JSON schema; use
    kind=playbook with tools for tool-driven behavior, or generic with a result schema for pure
-   parameter-driven processing. Never import kind=executor. Use only verified local tool names
-   in tools and rewrite all foreign calls, platform assumptions and asset references consistently.
+   parameter-driven processing. Never import kind=executor. Use only verified local tool names,
+   MCP tools by their bare name without the `mcp_<server id>__` prefix, in tools and rewrite all foreign calls, platform assumptions and asset references consistently.
    Remove unsupported frontmatter/runtime assumptions, preserve the goal and license attribution,
    and keep the document within 48,000 characters. Add provenance in the body: source URL, commit
    or version when known, license location, tool mapping and adaptation notes. Do not invent a pin
@@ -165,7 +165,9 @@ When naming a skill in visible answers, link its name with
 [Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
 When naming a tool, use
 [Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
-Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+Use real skill ids and real tool names from the catalog; for an MCP tool use its name without
+the `mcp_<server id>__` prefix (`toolName=1C_EditMetadata`), since that prefix changes when the
+server is added again or settings are imported;
 URL-encode query values. Skill links use the effective current-project catalog. For another
 project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
 The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the

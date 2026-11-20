@@ -197,7 +197,9 @@ public sealed class SkillRunner(ISkillCatalog catalog, [Tag("chat-rename")] ISki
         });
         return new SkillExecutionResult("Completed",
             "Loaded the playbook. Follow output.instructions now, in this turn, with your ordinary tools; "
-            + "output.context holds the current project, chat and branch ids, so do not look them up. Write every "
+            + "output.context holds the current project, chat and branch ids, so do not look them up. output.tools lists "
+            + "the tools by the names you call them; a tool the instructions name without the mcp_<server id>__ prefix "
+            + "is the tool in your list whose name ends with __ and that name. Write every "
             + "question, option label, title and answer in the user's language: quoted labels in the instructions, "
             + "including the \"(Recommended)\" suffix, are examples to translate. Anything the instructions have you "
             + "show the user, such as a report, is part of your final answer; a closing line they ask for goes after "

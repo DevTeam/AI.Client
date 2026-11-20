@@ -14,7 +14,9 @@ tools: ["app_read","ask_user","app_skills"]
    under a new id in the User scope.
 3. Apply `change` and keep the conventions from `skill-create`: the id system, an `icon` from
    its list, one-line JSON schemas, and playbooks that list `tools` and have no `result`. Leave
-   the `revision` and `enabled` lines to the application.
+   the `revision` and `enabled` lines to the application. Replace every full MCP tool name
+   (`mcp_` followed by 32 hex digits and `__`) in `tools` and the body by its bare name, and
+   include that in the before and after.
 4. Show only the changed lines as a short before and after, and call `ask_user` (answerStyle='buttons') labelled "Save"
    with "Save (Recommended)" and "Discard"; a typed answer is a further change. Dismissed saves;
    expired or interrupted discards.
@@ -28,7 +30,9 @@ When naming a skill in visible answers, link its name with
 [Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
 When naming a tool, use
 [Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
-Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+Use real skill ids and real tool names from the catalog; for an MCP tool use its name without
+the `mcp_<server id>__` prefix (`toolName=1C_EditMetadata`), since that prefix changes when the
+server is added again or settings are imported;
 URL-encode query values. Skill links use the effective current-project catalog. For another
 project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
 The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the

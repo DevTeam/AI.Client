@@ -55,6 +55,11 @@ Skill conventions:
   `result` schema. `kind: playbook` is followed by the calling model with its ordinary tools,
   lists them in `tools` and has no `result`. Prefer a playbook whenever the skill reads or
   changes application data or files.
+- Name an MCP tool, in `tools` and in the body, by its bare name: the part after `__` in
+  `mcp_<server id>__1C_EditMetadata` is `1C_EditMetadata`. The server id in the prefix belongs
+  to one installation and changes when the server is added again or settings are imported, so
+  a full name stops matching; the bare name matches the tool on whatever server provides it.
+  When two enabled servers offer the same name, add the server's display name in the body.
 - `parameters` is a one-line JSON Schema object with `additionalProperties` false; keep optional
   everything the playbook can ask for.
   Put input fields inside `properties`, not at the schema root, for example:
@@ -105,7 +110,9 @@ When naming a skill in visible answers, link its name with
 [Skill name](aiclient://navigate/settings.skills?skillId=EXACT_SKILL_ID).
 When naming a tool, use
 [Tool name](aiclient://navigate/settings.tools?toolName=EXACT_TOOL_CALL_NAME).
-Use real skill ids and full tool call names including the MCP server prefix from the catalog;
+Use real skill ids and real tool names from the catalog; for an MCP tool use its name without
+the `mcp_<server id>__` prefix (`toolName=1C_EditMetadata`), since that prefix changes when the
+server is added again or settings are imported;
 URL-encode query values. Skill links use the effective current-project catalog. For another
 project append &projectId=REAL_PROJECT_ID. Link saved skills in the completion report too.
 The app supplies icons; do not add emoji or Markdown attributes. Links open settings or the

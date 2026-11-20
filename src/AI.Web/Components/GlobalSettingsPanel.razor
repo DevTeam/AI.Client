@@ -723,9 +723,14 @@
             : tool.IsLegacyCSharp && tool.Name == LegacyCSharpMcpServer.ScriptToolName ? DefaultMcpServer.Id
             : tool.ServerPrefix.Length > 6 && tool.ServerPrefix.StartsWith("mcp_", StringComparison.Ordinal)
                 && Guid.TryParse(tool.ServerPrefix[4..^2], out var id) ? id : null;
+        // A server id in the prefix belongs to the installation the link was written in; once the
+        // server is added again or settings are imported it is gone, and the name alone finds the tool.
+        var staleServer = serverId is { } named && _globalMcpServers.All(item => item.Id != named);
+        if (staleServer) serverId = null;
         var matches = _toolPolicies.Where(item => item.Name == tool.Name
             && (serverId is null || item.ServerId == serverId)).ToArray();
-        if (serverId is null && tool.ServerPrefix.Length == 0 && matches.Select(item => item.ServerId).Distinct().Count() == 1)
+        if (serverId is null && (tool.ServerPrefix.Length == 0 || staleServer)
+            && matches.Select(item => item.ServerId).Distinct().Count() == 1)
             serverId = matches[0].ServerId;
         if (serverId is null || !_globalMcpServers.Any(item => item.Id == serverId))
         {

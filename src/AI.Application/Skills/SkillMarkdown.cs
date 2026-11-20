@@ -51,9 +51,11 @@ public static class SkillMarkdown
             ? JsonSerializer.Deserialize<string[]>(toolsText) ?? [] : [];
         if (tools.Length > 0 && kind != SkillKinds.Playbook)
             throw new ArgumentException("Only playbooks declare tools; a generic skill receives its data in parameters.");
+        // MCP servers name tools in any case (1C_EditMetadata), and a skill names them without the
+        // per-installation mcp_<server id>__ prefix, so the name is kept as the server spells it.
         if (tools.Any(tool => tool.Length is < 1 or > 64
-                || tool.Any(character => character is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '_'))))
-            throw new ArgumentException("Tool names must be lowercase letters, digits and underscores.");
+                || tool.Any(character => character is not (>= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-'))))
+            throw new ArgumentException("Tool names must be letters, digits, underscores and hyphens, up to 64 characters.");
         var enabled = Field("enabled") is not { } enabledText || bool.Parse(enabledText);
         var revision = Field("revision") is { } revisionText
             ? long.Parse(revisionText, System.Globalization.CultureInfo.InvariantCulture) : 0;

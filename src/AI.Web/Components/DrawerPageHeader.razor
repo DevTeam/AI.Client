@@ -1,0 +1,26 @@
+@* The header of a page laid over a drawer's list (import, export, a path picker): Back, then the
+   way here — the drawer's name, a chevron, the page's name — and a one-line subtitle, so it is
+   clear what Back returns to. *@
+<header class="drawer-header drawer-page-header">
+    <button class="icon-action" type="button" title="@($"Back to {Trail} (Esc)")" aria-label="@($"Back to {Trail}")" @onclick="() => OnBack.InvokeAsync()"><AppIcon Name="chevron-left" /></button>
+    <div class="drawer-heading">
+        <h2 id="@TitleId"><span class="drawer-trail">@Trail</span><AppIcon Name="chevron-right" Class="drawer-trail-separator" /><span>@Title</span></h2>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <p title="@Subtitle">@Subtitle</p>
+        }
+    </div>
+</header>
+
+@code {
+    /// <summary>The drawer the page belongs to, as its header names it.</summary>
+    [Parameter, EditorRequired] public string Trail { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    [Parameter] public string? TitleId { get; set; }
+
+    [Parameter] public EventCallback OnBack { get; set; }
+}

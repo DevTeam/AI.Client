@@ -6,13 +6,7 @@
    another drawer opens, unless an archive operation is still running. *@
 <div class="permissions-drawer-backdrop"></div>
 <aside class="permissions-drawer archive-drawer" aria-label="Chat archive" @onclick:stopPropagation="true">
-    <header>
-        <div class="archive-title">
-            <AppIcon Name="archive" />
-            <div><h2>Chat archive</h2><p>@ProjectName</p></div>
-        </div>
-        <button class="icon-action" type="button" title="Close archive" aria-label="Close archive" @ref="_closeButton" disabled="@_busy" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
-    </header>
+    <DrawerHeader Icon="archive" Title="Chat archive" Subtitle="@ProjectName" CloseLabel="Close archive" CloseDisabled="@_busy" OnClose="CloseAsync" />
     <nav class="archive-tabs" aria-label="Archive view">
         <button type="button" title="Browse archived chats and restore them to the project" class="@(!_cleanup ? "selected" : "")" aria-pressed="@(!_cleanup)" disabled="@_busy" @onclick="() => SwitchView(false)">
             <AppIcon Name="archive" /><span>Archived</span><span class="menu-count">@ArchivedCount</span>
@@ -236,7 +230,7 @@
     [Parameter] public EventCallback<ChatArchiveResult> Deleted { get; set; }
     [Parameter] public EventCallback SuggestionsChanged { get; set; }
     public bool IsBusy => _busy;
-    private ElementReference _closeButton, _selectAll;
+    private ElementReference _selectAll;
     private bool _cleanup, _busy, _previewing, _includePinned, _suggestions, _confirmingBulkDelete;
     private Guid? _confirmingDeleteId;
     private string _age = "30", _before = "", _timeZone = "", _query = "";
@@ -272,7 +266,6 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) await _closeButton.FocusAsync();
         // A native checkbox can only show the mixed state through its DOM property.
         if (_module is not null && _selectAll.Context is not null)
         {

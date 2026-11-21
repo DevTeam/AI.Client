@@ -178,7 +178,10 @@ export function watchDrawerDismiss(dotNetReference) {
         // Not one that is only sliding out (drawerTransitions.js): it is closed already.
         const drawer = document.querySelector(".permissions-drawer:not(.is-leaving), .review-workspace:not(.is-leaving)");
         const target = event.target instanceof Element ? event.target : null;
-        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .modal-backdrop, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
+        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .modal-backdrop, .drawer-resizer, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
+        // A small drawer docked beside the chat on a wide window (drawerLayout.js) stays while the
+        // chat is used; its close button and Escape still close it.
+        if (drawer.matches(".permissions-drawer:not(.is-wide)") && window.matchMedia("(min-width: 100rem)").matches) return;
         // Same reason as on Escape: commit the focused field before the settings drawer saves.
         if (document.activeElement instanceof HTMLElement && drawer.contains(document.activeElement)) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnDrawerDismissed");

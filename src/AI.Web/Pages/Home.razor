@@ -1130,11 +1130,8 @@
     @if (_isProjectSettingsOpen && _selectedProject is not null)
     {
         <div class="permissions-drawer-backdrop"></div>
-        <aside @attributes="@(ControlHints.Attributes("project.settings", nativeTooltip: false))" class="permissions-drawer project-settings-drawer" aria-label="Project settings">
-            <header>
-                <div class="project-settings-heading"><h2>Project settings</h2><p title="@_selectedProject.Name">@_selectedProject.Name</p></div>
-                <button class="icon-action" type="button" title="Close" aria-label="Close project settings" @onclick="RequestCloseProjectSettingsAsync"><AppIcon Name="drawer-close" /></button>
-            </header>
+        <aside @attributes="@(ControlHints.Attributes("project.settings", nativeTooltip: false))" class="permissions-drawer project-settings-drawer drawer-sheet" aria-label="Project settings">
+            <DrawerHeader Icon="project" Title="Project settings" Subtitle="@_selectedProject.Name" CloseLabel="Close project settings" OnClose="RequestCloseProjectSettingsAsync" />
             <div class="permissions-content project-settings-content">
                 <EditForm Model="_editor" class="settings-form project-settings-form">
                     <DataAnnotationsValidator />
@@ -1165,10 +1162,8 @@
         @* Like the other right-hand drawers: a tinted backdrop, and a press outside closes it. *@
         <div class="permissions-drawer-backdrop"></div>
         <aside @attributes="@(ControlHints.Attributes("search", nativeTooltip: false))" class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
-            <header>
-                <h2>Search</h2>
-                <button @attributes="@(ControlHints.Attributes("search.close", "Close (Esc)"))" class="icon-action" type="button" aria-label="Close search" @onclick="CloseSearchPanelAsync"><AppIcon Name="drawer-close" /></button>
-            </header>
+            <DrawerHeader Icon="search" Title="Search" Subtitle="Messages in every chat" CloseLabel="Close search"
+                          CloseAttributes="@(ControlHints.Attributes("search.close", "Close (Esc)"))" OnClose="CloseSearchPanelAsync" />
             <div class="search-drawer-controls">
                 @* A combobox in the ARIA sense: focus stays in the box while Up/Down move the active
                    result, so the query can still be edited between steps. *@
@@ -1345,8 +1340,8 @@ else if (_guideInvitation is { } guideInvitation)
 @if (_notificationsOpen)
 {
     <div class="permissions-drawer-backdrop"></div>
-    <section @attributes="@(ControlHints.Attributes("notifications", nativeTooltip: false))" class="permissions-drawer notifications-drawer" aria-label="Notifications">
-        <header><h2>Notifications</h2><button class="icon-action" type="button" title="Close notifications" aria-label="Close notifications" @onclick="ToggleNotificationsAsync"><AppIcon Name="drawer-close" /></button></header>
+    <section @attributes="@(ControlHints.Attributes("notifications", nativeTooltip: false))" class="permissions-drawer notifications-drawer drawer-sheet" aria-label="Notifications">
+        <DrawerHeader Icon="bell" Title="Notifications" Subtitle="What happened in your chats" CloseLabel="Close notifications" OnClose="ToggleNotificationsAsync" />
         <div class="notification-filters">
             <button type="button" class="@(!_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = false">All</button>
             <button type="button" class="@(_showAttentionOnly ? "selected" : string.Empty)" @onclick="() => _showAttentionOnly = true">Needs attention</button>

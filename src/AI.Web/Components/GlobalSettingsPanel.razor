@@ -18,18 +18,17 @@
 @implements IAsyncDisposable
 
 <div class="permissions-drawer-backdrop"></div>
-<aside @attributes="@(ControlHints.Attributes(GuideSectionTarget, nativeTooltip: false))" class="permissions-drawer settings-drawer @(Section == "Settings" ? "is-narrow" : null)" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
-    <header>
-        <div><h2>@Title</h2><p>@Description</p></div>
-        <div class="settings-drawer-header-actions">
+<aside @attributes="@(ControlHints.Attributes(GuideSectionTarget, nativeTooltip: false))" class="permissions-drawer settings-drawer @(Section == "Settings" ? null : "is-wide")" aria-label="@Title" @ref="_drawer" @onclick:stopPropagation="true">
+    <DrawerHeader Icon="@SectionIcon" Title="@Title" Subtitle="@Description" CloseLabel="@($"Close {Title}")" CloseDisabled="@_saving"
+                  CloseAttributes="@(ControlHints.Attributes((Section == "Connections" ? "settings.connections.close" : null), "Close"))" OnClose="RequestCloseAsync">
+        <Actions>
             @if (CanTransfer)
             {
                 <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="Import settings" disabled="@(_saving || !_loaded)" @onclick="OpenImport"><AppIcon Name="import" /></button>
                 <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="Export settings" disabled="@(_saving || !_loaded)" @onclick="OpenExport"><AppIcon Name="export" /></button>
             }
-            <button @attributes="@(ControlHints.Attributes((Section == "Connections" ? "settings.connections.close" : null), "Close"))" class="icon-action" type="button" aria-label="Close @Title" disabled="@_saving" @onclick="RequestCloseAsync"><AppIcon Name="drawer-close" /></button>
-        </div>
-    </header>
+        </Actions>
+    </DrawerHeader>
     <div class="settings-drawer-content">
             @switch (Section)
             {
@@ -572,14 +571,14 @@
        Escape or finishing returns to the list, and closing the drawer drops them. *@
     @if (_import is { } import)
     {
-        <SettingsImportPage @key="import.Key" InitialText="@import.Text" Source="@import.Source"
+        <SettingsImportPage @key="import.Key" Trail="@Title" InitialText="@import.Text" Source="@import.Source"
                             Connections="@(_connections.Select(item => item.ToSettings()).ToArray())"
                             McpServers="@(_globalMcpServers.Select(item => item.ToSettings()).ToArray())"
                             Applied="ApplyImport" Cancelled="() => _import = null" />
     }
     @if (_exportOpen)
     {
-        <SettingsExportPage Section="@Section"
+        <SettingsExportPage Trail="@Title" Section="@Section"
                             Connections="@(_connections.Select(ExportSettings).ToArray())"
                             McpServers="@(_globalMcpServers.Where(item => !IsHostProvided(item.Id)).Select(ExportSettings).ToArray())"
                             Closed="() => _exportOpen = false" />
@@ -588,7 +587,7 @@
     {
         @* Title comes from the picker itself ("Select file" / "Select directory"); Subtitle is
            what tells the user which field they are editing and why it matters. *@
-        <DirectoryPickerDialog Embedded="true" Subtitle="@_mcpPickerSubtitle" Mode="@_mcpPickerMode"
+        <DirectoryPickerDialog Embedded="true" Trail="@Title" Subtitle="@_mcpPickerSubtitle" Mode="@_mcpPickerMode"
                                StartPath="@_mcpPickerStartPath"
                                Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
     }
@@ -992,6 +991,15 @@
         "Skills" or "ProjectSkills" => _skillEditor?.Stats ?? string.Empty,
         "Connections" => $"{Plural(_connections.Count, "connection")} · {_connections.Count(item => item.Enabled)} enabled",
         _ => $"{Plural(_globalMcpServers.Count, "server")} · {_globalMcpServers.Count(item => item.Enabled)} enabled · {Plural(_toolPolicies.Count, "tool default")}"
+    };
+
+    private string SectionIcon => Section switch
+    {
+        "Settings" => "settings",
+        "Connections" => "connection",
+        "Memory" or "ProjectMemory" => "memory",
+        "Skills" or "ProjectSkills" => "skill",
+        _ => "mcp"
     };
 
     private string Title => Section switch

@@ -6,11 +6,8 @@
 @inject IToolDefaultDecision ToolDefaults
 
 <div class="permissions-drawer-backdrop"></div>
-<aside @attributes="@(ControlHints.Attributes(GuideTarget, nativeTooltip: false))" class="permissions-drawer" aria-label="Tool permissions" @onclick:stopPropagation="true">
-    <header>
-        <div><h2>Tool permissions</h2><p>@Scope · @Title</p></div>
-        <button class="icon-action" type="button" title="Close" aria-label="Close permissions" @onclick="() => Close.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
-    </header>
+<aside @attributes="@(ControlHints.Attributes(GuideTarget, nativeTooltip: false))" class="permissions-drawer drawer-sheet" aria-label="Tool permissions" @onclick:stopPropagation="true">
+    <DrawerHeader Icon="shield" Title="Tool permissions" Subtitle="@($"{Scope} · {Title}")" CloseLabel="Close permissions" OnClose="() => Close.InvokeAsync()" />
     <nav class="permissions-tabs" aria-label="Permission view">
         <button @attributes="@(ControlHints.Attributes((GuideTarget + ".overrides"), "Show permission rules saved in this scope"))" class="@(!_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = false">Overrides <span>@Overrides.Count</span></button>
         <button @attributes="@(ControlHints.Attributes((GuideTarget + ".effective")))" class="@(_showAll ? "selected" : string.Empty)" type="button" @onclick="() => _showAll = true">All effective</button>

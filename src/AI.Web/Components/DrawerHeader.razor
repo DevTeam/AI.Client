@@ -1,0 +1,40 @@
+@* The one header every right-hand drawer has: an icon tile, the title with a one-line subtitle,
+   the drawer's own actions, and the close button at the end. js/drawerLayout.js finds the close
+   button by its drawer-close class to close a phone sheet dragged down. *@
+<header class="drawer-header">
+    <span class="drawer-header-icon" aria-hidden="true"><AppIcon Name="@Icon" /></span>
+    <div class="drawer-heading">
+        <h2 id="@TitleId">@Title</h2>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <p title="@Subtitle">@Subtitle</p>
+        }
+    </div>
+    <div class="drawer-header-actions">
+        @Actions
+        <button title="Close" @attributes="CloseAttributes" class="icon-action drawer-close" type="button" aria-label="@CloseLabel"
+                disabled="@CloseDisabled" @onclick="() => OnClose.InvokeAsync()"><AppIcon Name="drawer-close" /></button>
+    </div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    [Parameter] public string? TitleId { get; set; }
+
+    /// <summary>Buttons shown before the close button, such as import and export.</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    [Parameter] public string CloseLabel { get; set; } = "Close";
+
+    [Parameter] public bool CloseDisabled { get; set; }
+
+    /// <summary>Extra attributes for the close button, such as guide targets; they may replace its title.</summary>
+    [Parameter] public IReadOnlyDictionary<string, object>? CloseAttributes { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+}

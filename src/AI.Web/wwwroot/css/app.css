@@ -548,6 +548,17 @@
     --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* Right-hand panel sizes. A drawer is small (a list or a one-column form) or wide (a list beside an
+   editor); review and file preview are workspaces. The two drawer widths can be dragged at the
+   drawer's edge: js/drawerLayout.js writes the chosen width over these on the root. On a wide
+   window a small drawer docks beside the conversation instead of covering it. */
+:root {
+    --drawer-width-s: 28rem;
+    --drawer-width-l: 56rem;
+    --workspace-panel-width: min(90rem, 94vw);
+    --drawer-dock-width: 0px;
+}
+
 /* Settings → Appearance → Animations off (data-animations on the root, set by js/theme.js): nothing
    moves. Durations go to zero rather than `none`, so every element still lands in its end state and
    the animationend/transitionend events scripts wait for still fire. Loops stop after one instant
@@ -602,7 +613,7 @@ body {
     --widgets-track: 0px;
     grid-template-columns: var(--sidebar-track) var(--left-divider) minmax(0, 1fr) var(--widgets-track);
     grid-template-rows: minmax(0, 1fr);
-    width: 100vw;
+    width: calc(100vw - var(--drawer-dock-width));
     height: 100vh;
     /* clip, not hidden: a hidden box is still a scroll container, and any scrollIntoView inside
        (a timeline mark, a search hit) could scroll the whole shell up and leave it there. */
@@ -659,6 +670,8 @@ body {
 .workspace-shell:not([data-widgets="open"]) .workspace-resizer[data-side="right"]:hover::after { transition-delay: 250ms; }
 
 .workspace-shell.panels-animating { transition: grid-template-columns var(--duration-base) ease; }
+/* A small drawer docking beside the conversation, or leaving it (js/drawerLayout.js). */
+.workspace-shell.dock-animating { transition: width var(--duration-slow) var(--ease-emphasized); }
 .workspace-shell.panels-animating .workspace-sidebar { transition: visibility 0s linear 150ms; }
 .workspace-shell.panels-animating:not(.sidebar-collapsed) .workspace-sidebar { transition: none; }
 
@@ -1074,11 +1087,14 @@ body {
     }
 }
 
+/* A picker opened from the chat or the composer is a popover: no scrim, a press outside still
+   closes it, and js/popoverPlacement.js puts it next to what opened it, hidden until then. */
+.modal-backdrop.is-popover { display: block; padding: 0; background: transparent; }
+.modal-backdrop.is-popover > .is-popover { position: fixed; box-shadow: var(--shadow-md); visibility: hidden; }
+.modal-backdrop.is-popover > .is-popover[data-placed] { visibility: visible; }
+
 /* Project settings reuse the permissions drawer; it has no tabs row. */
-.permissions-drawer.project-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(33rem, 100vw); overflow: hidden; }
-.permissions-drawer.project-settings-drawer > header { align-items: center; padding: 1rem 1.25rem; }
-.project-settings-heading { min-width: 0; }
-.project-settings-heading p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.permissions-drawer.project-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .project-settings-drawer .project-settings-content { min-width: 0; padding: 1.1rem 1.25rem 1.5rem; overflow-x: hidden; }
 
 .settings-modal-actions {
@@ -1538,7 +1554,7 @@ body {
 
 /* Connections and MCP share the permissions drawer chrome but need room for a list beside a
    form, so the drawer is wider and the two columns stack once the drawer itself gets narrow. */
-.permissions-drawer.settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(54rem, calc(100vw - 3rem)); }
+.permissions-drawer.settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; }
 .settings-drawer-content { min-height: 0; overflow: hidden; container-type: inline-size; }
 .permissions-drawer.settings-drawer > footer { min-height: 2.1rem; }
 
@@ -1588,7 +1604,6 @@ body {
 .settings-card > .settings-row.settings-inline-error, .settings-disclosure > .settings-row.settings-inline-error { min-height: 0; border-width: 1px 0 0; border-radius: 0; background: var(--color-danger-bg); }
 
 /* Settings has no list beside a form, so it keeps the width of the other side drawers. */
-.permissions-drawer.settings-drawer.is-narrow { width: min(30rem, 100vw); }
 
 /* Settings: preferences of this device, one card per topic, one row per preference: what it is on
    the left, its control on the right. Rarely changed rows wait under a disclosure row. */
@@ -6557,7 +6572,26 @@ textarea {
 
 /* Only a tint: presses go through to the page, and runEvents.watchDrawerDismiss closes the drawer. */
 .permissions-drawer-backdrop { position: fixed; z-index: var(--z-side-panel-backdrop); inset: 0; background: var(--color-scrim-faint); pointer-events: none; }
-.permissions-drawer { position: fixed; z-index: var(--z-side-panel); top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(26rem, 100vw); border-left: 1px solid var(--color-border); background: var(--color-surface); box-shadow: var(--shadow-drawer-end); }
+.permissions-drawer { position: fixed; z-index: var(--z-side-panel); top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; box-sizing: border-box; width: min(var(--drawer-width-s), 100vw); border-left: 1px solid var(--color-border); background: var(--color-surface); box-shadow: var(--shadow-drawer-end); transition: width var(--duration-slow) var(--ease-emphasized); }
+.permissions-drawer.is-wide { width: min(var(--drawer-width-l), calc(100vw - 3rem)); }
+.permissions-drawer:focus { outline: none; }
+/* While the edge is dragged the width follows the pointer, not a transition. */
+:root.is-resizing-drawer .permissions-drawer { transition: none; }
+:root.is-resizing-drawer { cursor: col-resize; user-select: none; }
+/* The grab strip on a drawer's start edge (js/drawerLayout.js keeps one, outside Blazor's DOM, in
+   line with the open drawer). It shows the accent line only under the pointer or while dragged. */
+.drawer-resizer { position: fixed; z-index: var(--z-side-panel); top: 0; bottom: 0; width: 9px; margin-left: -5px; cursor: col-resize; touch-action: none; }
+.drawer-resizer[hidden] { display: none; }
+.drawer-resizer::after { content: ""; position: absolute; inset: 0 auto 0 4px; width: 2px; background: var(--color-accent-strong); opacity: 0; transition: opacity var(--duration-fast) ease; }
+.drawer-resizer:hover::after, :root.is-resizing-drawer .drawer-resizer::after { opacity: 1; }
+
+/* A wide window keeps a small drawer beside the conversation: the shell gives up the drawer's
+   width, the drawer loses its shadow and backdrop, and a press in the chat no longer closes it. */
+@media (width >= 100rem) {
+    :root:has(.permissions-drawer:not(.is-wide):not(.is-leaving)) { --drawer-dock-width: min(var(--drawer-width-s), 100vw); }
+    .permissions-drawer:not(.is-wide) { box-shadow: none; }
+    :root:has(.permissions-drawer:not(.is-wide):not(.is-leaving)) .permissions-drawer-backdrop { display: none; }
+}
 
 /* Right-hand drawers slide in from the edge and back out to it; drawerTransitions.js keeps a closed
    one on the page, marked is-leaving, for as long as its exit runs. A swap for another drawer
@@ -6566,6 +6600,8 @@ textarea {
 @keyframes drawer-leave { to { transform: translateX(100%); } }
 @keyframes drawer-backdrop-enter { from { opacity: 0; } }
 @keyframes drawer-backdrop-leave { to { opacity: 0; } }
+@keyframes drawer-sheet-enter { from { transform: translateY(100%); } }
+@keyframes drawer-sheet-leave { to { transform: translateY(100%); } }
 .permissions-drawer, .review-workspace { animation: drawer-enter 240ms cubic-bezier(.2, .8, .2, 1); }
 .permissions-drawer-backdrop { animation: drawer-backdrop-enter 240ms ease-out; }
 .permissions-drawer.is-leaving, .review-workspace.is-leaving { animation: drawer-leave 180ms cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
@@ -6574,10 +6610,27 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
     .permissions-drawer, .review-workspace, .permissions-drawer-backdrop { animation: none; }
 }
-.permissions-drawer > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.2rem .9rem; border-bottom: 1px solid var(--color-border); }
+/* The header every drawer shares (DrawerHeader, DrawerPageHeader): icon tile, title and a
+   one-line subtitle, actions, close. */
+.drawer-header { display: flex; align-items: center; gap: .75rem; min-height: 2.25rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--color-border); }
+.drawer-header-icon { display: grid; flex: none; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: var(--radius-lg); background: var(--color-fill); color: var(--color-text-secondary); }
+.drawer-header-icon .app-icon { width: 1.05rem; height: 1.05rem; }
+.drawer-heading { display: grid; flex: 1 1 auto; gap: .15rem; min-width: 0; }
+.drawer-heading h2 { display: flex; align-items: center; gap: .3rem; min-width: 0; margin: 0; color: var(--color-text-strong); font-size: var(--font-size-xl); font-weight: 600; }
+.drawer-heading h2 > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-heading p { overflow: hidden; margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
+.drawer-header-actions { display: flex; flex: none; align-items: center; gap: .15rem; }
+.drawer-header-actions .icon-action { border-color: transparent; background: transparent; }
+.drawer-page-header > .icon-action { flex: none; margin-left: -.4rem; }
+.drawer-trail { flex: 0 1 auto; color: var(--color-text-muted); font-weight: 500; }
+.drawer-trail-separator { flex: none; width: .9rem; height: .9rem; color: var(--color-text-faint); }
+/* A footer's primary action looks the same in every drawer. */
+.permissions-drawer > footer .compact-action.primary { display: inline-flex; align-items: center; gap: .4rem; border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
+.permissions-drawer > footer .compact-action.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-on-accent)); color: var(--color-on-accent); }
+.permissions-drawer > footer .compact-action.primary:disabled { border-color: var(--color-border); background: var(--color-fill); color: var(--color-text-disabled); }
 .permissions-drawer h2, .permissions-drawer h3, .permissions-drawer p { margin: 0; }
 .permissions-drawer h2 { font-size: var(--font-size-xl); }
-.permissions-drawer > header p, .permissions-intro, .permission-item p, .permissions-drawer > footer { color: var(--color-text-subtle); font-size: var(--font-size-md); }
+.permissions-intro, .permission-item p, .permissions-drawer > footer { color: var(--color-text-subtle); font-size: var(--font-size-md); }
 .permissions-tabs { display: flex; gap: .2rem; padding: .7rem 1.2rem; border-bottom: 1px solid var(--color-border); }
 .permissions-tabs button { padding: .35rem .55rem; border-color: transparent; background: transparent; color: var(--color-text-subtle); }
 .permissions-tabs button.selected { background: var(--color-fill-hover); color: var(--color-text); }
@@ -6605,7 +6658,18 @@ textarea {
 .project-menu .menu-count, .chat-menu .menu-count { margin-left: auto; }
 
 @media (width <= 44rem) {
-    .permissions-drawer, .permissions-drawer.settings-drawer { width: 100vw; }
+    .permissions-drawer, .permissions-drawer.is-wide { width: 100vw; }
+    .drawer-resizer { display: none; }
+    /* Short drawers (drawer-sheet) rise from the bottom as a sheet as tall as their content, up to
+       most of the screen; the grab bar on top drags it down (js/drawerLayout.js). Only the body
+       scrolls, so the header and footer stay put. */
+    .permissions-drawer.drawer-sheet { top: auto; left: 0; display: flex; flex-direction: column; max-height: 88dvh; border-top: 1px solid var(--color-border); border-left: 0; border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; box-shadow: var(--shadow-lg); animation-name: drawer-sheet-enter; }
+    .permissions-drawer.drawer-sheet.is-leaving { animation-name: drawer-sheet-leave; }
+    .permissions-drawer.drawer-sheet > * { flex: none; }
+    .permissions-drawer.drawer-sheet > :is(.permissions-content, .branch-settings-body, .notification-history, .project-settings-content) { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    .permissions-drawer.drawer-sheet > .drawer-header { position: relative; padding-top: 1.45rem; touch-action: none; cursor: grab; }
+    .permissions-drawer.drawer-sheet > .drawer-header::before { content: ""; position: absolute; top: .55rem; left: 50%; width: 2.25rem; height: 4px; margin-left: -1.125rem; border-radius: var(--radius-pill); background: var(--color-border-strong); }
+    .permissions-drawer-backdrop:has(+ .drawer-sheet) { background: var(--color-scrim-soft); }
     .permissions-drawer-backdrop { background: transparent; }
 }
 
@@ -7655,7 +7719,6 @@ textarea {
 
 /* Search drawer. It shares the right-hand slot with the settings drawers; the query and its
    options stay put above the results, which scroll on their own. */
-.search-drawer > header { align-items: center; }
 .search-drawer-controls { display: grid; gap: .45rem; padding: .75rem 1.2rem; border-bottom: 1px solid var(--color-border); }
 .search-drawer-input { width: 100%; box-sizing: border-box; }
 .search-drawer-options { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 1.75rem; }
@@ -8562,7 +8625,7 @@ button.code-copy-action:hover:not(:disabled) {
 .chat-summary-card.is-expanded .chat-summary-top { border-bottom: 1px solid var(--color-border-subtle); }
 .chat-summary-card.is-expanded .chat-summary-toggle { border-bottom-color: transparent; }
 
-.review-workspace { position: fixed; z-index: var(--z-review); top: 0; right: 0; bottom: 0; width: min(90rem, 94vw); display: flex; flex-direction: column; min-width: 0; color: var(--color-text); background: var(--color-surface); border-left: 1px solid var(--color-border); box-shadow: var(--shadow-drawer-end); }
+.review-workspace { position: fixed; z-index: var(--z-review); top: 0; right: 0; bottom: 0; width: var(--workspace-panel-width); display: flex; flex-direction: column; min-width: 0; color: var(--color-text); background: var(--color-surface); border-left: 1px solid var(--color-border); box-shadow: var(--shadow-drawer-end); }
 .review-workspace-header { display: flex; align-items: center; gap: .6rem; min-height: 2.8rem; padding: .4rem .8rem; border-bottom: 1px solid var(--color-border); }
 .review-workspace-header > .app-icon { flex: none; width: 1rem; height: 1rem; color: var(--color-text-muted); }
 .review-workspace-identity { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: .05rem; }
@@ -9007,24 +9070,10 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     background: var(--color-surface);
 }
 .settings-subpage:focus { outline: none; }
-.settings-subpage > header { display: flex; align-items: center; gap: .6rem; margin: 0 -1.2rem .9rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--color-border); }
-.settings-subpage > header > div { display: grid; gap: .15rem; min-width: 0; }
-.settings-subpage > header p { overflow: hidden; color: var(--color-text-subtle); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
-.settings-subpage > header .icon-action { flex: none; margin-left: -.4rem; }
+.settings-subpage > .drawer-header { margin: 0 -1.2rem .9rem; }
 .settings-import-page { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .settings-export-page { grid-template-rows: auto minmax(0, 1fr) auto; }
 .directory-picker-page { grid-template-rows: auto auto minmax(0, 1fr) auto; }
-
-.settings-drawer-header-actions {
-    display: flex;
-    flex: none;
-    gap: 0.15rem;
-}
-
-.settings-drawer-header-actions .icon-action {
-    border-color: transparent;
-    background: transparent;
-}
 
 /* Copy and remove sit together on the selected row, shown with the fade on hover or focus. */
 .settings-item-actions {
@@ -9572,12 +9621,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 /* The chat archive drawer is a .permissions-drawer (backdrop, slide, dismissal); these rules only
    size it and lay out its header, tabs, body and a footer whose primary action sits on the right. */
-.permissions-drawer.archive-drawer { box-sizing: border-box; width: min(33rem, 100vw); color: var(--color-text); }
-.archive-drawer > header { align-items: center; padding: 1rem 1.2rem; }
-.archive-title { display: flex; align-items: center; gap: .7rem; min-width: 0; }
-.archive-title > .app-icon { width: 1.1rem; height: 1.1rem; color: var(--color-text-subtle); }
-.archive-title h2 { font-size: var(--font-size-xl); }
-.archive-title p { overflow: hidden; margin-top: .15rem; color: var(--color-text-subtle); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
+.permissions-drawer.archive-drawer { color: var(--color-text); }
 
 .archive-tabs { display: flex; gap: .2rem; padding: .7rem 1.2rem; border-bottom: 1px solid var(--color-border); }
 .archive-tabs button { display: inline-flex; align-items: center; gap: .45rem; padding: .35rem .6rem; background: transparent; color: var(--color-text-subtle); font-size: var(--font-size-md); }
@@ -9671,8 +9715,6 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .archive-footer-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; }
 .archive-delete-confirm { color: var(--color-danger-text); }
 .archive-delete-confirm > .app-icon { flex: 0 0 auto; width: .9rem; height: .9rem; }
-.archive-drawer > footer .compact-action.primary { border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
-.archive-drawer > footer .compact-action.primary:disabled { border-color: var(--color-border); background: var(--color-fill); color: var(--color-text-disabled); }
 
 .archive-search-toggle > input { width: auto; flex: 0 0 auto; margin: 0; }
 
@@ -10260,7 +10302,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .update-restart-card { max-width: 440px; padding: 24px; text-align: center; border: 1px solid var(--color-border-strong); border-radius: var(--radius-xl); background: var(--color-surface); }
 .update-restart-card p { color: var(--color-text-muted); }
 
-.file-preview-panel { width: min(48rem, 94vw); }
+.file-preview-panel { width: var(--workspace-panel-width); }
 .file-preview-panel:fullscreen { width: 100vw !important; height: 100vh; }
 .file-preview-resizer { position: absolute; inset: 0 auto 0 -4px; width: 8px; cursor: ew-resize; touch-action: none; }
 .file-preview-resizer:focus-visible { outline: 2px solid var(--color-border-strong); }
@@ -10584,10 +10626,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 /* Branch and chat settings (BranchSettingsPanel), a right-hand drawer on the .permissions-drawer
    shell like the other settings. Each setting names where its value comes from: a tinted chip with
    a dot when the branch sets it, a plain one when it follows a parent. */
-.permissions-drawer.branch-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(30rem, 100vw); overflow: hidden; }
-.branch-settings-drawer > header { align-items: center; }
-.branch-settings-heading { display: grid; gap: .15rem; min-width: 0; }
-.branch-settings-heading p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.permissions-drawer.branch-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .branch-settings-body { display: grid; align-content: start; gap: 1.1rem; min-height: 0; padding: 1rem 1.2rem 1.2rem; overflow-y: auto; }
 .branch-settings-section { display: grid; gap: .5rem; min-width: 0; }
 .branch-settings-section-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; }
@@ -10613,6 +10652,11 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .branch-settings-choice.is-full-access > .app-icon,
 .branch-settings-choice.is-full-access strong { color: var(--color-warning-text); }
 .branch-settings-choice.is-full-access.selected .branch-settings-radio { border-color: var(--color-warning); }
+.branch-settings-segments { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .15rem; margin: .1rem 0 0; padding: .2rem; border-top: 1px solid var(--color-border-subtle); }
+.branch-settings-segments button { min-width: 0; padding: .4rem .1rem; overflow: hidden; border-color: transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-segments button:hover:not(.selected) { background: var(--color-fill-hover); color: var(--color-text); }
+.branch-settings-segments button.selected { background: var(--color-surface-raised); box-shadow: var(--shadow-xs), 0 0 0 1px var(--color-accent-strong); color: var(--color-text-strong); font-weight: 600; }
+.branch-settings-hint { margin: 0; color: var(--color-text-subtle); font-size: var(--font-size-xs); }
 
 .branch-settings-link-row { grid-template-columns: 9.5rem minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding-top: .9rem; border-top: 1px solid var(--color-border-subtle); }
 .branch-settings-summary { display: grid; gap: .1rem; min-width: 0; color: var(--color-text); font-size: var(--font-size-md); }

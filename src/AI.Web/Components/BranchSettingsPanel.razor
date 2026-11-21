@@ -7,11 +7,9 @@
    except the model, which can follow the project default. It is a right-hand drawer like the
    other settings: Home closes it on Escape, on a press outside and when another drawer opens. *@
 <div class="permissions-drawer-backdrop"></div>
-<aside class="permissions-drawer branch-settings-drawer" aria-labelledby="branch-settings-title" @onclick:stopPropagation="true">
-    <header>
-        <div class="branch-settings-heading"><h2 id="branch-settings-title">@(IsMain ? "Chat settings" : "Branch settings")</h2><p title="@Subtitle">@Subtitle</p></div>
-        <button class="icon-action" type="button" title="Close" aria-label="Close settings" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
-    </header>
+<aside class="permissions-drawer branch-settings-drawer drawer-sheet" aria-labelledby="branch-settings-title" @onclick:stopPropagation="true">
+    <DrawerHeader Icon="@(IsMain ? "message-circle" : "git-branch")" Title="@(IsMain ? "Chat settings" : "Branch settings")" Subtitle="@Subtitle"
+                  TitleId="branch-settings-title" CloseLabel="Close settings" OnClose="CloseAsync" />
 
     <div class="branch-settings-body">
         <section class="branch-settings-section" aria-labelledby="branch-settings-model">
@@ -37,16 +35,23 @@
                 <span class="branch-settings-section-title" id="branch-settings-reasoning"><AppIcon Name="sparkles" />Reasoning effort</span>
                 @Source(OwnReasoning is not null, ReasoningFrom)
             </div>
+            @* The levels are one row of segments rather than seven rows: they are an ordered scale,
+               and the first choice keeps its own row because it names what it would bring. *@
             <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-reasoning">
                 @Choice(OwnReasoning is null, IsMain ? "Connection default" : "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
                     "reset", () => ReasoningChanged.InvokeAsync(null), false)
-                @foreach (var effort in Efforts)
-                {
-                    var value = effort;
-                    @Choice(OwnReasoning == value, value, "Send to a compatible model", "sparkles",
-                        () => ReasoningChanged.InvokeAsync(value), false)
-                }
+                <div class="branch-settings-segments">
+                    @foreach (var effort in Efforts)
+                    {
+                        var value = effort;
+                        var selected = OwnReasoning == value;
+                        <button type="button" role="radio" aria-checked="@(selected ? "true" : "false")" class="@(selected ? "selected" : null)"
+                                title="@($"Send reasoning effort {value} to a compatible model")"
+                                @onclick="() => selected ? Task.CompletedTask : ReasoningChanged.InvokeAsync(value)">@value</button>
+                    }
+                </div>
             </div>
+            <p class="branch-settings-hint">A set level is sent only to a model that supports it.</p>
         </section>
 
         <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">

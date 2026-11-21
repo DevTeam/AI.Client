@@ -11,10 +11,7 @@
    servers — is one click, and a full copy for another machine is two. *@
 <section class="settings-subpage settings-export-page" aria-labelledby="settings-export-title"
          @ref="_dialog" tabindex="-1">
-    <header>
-        <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CloseAsync"><AppIcon Name="chevron-left" /></button>
-        <div><h2 id="settings-export-title">Export settings</h2><p>Copy as JSON or save to a file</p></div>
-    </header>
+    <DrawerPageHeader Trail="@Trail" Title="Export" Subtitle="Copy as JSON or save to a file" TitleId="settings-export-title" OnBack="CloseAsync" />
     <div class="settings-export-body">
         @if (Connections.Count > 0)
         {
@@ -46,6 +43,9 @@
     [Parameter] public string Section { get; set; } = "Connections";
 
     [Parameter] public EventCallback Closed { get; set; }
+
+    /// <summary>The drawer this page belongs to, named in its header.</summary>
+    [Parameter] public string Trail { get; set; } = "Settings";
 
     private ElementReference _dialog;
     private IJSObjectReference? _module;

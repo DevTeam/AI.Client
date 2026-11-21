@@ -11,10 +11,7 @@
    a page inside the drawer, over its list: Back (or Escape) returns to the list. *@
 <section class="settings-subpage settings-import-page" aria-labelledby="settings-import-title"
          @ref="_dialog" tabindex="-1">
-    <header>
-        <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CancelAsync"><AppIcon Name="chevron-left" /></button>
-        <div><h2 id="settings-import-title">Import settings</h2><p>@Subtitle</p></div>
-    </header>
+    <DrawerPageHeader Trail="@Trail" Title="Import" Subtitle="@Subtitle" TitleId="settings-import-title" OnBack="CancelAsync" />
     <div class="settings-import-source">
         <textarea @ref="_textArea" class="settings-import-text" spellcheck="false" aria-label="Settings JSON"
                   placeholder="Paste mcpServers or connections JSON here, or drop a .json file"
@@ -82,6 +79,9 @@
     [Parameter] public EventCallback<SettingsImportSelection> Applied { get; set; }
 
     [Parameter] public EventCallback Cancelled { get; set; }
+
+    /// <summary>The drawer this page belongs to, named in its header.</summary>
+    [Parameter] public string Trail { get; set; } = "Settings";
 
     // Large enough for any settings file, small enough that a wrong file cannot hang the tab.
     private const long MaxFileBytes = 1024 * 1024;

@@ -12,17 +12,16 @@
     @* Opened from the settings drawer it is a page of that drawer, over its list, not a second
        window on top of it: Back (or Escape) returns to the list. *@
     <section class="settings-subpage directory-picker-page" aria-labelledby="directory-picker-title" @ref="_dialog">
-        <header>
-            <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CancelAsync"><AppIcon Name="chevron-left" /></button>
-            <div><h2 id="directory-picker-title">@Title</h2><p>@Subtitle</p></div>
-        </header>
+        <DrawerPageHeader Trail="@Trail" Title="@Title" Subtitle="@Subtitle" TitleId="directory-picker-title" OnBack="CancelAsync" />
         @{ RenderContent(__builder); }
     </section>
 }
 else
 {
-    <div class="modal-backdrop" @onclick="CancelAsync">
-        <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
+    @* Elsewhere it is a popover next to what opened it (js/popoverPlacement.js); a press outside
+       still cancels it. *@
+    <div class="modal-backdrop is-popover" @onclick="CancelAsync">
+        <section class="directory-picker-modal is-popover" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
                  @ref="_dialog" @onclick:stopPropagation="true">
             <header>
                 <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
@@ -115,6 +114,9 @@ else
     /// <summary>True renders the picker as a page of the drawer it is placed in instead of a modal.</summary>
     [Parameter] public bool Embedded { get; set; }
 
+    /// <summary>When embedded, the drawer the picker is a page of, named in its header.</summary>
+    [Parameter] public string Trail { get; set; } = "Settings";
+
     [Parameter] public EventCallback<string> Selected { get; set; }
 
     [Parameter] public EventCallback Cancelled { get; set; }
@@ -124,6 +126,7 @@ else
     private ElementReference _dialog;
     private bool _focusPending = true;
     private IJSObjectReference? _keys;
+    private IJSObjectReference? _placement;
     private DotNetObjectReference<DirectoryPickerDialog>? _self;
     // The row the arrows moved to, by path so it survives a re-render; null is none. A row that is
     // no longer listed — the filter changed, a folder opened — is not highlighted any more.
@@ -149,6 +152,12 @@ else
         {
             if (firstRender)
             {
+                if (!Embedded)
+                {
+                    // Before anything takes the focus: the focused element is the opener it is placed by.
+                    await using var placement = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/popoverPlacement.js");
+                    _placement = await placement.InvokeAsync<IJSObjectReference>("place", _dialog);
+                }
                 _self = DotNetObjectReference.Create(this);
                 var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/directoryPicker.js");
                 _keys = await module.InvokeAsync<IJSObjectReference>("attach", _dialog, _self);
@@ -299,6 +308,15 @@ else
     {
         _cancellation.Cancel();
         _cancellation.Dispose();
+        if (_placement is not null)
+        {
+            try
+            {
+                await _placement.InvokeVoidAsync("dispose");
+                await _placement.DisposeAsync();
+            }
+            catch (Exception error) when (error is JSException or JSDisconnectedException) { }
+        }
         if (_keys is not null)
         {
             try

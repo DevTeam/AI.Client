@@ -4,114 +4,107 @@
 @* One place for everything a branch runs with. Each setting says where its value comes from, and a
    branch follows its parent until a value is chosen here; "Inherit" hands it back. The main branch
    is the chat itself: its values are what every branch inherits, so it has no "Inherit" of its own
-   except the model, which can follow the project default. *@
-<div class="modal-backdrop branch-settings-backdrop" @onclick="CloseAsync">
-    <section class="branch-settings" role="dialog" aria-modal="true" aria-labelledby="branch-settings-title"
-             tabindex="-1" @ref="_dialog" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
-        <header class="branch-settings-header">
-            <span class="branch-settings-badge" aria-hidden="true"><AppIcon Name="@(IsMain ? "message-circle" : "git-branch")" /></span>
-            <div class="branch-settings-heading">
-                <strong id="branch-settings-title">@(IsMain ? "Chat settings" : "Branch settings")</strong>
-                <span title="@Subtitle">@Subtitle</span>
+   except the model, which can follow the project default. It is a right-hand drawer like the
+   other settings: Home closes it on Escape, on a press outside and when another drawer opens. *@
+<div class="permissions-drawer-backdrop"></div>
+<aside class="permissions-drawer branch-settings-drawer" aria-labelledby="branch-settings-title" @onclick:stopPropagation="true">
+    <header>
+        <div class="branch-settings-heading"><h2 id="branch-settings-title">@(IsMain ? "Chat settings" : "Branch settings")</h2><p title="@Subtitle">@Subtitle</p></div>
+        <button class="icon-action" type="button" title="Close" aria-label="Close settings" @onclick="CloseAsync"><AppIcon Name="drawer-close" /></button>
+    </header>
+
+    <div class="branch-settings-body">
+        <section class="branch-settings-section" aria-labelledby="branch-settings-model">
+            <div class="branch-settings-section-head">
+                <span class="branch-settings-section-title" id="branch-settings-model"><AppIcon Name="connection" />Model</span>
+                @Source(OwnConnection is not null, ConnectionFrom)
             </div>
-            <button class="icon-action" type="button" title="Close" aria-label="Close settings" @onclick="CloseAsync"><AppIcon Name="x" /></button>
-        </header>
+            <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-model">
+                @Choice(OwnConnection is null, IsMain ? "Project default" : "Inherit",
+                    $"{ConnectionName(InheritedConnection)} · {InheritedConnectionFrom}",
+                    "reset", () => ConnectionChanged.InvokeAsync(null), false)
+                @foreach (var connection in Connections.Where(item => item.Enabled || item.Id == OwnConnection))
+                {
+                    var id = connection.Id;
+                    @Choice(OwnConnection == id, connection.Name, connection.Model, "connection",
+                        () => ConnectionChanged.InvokeAsync(id), false)
+                }
+            </div>
+        </section>
 
-        <div class="branch-settings-body">
-            <section class="branch-settings-section" aria-labelledby="branch-settings-model">
-                <div class="branch-settings-section-head">
-                    <span class="branch-settings-section-title" id="branch-settings-model"><AppIcon Name="connection" />Model</span>
-                    @Source(OwnConnection is not null, ConnectionFrom)
-                </div>
-                <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-model">
-                    @Choice(OwnConnection is null, IsMain ? "Project default" : "Inherit",
-                        $"{ConnectionName(InheritedConnection)} · {InheritedConnectionFrom}",
-                        "reset", () => ConnectionChanged.InvokeAsync(null), false)
-                    @foreach (var connection in Connections.Where(item => item.Enabled || item.Id == OwnConnection))
-                    {
-                        var id = connection.Id;
-                        @Choice(OwnConnection == id, connection.Name, connection.Model, "connection",
-                            () => ConnectionChanged.InvokeAsync(id), false)
-                    }
-                </div>
-            </section>
+        <section class="branch-settings-section" aria-labelledby="branch-settings-reasoning">
+            <div class="branch-settings-section-head">
+                <span class="branch-settings-section-title" id="branch-settings-reasoning"><AppIcon Name="sparkles" />Reasoning effort</span>
+                @Source(OwnReasoning is not null, ReasoningFrom)
+            </div>
+            <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-reasoning">
+                @Choice(OwnReasoning is null, IsMain ? "Connection default" : "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
+                    "reset", () => ReasoningChanged.InvokeAsync(null), false)
+                @foreach (var effort in Efforts)
+                {
+                    var value = effort;
+                    @Choice(OwnReasoning == value, value, "Send to a compatible model", "sparkles",
+                        () => ReasoningChanged.InvokeAsync(value), false)
+                }
+            </div>
+        </section>
 
-                <section class="branch-settings-section" aria-labelledby="branch-settings-reasoning">
-                    <div class="branch-settings-section-head">
-                        <span class="branch-settings-section-title" id="branch-settings-reasoning"><AppIcon Name="sparkles" />Reasoning effort</span>
-                        @Source(OwnReasoning is not null, ReasoningFrom)
-                    </div>
-                    <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-reasoning">
-                        @Choice(OwnReasoning is null, IsMain ? "Connection default" : "Inherit", $"{InheritedReasoning ?? "Provider default"} · {InheritedReasoningFrom}",
-                            "reset", () => ReasoningChanged.InvokeAsync(null), false)
-                        @foreach (var effort in Efforts)
-                        {
-                            var value = effort;
-                            @Choice(OwnReasoning == value, value, "Send to a compatible model", "sparkles",
-                                () => ReasoningChanged.InvokeAsync(value), false)
-                        }
-                    </div>
-                </section>
+        <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">
+            <div class="branch-settings-section-head">
+                <span class="branch-settings-section-title" id="branch-settings-approvals"><AppIcon Name="hand" />Tool approvals</span>
+                @Source(OwnApproval is not null || IsMain, ApprovalFrom)
+            </div>
+            <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-approvals">
+                @if (!IsMain)
+                {
+                    @Choice(OwnApproval is null, "Inherit", $"{ApprovalTitle(InheritedApproval)} · from {ParentName}", "reset",
+                        () => ApprovalChanged.InvokeAsync(null), false)
+                }
+                @foreach (var mode in Modes)
+                {
+                    var value = mode;
+                    @Choice((IsMain ? Chat.ApprovalMode : OwnApproval) == mode, ApprovalTitle(mode), ApprovalDescription(mode),
+                        ApprovalIcon(mode), () => ApprovalChanged.InvokeAsync(value), mode == ToolApprovalMode.FullAccess)
+                }
+            </div>
+        </section>
 
-            <section class="branch-settings-section" aria-labelledby="branch-settings-approvals">
-                <div class="branch-settings-section-head">
-                    <span class="branch-settings-section-title" id="branch-settings-approvals"><AppIcon Name="hand" />Tool approvals</span>
-                    @Source(OwnApproval is not null || IsMain, ApprovalFrom)
-                </div>
-                <div class="branch-settings-choices" role="radiogroup" aria-labelledby="branch-settings-approvals">
-                    @if (!IsMain)
-                    {
-                        @Choice(OwnApproval is null, "Inherit", $"{ApprovalTitle(InheritedApproval)} · from {ParentName}", "reset",
-                            () => ApprovalChanged.InvokeAsync(null), false)
-                    }
-                    @foreach (var mode in Modes)
-                    {
-                        var value = mode;
-                        @Choice((IsMain ? Chat.ApprovalMode : OwnApproval) == mode, ApprovalTitle(mode), ApprovalDescription(mode),
-                            ApprovalIcon(mode), () => ApprovalChanged.InvokeAsync(value), mode == ToolApprovalMode.FullAccess)
-                    }
-                </div>
-            </section>
+        <section class="branch-settings-section branch-settings-link-row">
+            <span class="branch-settings-section-title"><AppIcon Name="shield" />Tool permissions</span>
+            <span class="branch-settings-summary">@PermissionsSummary</span>
+            <button type="button" class="secondary-action compact-action" @onclick="OpenPermissions">Edit<AppIcon Name="chevron-right" /></button>
+        </section>
 
-            <section class="branch-settings-section branch-settings-link-row">
-                <span class="branch-settings-section-title"><AppIcon Name="shield" />Tool permissions</span>
-                <span class="branch-settings-summary">@PermissionsSummary</span>
-                <button type="button" class="secondary-action compact-action" @onclick="OpenPermissions">Edit<AppIcon Name="chevron-right" /></button>
-            </section>
+        <section class="branch-settings-section branch-settings-link-row">
+            <span class="branch-settings-section-title"><AppIcon Name="timer" />Schedule</span>
+            <span class="branch-settings-summary">
+                @if (_schedule?.Schedule is { } schedule)
+                {
+                    <span class="branch-settings-schedule @(schedule.Paused ? "is-paused" : null)">@(_schedule.Description)@(schedule.Paused ? " · paused" : null)</span>
+                }
+                else
+                {
+                    <span>@(_scheduleLoaded ? "None" : "…")</span>
+                }
+                <small>@(IsMain ? "Each branch keeps its own schedule." : "Its own; schedules are never inherited.")</small>
+            </span>
+            <button type="button" class="secondary-action compact-action" @onclick="OpenSchedule">Open<AppIcon Name="chevron-right" /></button>
+        </section>
+    </div>
 
-            <section class="branch-settings-section branch-settings-link-row">
-                <span class="branch-settings-section-title"><AppIcon Name="timer" />Schedule</span>
-                <span class="branch-settings-summary">
-                    @if (_schedule?.Schedule is { } schedule)
-                    {
-                        <span class="branch-settings-schedule @(schedule.Paused ? "is-paused" : null)">@(_schedule.Description)@(schedule.Paused ? " · paused" : null)</span>
-                    }
-                    else
-                    {
-                        <span>@(_scheduleLoaded ? "None" : "…")</span>
-                    }
-                    <small>@(IsMain ? "Each branch keeps its own schedule." : "Its own; schedules are never inherited.")</small>
-                </span>
-                <button type="button" class="secondary-action compact-action" @onclick="OpenSchedule">Open<AppIcon Name="chevron-right" /></button>
-            </section>
-        </div>
-
+    @if (!IsMain)
+    {
         <footer class="branch-settings-footer">
-            @if (!IsMain)
-            {
-                <button type="button" class="secondary-action" disabled="@(!HasOverrides)" title="Drop every value set on this branch, tool permissions included"
-                        @onclick="ResetAll"><AppIcon Name="reset" />Inherit everything</button>
-            }
-            <button type="button" @onclick="CloseAsync">Done</button>
+            <button type="button" class="secondary-action" disabled="@(!HasOverrides)" title="Drop every value set on this branch, tool permissions included"
+                    @onclick="ResetAll"><AppIcon Name="reset" />Inherit everything</button>
         </footer>
-    </section>
-</div>
+    }
+</aside>
 
 @code {
     private static readonly ToolApprovalMode[] Modes = [ToolApprovalMode.Ask, ToolApprovalMode.Auto, ToolApprovalMode.FullAccess];
     private static readonly string[] Efforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-    private ElementReference _dialog;
     private ChatScheduleView? _schedule;
     private bool _scheduleLoaded;
     private (Guid, Guid)? _loadedKey;
@@ -240,11 +233,6 @@
         _scheduleLoaded = true;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender) await _dialog.FocusAsync();
-    }
-
     private RenderFragment Source(bool own, string text) =>
         @<span class="branch-settings-source @(own ? "is-own" : null)">@if (own) { <span class="branch-settings-source-dot" aria-hidden="true"></span> }@text</span>;
 
@@ -291,6 +279,4 @@
     private Task OpenSchedule() => ScheduleRequested.InvokeAsync();
 
     private Task CloseAsync() => Closed.InvokeAsync();
-
-    private Task OnKeyDownAsync(KeyboardEventArgs args) => args.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
 }

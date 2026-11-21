@@ -16,7 +16,7 @@ using Moq;
 using Shouldly;
 using Xunit;
 
-public sealed class BranchSettingsDialogRenderingTests
+public sealed class BranchSettingsPanelRenderingTests
 {
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ChatId = Guid.NewGuid();
@@ -118,13 +118,13 @@ public sealed class BranchSettingsDialogRenderingTests
         var html = string.Empty;
         await renderer.Dispatcher.InvokeAsync(async () =>
         {
-            var component = await renderer.RenderComponentAsync<BranchSettingsDialog>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            var component = await renderer.RenderComponentAsync<BranchSettingsPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
             {
-                [nameof(BranchSettingsDialog.ProjectId)] = ProjectId,
-                [nameof(BranchSettingsDialog.Chat)] = chat,
-                [nameof(BranchSettingsDialog.BranchId)] = branchId,
-                [nameof(BranchSettingsDialog.Connections)] = new[] { Fast, Strong },
-                [nameof(BranchSettingsDialog.FallbackConnectionId)] = Fast.Id
+                [nameof(BranchSettingsPanel.ProjectId)] = ProjectId,
+                [nameof(BranchSettingsPanel.Chat)] = chat,
+                [nameof(BranchSettingsPanel.BranchId)] = branchId,
+                [nameof(BranchSettingsPanel.Connections)] = new[] { Fast, Strong },
+                [nameof(BranchSettingsPanel.FallbackConnectionId)] = Fast.Id
             }));
             html = component.ToHtmlString();
         });

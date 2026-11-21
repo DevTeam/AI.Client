@@ -1324,7 +1324,7 @@ else if (_guideInvitation is { } guideInvitation)
 
 @if (_branchSettingsId is { } settingsBranchId && _selectedProject is not null && _selectedChat is { } settingsChat)
 {
-    <BranchSettingsDialog ProjectId="@_selectedProject.Id" Chat="@settingsChat" BranchId="@settingsBranchId"
+    <BranchSettingsPanel ProjectId="@_selectedProject.Id" Chat="@settingsChat" BranchId="@settingsBranchId"
         Connections="@_connections" FallbackConnectionId="@(_defaultConnectionId ?? GetDefaultConnection()?.Id)"
         ConnectionChanged="id => SetBranchConnectionAsync(settingsBranchId, id)"
         ReasoningChanged="effort => SetBranchReasoningAsync(settingsBranchId, effort)"
@@ -1332,7 +1332,7 @@ else if (_guideInvitation is { } guideInvitation)
         Reset="() => SaveBranchSettingsAsync(settingsBranchId, new())"
         PermissionsRequested="() => OpenSettingsPermissionsAsync(settingsBranchId)"
         ScheduleRequested="() => OpenBranchScheduleAsync(settingsBranchId)"
-        Closed="() => _branchSettingsId = null" />
+        Closed="CloseBranchSettings" />
 }
 
 @if (_permissionsScope is not null && _selectedProject is not null)
@@ -1661,7 +1661,7 @@ else if (_guideInvitation is { } guideInvitation)
                             }
                         }
                         <span class="menu-separator" role="separator"></span>
-                        <button type="button" role="menuitem" @onclick="() => OpenBranchSettings(branch.RootId)"><AppIcon Name="sliders" /><span>Branch settings</span>@if (CountBranchOverrides(branch.RootId) is > 0 and var overrides) { <span class="menu-count" title="@($"{overrides} set on this branch")">@overrides</span> }</button>
+                        <button type="button" role="menuitem" @onclick="() => OpenBranchSettingsAsync(branch.RootId)"><AppIcon Name="sliders" /><span>Branch settings</span>@if (CountBranchOverrides(branch.RootId) is > 0 and var overrides) { <span class="menu-count" title="@($"{overrides} set on this branch")">@overrides</span> }</button>
                         <button type="button" role="menuitem" @onclick="() => OpenBranchPermissionsAsync(branch.RootId)"><AppIcon Name="tool" /><span>Tool permissions</span>@if (GetBranchSettings(branch.RootId).ToolPolicies?.Count is > 0 and var branchRules) { <span class="menu-count" title="@($"{branchRules} set on this branch")">@branchRules</span> }</button>
                         <span class="menu-separator" role="separator"></span>
                         @if (CountSubBranches(branch.RootId) is var subBranches and > 0)
@@ -2128,7 +2128,7 @@ else if (_guideInvitation is { } guideInvitation)
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, Review, Search, Widgets, FilePreview }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, BranchSettings, Review, Search, Widgets, FilePreview }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -2145,6 +2145,7 @@ else if (_guideInvitation is { } guideInvitation)
             await SyncWorkspaceUrlAsync(replace: true);
         }
         if (keep != Drawer.Permissions && _permissionsScope is not null) ClosePermissions();
+        if (keep != Drawer.BranchSettings) CloseBranchSettings();
         if (keep != Drawer.GlobalSettings && _globalSection is not null)
         {
             await RequestCloseGlobalSettingsAsync();
@@ -6269,6 +6270,7 @@ else if (_guideInvitation is { } guideInvitation)
     {
         if (_notificationsOpen) await ToggleNotificationsAsync();
         else if (_permissionsScope is not null) ClosePermissions();
+        else if (_branchSettingsId is not null) CloseBranchSettings();
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else if (_reviewWorkspaceOpen) await CloseReviewAsync();
@@ -6296,6 +6298,10 @@ else if (_guideInvitation is { } guideInvitation)
         else if (_permissionsScope is not null)
         {
             ClosePermissions();
+        }
+        else if (_branchSettingsId is not null)
+        {
+            CloseBranchSettings();
         }
         else if (_globalSection is not null)
         {
@@ -6657,14 +6663,18 @@ else if (_guideInvitation is { } guideInvitation)
         CloseContextMenus();
         if (_selectedChat?.Id != chat.Id || GetSelectedRunBranchId() != chat.Id)
             await NavigateToTargetAsync(new WorkspaceTarget(chat.ProjectId, chat.Id, chat.Id, null, false));
-        if (_selectedChat?.Id == chat.Id) _branchSettingsId = chat.Id;
+        if (_selectedChat?.Id == chat.Id) await OpenBranchSettingsAsync(chat.Id);
     }
 
-    private void OpenBranchSettings(Guid branchId)
+    /// <summary>Opens chat or branch settings in the right-hand drawer slot, closing whatever drawer held it.</summary>
+    private async Task OpenBranchSettingsAsync(Guid branchId)
     {
         CloseContextMenus();
+        if (!await CloseDrawersExceptAsync(Drawer.BranchSettings)) return;
         _branchSettingsId = branchId;
     }
+
+    private void CloseBranchSettings() => _branchSettingsId = null;
 
     private async Task OpenSettingsPermissionsAsync(Guid branchId)
     {

@@ -10602,28 +10602,14 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .schedule-rules { display: grid; gap: .3rem; }
 .schedule-rule { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
 
-/* Branch and chat settings (BranchSettingsDialog). Each setting names where its value comes from: a
-   tinted chip with a dot when the branch sets it, a plain one when it follows a parent. */
-.branch-settings {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(31rem, calc(100vw - 2rem));
-    max-height: min(44rem, calc(100vh - 2rem));
-    box-sizing: border-box;
-    overflow: hidden;
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-2xl);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-xl);
-}
-.branch-settings:focus { outline: none; }
-.branch-settings-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding: 1rem 1rem .9rem 1.1rem; border-bottom: 1px solid var(--color-border-subtle); }
-.branch-settings-badge { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: var(--radius-lg); background: var(--color-accent-bg); color: var(--color-accent-text); }
-.branch-settings-badge .app-icon { width: 1.1rem; height: 1.1rem; }
+/* Branch and chat settings (BranchSettingsPanel), a right-hand drawer on the .permissions-drawer
+   shell like the other settings. Each setting names where its value comes from: a tinted chip with
+   a dot when the branch sets it, a plain one when it follows a parent. */
+.permissions-drawer.branch-settings-drawer { grid-template-rows: auto minmax(0, 1fr) auto; width: min(30rem, 100vw); overflow: hidden; }
+.branch-settings-drawer > header { align-items: center; }
 .branch-settings-heading { display: grid; gap: .15rem; min-width: 0; }
-.branch-settings-heading strong { color: var(--color-text-strong); font-size: var(--font-size-xl); font-weight: 600; }
-.branch-settings-heading span { overflow: hidden; color: var(--color-text-muted); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
-.branch-settings-body { display: grid; align-content: start; gap: 1.1rem; padding: 1rem 1.1rem 1.1rem; overflow-y: auto; }
+.branch-settings-heading p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-settings-body { display: grid; align-content: start; gap: 1.1rem; min-height: 0; padding: 1rem 1.2rem 1.2rem; overflow-y: auto; }
 .branch-settings-section { display: grid; gap: .5rem; min-width: 0; }
 .branch-settings-section-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; }
 .branch-settings-section-title { display: inline-flex; align-items: center; gap: .45rem; color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
@@ -10658,12 +10644,9 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .branch-settings-link-row .compact-action .app-icon { width: .85rem; height: .85rem; }
 .branch-settings-link-row .compact-action:hover:not(:disabled) { background: var(--color-fill-hover); }
 
-.branch-settings-footer { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; padding: .8rem 1.1rem; border-top: 1px solid var(--color-border-subtle); background: var(--color-bg-inset); }
-.branch-settings-footer button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .9rem; font-size: var(--font-size-md); }
-.branch-settings-footer button.secondary-action { margin-right: auto; color: var(--color-text-secondary); }
-.branch-settings-footer button.secondary-action:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
-.branch-settings-footer button:not(.secondary-action) { min-width: 5.5rem; justify-content: center; border-color: var(--color-accent-strong); background: var(--color-accent-fill); color: var(--color-on-accent); }
-.branch-settings-footer button:not(.secondary-action):hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-fill) 88%, var(--color-on-accent)); color: var(--color-on-accent); }
+.branch-settings-drawer > footer.branch-settings-footer { justify-content: flex-start; }
+.branch-settings-footer button { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .9rem; color: var(--color-text-secondary); font-size: var(--font-size-md); }
+.branch-settings-footer button:hover:not(:disabled) { background: var(--color-fill-hover); color: var(--color-text); }
 
 @media (width <= 560px) {
     .branch-settings-link-row { grid-template-columns: minmax(0, 1fr) auto; }

@@ -52,7 +52,8 @@ settings*, then *Tool permissions*), and clearing it out (*Archive chat*, *Delet
 permissions*, how many tool rules the chat or branch sets; beside a bulk delete, how many branches
 it removes. *Chat settings* opens the chat first when another one is open.
 
-The settings dialog lists, for one branch: the model, reasoning effort, the tool approval mode, a summary of its tool
+The settings open as a right-hand drawer, like Settings and Project settings, and close the same way
+(the close button, Escape, a press outside, or opening another drawer). They list, for one branch: the model, reasoning effort, the tool approval mode, a summary of its tool
 permission rules (with **Edit**, which opens the permissions drawer in branch scope) and its
 schedule (with **Open**, which goes to the branch and shows the Schedule widget). Each setting has a
 chip saying where its value comes from: *This branch* (accent tint and dot) when the branch sets it,

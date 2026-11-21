@@ -1,4 +1,5 @@
 @using AI.Web.FileSystem
+@using Microsoft.AspNetCore.Components.Rendering
 @inject IDirectoryPickerState Picker
 @inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
@@ -6,13 +7,36 @@
 @* Picking, not typing: the host walks its own file system for us because the browser cannot name
    an absolute path. The path box stays anyway — pasting a path is faster than clicking down to it,
    and it is the only way in when the list is long or the thing is not there yet. *@
-<div class="modal-backdrop @BackdropClass" @onclick="CancelAsync">
-    <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
-             @ref="_dialog" @onclick:stopPropagation="true">
+@if (Embedded)
+{
+    @* Opened from the settings drawer it is a page of that drawer, over its list, not a second
+       window on top of it: Back (or Escape) returns to the list. *@
+    <section class="settings-subpage directory-picker-page" aria-labelledby="directory-picker-title" @ref="_dialog">
         <header>
-            <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
-            <button class="icon-action" type="button" title="Close" aria-label="Close picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
+            <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CancelAsync"><AppIcon Name="chevron-left" /></button>
+            <div><h2 id="directory-picker-title">@Title</h2><p>@Subtitle</p></div>
         </header>
+        @{ RenderContent(__builder); }
+    </section>
+}
+else
+{
+    <div class="modal-backdrop" @onclick="CancelAsync">
+        <section class="directory-picker-modal" role="dialog" aria-modal="true" aria-labelledby="directory-picker-title"
+                 @ref="_dialog" @onclick:stopPropagation="true">
+            <header>
+                <div><strong id="directory-picker-title">@Title</strong><span>@Subtitle</span></div>
+                <button class="icon-action" type="button" title="Close" aria-label="Close picker" @onclick="CancelAsync"><AppIcon Name="x" /></button>
+            </header>
+            @{ RenderContent(__builder); }
+        </section>
+    </div>
+}
+
+@code {
+    /// <summary>The toolbar, the listing and the footer, the same in both forms.</summary>
+    private void RenderContent(RenderTreeBuilder __builder)
+    {
         <div class="directory-picker-toolbar directory-picker-history-toolbar">
             <button class="icon-action" type="button" title="Back" aria-label="Back" disabled="@(!Picker.CanGoBack)" @onclick="() => NavigateHistoryAsync(false)"><AppIcon Name="chevron-left" /></button>
             <button class="icon-action" type="button" title="Forward" aria-label="Forward" disabled="@(!Picker.CanGoForward)" @onclick="() => NavigateHistoryAsync(true)"><AppIcon Name="chevron-right" /></button>
@@ -77,10 +101,8 @@
             <button type="button" disabled="@(Picker.Selection is null)" @onclick="SelectAsync">Select</button>
             <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
         </footer>
-    </section>
-</div>
+    }
 
-@code {
     /// <summary>Whether a directory or a file is being asked for.</summary>
     [Parameter] public DirectoryPickerMode Mode { get; set; } = DirectoryPickerMode.Directory;
 
@@ -90,10 +112,8 @@
     /// <summary>What the picked path is for, shown under the title.</summary>
     [Parameter] public string Subtitle { get; set; } = string.Empty;
 
-    /// <summary>Extra CSS class on the backdrop. Settings drawers sit at z-index 45, so anything
-    /// opened from them needs a class that lifts the backdrop above that (46+); the picker is used
-    /// in other places too, so this is opt-in rather than hard-coded.</summary>
-    [Parameter] public string? BackdropClass { get; set; }
+    /// <summary>True renders the picker as a page of the drawer it is placed in instead of a modal.</summary>
+    [Parameter] public bool Embedded { get; set; }
 
     [Parameter] public EventCallback<string> Selected { get; set; }
 

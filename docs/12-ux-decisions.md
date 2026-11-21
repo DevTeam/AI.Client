@@ -581,3 +581,9 @@ This replaces the parts of the 2026-10-13 Chat files, 2026-10-14 sidebar and 202
 - **Icon buttons are larger under a finger.** With a coarse pointer the action row under a message and the chat header's buttons take 2.25–2.5rem instead of 1.65–1.7rem; the glyphs keep their size, and the header and the feed's top padding grow with them.
 - **Long answers are scanned by their headings.** A heading in a message has more air above it than below; a quote is a tinted strip rather than a rule alone; a code fence that names its language shows it as a quiet label beside Copy, which still rests hidden like the message actions.
 - **The composer rests at two lines.** It grows with the text as before.
+
+## Every right-hand panel is one kind of drawer (2026-11-21)
+
+- **One shell, one slot.** Settings, Project settings, Chat and Branch settings, Tool permissions, Notifications, Search and the Chat archive are all `.permissions-drawer`: a faint backdrop that lets presses through, the same slide, the same header with the close button at the end. Opening one closes whichever held the slot; a drawer that cannot close (an archive operation still running, a settings save that failed) keeps the slot and the new one does not open.
+- **Closed the same way.** The close button, Escape, or a press anywhere outside closes it, and the press still reaches what it landed on. Search used to stay open beside the chat; it now closes like the rest, and opening a result from inside it keeps it open.
+- **A step inside a drawer is a page of it, not a window over it.** Import, Export and the MCP command or working-directory picker are laid over the drawer's list with Back in the header; Back, Escape or finishing returns to the list, and closing the drawer drops the page. The directory and git pickers opened from the chat or the composer stay centred modals, because nothing is under them to return to.

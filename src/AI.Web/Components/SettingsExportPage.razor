@@ -6,37 +6,36 @@
 @inject IJSRuntime JsRuntime
 @implements IAsyncDisposable
 
-@* The drawer's own section is ticked and the other one offered, so the common case — share
-   these MCP servers — is one click, and a full copy for another machine is two. *@
-<div class="modal-backdrop settings-transfer-backdrop" @onclick="CloseAsync">
-    <section class="settings-transfer-modal settings-export-modal" role="dialog" aria-modal="true" aria-labelledby="settings-export-title"
-             @ref="_dialog" tabindex="-1" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
-        <header>
-            <div><strong id="settings-export-title">Export settings</strong><span>Copy as JSON or save to a file</span></div>
-            <button class="icon-action" type="button" title="Close" aria-label="Close export" @onclick="CloseAsync"><AppIcon Name="x" /></button>
-        </header>
-        <div class="settings-export-body">
-            @if (Connections.Count > 0)
-            {
-                @Group("Connections", _connections)
-            }
-            @if (McpServers.Count > 0)
-            {
-                @Group("MCP servers", _mcpServers)
-            }
-            @if (SelectedCount == 0)
-            {
-                <p class="empty-hint">No @(Section == "Connections" ? "connections" : "MCP servers") selected for export.</p>
-            }
-            <p class="settings-export-note"><AppIcon Name="lock" /> Keys and secret values stay on this Host. The export lists which ones are needed, with empty values. MCP servers use the <code>mcpServers</code> format of Claude Desktop, Cursor and Claude Code.</p>
-        </div>
-        <footer class="settings-modal-actions">
-            <button type="button" disabled="@(SelectedCount == 0)" @onclick="CopyAsync">Copy</button>
-            <button type="button" class="secondary-action" disabled="@(SelectedCount == 0)" @onclick="SaveFileAsync">Save file</button>
-            <button type="button" class="secondary-action" @onclick="CloseAsync">Cancel</button>
-        </footer>
-    </section>
-</div>
+@* A page inside the settings drawer, over its list: Back (or Escape) returns to the list. The
+   drawer's own section is ticked and the other one offered, so the common case — share these MCP
+   servers — is one click, and a full copy for another machine is two. *@
+<section class="settings-subpage settings-export-page" aria-labelledby="settings-export-title"
+         @ref="_dialog" tabindex="-1">
+    <header>
+        <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CloseAsync"><AppIcon Name="chevron-left" /></button>
+        <div><h2 id="settings-export-title">Export settings</h2><p>Copy as JSON or save to a file</p></div>
+    </header>
+    <div class="settings-export-body">
+        @if (Connections.Count > 0)
+        {
+            @Group("Connections", _connections)
+        }
+        @if (McpServers.Count > 0)
+        {
+            @Group("MCP servers", _mcpServers)
+        }
+        @if (SelectedCount == 0)
+        {
+            <p class="empty-hint">No @(Section == "Connections" ? "connections" : "MCP servers") selected for export.</p>
+        }
+        <p class="settings-export-note"><AppIcon Name="lock" /><span>Keys and secret values stay on this Host. The export lists which ones are needed, with empty values. MCP servers use the <code>mcpServers</code> format of Claude Desktop, Cursor and Claude Code.</span></p>
+    </div>
+    <footer class="settings-modal-actions">
+        <button type="button" disabled="@(SelectedCount == 0)" @onclick="CopyAsync">Copy</button>
+        <button type="button" class="secondary-action" disabled="@(SelectedCount == 0)" @onclick="SaveFileAsync">Save file</button>
+        <button type="button" class="secondary-action" @onclick="CloseAsync">Cancel</button>
+    </footer>
+</section>
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ConnectionSettings> Connections { get; set; } = [];
@@ -137,8 +136,6 @@
 
     private Task CloseAsync() => Closed.InvokeAsync();
 
-    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
-        args.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {

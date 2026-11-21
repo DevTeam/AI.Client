@@ -157,8 +157,7 @@ Anything that floats above the page takes a `--z-*` layer, from the bottom up:
 | --- | --- | --- |
 | `--z-menu-backdrop`, `--z-menu`, `--z-menu-raised` | 29, 30, 31 | Menus and their click-catching backdrops; `-raised` for a menu or tooltip opened over another menu |
 | `--z-drawer-scrim`, `--z-drawer`, `--z-modal` | 39, 40, 40 | Phone sidebar, widget rail, ordinary modals |
-| `--z-side-panel-backdrop`, `--z-side-panel` | 44, 45 | Permissions and archive drawers |
-| `--z-modal-raised` | 46 | A modal opened from a side panel |
+| `--z-side-panel-backdrop`, `--z-side-panel` | 44, 45 | Settings, permissions, archive and other right-hand drawers; a page of a drawer (import, export, a picker) stacks inside it |
 | `--z-floating` | 50 | Toasts and lists that must clear every drawer and modal |
 | `--z-review`, `--z-review-popover` | 100, 110 | Review workspace and its comment editor |
 | `--z-guide-trail` … `--z-guide-cursor`, `--z-drag`, `--z-tooltip` | 999–1003 | Application guide, drag ghost, tooltips |

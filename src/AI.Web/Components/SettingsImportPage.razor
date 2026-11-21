@@ -7,67 +7,66 @@
 
 @* One preview for every way in — the Paste button, Ctrl+V on the drawer, a dropped or loaded
    file — so what is about to change is always shown before it does. Nothing is saved here: the
-   chosen items join the drawer's edits and are saved, like any other edit, when it closes. *@
-<div class="modal-backdrop settings-transfer-backdrop" @onclick="CancelAsync">
-    <section class="settings-transfer-modal settings-import-modal" role="dialog" aria-modal="true" aria-labelledby="settings-import-title"
-             @ref="_dialog" @onclick:stopPropagation="true" @onkeydown="OnKeyDownAsync">
-        <header>
-            <div><strong id="settings-import-title">Import settings</strong><span>@Subtitle</span></div>
-            <button class="icon-action" type="button" title="Close" aria-label="Close import" @onclick="CancelAsync"><AppIcon Name="x" /></button>
-        </header>
-        <div class="settings-import-source">
-            <textarea @ref="_textArea" class="settings-import-text" spellcheck="false" aria-label="Settings JSON"
-                      placeholder="Paste mcpServers or connections JSON here, or drop a .json file"
-                      value="@_text" @oninput="OnTextInput"></textarea>
-            <div class="settings-import-source-actions">
-                <label class="secondary-action compact-action settings-import-file">
-                    Load file…
-                    <InputFile accept=".json,application/json,text/plain" OnChange="LoadFileAsync" />
-                </label>
-                <span>Keys and secret values are never imported. You type them in afterwards.</span>
-            </div>
+   chosen items join the drawer's edits and are saved, like any other edit, when it closes. It is
+   a page inside the drawer, over its list: Back (or Escape) returns to the list. *@
+<section class="settings-subpage settings-import-page" aria-labelledby="settings-import-title"
+         @ref="_dialog" tabindex="-1">
+    <header>
+        <button class="icon-action" type="button" title="Back (Esc)" aria-label="Back to the list" @onclick="CancelAsync"><AppIcon Name="chevron-left" /></button>
+        <div><h2 id="settings-import-title">Import settings</h2><p>@Subtitle</p></div>
+    </header>
+    <div class="settings-import-source">
+        <textarea @ref="_textArea" class="settings-import-text" spellcheck="false" aria-label="Settings JSON"
+                  placeholder="Paste mcpServers or connections JSON here, or drop a .json file"
+                  value="@_text" @oninput="OnTextInput"></textarea>
+        <div class="settings-import-source-actions">
+            <label class="secondary-action compact-action settings-import-file">
+                Load file…
+                <InputFile accept=".json,application/json,text/plain" OnChange="LoadFileAsync" />
+            </label>
+            <span>Keys and secret values are never imported. You type them in afterwards.</span>
         </div>
-        <div class="settings-import-body">
-            @if (_error is not null)
+    </div>
+    <div class="settings-import-body">
+        @if (_error is not null)
+        {
+            <p class="error" role="alert">@_error</p>
+        }
+        else if (_plan is null)
+        {
+            <p class="empty-hint">@(_readingClipboard ? "Reading the clipboard…" : "Paste settings above to see what will change.")</p>
+        }
+        else
+        {
+            @if (_plan.SecretValuesDropped)
             {
-                <p class="error" role="alert">@_error</p>
+                <p class="settings-import-warning" role="status"><AppIcon Name="lock" /> The text contained a key or token. It was not imported, but it is still in your clipboard or file.</p>
             }
-            else if (_plan is null)
-            {
-                <p class="empty-hint">@(_readingClipboard ? "Reading the clipboard…" : "Paste settings above to see what will change.")</p>
-            }
-            else
-            {
-                @if (_plan.SecretValuesDropped)
+            <ul class="settings-import-list">
+                @foreach (var row in _connectionRows)
                 {
-                    <p class="settings-import-warning" role="status"><AppIcon Name="lock" /> The text contained a key or token. It was not imported, but it is still in your clipboard or file.</p>
+                    <SettingsImportRowView T="ConnectionSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="Connection" Detail="@ConnectionDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
                 }
-                <ul class="settings-import-list">
-                    @foreach (var row in _connectionRows)
-                    {
-                        <SettingsImportRowView T="ConnectionSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="Connection" Detail="@ConnectionDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
-                    }
-                    @foreach (var row in _mcpRows)
-                    {
-                        <SettingsImportRowView T="McpServerSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="MCP server" Detail="@McpDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
-                    }
-                    @foreach (var skipped in _plan.Skipped)
-                    {
-                        <li class="settings-import-row is-skipped">
-                            <div class="settings-import-row-head"><span class="settings-import-name">@skipped.Name</span><span class="settings-import-badge">Not imported</span></div>
-                            <p class="settings-import-note">@skipped.Reason</p>
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
-        <footer class="settings-modal-actions settings-import-actions">
-            <span class="settings-import-summary">@Summary</span>
-            <button type="button" disabled="@(ChosenCount == 0)" @onclick="ApplyAsync">@(ChosenCount == 0 ? "Import" : $"Import {ChosenCount}")</button>
-            <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
-        </footer>
-    </section>
-</div>
+                @foreach (var row in _mcpRows)
+                {
+                    <SettingsImportRowView T="McpServerSettings" Row="row" Name="@row.Candidate.AddAs.Name" Kind="MCP server" Detail="@McpDetail(row.Candidate.AddAs)" Changed="StateHasChanged" />
+                }
+                @foreach (var skipped in _plan.Skipped)
+                {
+                    <li class="settings-import-row is-skipped">
+                        <div class="settings-import-row-head"><span class="settings-import-name">@skipped.Name</span><span class="settings-import-badge">Not imported</span></div>
+                        <p class="settings-import-note">@skipped.Reason</p>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+    <footer class="settings-modal-actions settings-import-actions">
+        <span class="settings-import-summary">@Summary</span>
+        <button type="button" disabled="@(ChosenCount == 0)" @onclick="ApplyAsync">@(ChosenCount == 0 ? "Import" : $"Import {ChosenCount}")</button>
+        <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
+    </footer>
+</section>
 
 @code {
     /// <summary>Text already in hand (a paste or a dropped file); null reads the clipboard.</summary>
@@ -91,7 +90,7 @@
     private ElementReference _textArea;
     private IJSObjectReference? _module;
     private IJSObjectReference? _dropSubscription;
-    private DotNetObjectReference<SettingsImportDialog>? _reference;
+    private DotNetObjectReference<SettingsImportPage>? _reference;
     private string _text = string.Empty;
     private string? _source;
     private string? _error;
@@ -240,8 +239,6 @@
 
     private Task CancelAsync() => Cancelled.InvokeAsync();
 
-    private Task OnKeyDownAsync(KeyboardEventArgs args) =>
-        args.Key == "Escape" ? CancelAsync() : Task.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {

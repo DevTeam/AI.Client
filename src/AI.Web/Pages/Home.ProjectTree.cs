@@ -82,7 +82,7 @@ public partial class Home
     private async Task OpenProjectArchiveAsync(ProjectSummary project)
     {
         if (_selectedProject?.Id != project.Id) await SelectProjectAsync(project);
-        if (_selectedProject?.Id == project.Id) OpenArchive(false);
+        if (_selectedProject?.Id == project.Id) await OpenArchiveAsync(false);
     }
 
     /// <summary>Re-reads the chat lists of the unfolded projects other than the open one.</summary>

@@ -1084,7 +1084,7 @@
                     <span class="menu-count">@_security.ToolPolicies.Count</span>
                 }
             </button>
-            <button type="button" role="menuitem" @onclick="() => OpenArchive(true)"><AppIcon Name="archive" />Archive old chats…</button>
+            <button type="button" role="menuitem" @onclick="() => OpenArchiveAsync(true)"><AppIcon Name="archive" />Archive old chats…</button>
             @if (_isConfirmingProjectDelete)
             {
                 <div class="project-menu-confirm"><span>Are you sure?</span><button class="danger compact-action" type="button" @onclick="DeleteProjectAsync">Delete</button><button class="confirm-cancel" type="button" title="Cancel" aria-label="Cancel" @onclick="CancelProjectDelete"><AppIcon Name="x" /></button></div>
@@ -1162,8 +1162,8 @@
 
     @if (_isSearchOpen)
     {
-        @* No backdrop and no close on an outside press: the point of the panel is reading the chat
-           beside it while stepping through what was found. *@
+        @* Like the other right-hand drawers: a tinted backdrop, and a press outside closes it. *@
+        <div class="permissions-drawer-backdrop"></div>
         <aside @attributes="@(ControlHints.Attributes("search", nativeTooltip: false))" class="permissions-drawer search-drawer" id="search-drawer" aria-label="Search messages">
             <header>
                 <h2>Search</h2>
@@ -1588,7 +1588,7 @@ else if (_guideInvitation is { } guideInvitation)
                 else if (chats.Count == 0) { <span class="empty-hint">No active chats</span> }
                 @if (isOpen && _archiveSuggestionProject == project.Id && _archiveSuggestionCount >= 10)
                 {
-                    <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchive(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
+                    <div class="archive-suggestion" role="status"><span>@_archiveSuggestionCount chats inactive for 30 days</span><button type="button" @onclick="() => OpenArchiveAsync(true)">Review</button><button class="icon-action" type="button" title="Dismiss cleanup suggestion" aria-label="Dismiss cleanup suggestion" @onclick="DismissArchiveSuggestionAsync"><AppIcon Name="x" /></button></div>
                 }
                 @* An empty archive is not worth a row; the project menu still opens it. *@
                 @if (archivedCount > 0)
@@ -2128,7 +2128,7 @@ else if (_guideInvitation is { } guideInvitation)
         await SyncWorkspaceUrlAsync();
     }
 
-    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, BranchSettings, Review, Search, Widgets, FilePreview }
+    private enum Drawer { Notifications, Permissions, GlobalSettings, ProjectSettings, BranchSettings, Archive, Review, Search, Widgets, FilePreview }
 
     /// <summary>
     /// All right-hand drawers share one slot, so opening one closes the rest instead of stacking
@@ -2146,6 +2146,11 @@ else if (_guideInvitation is { } guideInvitation)
         }
         if (keep != Drawer.Permissions && _permissionsScope is not null) ClosePermissions();
         if (keep != Drawer.BranchSettings) CloseBranchSettings();
+        if (keep != Drawer.Archive && _showArchive)
+        {
+            CloseArchive();
+            if (_showArchive) return false;
+        }
         if (keep != Drawer.GlobalSettings && _globalSection is not null)
         {
             await RequestCloseGlobalSettingsAsync();
@@ -5996,9 +6001,10 @@ else if (_guideInvitation is { } guideInvitation)
         }
     }
 
-    private void OpenArchive(bool cleanup)
+    private async Task OpenArchiveAsync(bool cleanup)
     {
         _isProjectMenuOpen = false; _chatMenuId = null;
+        if (!await CloseDrawersExceptAsync(Drawer.Archive)) return;
         _archiveCleanup = cleanup; _showArchive = true;
     }
 
@@ -6268,13 +6274,15 @@ else if (_guideInvitation is { } guideInvitation)
     [JSInvokable]
     public async Task OnDrawerDismissed()
     {
-        if (_notificationsOpen) await ToggleNotificationsAsync();
+        if (_showArchive) CloseArchive();
+        else if (_notificationsOpen) await ToggleNotificationsAsync();
         else if (_permissionsScope is not null) ClosePermissions();
         else if (_branchSettingsId is not null) CloseBranchSettings();
         else if (_globalSection is not null) await RequestCloseGlobalSettingsAsync();
         else if (_isProjectSettingsOpen) await RequestCloseProjectSettingsAsync();
         else if (_reviewWorkspaceOpen) await CloseReviewAsync();
         else if (_previewPath is not null || _previewAsset is not null) CloseFilePreview();
+        else if (_isSearchOpen) await CloseSearchPanelAsync();
         else return;
         await InvokeAsync(StateHasChanged);
     }
@@ -6305,7 +6313,8 @@ else if (_guideInvitation is { } guideInvitation)
         }
         else if (_globalSection is not null)
         {
-            await RequestCloseGlobalSettingsAsync();
+            // Escape steps back from an import, export or picker page before it closes the drawer.
+            if (_globalSettingsPanel?.CloseSubpage() != true) await RequestCloseGlobalSettingsAsync();
         }
         else if (_isProjectSettingsOpen)
         {

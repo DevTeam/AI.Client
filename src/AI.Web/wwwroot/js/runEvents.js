@@ -118,7 +118,7 @@ export function watchFocus(dotNetReference) {
 }
 
 export function watchEscape(dotNetReference) {
-    const locallyHandled = ".search-drawer-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor, .settings-transfer-modal";
+    const locallyHandled = ".search-drawer-input, .sidebar-inline-editor, .queue-item input, .message-branch-indicator, .message-review-editor, .message-review-toggle, .message-review-comments, .review-comment-editor";
     // A settings list filter with a query spends Escape on clearing it. Blazor WebAssembly clears it
     // inside the same key event, before this document listener runs, so whether it had a query is
     // read in the capture phase, ahead of every handler.
@@ -178,7 +178,7 @@ export function watchDrawerDismiss(dotNetReference) {
         // Not one that is only sliding out (drawerTransitions.js): it is closed already.
         const drawer = document.querySelector(".permissions-drawer:not(.is-leaving), .review-workspace:not(.is-leaving)");
         const target = event.target instanceof Element ? event.target : null;
-        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .settings-transfer-backdrop, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
+        if (!drawer || !target || target.closest(".permissions-drawer, .review-workspace, .modal-backdrop, .sidebar-global-nav, .toast-region, .history-notifications-button")) return;
         // Same reason as on Escape: commit the focused field before the settings drawer saves.
         if (document.activeElement instanceof HTMLElement && drawer.contains(document.activeElement)) document.activeElement.blur();
         void dotNetReference.invokeMethodAsync("OnDrawerDismissed");

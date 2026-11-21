@@ -523,8 +523,6 @@
     --z-side-panel-backdrop: 44;
     /* Permissions and archive drawers. */
     --z-side-panel: 45;
-    /* A modal opened from a side panel. */
-    --z-modal-raised: 46;
     /* Toasts and lists that must clear every drawer and modal. */
     --z-floating: 50;
     --z-review: 100;
@@ -6568,13 +6566,13 @@ textarea {
 @keyframes drawer-leave { to { transform: translateX(100%); } }
 @keyframes drawer-backdrop-enter { from { opacity: 0; } }
 @keyframes drawer-backdrop-leave { to { opacity: 0; } }
-.permissions-drawer, .review-workspace, .archive-drawer { animation: drawer-enter 240ms cubic-bezier(.2, .8, .2, 1); }
-.permissions-drawer-backdrop, .archive-backdrop { animation: drawer-backdrop-enter 240ms ease-out; }
-.permissions-drawer.is-leaving, .review-workspace.is-leaving, .archive-drawer.is-leaving { animation: drawer-leave 180ms cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
-.permissions-drawer-backdrop.is-leaving, .archive-backdrop.is-leaving { animation: drawer-backdrop-leave 180ms ease-in forwards; }
-.permissions-drawer.is-swapped, .review-workspace.is-swapped, .archive-drawer.is-swapped, .permissions-drawer-backdrop.is-swapped, .archive-backdrop.is-swapped { animation: none; }
+.permissions-drawer, .review-workspace { animation: drawer-enter 240ms cubic-bezier(.2, .8, .2, 1); }
+.permissions-drawer-backdrop { animation: drawer-backdrop-enter 240ms ease-out; }
+.permissions-drawer.is-leaving, .review-workspace.is-leaving { animation: drawer-leave 180ms cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
+.permissions-drawer-backdrop.is-leaving { animation: drawer-backdrop-leave 180ms ease-in forwards; }
+.permissions-drawer.is-swapped, .review-workspace.is-swapped, .permissions-drawer-backdrop.is-swapped { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-    .permissions-drawer, .review-workspace, .permissions-drawer-backdrop, .archive-backdrop { animation: none; }
+    .permissions-drawer, .review-workspace, .permissions-drawer-backdrop { animation: none; }
 }
 .permissions-drawer > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding: 1.2rem 1.2rem .9rem; border-bottom: 1px solid var(--color-border); }
 .permissions-drawer h2, .permissions-drawer h3, .permissions-drawer p { margin: 0; }
@@ -8995,8 +8993,27 @@ a.resource-pill-target.file-link { cursor: context-menu; }
 
 /* Settings import and export ------------------------------------------- */
 
-/* Opened from the settings drawer, so it has to sit above it (45). */
-.modal-backdrop.settings-transfer-backdrop { z-index: var(--z-modal-raised); }
+/* A page of a drawer laid over its list (import, export, the MCP path picker): the drawer's own
+   header row with Back, a body and a footer, inside the drawer's stacking context. */
+.settings-subpage {
+    position: absolute;
+    z-index: 8;
+    inset: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    box-sizing: border-box;
+    padding: 0 1.2rem 1rem;
+    overflow: hidden;
+    background: var(--color-surface);
+}
+.settings-subpage:focus { outline: none; }
+.settings-subpage > header { display: flex; align-items: center; gap: .6rem; margin: 0 -1.2rem .9rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--color-border); }
+.settings-subpage > header > div { display: grid; gap: .15rem; min-width: 0; }
+.settings-subpage > header p { overflow: hidden; color: var(--color-text-subtle); font-size: var(--font-size-md); text-overflow: ellipsis; white-space: nowrap; }
+.settings-subpage > header .icon-action { flex: none; margin-left: -.4rem; }
+.settings-import-page { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.settings-export-page { grid-template-rows: auto minmax(0, 1fr) auto; }
+.directory-picker-page { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 
 .settings-drawer-header-actions {
     display: flex;
@@ -9049,37 +9066,6 @@ a.resource-pill-target.file-link { cursor: context-menu; }
     color: var(--color-warning-text);
     font-size: var(--font-size-sm);
 }
-
-.settings-transfer-modal {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: min(38rem, calc(100vw - 2rem));
-    max-height: min(40rem, calc(100vh - 2rem));
-    box-sizing: border-box;
-    padding: 1.1rem;
-    overflow: hidden;
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-2xl);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-xl);
-}
-
-.settings-transfer-modal:focus { outline: none; }
-
-.settings-import-modal { grid-template-rows: auto auto minmax(0, 1fr) auto; height: min(40rem, calc(100vh - 2rem)); }
-.settings-export-modal { grid-template-rows: auto minmax(0, 1fr) auto; width: min(30rem, calc(100vw - 2rem)); }
-
-.settings-transfer-modal > header {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    margin-bottom: 0.8rem;
-    padding-bottom: 0.7rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.settings-transfer-modal > header div { display: grid; gap: 0.2rem; }
-.settings-transfer-modal > header span { color: var(--color-text-faint); font-size: var(--font-size-md); }
 
 .settings-import-source { display: grid; gap: 0.45rem; margin-bottom: 0.7rem; }
 
@@ -9584,12 +9570,10 @@ button.is-auto-pressed { filter: brightness(1.15); }
 .archive-suggestion > span { flex: 1; min-width: 8rem; }
 .archive-suggestion > button:not(.icon-action) { color: var(--color-accent); }
 
-/* The chat archive drawer shares the right-hand drawer shell (.permissions-drawer): header, tabs,
-   a scrolling body and a footer whose primary action sits on the right. */
-.archive-backdrop { position: fixed; z-index: var(--z-side-panel-backdrop); inset: 0; background: var(--color-scrim-faint); }
-.archive-drawer { box-sizing: border-box; position: fixed; z-index: var(--z-side-panel); top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(33rem, 100vw); border-left: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-drawer-end); }
-.archive-drawer h2, .archive-drawer h3, .archive-drawer p { margin: 0; }
-.archive-drawer > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--color-border); }
+/* The chat archive drawer is a .permissions-drawer (backdrop, slide, dismissal); these rules only
+   size it and lay out its header, tabs, body and a footer whose primary action sits on the right. */
+.permissions-drawer.archive-drawer { box-sizing: border-box; width: min(33rem, 100vw); color: var(--color-text); }
+.archive-drawer > header { align-items: center; padding: 1rem 1.2rem; }
 .archive-title { display: flex; align-items: center; gap: .7rem; min-width: 0; }
 .archive-title > .app-icon { width: 1.1rem; height: 1.1rem; color: var(--color-text-subtle); }
 .archive-title h2 { font-size: var(--font-size-xl); }
@@ -9681,7 +9665,6 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 .archive-settings { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--color-border-subtle); }
 
-.archive-drawer > footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1.2rem; border-top: 1px solid var(--color-border); }
 .archive-footer-status { display: flex; align-items: center; gap: .5rem; min-width: 0; color: var(--color-text-subtle); font-size: var(--font-size-md); }
 .archive-drawer > footer .compact-action { display: inline-flex; align-items: center; gap: .4rem; }
 .archive-drawer > footer .compact-action .app-icon { width: .9rem; height: .9rem; }
@@ -9693,11 +9676,7 @@ button.is-auto-pressed { filter: brightness(1.15); }
 
 .archive-search-toggle > input { width: auto; flex: 0 0 auto; margin: 0; }
 
-@media (width <= 44rem) {
-    .archive-drawer { width: 100vw; }
-    .archive-backdrop { background: transparent; }
-}
-@media (prefers-reduced-motion: reduce) { .archive-drawer, .archive-backdrop, .archive-drawer.is-leaving, .archive-backdrop.is-leaving, .archive-row { animation: none; transition: none; } }
+@media (prefers-reduced-motion: reduce) { .archive-row { transition: none; } }
 
 /* Chat widgets. A column beside the conversation, holding widgets that share one shell: a header
    with a drag handle, a title that folds the widget, the widget's own actions and a hide button,

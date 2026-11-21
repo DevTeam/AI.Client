@@ -568,31 +568,31 @@
             <span>@(_saving ? "Saving…" : Stats)</span>
         }
     </footer>
+    @* Import, export and the path picker are pages of this drawer, laid over its list; Back,
+       Escape or finishing returns to the list, and closing the drawer drops them. *@
+    @if (_import is { } import)
+    {
+        <SettingsImportPage @key="import.Key" InitialText="@import.Text" Source="@import.Source"
+                            Connections="@(_connections.Select(item => item.ToSettings()).ToArray())"
+                            McpServers="@(_globalMcpServers.Select(item => item.ToSettings()).ToArray())"
+                            Applied="ApplyImport" Cancelled="() => _import = null" />
+    }
+    @if (_exportOpen)
+    {
+        <SettingsExportPage Section="@Section"
+                            Connections="@(_connections.Select(ExportSettings).ToArray())"
+                            McpServers="@(_globalMcpServers.Where(item => !IsHostProvided(item.Id)).Select(ExportSettings).ToArray())"
+                            Closed="() => _exportOpen = false" />
+    }
+    @if (_mcpPickerServer is not null)
+    {
+        @* Title comes from the picker itself ("Select file" / "Select directory"); Subtitle is
+           what tells the user which field they are editing and why it matters. *@
+        <DirectoryPickerDialog Embedded="true" Subtitle="@_mcpPickerSubtitle" Mode="@_mcpPickerMode"
+                               StartPath="@_mcpPickerStartPath"
+                               Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
+    }
 </aside>
-@if (_import is { } import)
-{
-    <SettingsImportDialog @key="import.Key" InitialText="@import.Text" Source="@import.Source"
-                          Connections="@(_connections.Select(item => item.ToSettings()).ToArray())"
-                          McpServers="@(_globalMcpServers.Select(item => item.ToSettings()).ToArray())"
-                          Applied="ApplyImport" Cancelled="() => _import = null" />
-}
-@if (_exportOpen)
-{
-    <SettingsExportDialog Section="@Section"
-                          Connections="@(_connections.Select(ExportSettings).ToArray())"
-                          McpServers="@(_globalMcpServers.Where(item => !IsHostProvided(item.Id)).Select(ExportSettings).ToArray())"
-                          Closed="() => _exportOpen = false" />
-}
-@if (_mcpPickerServer is not null)
-{
-    // Title comes from the dialog itself ("Select file" / "Select directory"); Subtitle is what
-    // tells the user which field they are editing and why it matters. The settings drawer sits at
-    // z-index 45, so the backdrop needs settings-transfer-backdrop (46) to appear above it — the
-    // same class the import/export dialogs use.
-    <DirectoryPickerDialog Subtitle="@_mcpPickerSubtitle" Mode="@_mcpPickerMode"
-                           StartPath="@_mcpPickerStartPath" BackdropClass="settings-transfer-backdrop"
-                           Selected="OnMcpPathPicked" Cancelled="CloseMcpPicker" />
-}
 @code {
     private LocalModelStatus? _localModelStatus;
     private bool _localStatusUnreadable;
@@ -1779,15 +1779,38 @@
         }
     }
 
-    private void OpenImport() => _import = new ImportRequest(++_importCount, null, null);
+    private void OpenImport()
+    {
+        CloseSubpage();
+        _import = new ImportRequest(++_importCount, null, null);
+    }
 
-    private void OpenExport() => _exportOpen = true;
+    private void OpenExport()
+    {
+        CloseSubpage();
+        _exportOpen = true;
+    }
+
+    /// <summary>
+    /// Returns from an import, export or path picker page to the drawer's list. Home calls it on
+    /// Escape before closing the drawer, so Escape steps back one level; false means none was open.
+    /// </summary>
+    public bool CloseSubpage()
+    {
+        if (_import is null && !_exportOpen && _mcpPickerServer is null) return false;
+        _import = null;
+        _exportOpen = false;
+        _mcpPickerServer = null;
+        _mcpPickerStartPath = null;
+        StateHasChanged();
+        return true;
+    }
 
     /// <summary>Ctrl+V outside a field, or a file dropped on the drawer.</summary>
     [JSInvokable]
     public async Task OnTransferTextAsync(string text, string source)
     {
-        if (!CanTransfer || !_loaded || _saving || _exportOpen) return;
+        if (!CanTransfer || !_loaded || _saving || _exportOpen || _mcpPickerServer is not null) return;
         _import = new ImportRequest(++_importCount, text, source);
         await InvokeAsync(StateHasChanged);
     }

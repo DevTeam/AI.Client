@@ -2,8 +2,10 @@
 @inject IChatHistoryApi ChatHistoryApi
 @inject IJSRuntime JsRuntime
 
-<div class="archive-backdrop" @onclick="CloseAsync"></div>
-<aside class="archive-drawer" aria-label="Chat archive" @onkeydown="OnKeyDown">
+@* On the shared right-hand drawer shell: Home closes it on Escape, on a press outside and when
+   another drawer opens, unless an archive operation is still running. *@
+<div class="permissions-drawer-backdrop"></div>
+<aside class="permissions-drawer archive-drawer" aria-label="Chat archive" @onclick:stopPropagation="true">
     <header>
         <div class="archive-title">
             <AppIcon Name="archive" />
@@ -431,7 +433,6 @@
         };
     }
 
-    private Task OnKeyDown(KeyboardEventArgs args) => args.Key == "Escape" && !_busy ? Close.InvokeAsync() : Task.CompletedTask;
     public async ValueTask DisposeAsync()
     {
         _previewCancellation?.Cancel();

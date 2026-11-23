@@ -49,7 +49,7 @@
         }
         @if (Row.Action == SettingsImportAction.KeepBoth)
         {
-            <p class="settings-import-note">@(candidate.CanReplace ? "Added under a numbered name." : "A built-in server has this name; added under a numbered name.")</p>
+            <p class="settings-import-note">@(candidate.CanReplace ? KeepBothNote : BuiltInNote)</p>
         }
         @foreach (var note in candidate.Imported.Notes)
         {
@@ -66,6 +66,12 @@
     [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
 
     [Parameter] public string? Detail { get; set; }
+
+    /// <summary>What Keep both does to the copy.</summary>
+    [Parameter] public string KeepBothNote { get; set; } = "Added under a numbered name.";
+
+    /// <summary>Why only Keep both is offered when the matching item is the application's own.</summary>
+    [Parameter] public string BuiltInNote { get; set; } = "A built-in server has this name; added under a numbered name.";
 
     /// <summary>The dialog's footer counts the choices, so it re-renders on every change.</summary>
     [Parameter] public EventCallback Changed { get; set; }

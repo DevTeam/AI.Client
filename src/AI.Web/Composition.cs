@@ -89,6 +89,8 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Root<IDirectoryPickerState>()
             .Root<ISettingsTransferCodec>()
             .Root<ISettingsImportPlanner>()
+            .Root<ISkillTransferCodec>()
+            .Root<ISkillImportPlanner>()
             .Root<IRunStatusPresentation>()
             .Root<IComposerHistoryNavigator>()
             .Root<IReplySuggestionState>()
@@ -162,6 +164,7 @@ internal sealed partial class Composition : ServiceProviderFactory<Composition>
             .Transient<MediaFilePreviewRegistration, TextFilePreviewRegistration,
                 DirectoryFilePreviewRegistration, ArchiveFilePreviewRegistration>(Tag.Unique)
             .Transient<NotificationService>("base")
+            .Transient<SkillTransferCodec, SkillImportPlanner>()
             .Transient<DesktopUnreadCountPublisher, ChatSkillStatisticsCalculator, ChatPlanStatisticsCalculator,
                 ChatMemoryStatisticsCalculator>()
             .Bind<TimeProvider>().To(_ => TimeProvider.System)

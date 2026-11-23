@@ -24,8 +24,8 @@
         <Actions>
             @if (CanTransfer)
             {
-                <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="Import settings" disabled="@(_saving || !_loaded)" @onclick="OpenImport"><AppIcon Name="import" /></button>
-                <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="Export settings" disabled="@(_saving || !_loaded)" @onclick="OpenExport"><AppIcon Name="export" /></button>
+                <button class="icon-action" type="button" title="Import from clipboard or file (or press Ctrl+V here)" aria-label="@(IsSkillsSection ? "Import skills" : "Import settings")" disabled="@(!TransferReady)" @onclick="OpenImport"><AppIcon Name="import" /></button>
+                <button class="icon-action" type="button" title="Export to clipboard or file" aria-label="@(IsSkillsSection ? "Export skills" : "Export settings")" disabled="@(!TransferReady)" @onclick="OpenExport"><AppIcon Name="export" /></button>
             }
         </Actions>
     </DrawerHeader>
@@ -569,14 +569,24 @@
     </footer>
     @* Import, export and the path picker are pages of this drawer, laid over its list; Back,
        Escape or finishing returns to the list, and closing the drawer drops them. *@
-    @if (_import is { } import)
+    @if (_import is not null && IsSkillsSection && _skillEditor is not null)
+    {
+        <SkillImportPage @key="_import.Key" Trail="@Title" InitialText="@_import.Text" InitialArchive="@_import.Archive" Source="@_import.Source"
+                         Skills="@_skillEditor.TransferItems" BuiltInIds="@_skillEditor.BuiltInIds"
+                         Applied="ApplySkillImport" Cancelled="() => _import = null" />
+    }
+    else if (_import is { } import)
     {
         <SettingsImportPage @key="import.Key" Trail="@Title" InitialText="@import.Text" Source="@import.Source"
                             Connections="@(_connections.Select(item => item.ToSettings()).ToArray())"
                             McpServers="@(_globalMcpServers.Select(item => item.ToSettings()).ToArray())"
                             Applied="ApplyImport" Cancelled="() => _import = null" />
     }
-    @if (_exportOpen)
+    @if (_exportOpen && IsSkillsSection && _skillEditor is not null)
+    {
+        <SkillExportPage Trail="@Title" Skills="@_skillEditor.TransferItems" Closed="() => _exportOpen = false" />
+    }
+    else if (_exportOpen)
     {
         <SettingsExportPage Trail="@Title" Section="@Section"
                             Connections="@(_connections.Select(ExportSettings).ToArray())"
@@ -877,7 +887,7 @@
     private bool _exportOpen;
 
     /// <summary>What the import dialog opens with; a new key each time so a second paste starts over.</summary>
-    private sealed record ImportRequest(int Key, string? Text, string? Source);
+    private sealed record ImportRequest(int Key, string? Text, string? Source, AI.Web.Skills.SkillArchive? Archive = null);
 
     protected override async Task OnInitializedAsync()
     {
@@ -1010,7 +1020,12 @@
     };
 
     /// <summary>Connections and MCP servers travel as text; the app's own look and memory do not.</summary>
-    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory" or "Skills" or "ProjectSkills");
+    private bool CanTransfer => Section is not ("Settings" or "Memory" or "ProjectMemory");
+
+    private bool IsSkillsSection => Section is "Skills" or "ProjectSkills";
+
+    /// <summary>The section's items are loaded, so what is imported can be matched against them.</summary>
+    private bool TransferReady => !_saving && (IsSkillsSection ? _skillEditor?.Loaded == true : _loaded);
 
     private string Description => Section switch
     {
@@ -1818,9 +1833,32 @@
     [JSInvokable]
     public async Task OnTransferTextAsync(string text, string source)
     {
-        if (!CanTransfer || !_loaded || _saving || _exportOpen || _mcpPickerServer is not null) return;
+        if (!CanTransfer || !TransferReady || _exportOpen || _mcpPickerServer is not null) return;
         _import = new ImportRequest(++_importCount, text, source);
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>A .zip dropped on the drawer: a set of skills in folders.</summary>
+    [JSInvokable]
+    public async Task OnTransferBytesAsync(byte[] archive, string source)
+    {
+        if (!CanTransfer || !TransferReady || _exportOpen || _mcpPickerServer is not null) return;
+        if (!IsSkillsSection)
+        {
+            Notifications.ShowError($"{source} is an archive; settings are imported from JSON. Skills can be imported from a .zip.");
+            return;
+        }
+
+        _import = new ImportRequest(++_importCount, null, source, new AI.Web.Skills.SkillArchive(source, archive));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>The chosen skills join the skill editor's unsaved edits, saved when the drawer closes.</summary>
+    private void ApplySkillImport(IReadOnlyList<SettingsImportChoice<AI.Web.Skills.SkillTransferItem>> choices)
+    {
+        _import = null;
+        var count = _skillEditor?.ApplyImport(choices) ?? 0;
+        if (count > 0) Notifications.ShowSuccess($"Imported {Plural(count, "skill")}. Saved when you close settings.");
     }
 
     /// <summary>

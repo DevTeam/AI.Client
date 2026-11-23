@@ -1,0 +1,131 @@
+@using AI.Web.Skills
+@using System.Globalization
+@inject ISkillTransferCodec Codec
+@inject INotificationService Notifications
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+@* The skills drawer's export page, built like the settings one: every skill of the scope starts
+   ticked, so sharing all of them is one click. One skill goes out as its SKILL.md; several copy as
+   JSON and save as a .zip with a folder per skill, which other clients read as is. *@
+<section class="settings-subpage settings-export-page" aria-labelledby="skill-export-title"
+         @ref="_dialog" tabindex="-1">
+    <DrawerPageHeader Trail="@Trail" Title="Export" Subtitle="Copy or save as SKILL.md" TitleId="skill-export-title" OnBack="CloseAsync" />
+    <div class="settings-export-body">
+        @if (_items.Count == 0)
+        {
+            <p class="empty-hint">There are no skills of your own here to export. Built-in skills come with the app.</p>
+        }
+        else
+        {
+            <fieldset class="settings-export-group">
+                <legend><label class="checkbox"><input type="checkbox" checked="@_items.All(item => item.Selected)" @onchange="args => SetAll(args.Value is true)" /> Skills</label></legend>
+                @foreach (var item in _items)
+                {
+                    <label class="checkbox"><input type="checkbox" checked="@item.Selected" @onchange="args => item.Selected = args.Value is true" /> <span>@item.Skill.Name</span></label>
+                }
+            </fieldset>
+            @if (SelectedCount == 0)
+            {
+                <p class="empty-hint">No skills selected for export.</p>
+            }
+        }
+        <p class="settings-export-note"><AppIcon Name="info" /><span>One skill is its <code>SKILL.md</code>. Several copy as JSON and save as a <code>.zip</code> with a <code>SKILL.md</code> folder per skill, the Agent Skills layout other clients use. Built-in skills are not exported.</span></p>
+    </div>
+    <footer class="settings-modal-actions">
+        <button type="button" disabled="@(SelectedCount == 0)" @onclick="CopyAsync">Copy</button>
+        <button type="button" class="secondary-action" disabled="@(SelectedCount == 0)" @onclick="SaveFileAsync">Save file</button>
+        <button type="button" class="secondary-action" @onclick="CloseAsync">Cancel</button>
+    </footer>
+</section>
+
+@code {
+    /// <summary>The skills of the scope being edited, including edits not saved yet.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<SkillTransferItem> Skills { get; set; } = [];
+
+    [Parameter] public EventCallback Closed { get; set; }
+
+    /// <summary>The drawer this page belongs to, named in its header.</summary>
+    [Parameter] public string Trail { get; set; } = "Skills";
+
+    private ElementReference _dialog;
+    private IJSObjectReference? _module;
+    private List<ExportItem> _items = [];
+
+    private int SelectedCount => _items.Count(item => item.Selected);
+
+    private SkillTransferItem[] Selected => [.. _items.Where(item => item.Selected).Select(item => item.Skill)];
+
+    protected override void OnInitialized() =>
+        _items = [.. Skills.OrderBy(skill => skill.Name, StringComparer.CurrentCultureIgnoreCase).Select(skill => new ExportItem(skill))];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await _dialog.FocusAsync(); }
+        catch (JSException) { /* The page closed before the browser got to it. */ }
+    }
+
+    private void SetAll(bool selected)
+    {
+        foreach (var item in _items) item.Selected = selected;
+    }
+
+    private string Described(SkillTransferItem[] skills) =>
+        skills.Length == 1 ? skills[0].Name : $"{skills.Length} skills";
+
+    private async Task CopyAsync()
+    {
+        var skills = Selected;
+        try
+        {
+            _module ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            await _module.InvokeVoidAsync("writeClipboardText", Codec.ExportText(skills));
+            Notifications.ShowSuccess(skills.Length == 1 ? $"Copied {Described(skills)} as SKILL.md." : $"Copied {Described(skills)} as JSON.");
+            await CloseAsync();
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not copy to the clipboard. Try Save file instead.");
+        }
+    }
+
+    private async Task SaveFileAsync()
+    {
+        var skills = Selected;
+        var date = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var fileName = skills.Length == 1 ? $"{skills[0].Id}.SKILL.md" : $"ai-client-skills-{date}.zip";
+        try
+        {
+            _module ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            if (skills.Length == 1) await _module.InvokeVoidAsync("downloadText", fileName, Codec.ExportText(skills), "text/markdown");
+            else await _module.InvokeVoidAsync("downloadBytes", fileName, Codec.ExportArchive(skills), "application/zip");
+            Notifications.ShowSuccess($"Saved {Described(skills)} to {fileName}.");
+            await CloseAsync();
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not save the file. Try Copy instead.");
+        }
+    }
+
+    private Task CloseAsync() => Closed.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone.
+        }
+    }
+
+    private sealed class ExportItem(SkillTransferItem skill)
+    {
+        public SkillTransferItem Skill { get; } = skill;
+        public bool Selected { get; set; } = true;
+    }
+}

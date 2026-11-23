@@ -71,6 +71,8 @@ public sealed class SettingsListFilterTests
         await using var services = new ServiceCollection()
             .AddSingleton(api.Object).AddSingleton(Mock.Of<INotificationService>())
             .AddSingleton<ISettingsListFilter, SettingsListFilter>()
+            .AddSingleton<ISkillTransferCodec, SkillTransferCodec>()
+            .AddSingleton<ISkillImportPlanner, SkillImportPlanner>()
             .AddSingleton(Mock.Of<IJSRuntime>()).BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, NullLoggerFactory.Instance);
 

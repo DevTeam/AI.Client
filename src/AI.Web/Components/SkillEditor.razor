@@ -3,6 +3,10 @@
 @inject ISkillApi SkillApi
 @inject INotificationService Notifications
 @inject ISettingsListFilter ListFilter
+@inject ISkillTransferCodec TransferCodec
+@inject ISkillImportPlanner ImportPlanner
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
 
 @* One editor for both catalogs, like Memory: the person's own skills beside the built-in ones, or
    one project's. It keeps every edit locally and writes them all when the drawer closes. *@
@@ -30,9 +34,15 @@
                             <span><SkillIcon Icon="@item.Icon" /><SettingsFilterText Text="@item.Name" Query="@_filter" /></span>
                             <small><SettingsFilterText Text="@Summary(item)" Query="@_filter" /></small>
                         </button>
-                        @if (item.Key == _selectedKey && !item.ReadOnly)
+                        @if (item.Key == _selectedKey)
                         {
-                            <span class="settings-item-actions"><button class="icon-action settings-item-remove" type="button" title="Remove skill" aria-label="Remove skill" @onclick="Remove"><AppIcon Name="trash" /></button></span>
+                            <span class="settings-item-actions">
+                                <button class="icon-action settings-item-copy" type="button" title="Copy SKILL.md" aria-label="Copy skill as SKILL.md" @onclick="CopySelectedAsync"><AppIcon Name="copy" /></button>
+                                @if (!item.ReadOnly)
+                                {
+                                    <button class="icon-action settings-item-remove" type="button" title="Remove skill" aria-label="Remove skill" @onclick="Remove"><AppIcon Name="trash" /></button>
+                                }
+                            </span>
                         }
                     </div>
                 }
@@ -174,6 +184,8 @@
         """;
 
     private readonly List<Item> _items = [];
+    private IReadOnlyCollection<string> _builtInIds = [];
+    private IJSObjectReference? _transferModule;
     private readonly List<SkillDefinition> _removed = [];
     private IReadOnlyList<SkillRunRecord> _runs = [];
     private Guid? _selectedKey;
@@ -201,6 +213,7 @@
         try
         {
             var skills = await SkillApi.ListAsync(ProjectId, CancellationToken.None);
+            _builtInIds = skills.Where(skill => skill.Source == "Built-in").Select(skill => skill.Id).ToHashSet(StringComparer.Ordinal);
             _items.AddRange(skills.Where(skill => Sources.Contains(skill.Source)).Select(skill => new Item(skill)));
             _selectedKey = Sources.SelectMany(Group).FirstOrDefault()?.Key;
             _loaded = true;
@@ -258,6 +271,85 @@
             // The drawer calls this from outside the editor's own events, so nothing else re-renders it.
             StateHasChanged();
             return false;
+        }
+    }
+
+    /// <summary>The skills are listed and can be exported or imported into.</summary>
+    public bool Loaded => _loaded;
+
+    /// <summary>Ids of the application's own skills, which no other skill may take.</summary>
+    public IReadOnlyCollection<string> BuiltInIds => _builtInIds;
+
+    /// <summary>The skills of the edited scope as they would be exported now, unsaved edits included.</summary>
+    public IReadOnlyList<SkillTransferItem> TransferItems => _items
+        .Where(item => !item.ReadOnly && !(item.Stored is null && item.IsUntouched))
+        .Select(item => TransferCodec.ToTransfer(item.Content, item.Enabled))
+        .ToArray();
+
+    /// <summary>
+    /// Adds or replaces the chosen skills among the unsaved edits, so closing the drawer saves them
+    /// and Discard drops them, as if they had been typed in. Returns how many came in.
+    /// </summary>
+    public int ApplyImport(IReadOnlyList<SettingsImportChoice<SkillTransferItem>> choices)
+    {
+        Item? first = null;
+        foreach (var choice in choices)
+        {
+            var skill = choice.Candidate.AddAs;
+            var existing = choice.Action == SettingsImportAction.Replace
+                ? _items.FirstOrDefault(item => !item.ReadOnly && item.Id == skill.Id)
+                : null;
+            if (existing is not null)
+            {
+                existing.Content = skill.Content;
+                existing.Enabled = skill.Enabled;
+                first ??= existing;
+                continue;
+            }
+
+            var id = ImportPlanner.UniqueId(skill.Id, _items.Select(item => item.Id).OfType<string>().Concat(_builtInIds));
+            if (id != skill.Id) skill = TransferCodec.WithIdentity(skill, id, $"{skill.Name} ({id[(skill.Id.Length + 1)..]})");
+            var added = new Item(null) { Source = Scope, Content = skill.Content, Enabled = skill.Enabled };
+            _items.Add(added);
+            first ??= added;
+        }
+
+        if (first is not null)
+        {
+            // What came in might not match the filter left from before.
+            _filter = string.Empty;
+            _selectedKey = first.Key;
+        }
+
+        StateHasChanged();
+        _ = Changed.InvokeAsync();
+        return choices.Count;
+    }
+
+    private async Task CopySelectedAsync()
+    {
+        if (Selected is not { } item) return;
+        try
+        {
+            _transferModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            await _transferModule.InvokeVoidAsync("writeClipboardText", TransferCodec.ExportText([TransferCodec.ToTransfer(item.Content, item.Enabled)]));
+            Notifications.ShowSuccess($"Copied {item.Name} as SKILL.md.");
+        }
+        catch (JSException)
+        {
+            Notifications.ShowError("Could not copy to the clipboard.");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_transferModule is not null) await _transferModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone.
         }
     }
 

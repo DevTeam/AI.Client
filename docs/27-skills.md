@@ -36,6 +36,35 @@ otherwise. The model then follows the steps in the same turn. The run pins the d
 so they are in the next step's schema without a `tool_search`; it does not grant anything. A skill's text cannot grant directory access or other
 application permissions, and every write still goes through tool approval.
 
+## Import and export
+
+The Skills drawer (User and Project) has Import and Export in its header, built like the ones for
+MCP servers and connections: each is a page laid over the drawer's list, and what is imported
+joins the editor's unsaved edits, so closing the drawer saves it and "Discard changes" drops it.
+The selected skill's Copy action copies its SKILL.md.
+
+- **Export** lists the scope's own skills, all ticked; built-in skills are left out because every
+  installation has them. One skill copies and saves as its SKILL.md (`<id>.SKILL.md`). Several copy
+  as JSON, `{"skills": {"<id>": "<SKILL.md>"}}`, and save as a `.zip` with `<id>/SKILL.md` per
+  skill, the Agent Skills folder layout. The `revision` line is this Host's bookkeeping and is
+  dropped; a switched-off skill carries `enabled: false`.
+- **Import** takes the clipboard, text pasted into the page, Ctrl+V or a file dropped on the
+  drawer, or a loaded `.md`, `.json` or `.zip`. JSON may be that map, an array of SKILL.md strings,
+  or objects with `content` and an optional `enabled`. An archive is searched for `SKILL.md` in any
+  folder; the other files of a skill's folder (scripts, references, assets) are not imported and
+  the preview says how many were left. `__MACOSX` entries are ignored.
+- **Matching is by id**, which names the skill's file. A new id is added, an identical skill is
+  Unchanged, and a different one offers Replace, Keep both (added as `<id>-2` and `Name (2)`) or
+  Skip. A skill whose id belongs to a built-in skill can only be kept as a numbered copy, because
+  the Host refuses that id.
+- **Skills written for other clients** usually have only `name` and `description`. The import
+  makes the id from the name (`PDF tools` → `pdf-tools`), adds `kind: playbook` and empty
+  `parameters`, joins a folded or literal YAML description into one line and takes quotes off the
+  name and description; the row says what was added. `allowed-tools` names another client's tools
+  and is kept as text but not used. Documents without a description, with an invalid id, of kind
+  `executor` or longer than 48,000 characters are listed as not imported, with the reason.
+  The `skill-import` playbook remains the way to find, adapt and test a skill from a repository.
+
 ## Naming
 
 - `id` is `<domain>-<action>[-<object>]` in lowercase kebab case. The domains are `chat`,

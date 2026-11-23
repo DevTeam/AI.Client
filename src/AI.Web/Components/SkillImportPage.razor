@@ -1,0 +1,279 @@
+@using AI.Web.Skills
+@inject ISkillTransferCodec Codec
+@inject ISkillImportPlanner Planner
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+
+@* The skills drawer's import page, built like the settings one: every way in — the Import
+   button, Ctrl+V on the drawer, a dropped or loaded SKILL.md, JSON or .zip — shows what is about
+   to change first. The chosen skills join the editor's edits and are saved when the drawer
+   closes. *@
+<section class="settings-subpage settings-import-page" aria-labelledby="skill-import-title"
+         @ref="_dialog" tabindex="-1">
+    <DrawerPageHeader Trail="@Trail" Title="Import" Subtitle="@Subtitle" TitleId="skill-import-title" OnBack="CancelAsync" />
+    <div class="settings-import-source">
+        <textarea @ref="_textArea" class="settings-import-text" spellcheck="false" aria-label="SKILL.md or skills JSON"
+                  placeholder="Paste a SKILL.md or skills JSON here, or drop a .md, .json or .zip file"
+                  value="@_text" @oninput="OnTextInput"></textarea>
+        <div class="settings-import-source-actions">
+            <label class="secondary-action compact-action settings-import-file">
+                Load file…
+                <InputFile accept=".md,.json,.zip,text/markdown,application/json,application/zip,text/plain" OnChange="LoadFileAsync" />
+            </label>
+            <span>Skills from other clients are adapted: a missing id, kind or parameters is added.</span>
+        </div>
+    </div>
+    <div class="settings-import-body">
+        @if (_error is not null)
+        {
+            <p class="error" role="alert">@_error</p>
+        }
+        else if (_plan is null)
+        {
+            <p class="empty-hint">@(_readingClipboard ? "Reading the clipboard…" : "Paste skills above to see what will change.")</p>
+        }
+        else
+        {
+            <ul class="settings-import-list">
+                @foreach (var row in _rows)
+                {
+                    <SettingsImportRowView T="SkillTransferItem" Row="row" Name="@row.Candidate.AddAs.Name" Kind="@row.Candidate.AddAs.Id"
+                                           Detail="@row.Candidate.AddAs.Description" Changed="StateHasChanged"
+                                           KeepBothNote="Added under a numbered id."
+                                           BuiltInNote="A built-in skill has this id; added under a numbered id." />
+                }
+                @foreach (var skipped in _plan.Skipped)
+                {
+                    <li class="settings-import-row is-skipped">
+                        <div class="settings-import-row-head"><span class="settings-import-name">@skipped.Name</span><span class="settings-import-badge">Not imported</span></div>
+                        <p class="settings-import-note">@skipped.Reason</p>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+    <footer class="settings-modal-actions settings-import-actions">
+        <span class="settings-import-summary">@Summary</span>
+        <button type="button" disabled="@(ChosenCount == 0)" @onclick="ApplyAsync">@(ChosenCount == 0 ? "Import" : $"Import {ChosenCount}")</button>
+        <button type="button" class="secondary-action" @onclick="CancelAsync">Cancel</button>
+    </footer>
+</section>
+
+@code {
+    /// <summary>Text already in hand (a paste or a dropped file); null with no archive reads the clipboard.</summary>
+    [Parameter] public string? InitialText { get; set; }
+
+    /// <summary>A dropped .zip, read instead of <see cref="InitialText"/>.</summary>
+    [Parameter] public SkillArchive? InitialArchive { get; set; }
+
+    /// <summary>Where the initial text or archive came from, shown under the title.</summary>
+    [Parameter] public string? Source { get; set; }
+
+    /// <summary>The skills of the scope being edited, as they would be exported now.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<SkillTransferItem> Skills { get; set; } = [];
+
+    [Parameter, EditorRequired] public IReadOnlyCollection<string> BuiltInIds { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<SettingsImportChoice<SkillTransferItem>>> Applied { get; set; }
+
+    [Parameter] public EventCallback Cancelled { get; set; }
+
+    /// <summary>The drawer this page belongs to, named in its header.</summary>
+    [Parameter] public string Trail { get; set; } = "Skills";
+
+    private const long MaxTextBytes = 1024 * 1024;
+
+    // Skill folders may carry scripts and assets that are left behind; the SKILL.md files are small.
+    private const long MaxArchiveBytes = 20 * 1024 * 1024;
+
+    private ElementReference _dialog;
+    private ElementReference _textArea;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _dropSubscription;
+    private DotNetObjectReference<SkillImportPage>? _reference;
+    private string _text = string.Empty;
+    private string? _source;
+    private string? _error;
+    private bool _readingClipboard;
+    private SkillImportPlan? _plan;
+    private List<SettingsImportRow<SkillTransferItem>> _rows = [];
+
+    private string Subtitle => _source switch
+    {
+        null => "From text you paste or a file",
+        "clipboard" => "From the clipboard",
+        _ => $"From {_source}"
+    };
+
+    private int ChosenCount => _rows.Count(row => row.Action != SettingsImportAction.Skip);
+
+    private string Summary
+    {
+        get
+        {
+            if (_plan is null) return string.Empty;
+            var parts = new List<string>(2);
+            var added = _rows.Count(row => row.Action is SettingsImportAction.Add or SettingsImportAction.KeepBoth);
+            var replaced = _rows.Count(row => row.Action == SettingsImportAction.Replace);
+            if (added > 0) parts.Add($"{added} to add");
+            if (replaced > 0) parts.Add($"{replaced} to update");
+            return parts.Count == 0 ? "Nothing selected" : string.Join(" · ", parts);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        _source = Source;
+        if (InitialArchive is not null) SetArchive(InitialArchive.Content);
+        else if (InitialText is not null) SetText(InitialText);
+        else _readingClipboard = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/settingsTransfer.js");
+            _reference = DotNetObjectReference.Create(this);
+            _dropSubscription = await _module.InvokeAsync<IJSObjectReference>("watchDialogDrop", _dialog, _reference, true);
+            if (_readingClipboard)
+            {
+                // Only text that reads as skills fills the box; the last thing copied from a chat
+                // would just be in the way.
+                var clipboard = await _module.InvokeAsync<string?>("readClipboardText");
+                _readingClipboard = false;
+                if (clipboard is not null && Codec.Parse(clipboard) is { Error: null, Skills.Count: > 0 })
+                {
+                    _source = "clipboard";
+                    SetText(clipboard);
+                }
+
+                StateHasChanged();
+            }
+
+            if (_plan is null) await _textArea.FocusAsync();
+            else await _dialog.FocusAsync();
+        }
+        catch (JSException)
+        {
+            // The page closed before the browser got to it.
+            _readingClipboard = false;
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is going away.
+        }
+    }
+
+    private void OnTextInput(ChangeEventArgs args)
+    {
+        _source = null;
+        SetText(args.Value?.ToString() ?? string.Empty);
+    }
+
+    [JSInvokable]
+    public Task OnFileTextAsync(string text, string fileName)
+    {
+        _source = fileName;
+        SetText(text);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnFileBytesAsync(byte[] archive, string fileName)
+    {
+        _source = fileName;
+        SetArchive(archive);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadFileAsync(InputFileChangeEventArgs args)
+    {
+        var archive = args.File.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var limit = archive ? MaxArchiveBytes : MaxTextBytes;
+        try
+        {
+            await using var stream = args.File.OpenReadStream(limit);
+            _source = args.File.Name;
+            if (archive)
+            {
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                SetArchive(buffer.ToArray());
+            }
+            else
+            {
+                using var reader = new StreamReader(stream);
+                SetText(await reader.ReadToEndAsync());
+            }
+        }
+        catch (IOException)
+        {
+            Show(null);
+            _error = $"{args.File.Name} is larger than {limit / 1024 / 1024} MB; that is not a skill file.";
+        }
+    }
+
+    private void SetText(string text)
+    {
+        _text = text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Show(null);
+            return;
+        }
+
+        Show(Codec.Parse(text));
+    }
+
+    private void SetArchive(byte[] archive)
+    {
+        // The archive itself cannot be shown or edited as text; its contents are in the list below.
+        _text = string.Empty;
+        Show(Codec.ParseArchive(archive));
+    }
+
+    private void Show(SkillTransferParseResult? parsed)
+    {
+        _error = parsed?.Error;
+        if (parsed is null || parsed.Error is not null)
+        {
+            _plan = null;
+            _rows = [];
+            return;
+        }
+
+        _plan = Planner.Plan(parsed, Skills, BuiltInIds);
+        _rows = [.. _plan.Skills.Select(candidate => new SettingsImportRow<SkillTransferItem>(candidate))];
+    }
+
+    private Task ApplyAsync() => Applied.InvokeAsync(_rows
+        .Where(row => row.Action != SettingsImportAction.Skip)
+        .Select(row => new SettingsImportChoice<SkillTransferItem>(row.Candidate, row.Action))
+        .ToArray());
+
+    private Task CancelAsync() => Cancelled.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_dropSubscription is not null)
+            {
+                await _dropSubscription.InvokeVoidAsync("dispose");
+                await _dropSubscription.DisposeAsync();
+            }
+
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is already gone, and its listeners with it.
+        }
+
+        _reference?.Dispose();
+    }
+}

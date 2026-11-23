@@ -68,11 +68,15 @@ In `spawn_subtask` nobody is watching the run, and it has no card of its own. Th
 | Constraint | Value |
 |---|---|
 | questions per call | 1–5, `id` is unique and non-empty |
-| options per question | 0–8 (`search` 200, `rank` 20); zero is allowed with `allowOther: true`, a path, Git or schedule picker, or a slider, scale or colour input |
+| options per question | 0–8 (`search` 200, `rank` 20); `options` may be left out, which is zero; zero is allowed with `allowOther: true`, a path, Git or schedule picker, or a slider, scale or colour input |
 | lengths | `text` ≤ 500, `label` ≤ 24, option ≤ 80, option description ≤ 160 |
 | `allowOther` | defaults to `true` |
 
 A violation is a tool error with text the model can correct itself by, not a schema rejection it can only repeat. Such a call does not reach the broker.
+Every violation of the call is reported in one error, numbered when there are several, because each refusal costs the
+model a whole retry: one problem at a time once turned a single faulty call into three. A message names the option by
+its position and label and gives the actual length beside the limit. The schema itself demands only `id`, `text` and an
+option's `label`, so a text box or a picker is asked without inventing options for it.
 
 ### Reply buttons
 
@@ -155,12 +159,21 @@ a colour that is not one, or text the pattern refuses is dropped, like a schedul
 ### Defaults and decisions left to the model
 
 Every question should carry the answer the model would choose: `recommended: true` on options, or `default` for an
-input, picker, path or free-text question — a number, `[from, to]`, `"#rrggbb"`, text, a date, a ref or paths. The
+input, picker, path or free-text question — a number, `[from, to]`, `"#rrggbb"`, text, a date, a ref or paths. A
+question answered by its options (no input other than `search`, no path or picker) takes no `default`; models write
+one anyway beside `recommended: true`, so a `default` that names options by label or value (ignoring case) and agrees
+with every recommendation already made becomes that recommendation. Any other `default` there makes the call `invalid`. The
 card starts from it (a slider is set, a rank starts in the order offered, a picker is filled), so keeping it is an
 answer like any other. A question the person leaves open — `Decide yourself`, an expired chat question, or a partial
 answer — takes that default: it comes back in `answers` with `assumed: true`, the guidance names it, and the reply
-bubble shows it as "Assistant chose …" under "You left it to the assistant; it went on with its defaults". A
-question with no default is still "Left to the assistant", and the guidance tells the model to decide and say so.
+bubble shows it as "Assistant chose …" under "You left it to the assistant; it went on with its defaults".
+
+A single choice among options (no `multiSelect`, path, picker or input other than `search`) must recommend one, or
+the call is `invalid` and the model is told to mark the option it would choose; a question that never expires
+(`timeoutSeconds: 0`) and overlay questions are exempt. A question that still has no default — free text, a path, a
+picker, several choices — keeps its place in the bubble with "No answer; the assistant's choice is in its reply" (or
+"Left to the assistant; its choice is in its reply"), and the guidance tells the model to name each such choice in
+its final answer, because a note written while working is folded away in the turn and the person would not see it.
 Declined questions and unanswered overlay questions take no defaults. `timeoutBehavior: "submit_defaults"` accepts
 any question with a recommended option or a `default`, pickers included.
 

@@ -21,6 +21,10 @@ using ModelContextProtocol.Server;
 public sealed record AskUserOption(string Label, string? Description = null, bool Recommended = false, string? Value = null);
 
 /// <param name="Id">Names this question in the answer. Must be unique within the call.</param>
+/// <param name="Options">
+/// The choices offered. Leave it out for a question answered by its input, path or picker alone,
+/// such as a text box: the schema must not demand options the card does not need.
+/// </param>
 /// <param name="Text">
 /// What is being asked. Emphasis, code spans and links are rendered; anything larger is not, because
 /// a question is a label on a decision and the decision is what the person should be reading.
@@ -60,7 +64,7 @@ public sealed record AskUserOption(string Label, string? Description = null, boo
 public sealed record AskUserQuestion(
     string Id,
     string Text,
-    AskUserOption[] Options,
+    AskUserOption[]? Options = null,
     string? Label = null,
     bool MultiSelect = false,
     bool AllowOther = true,
@@ -192,9 +196,12 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         private const string DirectoriesPath = "directories";
         private const string FilePath = "file";
 
+        // Notes written while working are folded away in the chat, so a choice stated only there is
+        // a choice the person never sees: the card can only say that the assistant decided.
         private const string DecideYourself =
-            "Continue with the option you judge best and state the assumption you made in your reply. "
-            + "Do not ask the same question again.";
+            "Continue with the option you judge best. Your final answer to the user must name each choice you made "
+            + "this way together with the question it settles; a note written while working is folded away and is not "
+            + "enough. Do not ask the same question again.";
 
         public McpServerTool Create() =>
             McpServerTool.Create(
@@ -214,8 +221,10 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                         + "Prefer one question; up to five may be asked in one call, and asking "
                         + "them together is better than one call after another. Keep option labels short and concrete, and put "
                         + "nuance in 'description'. "
-                        + "DEFAULTS: give every question the answer you would choose — recommended=true on options, or 'default' for "
-                        + "an input, picker, path or free-text question. A question the user leaves to you takes that default: it is "
+                        + "DEFAULTS: give every question the answer you would choose. A question answered by its options takes "
+                        + "recommended=true on the option and no 'default'; a single choice among options is refused without one. "
+                        + "'default' is only for a question answered by an input, a picker or a path, which may leave 'options' out. "
+                        + "A question the user leaves to you takes that default: it is "
                         + "returned with assumed=true and shown to the user as your choice. "
                         + "VALUES: for a value rather than a choice set 'input' {kind, ...}: "
                         + "'number' {min, max, step?, unit?, marks?} is a slider, answer in 'number'; "
@@ -267,24 +276,29 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         {
             var behavior = kindPolicies.Resolve(run.Kind == default ? ChatKind.Conversation : run.Kind).Behavior;
             if (behavior.ForceOverlayQuestions) presentation = "overlay";
-            if (Validate(questions) is { } invalid)
+            // A choice left unanswered is settled by its recommended option, which the card then shows
+            // as the assistant's choice. Without one the card can only say the assistant decided,
+            // and what it decided is lost in the turn. A question that never expires needs none, and
+            // a background run is dismissed below before anything would be shown.
+            var requireDefaults = timeoutSeconds != 0 && presentation == "chat" && run.Interactive;
+            var submitDefaults = timeoutBehavior == "submit_defaults";
+            var problems = Validate(questions, requireDefaults);
+            if (answerStyle is not ("form" or "buttons")) problems.Add("'answerStyle' must be 'form' or 'buttons'.");
+            else if (answerStyle == "buttons" && questions is { Length: > 0 } && ValidateReplyButtons(questions, submitDefaults) is { } unfit)
+                problems.Add(unfit + " Otherwise use answerStyle='form'.");
+            if (Describe(problems) is { } invalid)
                 return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", invalid), isError: true);
             if (presentation is not ("chat" or "overlay") || timeoutBehavior is not ("cancel" or "submit_defaults")
                 || ((timeoutSeconds is < 5 or > 900) && !(behavior.AllowUntimedQuestions && timeoutSeconds == 0 && timeoutBehavior == "cancel"))
                 || presentation == "overlay" && timeoutSeconds is > 120)
                 return reply.Reply(new AskUserResult([], "invalid", "Fix the presentation, timeout or timeout behavior."), true);
             var asked = questions.Select(Question).ToArray();
-            var submitDefaults = timeoutBehavior == "submit_defaults";
             if (submitDefaults && asked.Any(question => !HasDefault(question)
                 || question.Input is null && question.PathKind is null && question.PickerKind is null
                    && !question.MultiSelect && question.Options.Count(option => option.Recommended) > 1))
                 return reply.Reply(new AskUserResult([], "invalid",
                     "Automatic answers require every question to have its recommended option or a 'default'."), true);
-            if (answerStyle is not ("form" or "buttons"))
-                return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again.", "'answerStyle' must be 'form' or 'buttons'."), true);
             var replyButtons = answerStyle == "buttons";
-            if (replyButtons && ValidateReplyButtons(questions, submitDefaults) is { } unfit)
-                return reply.Reply(new AskUserResult([], "invalid", "Fix the call and ask again, or use answerStyle='form'.", unfit), true);
 
             // A background run has nobody watching it, so it is told so at once rather than made to wait
             // out a timeout no one will interrupt. The caller that started it is the one with a user.
@@ -325,6 +339,15 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
 
         private static bool Answered(AskUserReply reply) =>
             reply.Selected.Length > 0 || !string.IsNullOrWhiteSpace(reply.Other) || reply.Paths is { Count: > 0 } || reply.Values is { Count: > 0 };
+
+        /// <summary>
+        /// A single choice among options must name the one the model would take. Paths, pickers,
+        /// several choices, orders and values are left alone: their right default may be unknowable,
+        /// may be "none", or is already the control's starting value.
+        /// </summary>
+        private static bool NeedsDefault(UserPromptQuestion question) =>
+            question.Options.Count > 0 && !question.MultiSelect && question.PathKind is null && question.PickerKind is null
+            && question.Input?.Kind is null or UserPromptInputKind.Search && !HasDefault(question);
 
         private static bool HasDefault(UserPromptQuestion question) =>
             question.Options.Any(option => option.Recommended) || question.Defaults is { Count: > 0 }
@@ -395,22 +418,55 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
                 UserPromptInputKind.Search or null => question.AllowOther,
                 _ => false
             };
+            var options = (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description, option.Recommended,
+                string.IsNullOrWhiteSpace(option.Value) ? null : option.Value.Trim())).ToArray();
+            var defaults = Defaults(question.Default);
+            var pathKind = question.PathKind?.Trim().ToLowerInvariant();
+            var pickerKind = question.PickerKind?.Trim().ToLowerInvariant();
+            if (input?.Kind is null or UserPromptInputKind.Search && pathKind is not { Length: > 0 } && pickerKind is not { Length: > 0 }
+                && RecommendedBy(options, defaults, question.MultiSelect) is { } recommended)
+                (options, defaults) = (recommended, null);
             return new UserPromptQuestion(
                 question.Id,
                 question.Text,
                 question.Label,
-                (question.Options ?? []).Select(option => new UserPromptOption(option.Label, option.Description, option.Recommended,
-                    string.IsNullOrWhiteSpace(option.Value) ? null : option.Value.Trim())).ToArray(),
+                options,
                 question.MultiSelect,
                 allowOther,
-                question.PathKind?.Trim().ToLowerInvariant(),
-                question.PickerKind?.Trim().ToLowerInvariant(),
+                pathKind,
+                pickerKind,
                 question.RepositoryPath?.Trim(),
                 question.Revision,
                 input,
-                Defaults(question.Default),
+                defaults,
                 string.IsNullOrWhiteSpace(question.Preview) ? null : question.Preview.Trim(),
                 question.Rememberable);
+        }
+
+        /// <summary>
+        /// A question answered by its options takes its default from recommended=true, yet models
+        /// often also write a 'default' naming the option they recommend. When that 'default' names
+        /// options by label or value and agrees with every recommendation already made, it says the
+        /// same thing and becomes the recommendation. Null when it does not, which leaves the
+        /// 'default' in place for validation to explain.
+        /// </summary>
+        private static UserPromptOption[]? RecommendedBy(UserPromptOption[] options, string[]? defaults, bool multiSelect)
+        {
+            if (options.Length == 0 || defaults is not { Length: > 0 }) return null;
+            var named = new HashSet<int>();
+            foreach (var value in defaults)
+            {
+                var wanted = value.Trim();
+                var index = Array.FindIndex(options, option => string.Equals(option.Label?.Trim(), wanted, StringComparison.OrdinalIgnoreCase)
+                                                               || string.Equals(option.Value, wanted, StringComparison.OrdinalIgnoreCase));
+                if (index < 0) return null;
+                named.Add(index);
+            }
+            if (!multiSelect && named.Count > 1) return null;
+            var already = options.Select((option, index) => (option, index)).Where(item => item.option.Recommended)
+                .Select(item => item.index).ToArray();
+            if (already.Length > 0 && !named.All(already.Contains)) return null;
+            return options.Select((option, index) => named.Contains(index) ? option with { Recommended = true } : option).ToArray();
         }
 
         /// <summary>A default as the model wrote it — a number, a string or a list of either — in the strings the card holds.</summary>
@@ -537,66 +593,113 @@ public sealed class AppAskUserTool(Func<IUserPromptBroker> broker, IChatKindPoli
         /// Every limit here is about the card staying readable: a question nobody can take in at a
         /// glance is worse than no question at all.
         /// </summary>
-        private string? Validate(AskUserQuestion[]? questions)
+        /// <remarks>
+        /// Every problem of the call is reported at once. Each refusal costs the model a whole retry,
+        /// and naming one problem at a time turned a single faulty call into three.
+        /// </remarks>
+        /// <param name="requireDefaults">Whether a single choice must recommend an option; see <see cref="NeedsDefault"/>.</param>
+        private List<string> Validate(AskUserQuestion[]? questions, bool requireDefaults)
         {
-            if (questions is not { Length: > 0 }) return "Ask at least one question.";
-            if (questions.Length > MaxQuestions) return $"Ask at most {MaxQuestions} questions in one call.";
+            if (questions is not { Length: > 0 }) return ["Ask at least one question."];
+            var problems = new List<string>();
+            if (questions.Length > MaxQuestions) problems.Add($"Ask at most {MaxQuestions} questions in one call, not {questions.Length}.");
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var question in questions)
-            {
-                if (string.IsNullOrWhiteSpace(question.Id)) return "Every question needs a non-empty 'id'.";
-                if (!ids.Add(question.Id)) return $"Question ids must be unique; '{question.Id}' is repeated.";
-                if (string.IsNullOrWhiteSpace(question.Text)) return $"Question '{question.Id}' has no text.";
-                if (question.Text.Length > MaxTextLength) return $"Question '{question.Id}' is longer than {MaxTextLength} characters.";
-                if (question.Label is { Length: > MaxLabelLength }) return $"The label of '{question.Id}' is longer than {MaxLabelLength} characters.";
-                var path = question.PathKind?.Trim().ToLowerInvariant();
-                if (path is { Length: > 0 } and not (DirectoryPath or DirectoriesPath or FilePath))
-                    return $"The 'pathKind' of '{question.Id}' must be '{DirectoryPath}', '{DirectoriesPath}' or '{FilePath}'.";
-                var options = question.Options ?? [];
-                var picker = question.PickerKind?.Trim().ToLowerInvariant();
-                if (picker is { Length: > 0 })
-                {
-                    if (picker is not ("branch" or "commit") && !SchedulePickers.IsSchedulePicker(picker))
-                        return $"The 'pickerKind' of '{question.Id}' must be 'branch', 'commit', 'date', 'time' or 'recurrence'.";
-                    if (path is { Length: > 0 }) return $"Question '{question.Id}' cannot combine 'pathKind' and 'pickerKind'.";
-                    if (picker is "branch" or "commit"
-                        && (string.IsNullOrWhiteSpace(question.RepositoryPath) || !Path.IsPathFullyQualified(question.RepositoryPath)))
-                        return $"Question '{question.Id}' needs an absolute 'repositoryPath' for its Git picker.";
-                }
-                if (question.Input is { } input && string.IsNullOrWhiteSpace(input.Kind))
-                    return $"The 'input' of '{question.Id}' needs a 'kind'.";
-                foreach (var option in options)
-                {
-                    if (string.IsNullOrWhiteSpace(option.Label)) return $"Question '{question.Id}' has an option with no label.";
-                    if (option.Label.Length > MaxOptionLength) return $"An option of '{question.Id}' is longer than {MaxOptionLength} characters.";
-                    if (option.Description is { Length: > MaxDescriptionLength })
-                        return $"An option description of '{question.Id}' is longer than {MaxDescriptionLength} characters.";
-                    if (option.Value is { Length: > MaxValueLength })
-                        return $"An option value of '{question.Id}' is longer than {MaxValueLength} characters.";
-                    if (SchedulePickers.IsSchedulePicker(picker) && !string.IsNullOrWhiteSpace(option.Value)
-                        && SchedulePickers.Normalize(picker, option.Value, calendar) is null)
-                        return $"The value of option '{option.Label}' in '{question.Id}' is not a valid {picker}: use "
-                            + (picker == SchedulePickers.Date ? "yyyy-MM-dd" : picker == SchedulePickers.Time ? "HH:mm"
-                                : "recurrence JSON such as {\"frequency\":\"Weekly\",\"start\":\"2026-10-12\",\"time\":\"09:00\",\"weekdays\":[\"Monday\"]}") + ".";
-                }
-                var asked = Question(question);
-                // The input is checked first: an input the card cannot draw explains every other
-                // complaint, such as having no options to answer with.
-                if (inputs.Validate(asked) is { } invalid) return invalid;
-                var maxOptions = inputs.MaxOptions(asked);
-                if (options.Length > maxOptions)
-                    return $"Question '{question.Id}' offers more than {maxOptions} options"
-                           + (asked.Input is null ? "; use input kind 'search' for a long list." : ".");
-                // A path question is answerable through its picker and a slider or swatch through its
-                // control, so they need neither options nor the free-text box the others fall back on.
-                if (options.Length == 0 && !asked.AllowOther && path is not { Length: > 0 } && picker is not { Length: > 0 }
-                    && asked.Input?.Kind is not (UserPromptInputKind.Number or UserPromptInputKind.Range
-                        or UserPromptInputKind.Scale or UserPromptInputKind.Color))
-                    return $"Question '{question.Id}' offers no options and no free-text answer, so it cannot be answered.";
-            }
-
-            return null;
+                Validate(question, ids, requireDefaults, problems);
+            return problems;
         }
+
+        /// <summary>The problems of a call as one message, numbered when there are several; null when there are none.</summary>
+        private static string? Describe(List<string> problems) => problems.Count switch
+        {
+            0 => null,
+            1 => problems[0],
+            _ => $"Fix all {problems.Count} problems in one retry: " + string.Join(" ", problems.Select((problem, index) => $"({index + 1}) {problem}"))
+        };
+
+        private void Validate(AskUserQuestion question, HashSet<string> ids, bool requireDefaults, List<string> problems)
+        {
+            if (string.IsNullOrWhiteSpace(question.Id))
+            {
+                // Without an id nothing else about the question can be named to the model.
+                problems.Add("Every question needs a non-empty 'id'.");
+                return;
+            }
+            var id = question.Id;
+            if (!ids.Add(id)) problems.Add($"Question ids must be unique; '{id}' is repeated.");
+            if (string.IsNullOrWhiteSpace(question.Text)) problems.Add($"Question '{id}' has no text.");
+            else if (question.Text.Length > MaxTextLength)
+                problems.Add($"The text of '{id}' is {question.Text.Length} characters; the limit is {MaxTextLength}.");
+            if (question.Label is { Length: > MaxLabelLength })
+                problems.Add($"The label of '{id}' is {question.Label.Length} characters; a label is a chip of at most {MaxLabelLength}.");
+            var path = question.PathKind?.Trim().ToLowerInvariant();
+            if (path is { Length: > 0 } and not (DirectoryPath or DirectoriesPath or FilePath))
+                problems.Add($"The 'pathKind' of '{id}' must be '{DirectoryPath}', '{DirectoriesPath}' or '{FilePath}'.");
+            var options = question.Options ?? [];
+            var picker = question.PickerKind?.Trim().ToLowerInvariant();
+            if (picker is { Length: > 0 })
+            {
+                if (picker is not ("branch" or "commit") && !SchedulePickers.IsSchedulePicker(picker))
+                    problems.Add($"The 'pickerKind' of '{id}' must be 'branch', 'commit', 'date', 'time' or 'recurrence'.");
+                if (path is { Length: > 0 }) problems.Add($"Question '{id}' cannot combine 'pathKind' and 'pickerKind'.");
+                if (picker is "branch" or "commit"
+                    && (string.IsNullOrWhiteSpace(question.RepositoryPath) || !Path.IsPathFullyQualified(question.RepositoryPath)))
+                    problems.Add($"Question '{id}' needs an absolute 'repositoryPath' for its Git picker.");
+            }
+            for (var index = 0; index < options.Length; index++)
+            {
+                var option = options[index];
+                if (string.IsNullOrWhiteSpace(option.Label))
+                {
+                    problems.Add($"Option {index + 1} of '{id}' has no label.");
+                    continue;
+                }
+                var named = $"option {index + 1} ('{Shorten(option.Label)}') of '{id}'";
+                if (option.Label.Length > MaxOptionLength)
+                    problems.Add($"The label of {named} is {option.Label.Length} characters; the limit is {MaxOptionLength}: "
+                                 + "keep the label short and put the nuance in 'description'.");
+                if (option.Description is { Length: > MaxDescriptionLength })
+                    problems.Add($"The description of {named} is {option.Description.Length} characters; the limit is "
+                                 + $"{MaxDescriptionLength}: keep one line of nuance and move any detail into the question text.");
+                if (option.Value is { Length: > MaxValueLength })
+                    problems.Add($"The value of {named} is {option.Value.Length} characters; the limit is {MaxValueLength}.");
+                if (SchedulePickers.IsSchedulePicker(picker) && !string.IsNullOrWhiteSpace(option.Value)
+                    && SchedulePickers.Normalize(picker, option.Value, calendar) is null)
+                    problems.Add($"The value of {named} is not a valid {picker}: use "
+                        + (picker == SchedulePickers.Date ? "yyyy-MM-dd" : picker == SchedulePickers.Time ? "HH:mm"
+                            : "recurrence JSON such as {\"frequency\":\"Weekly\",\"start\":\"2026-10-12\",\"time\":\"09:00\",\"weekdays\":[\"Monday\"]}") + ".");
+            }
+            if (question.Input is { } input && string.IsNullOrWhiteSpace(input.Kind))
+            {
+                problems.Add($"The 'input' of '{id}' needs a 'kind'.");
+                return;
+            }
+            var asked = Question(question);
+            // An input the card cannot draw explains every complaint that would follow it, such as
+            // having no options to answer with, so for this question it is the last one made.
+            if (inputs.Validate(asked) is { } invalid)
+            {
+                problems.Add(invalid);
+                return;
+            }
+            var maxOptions = inputs.MaxOptions(asked);
+            if (options.Length > maxOptions)
+                problems.Add($"Question '{id}' offers {options.Length} options; the limit is {maxOptions}"
+                             + (asked.Input is null ? "; use input kind 'search' for a long list." : "."));
+            // A path question is answerable through its picker and a slider or swatch through its
+            // control, so they need neither options nor the free-text box the others fall back on.
+            if (options.Length == 0 && !asked.AllowOther && path is not { Length: > 0 } && picker is not { Length: > 0 }
+                && asked.Input?.Kind is not (UserPromptInputKind.Number or UserPromptInputKind.Range
+                    or UserPromptInputKind.Scale or UserPromptInputKind.Color))
+                problems.Add($"Question '{id}' offers no options and no free-text answer, so it cannot be answered.");
+            else if (requireDefaults && NeedsDefault(asked))
+                problems.Add($"Question '{id}' offers choices but recommends none. Mark the option you would choose "
+                             + "with recommended=true: it is what applies, shown as your choice, when the user leaves the question "
+                             + "to you or does not answer in time.");
+        }
+
+        /// <summary>Enough of a label to recognise the option by, without repeating a long one whole.</summary>
+        private static string Shorten(string label) => label.Length <= 40 ? label : label[..39] + "…";
 
         /// <summary>
         /// A click that sends at once only works for a question one click can answer: a single

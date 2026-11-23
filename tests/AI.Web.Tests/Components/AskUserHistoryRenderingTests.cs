@@ -24,21 +24,23 @@ public sealed class AskUserHistoryRenderingTests
         html.ShouldContain("How should the server be installed?");
         html.ShouldContain(">Portable binary</p>");
         html.ShouldContain("user-answer-value is-path\">D:\\MCP</p>");
-        html.ShouldContain("user-answer-value is-open\">Left to the assistant</p>");
+        html.ShouldContain("user-answer-value is-open\">Left to the assistant; its choice is in its reply</p>");
         html.ShouldNotContain("is-unanswered");
     }
 
     [Theory]
-    [InlineData("dismissed", "You left it to the assistant", "is-unanswered\"")]
-    [InlineData("declined", "You declined the question; the assistant stopped", "is-declined")]
-    [InlineData("expired", "No answer in time; the assistant decided", "is-expired")]
-    public async Task QuestionWithoutAnAnswerShouldSayWhatHappenedInstead(string outcome, string text, string mark)
+    [InlineData("dismissed", "You left it to the assistant", "is-unanswered\"", "Left to the assistant; its choice is in its reply")]
+    [InlineData("declined", "You declined the question; the assistant stopped", "is-declined", "Not answered")]
+    [InlineData("expired", "No answer in time; the assistant decided", "is-expired", "No answer; the assistant&#x27;s choice is in its reply")]
+    public async Task QuestionWithoutAnAnswerShouldSayWhatHappenedAndWhichQuestionWasLeft(string outcome, string text, string mark, string open)
     {
         var html = await RenderAsync(new AskUserAnswer(outcome, [new AskUserAnswerItem(null, "Which?", "", false)]));
 
         html.ShouldContain(text);
         html.ShouldContain(mark);
-        html.ShouldNotContain("Which?");
+        // The question stays, so the person knows what to look for in the assistant's reply.
+        html.ShouldContain("Which?");
+        html.ShouldContain($"user-answer-value is-open\">{open}</p>");
     }
 
     private static async Task<string> RenderAsync(AskUserAnswer answer)

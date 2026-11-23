@@ -137,7 +137,7 @@ public sealed partial class AppToolTests
                 new
                 {
                     id = "tests", text = "Where do tests go?", rememberable = true,
-                    options = new[] { new { label = "Next to the code" }, new { label = "In tests/" } }
+                    options = new[] { new { label = "Next to the code", recommended = true }, new { label = "In tests/", recommended = false } }
                 }
             }
         });

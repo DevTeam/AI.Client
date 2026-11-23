@@ -12,7 +12,9 @@
         {
             <p class="user-answer-status"><AppIcon Name="@status.Icon" />@status.Text</p>
         }
-        @if (Answered || Assumed)
+        @* The questions stay even when none was answered: what was left open is what the person
+           needs to see to find the assistant's choice in its reply. *@
+        @if (Answer.Answers.Count > 0)
         {
             @foreach (var item in Answer.Answers)
             {
@@ -26,7 +28,7 @@
                     </p>
                     @if (item.Answer.Length == 0)
                     {
-                        <p class="user-answer-value is-open">Left to the assistant</p>
+                        <p class="user-answer-value is-open">@OpenText</p>
                     }
                     else if (item.Assumed)
                     {
@@ -63,6 +65,14 @@
         "declined" => ("x", "You declined the question; the assistant stopped"),
         "expired" => ("clock", Assumed ? "No answer in time; the assistant went on with its defaults" : "No answer in time; the assistant decided"),
         _ => ("sparkles", Assumed ? "You left it to the assistant; it went on with its defaults" : "You left it to the assistant"),
+    };
+
+    // A question with no answer and no default was settled by the assistant in words, not here.
+    private string OpenText => Answer.Outcome switch
+    {
+        "declined" => "Not answered",
+        "expired" => "No answer; the assistant's choice is in its reply",
+        _ => "Left to the assistant; its choice is in its reply",
     };
 
     private string OutcomeClass => Answered ? string.Empty : Answer.Outcome switch

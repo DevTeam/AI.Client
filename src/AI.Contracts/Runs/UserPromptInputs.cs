@@ -151,7 +151,8 @@ public sealed class UserPromptInputs(IScheduleCalendar calendar) : IUserPromptIn
             return $"Question '{id}' is a rank: put its options in the order you recommend instead of giving a 'default'.";
         if (kind is UserPromptInputKind.Search
             || kind is null && question.PickerKind is null && question.PathKind is null && question.Options.Count > 0)
-            return $"Question '{id}' answers with options: mark the default with recommended=true instead of 'default'.";
+            return $"Question '{id}' answers with options, so its default is the option marked recommended=true: leave 'default' "
+                   + "out, or have it name exactly the label of the option you recommend.";
         var expected = kind == UserPromptInputKind.Range ? 2 : question.MultiSelect || question.PathKind == "directories" ? defaults.Count : 1;
         if (defaults.Count != expected)
             return kind == UserPromptInputKind.Range

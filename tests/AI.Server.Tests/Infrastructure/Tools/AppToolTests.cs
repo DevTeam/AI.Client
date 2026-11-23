@@ -1010,16 +1010,151 @@ public sealed partial class AppToolTests
         {
             questions = new[]
             {
-                new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" }, new { label = "Wide" } } },
-                new { id = "tests", text = "Add tests?", options = new[] { new { label = "Yes" }, new { label = "No" } } }
+                new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow", recommended = true }, new { label = "Wide", recommended = false } } },
+                new { id = "tests", text = "Add tests?", options = new[] { new { label = "Yes", recommended = true }, new { label = "No", recommended = false } } }
             }
         });
 
         result.GetProperty("outcome").GetString().ShouldBe("answered");
         var answers = result.GetProperty("answers").EnumerateArray().ToArray();
         // Positions travel over the wire; labels are what the model and the transcript get.
-        answers.ShouldHaveSingleItem().GetProperty("selected")[0].GetString().ShouldBe("Wide");
+        answers[0].GetProperty("selected")[0].GetString().ShouldBe("Wide");
+        answers[0].TryGetProperty("assumed", out _).ShouldBeFalse();
+        answers[1].GetProperty("selected")[0].GetString().ShouldBe("Yes");
+        answers[1].GetProperty("assumed").GetBoolean().ShouldBeTrue();
         result.GetProperty("guidance").GetString()!.ShouldContain("tests");
+    }
+
+    [Fact]
+    public async Task AskUserShouldRefuseASingleChoiceThatRecommendsNothing()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" }, new { label = "Wide" } } } }
+        }, expectError: true);
+
+        result.GetProperty("outcome").GetString().ShouldBe("invalid");
+        result.GetProperty("error").GetString()!.ShouldContain("recommended=true");
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AskUserShouldAskATextQuestionThatLeavesOptionsOut()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Answered,
+            [new UserPromptAnswer("name", [], "Warehouse")]);
+
+        // The schema once demanded 'options' of every question, so a text box was refused before
+        // the tool saw it and the model fell back to inventing names to choose from.
+        var question = session.Tools.Single(tool => tool.OriginalName == "ask_user").ModelDefinition.InputSchema
+            .GetProperty("properties").GetProperty("questions").GetProperty("items");
+        question.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ShouldNotContain("options");
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "name", text = "Project name?", input = new { kind = "text" }, @default = "Warehouse" } }
+        });
+
+        result.GetProperty("answers")[0].GetProperty("other").GetString().ShouldBe("Warehouse");
+        fixture.Broker.LastRequest.ShouldNotBeNull().Questions.Single().Options.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AskUserShouldReportEveryProblemOfACallAtOnce()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new object[]
+            {
+                new
+                {
+                    id = "scope", text = "How far?", @default = "Everything",
+                    options = new[] { new { label = "Narrow", description = new string('d', 200), recommended = true }, new { label = "Wide", description = "", recommended = false } }
+                },
+                new { id = "tests", text = "Add tests?", options = new[] { new { label = "Yes" }, new { label = "No" } } }
+            }
+        }, expectError: true);
+
+        var error = result.GetProperty("error").GetString()!;
+        error.ShouldStartWith("Fix all 3 problems in one retry:");
+        error.ShouldContain("The description of option 1 ('Narrow') of 'scope' is 200 characters; the limit is 160");
+        error.ShouldContain("Question 'scope' answers with options");
+        error.ShouldContain("Question 'tests' offers choices but recommends none");
+        fixture.Broker.LastRequest.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AskUserShouldTakeADefaultNamingAnOptionAsItsRecommendation(bool alsoRecommended)
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Dismissed, []);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[]
+            {
+                new
+                {
+                    id = "scope", text = "How far?", @default = "wide (recommended)",
+                    options = new[] { new { label = "Narrow", recommended = false }, new { label = "Wide (Recommended)", recommended = alsoRecommended } }
+                }
+            }
+        });
+
+        var answer = result.GetProperty("answers").EnumerateArray().ShouldHaveSingleItem();
+        answer.GetProperty("selected")[0].GetString().ShouldBe("Wide (Recommended)");
+        answer.GetProperty("assumed").GetBoolean().ShouldBeTrue();
+        var asked = fixture.Broker.LastRequest.ShouldNotBeNull().Questions.Single();
+        asked.Options[1].Recommended.ShouldBeTrue();
+        asked.Defaults.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AskUserShouldRefuseADefaultThatDisagreesWithTheRecommendedOption()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[]
+            {
+                new
+                {
+                    id = "scope", text = "How far?", @default = "Narrow",
+                    options = new[] { new { label = "Narrow", recommended = false }, new { label = "Wide", recommended = true } }
+                }
+            }
+        }, expectError: true);
+
+        result.GetProperty("error").GetString()!.ShouldContain("name exactly the label of the option you recommend");
+    }
+
+    [Fact]
+    public async Task AskUserLeftOpenWithNoDefaultShouldHaveTheChoiceNamedInTheFinalAnswer()
+    {
+        await using var fixture = await AppFixture.CreateAsync();
+        await using var session = await fixture.OpenAsync();
+        fixture.Broker.Answer = _ => new UserPromptResponse(Guid.NewGuid(), UserPromptOutcome.Expired, []);
+
+        var result = await AppFixture.CallAsync(session, "ask_user", new
+        {
+            questions = new[] { new { id = "name", text = "What should it be called?", options = Array.Empty<object>() } }
+        });
+
+        result.GetProperty("outcome").GetString().ShouldBe("expired");
+        result.GetProperty("answers").GetArrayLength().ShouldBe(0);
+        result.GetProperty("guidance").GetString()!.ShouldContain("final answer to the user must name each choice");
     }
 
     [Fact]
@@ -1032,11 +1167,13 @@ public sealed partial class AppToolTests
 
         var result = await AppFixture.CallAsync(session, "ask_user", new
         {
-            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" } } } }
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow", recommended = true } } } }
         });
 
-        result.GetProperty("answers").GetArrayLength().ShouldBe(0);
-        result.GetProperty("guidance").GetString()!.ShouldContain("state the assumption");
+        // The answer that named nothing offered is dropped, so the question falls to its default.
+        var answer = result.GetProperty("answers").EnumerateArray().ShouldHaveSingleItem();
+        answer.GetProperty("selected")[0].GetString().ShouldBe("Narrow");
+        answer.GetProperty("assumed").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -1064,7 +1201,7 @@ public sealed partial class AppToolTests
 
         var result = await AppFixture.CallAsync(session, "ask_user", new
         {
-            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow" } } } }
+            questions = new[] { new { id = "scope", text = "How far?", options = new[] { new { label = "Narrow", recommended = true } } } }
         });
 
         result.GetProperty("outcome").GetString().ShouldBe("declined");
@@ -1148,7 +1285,7 @@ public sealed partial class AppToolTests
 
         var result = await AppFixture.CallAsync(session, "ask_user", new
         {
-            questions = new[] { new { id = "go", text = "Apply the fix?", options = new[] { new { label = "Yes" }, new { label = "No" } } } },
+            questions = new[] { new { id = "go", text = "Apply the fix?", options = new[] { new { label = "Yes", recommended = true }, new { label = "No", recommended = false } } } },
             answerStyle = "buttons"
         });
 
